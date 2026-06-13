@@ -1,0 +1,964 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
+import 'package:pos_connect/core/theme.dart';
+import 'package:pos_connect/data/models/sale_model.dart';
+import 'package:pos_connect/data/repositories/return_repository.dart';
+import 'package:pos_connect/providers/pos_provider.dart';
+import 'package:pos_connect/providers/sale_provider.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/shared/utils/receipt_pdf.dart';
+import 'package:pos_connect/core/responsive.dart';
+import 'package:pos_connect/shared/widgets/status_badge.dart';
+
+final _fmt =
+    NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
+final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+
+class SalesScreen extends ConsumerStatefulWidget {
+  const SalesScreen({super.key});
+
+  @override
+  ConsumerState<SalesScreen> createState() => _SalesScreenState();
+}
+
+class _SalesScreenState extends ConsumerState<SalesScreen> {
+  final _searchCtrl = TextEditingController();
+  String? _statusFilter;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final salesAsync = ref.watch(salesProvider);
+
+    return Column(
+      children: [
+        // Toolbar
+        Container(
+          color: AppColors.surface,
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchCtrl,
+                  decoration: const InputDecoration(
+                    hintText: 'Rechercher par référence ou client...',
+                    prefixIcon: Icon(Icons.search_rounded, size: 20),
+                    isDense: true,
+                  ),
+                  onChanged: (v) => _updateParams(search: v),
+                ),
+              ),
+              const SizedBox(width: 12),
+              DropdownButtonHideUnderline(
+                child: DropdownButton<String?>(
+                  value: _statusFilter,
+                  hint: const Text('Statut'),
+                  borderRadius: BorderRadius.circular(8),
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('Tous')),
+                    DropdownMenuItem(value: 'PAID', child: Text('Payé')),
+                    DropdownMenuItem(value: 'PARTIAL', child: Text('Partiel')),
+                    DropdownMenuItem(value: 'UNPAID', child: Text('Impayé')),
+                  ],
+                  onChanged: (v) {
+                    setState(() => _statusFilter = v);
+                    _updateParams(status: v);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+
+        // List
+        Expanded(
+          child: salesAsync.when(
+            data: (sales) => sales.data.isEmpty
+                ? const Center(
+                    child: Text('Aucune vente trouvée',
+                        style: TextStyle(color: AppColors.textSecondary)))
+                : _SalesList(sales: sales.data, total: sales.meta.total),
+            loading: () =>
+                const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(
+              child: Text('Erreur: $e',
+                  style: const TextStyle(color: AppColors.error)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _updateParams({String? search, String? status}) {
+    ref.read(saleListParamsProvider.notifier).state = SaleListParams(
+      page: 1,
+      search: search ?? _searchCtrl.text,
+      status: status ?? _statusFilter,
+    );
+  }
+}
+
+class _SalesList extends ConsumerWidget {
+  final List<SaleModel> sales;
+  final int total;
+
+  const _SalesList({required this.sales, required this.total});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Column(
+      children: [
+        // Summary bar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          color: AppColors.surface,
+          child: Row(
+            children: [
+              Text('$total vente${total != 1 ? 's' : ''}',
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13)),
+              const Spacer(),
+              Text(
+                'Total: ${_fmt.format(sales.fold(0.0, (s, e) => s + e.finalAmount))}',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+
+        // Items
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: sales.length,
+            separatorBuilder: (ctx, i) => const SizedBox(height: 8),
+            itemBuilder: (context, i) => _SaleCard(sale: sales[i]),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SaleCard extends ConsumerStatefulWidget {
+  final SaleModel sale;
+
+  const _SaleCard({required this.sale});
+
+  @override
+  ConsumerState<_SaleCard> createState() => _SaleCardState();
+}
+
+class _SaleCardState extends ConsumerState<_SaleCard> {
+  bool _printing = false;
+
+  Future<void> _print() async {
+    setState(() => _printing = true);
+    try {
+      final settings = ref.read(settingsProvider);
+      final bytes = await buildReceiptPdf(widget.sale, settings);
+      await Printing.layoutPdf(
+        onLayout: (_) => bytes,
+        name: 'Recu_${widget.sale.reference}',
+      );
+    } finally {
+      if (mounted) setState(() => _printing = false);
+    }
+  }
+
+  void _showQuickReturn() {
+    showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _QuickReturnDialog(
+        sale: widget.sale,
+        onSubmit: (items, refund, reason) async {
+          await ReturnRepository().createSaleReturn(
+            saleId: widget.sale.id,
+            items: items,
+            refundAmount: refund,
+            reason: reason,
+          );
+          ref.invalidate(salesProvider);
+        },
+      ),
+    ).then((submitted) {
+      if (submitted == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Retour enregistré avec succès'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    });
+  }
+
+  void _showEditSale() {
+    final cart = ref.read(posProvider);
+    if (cart.items.isNotEmpty) {
+      showDialog<bool>(
+        context: context,
+        builder: (dlgCtx) => AlertDialog(
+          title: const Text('Remplacer le panier ?'),
+          content: const Text(
+              'Le panier actuel sera vidé et remplacé par cette vente. Continuer ?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dlgCtx, false),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(dlgCtx, true),
+                child: const Text('Remplacer')),
+          ],
+        ),
+      ).then((confirmed) {
+        if (confirmed == true && mounted) {
+          ref.read(posProvider.notifier).loadFromSale(widget.sale);
+          context.go('/pos');
+        }
+      });
+    } else {
+      ref.read(posProvider.notifier).loadFromSale(widget.sale);
+      context.go('/pos');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sale = widget.sale;
+    final isMobile = context.isMobile;
+
+    final actionButtons = [
+      IconButton(
+        onPressed: _showQuickReturn,
+        tooltip: 'Enregistrer un retour',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+        icon: const Icon(Icons.assignment_return_rounded,
+            color: AppColors.warning, size: 18),
+      ),
+      IconButton(
+        onPressed: _showEditSale,
+        tooltip: 'Modifier la vente',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+        icon: const Icon(Icons.edit_rounded,
+            color: AppColors.info, size: 18),
+      ),
+      IconButton(
+        onPressed: _printing ? null : _print,
+        tooltip: 'Imprimer le reçu',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+        icon: _printing
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.print_rounded,
+                color: AppColors.primary, size: 18),
+      ),
+    ];
+
+    return Card(
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(Icons.receipt_rounded,
+              color: AppColors.primary, size: 22),
+        ),
+        title: Text(sale.reference,
+            style: const TextStyle(
+                fontWeight: FontWeight.w700, fontSize: 14)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${sale.customerName ?? 'Client comptoir'} • ${_dateFmt.format(sale.createdAt)}',
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 12),
+            ),
+            if (sale.discount > 0)
+              Text(
+                'Rabais: -${_fmt.format(sale.discount)}',
+                style: const TextStyle(
+                    color: AppColors.warning,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600),
+              ),
+          ],
+        ),
+        trailing: SizedBox(
+          height: 52,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(_fmt.format(sale.finalAmount),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 14)),
+                  const SizedBox(height: 2),
+                  StatusBadge(status: sale.status),
+                ],
+              ),
+              if (!isMobile) ...[
+                const SizedBox(width: 4),
+                ...actionButtons,
+              ],
+            ],
+          ),
+        ),
+        children: [
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          // Items
+          ...sale.items.map((item) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: item.returnedQty > 0
+                                ? AppColors.warning
+                                : AppColors.primary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            item.productName ?? 'Produit',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: item.returnedQty > 0
+                                  ? AppColors.textSecondary
+                                  : null,
+                              decoration: item.returnedQty >= item.quantity
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        // Prix unitaire : barré si rabais
+                        if (item.hasDiscount) ...[
+                          Text(
+                            '${item.quantity.toStringAsFixed(0)} × ${_fmt.format(item.originalPrice!)}',
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${item.quantity.toStringAsFixed(0)} × ${_fmt.format(item.unitPrice)}',
+                            style: const TextStyle(
+                                color: AppColors.warning,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ] else
+                          Text(
+                            '${item.quantity.toStringAsFixed(0)} × ${_fmt.format(item.unitPrice)}',
+                            style: const TextStyle(
+                                color: AppColors.textSecondary, fontSize: 12),
+                          ),
+                        const SizedBox(width: 12),
+                        Text(_fmt.format(item.subtotal),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 13)),
+                      ],
+                    ),
+                    // Ligne rabais article
+                    if (item.hasDiscount)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 14),
+                        child: Text(
+                          'Rabais: -${_fmt.format(item.itemDiscount)}',
+                          style: const TextStyle(
+                              color: AppColors.warning,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    // Badge retour
+                    if (item.returnedQty > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 14, top: 3),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.warning.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                    color: AppColors.warning.withValues(alpha: 0.5)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.assignment_return_rounded,
+                                      size: 10, color: AppColors.warning),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    item.returnedQty >= item.quantity
+                                        ? 'Retourné'
+                                        : 'Retourné: ${item.returnedQty % 1 == 0 ? item.returnedQty.toInt() : item.returnedQty.toStringAsFixed(2)}/${item.quantity % 1 == 0 ? item.quantity.toInt() : item.quantity.toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                        fontSize: 10,
+                                        color: AppColors.warning,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              )),
+          const SizedBox(height: 8),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          // Récapitulatif
+          _SaleSummaryRow(sale: sale),
+          if (isMobile) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: actionButtons,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Sale summary row ───────────────────────────────────────────────────────
+
+class _SaleSummaryRow extends StatelessWidget {
+  final SaleModel sale;
+
+  const _SaleSummaryRow({required this.sale});
+
+  @override
+  Widget build(BuildContext context) {
+    // Rabais par article (cumul)
+    final itemsDiscount =
+        sale.items.fold(0.0, (s, i) => s + i.itemDiscount);
+    // Rabais global saisi à la caisse
+    final globalDiscount = sale.discount;
+    final totalDiscount = itemsDiscount + globalDiscount;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // Sous-total brut (avant rabais)
+        if (totalDiscount > 0) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              const Text('Sous-total: ',
+                  style: TextStyle(
+                      color: AppColors.textSecondary, fontSize: 12)),
+              Text(
+                _fmt.format(sale.totalAmount + itemsDiscount),
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 12),
+              ),
+            ],
+          ),
+          if (itemsDiscount > 0)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                const Text('Rabais articles: ',
+                    style: TextStyle(
+                        color: AppColors.warning,
+                        fontSize: 12)),
+                Text(
+                  '-${_fmt.format(itemsDiscount)}',
+                  style: const TextStyle(
+                      color: AppColors.warning,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12),
+                ),
+              ],
+            ),
+          if (globalDiscount > 0)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                const Text('Remise caisse: ',
+                    style: TextStyle(
+                        color: AppColors.warning,
+                        fontSize: 12)),
+                Text(
+                  '-${_fmt.format(globalDiscount)}',
+                  style: const TextStyle(
+                      color: AppColors.warning,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12),
+                ),
+              ],
+            ),
+          const SizedBox(height: 2),
+        ],
+        // Total net + payé
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text(
+              'Total: ${_fmt.format(sale.finalAmount)}  ',
+              style: const TextStyle(
+                  fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+            Text(
+              'Payé: ${_fmt.format(sale.paidAmount)}',
+              style: TextStyle(
+                  color: sale.balance > 0
+                      ? AppColors.error
+                      : AppColors.accent,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13),
+            ),
+          ],
+        ),
+        if (sale.balance > 0)
+          Text(
+            'Reste: ${_fmt.format(sale.balance)}',
+            style: const TextStyle(
+                color: AppColors.error,
+                fontWeight: FontWeight.w600,
+                fontSize: 12),
+          ),
+      ],
+    );
+  }
+}
+
+// ── Quick return dialog (pre-loaded sale, no search) ───────────────────────
+
+class _QuickReturnDialog extends StatefulWidget {
+  final SaleModel sale;
+  final Future<void> Function(
+      List<Map<String, dynamic>> items, double refund, String? reason) onSubmit;
+
+  const _QuickReturnDialog({required this.sale, required this.onSubmit});
+
+  @override
+  State<_QuickReturnDialog> createState() => _QuickReturnDialogState();
+}
+
+class _QuickReturnDialogState extends State<_QuickReturnDialog> {
+  final _reasonCtrl = TextEditingController();
+  final _refundCtrl = TextEditingController();
+  final Map<int, TextEditingController> _qtyCtrls = {};
+  late List<bool> _checked;
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final n = widget.sale.items.length;
+    _checked = List.filled(n, false);
+    for (var i = 0; i < n; i++) {
+      _qtyCtrls[i] = TextEditingController(text: '0');
+    }
+    _refundCtrl.text = '0';
+  }
+
+  @override
+  void dispose() {
+    _reasonCtrl.dispose();
+    _refundCtrl.dispose();
+    for (final c in _qtyCtrls.values) { c.dispose(); }
+    super.dispose();
+  }
+
+  String _fmtQty(double q) =>
+      q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
+
+  double get _computedRefund {
+    double total = 0;
+    for (var i = 0; i < widget.sale.items.length; i++) {
+      final qty = double.tryParse(_qtyCtrls[i]?.text ?? '0') ?? 0;
+      total += qty * widget.sale.items[i].unitPrice;
+    }
+    return total;
+  }
+
+  void _updateRefund() =>
+      _refundCtrl.text = _computedRefund.toStringAsFixed(2);
+
+  void _onCheck(int i, bool? val) {
+    final checked = val ?? false;
+    setState(() => _checked[i] = checked);
+    final item = widget.sale.items[i];
+    _qtyCtrls[i]!.text = checked ? _fmtQty(item.quantity) : '0';
+    setState(_updateRefund);
+  }
+
+  List<Map<String, dynamic>> get _selectedItems {
+    final result = <Map<String, dynamic>>[];
+    for (var i = 0; i < widget.sale.items.length; i++) {
+      final qty = double.tryParse(_qtyCtrls[i]?.text ?? '0') ?? 0;
+      if (qty > 0) {
+        result.add({
+          'product_id': widget.sale.items[i].productId,
+          'quantity': qty,
+        });
+      }
+    }
+    return result;
+  }
+
+  bool get _canSubmit => _selectedItems.isNotEmpty && !_submitting;
+
+  Future<void> _submit() async {
+    setState(() { _submitting = true; _error = null; });
+    try {
+      await widget.onSubmit(
+        _selectedItems,
+        double.tryParse(_refundCtrl.text) ?? _computedRefund,
+        _reasonCtrl.text.trim().isEmpty ? null : _reasonCtrl.text.trim(),
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) setState(() { _submitting = false; _error = e.toString(); });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sale = widget.sale;
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.all(24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 640, maxHeight: 700),
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+              decoration: const BoxDecoration(
+                color: AppColors.warning,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.assignment_return_rounded,
+                    color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Retour — ${sale.reference}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded,
+                      color: Colors.white, size: 20),
+                  onPressed: () => Navigator.pop(context, false),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ]),
+            ),
+
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Sale info banner
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.08),
+                        border: Border.all(
+                            color: AppColors.warning.withValues(alpha: 0.3)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.receipt_rounded,
+                            color: AppColors.warning, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${sale.reference}  •  ${sale.customerName ?? 'Client comptoir'}  •  ${_dateFmt.format(sale.createdAt)}',
+                            style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ]),
+                    ),
+                    const SizedBox(height: 16),
+
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text('Articles à retourner',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700, fontSize: 14)),
+                        ),
+                        // "Tout sélectionner"
+                        TextButton(
+                          onPressed: () {
+                            final allChecked =
+                                _checked.every((c) => c);
+                            for (var i = 0;
+                                i < widget.sale.items.length;
+                                i++) {
+                              _onCheck(i, !allChecked);
+                            }
+                          },
+                          style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(0, 0)),
+                          child: Text(
+                            _checked.every((c) => c)
+                                ? 'Tout désélectionner'
+                                : 'Tout sélectionner',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Items with checkboxes
+                    ...sale.items.asMap().entries.map((e) {
+                      final i = e.key;
+                      final item = e.value;
+                      final ctrl = _qtyCtrls[i]!;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: _checked[i]
+                              ? AppColors.warning.withValues(alpha: 0.06)
+                              : AppColors.background,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _checked[i]
+                                ? AppColors.warning.withValues(alpha: 0.4)
+                                : AppColors.divider,
+                          ),
+                        ),
+                        child: Row(children: [
+                          Checkbox(
+                            value: _checked[i],
+                            activeColor: AppColors.warning,
+                            onChanged: (v) => _onCheck(i, v),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(item.productName ?? 'Produit',
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500)),
+                                Text(
+                                  'Vendu : ${_fmtQty(item.quantity)}  •  Prix : ${_fmt.format(item.unitPrice)}',
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 88,
+                            child: TextField(
+                              controller: ctrl,
+                              enabled: _checked[i],
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: _checked[i]
+                                    ? AppColors.textPrimary
+                                    : AppColors.textSecondary,
+                              ),
+                              decoration: InputDecoration(
+                                labelText: 'Qté retour',
+                                isDense: true,
+                                helperText: 'max ${_fmtQty(item.quantity)}',
+                              ),
+                              onChanged: (_) {
+                                final qty =
+                                    double.tryParse(ctrl.text) ?? 0;
+                                if (qty > item.quantity) {
+                                  ctrl.text = _fmtQty(item.quantity);
+                                }
+                                if (qty > 0 && !_checked[i]) {
+                                  setState(() => _checked[i] = true);
+                                }
+                                setState(_updateRefund);
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                        ]),
+                      );
+                    }),
+
+                    const Divider(height: 24),
+
+                    // Refund amount (auto-computed, editable)
+                    Row(children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Montant remboursé',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14)),
+                            Text('Calculé automatiquement, modifiable',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary)),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        width: 130,
+                        child: TextField(
+                          controller: _refundCtrl,
+                          keyboardType:
+                              const TextInputType.numberWithOptions(
+                                  decimal: true),
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: AppColors.accent),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 8),
+                          ),
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
+
+                    TextField(
+                      controller: _reasonCtrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Motif du retour (optionnel)',
+                        hintText:
+                            'Ex: Produit défectueux, Mauvaise taille...',
+                        isDense: true,
+                      ),
+                    ),
+
+                    if (_error != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(children: [
+                          const Icon(Icons.error_outline_rounded,
+                              color: AppColors.error, size: 16),
+                          const SizedBox(width: 6),
+                          Expanded(
+                              child: Text(_error!,
+                                  style: const TextStyle(
+                                      color: AppColors.error,
+                                      fontSize: 13))),
+                        ]),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            // Footer
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: const BoxDecoration(
+                  border: Border(
+                      top: BorderSide(color: AppColors.divider))),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Annuler')),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: _canSubmit ? _submit : null,
+                    style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.warning),
+                    icon: _submitting
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2))
+                        : const Icon(Icons.assignment_return_rounded,
+                            size: 16),
+                    label: const Text('Enregistrer le retour'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+

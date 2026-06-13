@@ -4,10 +4,11 @@ __pycache__/
 *.pyc
 *.pyo
 pyvenv.cfg
-bin/
-include/
-lib/
-lib64/
+# Préfixe "/" = seulement à la racine du repo (pas frontend/lib, pas frontend/bin)
+/bin/
+/include/
+/lib/
+/lib64/
 
 # ── Nuitka output ──────────────────────────────────────────────────────────
 *.build/
