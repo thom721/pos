@@ -13,10 +13,13 @@ on:
     tags:
       - 'v*'
 
+# Permissions nécessaires pour créer des GitHub Releases
+permissions:
+  contents: write
+
 # ─── Variables globales ────────────────────────────────────────────────────────
 env:
   PYTHON_VERSION: '3.11'
-  FLUTTER_VERSION: '3.32.0'
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  BACKEND  —  Nuitka standalone
@@ -38,12 +41,15 @@ jobs:
           cache: pip
 
       - name: Install dependencies
+        shell: pwsh
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt
+          # uvloop est Unix uniquement — on le filtre avant d'installer
+          Get-Content requirements.txt |
+            Where-Object { $_ -notmatch '^uvloop' -and $_.Trim() -ne '' } |
+            Set-Content requirements_win.txt
+          pip install -r requirements_win.txt
           pip install nuitka ordered-set
-          # uvloop n'existe pas sur Windows — on le retire s'il était installé
-          pip uninstall uvloop -y 2>$null || true
 
       - name: Compile avec Nuitka
         run: |
@@ -228,7 +234,6 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
@@ -263,7 +268,6 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
@@ -294,7 +298,6 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
