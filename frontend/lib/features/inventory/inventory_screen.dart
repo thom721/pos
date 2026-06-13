@@ -228,7 +228,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                 : ListView.separated(
                     padding: const EdgeInsets.all(16),
                     itemCount: list.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (ctx, i) => _InventoryCard(
                       record: list[i],
                       onDetail: () => _showDetail(list[i].id),
@@ -579,7 +579,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       style: TextStyle(color: AppColors.textSecondary)))
               : ListView.separated(
                   itemCount: filtered.length,
-                  separatorBuilder: (_, _) =>
+                  separatorBuilder: (_, __) =>
                       const Divider(height: 1, indent: 16),
                   itemBuilder: (ctx, i) =>
                       _CountRow(entry: filtered[i], onChanged: () {

@@ -772,7 +772,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen>
                     : ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: proformas.length,
-                        separatorBuilder: (_, _) =>
+                        separatorBuilder: (_, __) =>
                             const SizedBox(height: 8),
                         itemBuilder: (ctx, i) => _ProformaCard(
                           proforma: proformas[i],
@@ -794,7 +794,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen>
                     : ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: invoices.length,
-                        separatorBuilder: (_, _) =>
+                        separatorBuilder: (_, __) =>
                             const SizedBox(height: 8),
                         itemBuilder: (ctx, i) => _InvoiceCard(
                           invoice: invoices[i],

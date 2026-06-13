@@ -390,7 +390,7 @@ class _DraftsBottomSheet extends ConsumerWidget {
             child: ListView.separated(
               shrinkWrap: true,
               itemCount: drafts.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
+              separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (ctx, i) {
                 final draft = drafts[i];
                 return ListTile(
@@ -1001,7 +1001,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
               : ListView.separated(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: pos.items.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, i) => _CartItemTile(
                     item: pos.items[i],
                     notifier: notifier,
