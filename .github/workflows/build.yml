@@ -1,0 +1,412 @@
+name: Build POS Connect
+
+# Déclencher manuellement OU automatiquement sur chaque tag "v*"
+# Exemple : git tag v1.0.0 && git push origin v1.0.0
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (ex: 1.0.0)'
+        required: true
+        default: '1.0.0'
+  push:
+    tags:
+      - 'v*'
+
+# ─── Variables globales ────────────────────────────────────────────────────────
+env:
+  PYTHON_VERSION: '3.11'
+  FLUTTER_VERSION: '3.32.0'
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  BACKEND  —  Nuitka standalone
+# ══════════════════════════════════════════════════════════════════════════════
+
+jobs:
+
+  # ── Windows ─────────────────────────────────────────────────────────────────
+  backend-windows:
+    name: 🖥 Backend — Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install nuitka ordered-set
+          # uvloop n'existe pas sur Windows — on le retire s'il était installé
+          pip uninstall uvloop -y 2>$null || true
+
+      - name: Compile avec Nuitka
+        run: |
+          python -m nuitka `
+            --standalone `
+            --assume-yes-for-downloads `
+            --include-package=api `
+            --include-package=fastapi `
+            --include-package=starlette `
+            --include-package=uvicorn `
+            --include-package=pydantic `
+            --include-package=pydantic_core `
+            --include-package=sqlalchemy `
+            --include-package=alembic `
+            --include-package=pymysql `
+            --include-package=pwdlib `
+            --include-package=passlib `
+            --include-package=argon2 `
+            --include-package=bcrypt `
+            --include-package=jose `
+            --include-package=jwt `
+            --include-package=cryptography `
+            --include-package=email_validator `
+            --include-package=dotenv `
+            --include-package=multipart `
+            --include-package=anyio `
+            --include-package=httptools `
+            --include-package=websockets `
+            --include-package=watchfiles `
+            --include-package-data=alembic `
+            --include-data-files=alembic.ini=alembic.ini `
+            --include-data-files=pos_server.ini.example=pos_server.ini.example `
+            --include-data-dir=api/static=api/static `
+            --output-dir=dist `
+            --output-filename=posconnect-server `
+            server_main.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-windows
+          path: dist/server_main.dist/
+
+  # ── Linux ────────────────────────────────────────────────────────────────────
+  backend-linux:
+    name: 🐧 Backend — Linux
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dépendances système
+        run: sudo apt-get update && sudo apt-get install -y gcc patchelf ccache
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install nuitka ordered-set
+
+      - name: Compile avec Nuitka
+        run: |
+          python -m nuitka \
+            --standalone \
+            --assume-yes-for-downloads \
+            --include-package=api \
+            --include-package=fastapi \
+            --include-package=starlette \
+            --include-package=uvicorn \
+            --include-package=pydantic \
+            --include-package=pydantic_core \
+            --include-package=sqlalchemy \
+            --include-package=alembic \
+            --include-package=pymysql \
+            --include-package=pwdlib \
+            --include-package=passlib \
+            --include-package=argon2 \
+            --include-package=bcrypt \
+            --include-package=jose \
+            --include-package=jwt \
+            --include-package=cryptography \
+            --include-package=email_validator \
+            --include-package=dotenv \
+            --include-package=multipart \
+            --include-package=anyio \
+            --include-package=httptools \
+            --include-package=uvloop \
+            --include-package=websockets \
+            --include-package=watchfiles \
+            --include-package-data=alembic \
+            --include-data-files=alembic.ini=alembic.ini \
+            --include-data-files=pos_server.ini.example=pos_server.ini.example \
+            --include-data-dir=api/static=api/static \
+            --output-dir=dist \
+            --output-filename=posconnect-server \
+            server_main.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-linux
+          path: dist/server_main.dist/
+
+  # ── macOS ────────────────────────────────────────────────────────────────────
+  backend-macos:
+    name:  Backend — macOS
+    runs-on: macos-14     # Apple Silicon (M1) — plus rapide et moins cher
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install nuitka ordered-set
+
+      - name: Compile avec Nuitka
+        run: |
+          python -m nuitka \
+            --standalone \
+            --assume-yes-for-downloads \
+            --include-package=api \
+            --include-package=fastapi \
+            --include-package=starlette \
+            --include-package=uvicorn \
+            --include-package=pydantic \
+            --include-package=pydantic_core \
+            --include-package=sqlalchemy \
+            --include-package=alembic \
+            --include-package=pymysql \
+            --include-package=pwdlib \
+            --include-package=passlib \
+            --include-package=argon2 \
+            --include-package=bcrypt \
+            --include-package=jose \
+            --include-package=jwt \
+            --include-package=cryptography \
+            --include-package=email_validator \
+            --include-package=dotenv \
+            --include-package=multipart \
+            --include-package=anyio \
+            --include-package=httptools \
+            --include-package=uvloop \
+            --include-package=websockets \
+            --include-package=watchfiles \
+            --include-package-data=alembic \
+            --include-data-files=alembic.ini=alembic.ini \
+            --include-data-files=pos_server.ini.example=pos_server.ini.example \
+            --include-data-dir=api/static=api/static \
+            --output-dir=dist \
+            --output-filename=posconnect-server \
+            server_main.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-macos
+          path: dist/server_main.dist/
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  FRONTEND  —  Flutter build
+# ══════════════════════════════════════════════════════════════════════════════
+
+  # ── Windows ─────────────────────────────────────────────────────────────────
+  frontend-windows:
+    name: 🖥 Frontend — Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install packages
+        working-directory: frontend
+        run: flutter pub get
+
+      - name: Build Windows
+        working-directory: frontend
+        run: flutter build windows --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-windows
+          path: frontend/build/windows/x64/runner/Release/
+
+  # ── Linux ────────────────────────────────────────────────────────────────────
+  frontend-linux:
+    name: 🐧 Frontend — Linux
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dépendances système Linux
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev libblkid-dev liblzma-dev
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Install packages
+        working-directory: frontend
+        run: flutter pub get
+
+      - name: Build Linux
+        working-directory: frontend
+        run: flutter build linux --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-linux
+          path: frontend/build/linux/x64/release/bundle/
+
+  # ── macOS ────────────────────────────────────────────────────────────────────
+  frontend-macos:
+    name:  Frontend — macOS
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install packages
+        working-directory: frontend
+        run: flutter pub get
+
+      - name: Build macOS
+        working-directory: frontend
+        run: flutter build macos --release
+
+      - name: Create DMG
+        run: |
+          cd frontend/build/macos/Build/Products/Release
+          # Créer une archive .tar.gz (DMG nécessite des outils supplémentaires)
+          tar -czf posconnect-macos-app.tar.gz "POS Connect.app"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-macos
+          path: frontend/build/macos/Build/Products/Release/posconnect-macos-app.tar.gz
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  RELEASE  —  Assembler et publier
+# ══════════════════════════════════════════════════════════════════════════════
+
+  release:
+    name: 📦 Créer la Release
+    needs:
+      - backend-windows
+      - backend-linux
+      - backend-macos
+      - frontend-windows
+      - frontend-linux
+      - frontend-macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Télécharger tous les artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Déterminer la version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Assembler Windows (zip)
+        run: |
+          mkdir -p packages/windows
+          cp -r artifacts/backend-windows/* packages/windows/
+          cp -r artifacts/frontend-windows/* packages/windows/
+          cd packages
+          zip -r posconnect-windows-${{ steps.version.outputs.VERSION }}.zip windows/
+
+      - name: Assembler Linux (tar.gz)
+        run: |
+          mkdir -p packages/linux
+          cp -r artifacts/backend-linux/* packages/linux/
+          cp -r artifacts/frontend-linux/* packages/linux/
+          cd packages
+          tar -czf posconnect-linux-${{ steps.version.outputs.VERSION }}.tar.gz linux/
+
+      - name: Assembler macOS (tar.gz)
+        run: |
+          mkdir -p packages/macos
+          cp -r artifacts/backend-macos/* packages/macos/
+          cp artifacts/frontend-macos/posconnect-macos-app.tar.gz packages/macos/
+          cd packages
+          tar -czf posconnect-macos-${{ steps.version.outputs.VERSION }}.tar.gz macos/
+
+      - name: Afficher les tailles
+        run: ls -lh packages/*.zip packages/*.tar.gz
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: posconnect-v${{ steps.version.outputs.VERSION }}
+          path: |
+            packages/posconnect-windows-*.zip
+            packages/posconnect-linux-*.tar.gz
+            packages/posconnect-macos-*.tar.gz
+          retention-days: 30
+
+      # Publier automatiquement sur GitHub Releases si déclenché par un tag
+      - name: Créer GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: POS Connect v${{ steps.version.outputs.VERSION }}
+          body: |
+            ## POS Connect v${{ steps.version.outputs.VERSION }}
+
+            ### Téléchargements
+            | Plateforme | Fichier |
+            |-----------|---------|
+            | Windows   | `posconnect-windows-${{ steps.version.outputs.VERSION }}.zip` |
+            | Linux     | `posconnect-linux-${{ steps.version.outputs.VERSION }}.tar.gz` |
+            | macOS     | `posconnect-macos-${{ steps.version.outputs.VERSION }}.tar.gz` |
+
+            ### Installation
+            1. Extraire l'archive
+            2. Copier `pos_server.ini.example` → `pos_server.ini` et configurer
+            3. Lancer `posconnect-server` (serveur) et `pos_connect` (interface)
+          files: |
+            packages/posconnect-windows-*.zip
+            packages/posconnect-linux-*.tar.gz
+            packages/posconnect-macos-*.tar.gz
+          draft: false
+          prerelease: false

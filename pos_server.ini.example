@@ -1,0 +1,22 @@
+# POS Connect — configuration serveur
+# Copiez ce fichier en pos_server.ini et adaptez les valeurs.
+# Le wizard d'installation le génère automatiquement.
+
+[database]
+# "mysql" ou "sqlite"
+type     = mysql
+host     = localhost
+port     = 3306
+name     = pos_db
+user     = root
+password = MotDePasse123
+
+# Chemin du fichier SQLite (ignoré si type = mysql)
+path     = ./pos_data.db
+
+[server]
+host                  = 0.0.0.0
+port                  = 8002
+# Générer avec : python -c "import secrets; print(secrets.token_hex(32))"
+secret_key            = changez_moi_avec_une_cle_secrete_aleatoire_32_bytes
+token_expire_minutes  = 480

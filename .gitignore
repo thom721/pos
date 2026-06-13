@@ -1,0 +1,40 @@
+# ── Python / venv ──────────────────────────────────────────────────────────
+venv/
+__pycache__/
+*.pyc
+*.pyo
+pyvenv.cfg
+bin/
+include/
+lib/
+lib64/
+
+# ── Nuitka output ──────────────────────────────────────────────────────────
+*.build/
+*.dist/
+dist/
+
+# ── Secrets & config locale ────────────────────────────────────────────────
+.env
+pos_server.ini
+
+# ── Bases de données locales ───────────────────────────────────────────────
+*.sqlite
+*.db
+
+# ── Flutter ────────────────────────────────────────────────────────────────
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/build/
+frontend/.packages
+
+# ── macOS ──────────────────────────────────────────────────────────────────
+.DS_Store
+
+# ── IDE ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+
+# ── Outils Claude ──────────────────────────────────────────────────────────
+.claude/
