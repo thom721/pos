@@ -119,8 +119,9 @@ def _auto_fix_mysql_socket(user: str, new_password: str) -> bool:
                 charset="utf8mb4", connect_timeout=5,
             )
             with conn.cursor() as cur:
+                # Syntaxe universelle MySQL + MariaDB
                 cur.execute(
-                    "ALTER USER %s@'localhost' IDENTIFIED WITH mysql_native_password BY %s",
+                    "ALTER USER %s@'localhost' IDENTIFIED BY %s",
                     (user, new_password),
                 )
                 cur.execute("FLUSH PRIVILEGES")
@@ -132,9 +133,10 @@ def _auto_fix_mysql_socket(user: str, new_password: str) -> bool:
 
     # 2. Tentative via subprocess mysql sans mot de passe (auth_socket via l'OS user courant)
     try:
+        # IDENTIFIED BY fonctionne sur MySQL et MariaDB
         sql = (
             f"ALTER USER '{user}'@'localhost' "
-            f"IDENTIFIED WITH mysql_native_password BY '{new_password}'; "
+            f"IDENTIFIED BY '{new_password}'; "
             f"FLUSH PRIVILEGES;"
         )
         r = subprocess.run(
