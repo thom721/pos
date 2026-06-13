@@ -264,7 +264,9 @@ jobs:
       - name: Create archive
         run: |
           cd frontend/build/macos/Build/Products/Release
-          tar -czf posconnect-macos-app.tar.gz "POS Connect.app"
+          ls -la   # debug: voir le vrai nom du .app
+          APP=$(ls -d *.app 2>/dev/null | head -1)
+          tar -czf posconnect-macos-app.tar.gz "$APP"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
