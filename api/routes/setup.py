@@ -96,6 +96,70 @@ def _test_mysql(host, port, name, user, password) -> str | None:
         return str(e)
 
 
+def _auto_fix_mysql_socket(user: str, new_password: str) -> bool:
+    """
+    Sur Debian/Ubuntu, MySQL root utilise auth_socket par défaut (pas de mot de passe).
+    On tente de se connecter via socket Unix puis d'activer l'auth par mot de passe.
+    Retourne True si la configuration a réussi.
+    """
+    import pymysql
+
+    # 1. Tentative via socket Unix (fonctionne si l'OS user == MySQL user, ex: root)
+    socket_paths = [
+        "/var/run/mysqld/mysqld.sock",
+        "/tmp/mysql.sock",
+        "/var/lib/mysql/mysql.sock",
+    ]
+    for sock in socket_paths:
+        if not os.path.exists(sock):
+            continue
+        try:
+            conn = pymysql.connect(
+                unix_socket=sock, user=user, password="",
+                charset="utf8mb4", connect_timeout=5,
+            )
+            with conn.cursor() as cur:
+                cur.execute(
+                    "ALTER USER %s@'localhost' IDENTIFIED WITH mysql_native_password BY %s",
+                    (user, new_password),
+                )
+                cur.execute("FLUSH PRIVILEGES")
+            conn.commit()
+            conn.close()
+            return True
+        except Exception:
+            continue
+
+    # 2. Tentative via subprocess mysql sans mot de passe (auth_socket via l'OS user courant)
+    try:
+        sql = (
+            f"ALTER USER '{user}'@'localhost' "
+            f"IDENTIFIED WITH mysql_native_password BY '{new_password}'; "
+            f"FLUSH PRIVILEGES;"
+        )
+        r = subprocess.run(
+            ["mysql", "-u", user, "-e", sql],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode == 0:
+            return True
+    except Exception:
+        pass
+
+    # 3. Tentative via sudo -n (non-interactif, fonctionne si NOPASSWD configuré)
+    try:
+        r = subprocess.run(
+            ["sudo", "-n", "mysql", "-u", user, "-e", sql],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode == 0:
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
 def _detect_mysql() -> dict:
     """Check if MySQL is installed on this machine."""
     cmd = shutil.which("mysql")
@@ -174,9 +238,24 @@ def test_db_connection(data: DbTestRequest):
         return {"ok": True, "message": "SQLite: aucune connexion réseau requise."}
 
     err = _test_mysql(data.host, data.port, data.name, data.user, data.password)
-    if err:
-        raise HTTPException(400, f"Connexion MySQL échouée: {err}")
-    return {"ok": True, "message": "Connexion MySQL réussie."}
+    if err is None:
+        return {"ok": True, "message": "Connexion MySQL réussie."}
+
+    # Sur Debian/Ubuntu, MySQL root utilise auth_socket — tentative de configuration automatique
+    is_access_denied = "1045" in err or "Access denied" in err.lower()
+    if is_access_denied and data.host in ("localhost", "127.0.0.1"):
+        fixed = _auto_fix_mysql_socket(data.user, data.password)
+        if fixed:
+            # Retenter la connexion après configuration automatique
+            err2 = _test_mysql(data.host, data.port, data.name, data.user, data.password)
+            if err2 is None:
+                return {
+                    "ok": True,
+                    "message": f"Connexion réussie. Authentification MySQL configurée automatiquement pour '{data.user}'.",
+                    "auto_configured": True,
+                }
+
+    raise HTTPException(400, f"Connexion MySQL échouée: {err}")
 
 
 @router.post("/create-db")
