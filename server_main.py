@@ -19,6 +19,10 @@ import alembic           # noqa: F401
 import email_validator   # noqa: F401
 import pwdlib            # noqa: F401
 import passlib           # noqa: F401
+import passlib.handlers  # noqa: F401 - chargé dynamiquement par passlib.context
+import passlib.handlers.bcrypt   # noqa: F401
+import passlib.handlers.argon2   # noqa: F401
+import passlib.handlers.sha2_crypt  # noqa: F401
 import argon2            # noqa: F401
 import bcrypt            # noqa: F401
 import jose              # noqa: F401
