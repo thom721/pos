@@ -8,6 +8,7 @@ Called once by the installer to:
 
 After initial setup, the /setup/init endpoint is permanently disabled.
 """
+import os
 import subprocess
 import platform
 import shutil
