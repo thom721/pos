@@ -1,0 +1,83 @@
+Métadonnées — titre corrigé "POS Connect" dans my_application.cc, APPLICATION_ID unifié en com.kikipllc.posconnect
+
+Intégration bureau — pos_connect.desktop pour que l'app apparaisse dans GNOME/KDE avec icône et catégorie "Finance"
+
+Démarrage auto — toggle "Système" dans Paramètres activé pour Linux aussi (crée un fichier dans ~/.config/autostart/)
+
+Script de build — build_linux.sh produit un paquet .deb installable :
+
+
+chmod +x build_linux.sh && ./build_linux.sh
+sudo dpkg -i build/linux/pos-connect_1.0.0_amd64.deb
+Récapitulatif des 3 plateformes :
+
+Plateforme	Script	Résultat
+macOS	flutter run -d macos	App native signée
+Windows	.\build_windows.ps1	pos_connect.msix
+Linux	./build_linux.sh	pos-connect_1.0.0_amd64.deb
+
+
+Tout est en place. Voici comment utiliser tout ça :
+
+Structure créée
+
+pos_api/
+├── server_main.py          ← point d'entrée pour Nuitka
+├── pos_server.ini.example  ← template de config (versionné)
+├── .gitignore              ← mis à jour (pos_server.ini exclu)
+└── .github/
+    └── workflows/
+        └── build.yml       ← workflow GitHub Actions
+Comment déclencher les builds
+Option 1 — Par un tag (automatique, crée une Release)
+
+git add .
+git commit -m "chore: prepare v1.0.0"
+git tag v1.0.0
+git push origin main --tags
+→ GitHub détecte le tag v1.0.0, lance tous les 6 jobs en parallèle, et publie une GitHub Release avec les 3 archives.
+
+Option 2 — Manuellement (sans créer de Release)
+Aller sur GitHub → onglet Actions
+Cliquer sur Build POS Connect dans la liste à gauche
+Bouton Run workflow (à droite) → entrer la version → Run
+Ce que fait le workflow (6 jobs en parallèle)
+Job	OS Runner	Durée estimée	Coût (min GitHub)
+backend-windows	windows-latest	~20 min	40 min (×2)
+backend-linux	ubuntu-22.04	~15 min	15 min (×1)
+backend-macos	macos-14	~25 min	250 min (×10)
+frontend-windows	windows-latest	~10 min	20 min (×2)
+frontend-linux	ubuntu-22.04	~8 min	8 min (×1)
+frontend-macos	macos-14	~12 min	120 min (×10)
+Total par build : ~453 minutes sur un compte avec 2000 min/mois gratuits → environ 4 builds/mois avec les runners GitHub. Pour plus, utilise un self-hosted runner sur ta machine.
+
+Installer un self-hosted runner (gratuit, illimité)
+
+# Sur GitHub : Settings → Actions → Runners → New self-hosted runner
+# Choisir macOS, suivre les commandes affichées, puis :
+./run.sh   # démarre le runner (ou configure en service avec ./svc.sh install)
+Ensuite dans le workflow, remplace runs-on: macos-14 par runs-on: self-hosted pour les jobs macOS — ils tourneront sur ta machine gratuitement.
+
+Après le premier build : structure des archives
+
+posconnect-windows-1.0.0.zip/
+├── posconnect-server.exe    ← backend compilé (pas besoin de Python)
+├── pos_connect.exe          ← frontend Flutter
+├── alembic/                 ← migrations DB
+├── api/static/              ← fichiers statiques
+└── pos_server.ini.example   ← à renommer en pos_server.ini
+Sur une machine cliente : copier le zip, renommer pos_server.ini.example → pos_server.ini, configurer les identifiants MySQL, lancer posconnect-server.exe, puis pos_connect.exe.
+
+
+image.png
+2876×1782
+je vois pas le run work..
+Normal — le workflow n'apparaît pas encore car le fichier .github/workflows/build.yml n'a pas encore été poussé sur GitHub. Il faut d'abord l'envoyer :
+
+
+cd /Users/kikipllc/development/pos_api
+
+git add .github/workflows/build.yml server_main.py pos_server.ini.example .gitignore
+git commit -m "ci: add GitHub Actions build workflow"
+git push origin main
+Ensuite retourne sur GitHub → Actions — le workflow "Build POS Connect" apparaîtra dans la liste à gauche, avec le bouton "Run workflow" visible à droite.

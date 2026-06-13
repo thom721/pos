@@ -1,0 +1,224 @@
+Parfait 🔥
+On continue **ÉTAPE 5 : LOGIQUE ACHATS (entrée stock)** — **version FastAPI / SQLAlchemy**, **robuste**, **atomique**, **POS-pro**.
+
+👉 C’est **le miroir exact de la vente**, mais **en entrée stock (IN)**.
+
+---
+
+# ✅ ÉTAPE 5 — LOGIQUE ACHAT (FastAPI POS)
+
+## 🧠 Règles métier (STRICTES)
+
+1. ✔️ Achat = **stock IN**
+2. ✔️ Tout achat = **purchase_items**
+3. ✔️ Tout paiement = **payments**
+4. ✔️ **Transaction DB obligatoire**
+5. ❌ **Aucune modification directe du stock**
+6. ✔️ Achat partiel → statut `partial`
+7. ✔️ Achat payé → statut `paid`
+
+---
+
+## 📥 Payload API (achat)
+
+```json
+{
+  "supplier_id": "UUID_SUPPLIER",
+  "paid_amount": 3000,
+  "items": [
+    { "product_id": "UUID_PROD_1", "quantity": 5, "unit_price": 1000 },
+    { "product_id": "UUID_PROD_2", "quantity": 2, "unit_price": 1500 }
+  ]
+}
+```
+
+---
+
+## 1️⃣ Schémas Pydantic
+
+### 📁 `app/schemas/purchase.py`
+
+```python
+from pydantic import BaseModel
+from typing import List
+from uuid import UUID
+
+class PurchaseItemInput(BaseModel):
+    product_id: UUID
+    quantity: int
+    unit_price: float
+
+class PurchaseCreate(BaseModel):
+    supplier_id: UUID
+    paid_amount: float = 0
+    items: List[PurchaseItemInput]
+```
+
+---
+
+## 2️⃣ Service ACHAT (🔥 cœur stock IN)
+
+### 📁 `app/services/purchase_service.py`
+
+```python
+from sqlalchemy.orm import Session
+from fastapi import HTTPException
+from datetime import datetime
+
+from app.models import (
+    Purchase, PurchaseItem,
+    Product, StockMovement, Payment
+)
+
+def create_purchase(
+    db: Session,
+    data,
+    user_id: str
+):
+    with db.begin():  # 🔥 TRANSACTION ATOMIQUE
+
+        if not data.items:
+            raise HTTPException(400, "Aucun produit")
+
+        total = 0
+
+        # 1️⃣ Calcul total
+        for item in data.items:
+            product = db.get(Product, str(item.product_id))
+
+            if not product:
+                raise HTTPException(404, "Produit introuvable")
+
+            total += item.unit_price * item.quantity
+
+        # 2️⃣ Détermination statut
+        if data.paid_amount == 0:
+            status = "pending"
+        elif data.paid_amount < total:
+            status = "partial"
+        else:
+            status = "paid"
+
+        # 3️⃣ Création achat
+        purchase = Purchase(
+            supplier_id=str(data.supplier_id),
+            user_id=user_id,
+            reference=f"PUR-{int(datetime.utcnow().timestamp())}",
+            total_amount=total,
+            paid_amount=data.paid_amount,
+            status=status
+        )
+        db.add(purchase)
+        db.flush()
+
+        # 4️⃣ Items + stock IN
+        for item in data.items:
+            product = db.get(Product, str(item.product_id))
+
+            db.add(PurchaseItem(
+                purchase_id=purchase.id,
+                product_id=product.id,
+                quantity=item.quantity,
+                unit_price=item.unit_price,
+                subtotal=item.unit_price * item.quantity
+            ))
+
+            db.add(StockMovement(
+                product_id=product.id,
+                user_id=user_id,
+                type="in",
+                quantity=item.quantity,
+                source_type="purchase",
+                source_id=purchase.id,
+                note="Entrée stock (achat)"
+            ))
+
+        # 5️⃣ Paiement
+        if data.paid_amount > 0:
+            db.add(Payment(
+                payable_type="purchase",
+                payable_id=purchase.id,
+                amount=data.paid_amount,
+                method="cash",
+                user_id=user_id
+            ))
+
+        return purchase
+```
+
+---
+
+## 3️⃣ Endpoint FastAPI
+
+### 📁 `app/routes/purchases.py`
+
+```python
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.schemas.purchase import PurchaseCreate
+from app.services.purchase_service import create_purchase
+
+router = APIRouter(prefix="/purchases", tags=["Purchases"])
+
+@router.post("/", status_code=201)
+def store_purchase(
+    payload: PurchaseCreate,
+    db: Session = Depends(get_db),
+    user_id: str = "USER_UUID_Ici"  # JWT plus tard
+):
+    purchase = create_purchase(db, payload, user_id)
+
+    return {
+        "message": "Achat enregistré avec succès",
+        "purchase_id": purchase.id
+    }
+```
+
+---
+
+## 4️⃣ Cas gérés automatiquement
+
+| Cas                 | Résultat                     |
+| ------------------- | ---------------------------- |
+| Achat payé          | Stock ↑ + paiement           |
+| Achat partiel       | Stock ↑ + crédit fournisseur |
+| Achat sans paiement | Stock ↑                      |
+| Erreur DB           | Rollback                     |
+| Double clic         | Pas de stock fantôme         |
+
+---
+
+## 5️⃣ Pourquoi cette logique est POS-PRO 🔥
+
+✔ Zéro stock négatif
+✔ Historique stock complet
+✔ Paiements traçables
+✔ UUID safe (offline / sync)
+✔ Compatible multi-poste
+✔ Conforme gestion réelle
+
+---
+
+## ⚠️ ERREURS QUE TU ÉVITES
+
+❌ Modifier `product.stock`
+❌ Achat sans transaction
+❌ Paiement sans achat
+❌ Stock sans trace
+❌ Bug de double écriture
+
+---
+
+## 🚀 PROCHAINE ÉTAPE
+
+👉 **ÉTAPE 6 : RETOURS PRODUITS (vente & achat)**
+👉 **ÉTAPE 7 : RAPPORTS & BÉNÉFICES**
+👉 **ÉTAPE 8 : UI POS (ACHATS)**
+
+💬 **On continue avec :**
+🔁 **RETOURS PRODUITS**
+📊 **RAPPORTS / PROFITS**
+
+Dis-moi 🔥

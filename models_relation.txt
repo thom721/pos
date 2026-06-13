@@ -1,0 +1,366 @@
+Parfait 👍
+👉 Ici, tu veux **l’équivalent FastAPI / SQLAlchemy** de **tes modèles Eloquent**, **avec relations, propriétés calculées et bonnes pratiques**, tout en restant fidèle à **ta logique POS / Stock**.
+
+Je vais donc te montrer **ÉTAPE 3 version FastAPI**, propre, claire, **UUID-ready**, et exploitable directement.
+
+---
+
+# ✅ ÉTAPE 3 — Modèles SQLAlchemy (FastAPI POS + Stock)
+
+## 📁 Structure
+
+```text
+app/models/
+├── base.py
+├── category.py
+├── supplier.py
+├── customer.py
+├── product.py
+├── purchase.py
+├── purchase_item.py
+├── sale.py
+├── sale_item.py
+├── stock_movement.py
+├── payment.py
+├── user.py
+```
+
+---
+
+## 🔧 Base UUID commune
+
+### `app/models/base.py`
+
+```python
+import uuid
+from sqlalchemy import Column, String
+from app.database import Base
+
+class UUIDBase(Base):
+    __abstract__ = True
+
+    id = Column(
+        String(36),
+        primary_key=True,
+        default=lambda: str(uuid.uuid4())
+    )
+```
+
+---
+
+## 1️⃣ Category
+
+```python
+from sqlalchemy import Column, String
+from sqlalchemy.orm import relationship
+from app.models.base import UUIDBase
+
+class Category(UUIDBase):
+    __tablename__ = "categories"
+
+    name = Column(String(255), unique=True, nullable=False)
+
+    products = relationship("Product", back_populates="category")
+```
+
+---
+
+## 2️⃣ Supplier
+
+```python
+from sqlalchemy import Column, String, Text
+from sqlalchemy.orm import relationship
+from app.models.base import UUIDBase
+
+class Supplier(UUIDBase):
+    __tablename__ = "suppliers"
+
+    name = Column(String(255), nullable=False)
+    phone = Column(String(50))
+    email = Column(String(255))
+    address = Column(Text)
+
+    purchases = relationship("Purchase", back_populates="supplier")
+```
+
+---
+
+## 3️⃣ Customer (avec solde calculé 🔥)
+
+```python
+from sqlalchemy import Column, String, Text, Numeric
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.hybrid import hybrid_property
+from app.models.base import UUIDBase
+
+class Customer(UUIDBase):
+    __tablename__ = "customers"
+
+    name = Column(String(255), nullable=False)
+    phone = Column(String(50))
+    email = Column(String(255))
+    address = Column(Text)
+    credit_limit = Column(Numeric(12, 2), default=0)
+
+    sales = relationship("Sale", back_populates="customer")
+
+    @hybrid_property
+    def balance(self):
+        return sum(s.total_amount - s.paid_amount for s in self.sales)
+```
+
+---
+
+## 4️⃣ Product (🔥 stock calculé dynamiquement)
+
+```python
+from sqlalchemy import Column, String, Numeric, Boolean, Integer, ForeignKey
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.hybrid import hybrid_property
+from app.models.base import UUIDBase
+
+class Product(UUIDBase):
+    __tablename__ = "products"
+
+    category_id = Column(String(36), ForeignKey("categories.id"))
+    supplier_id = Column(String(36), ForeignKey("suppliers.id"), nullable=True)
+
+    barcode = Column(String(255), unique=True)
+    name = Column(String(255))
+    purchase_price = Column(Numeric(12, 2))
+    sale_price = Column(Numeric(12, 2))
+    alert_stock = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+
+    category = relationship("Category", back_populates="products")
+    supplier = relationship("Supplier")
+    stock_movements = relationship("StockMovement", back_populates="product")
+
+    @hybrid_property
+    def stock(self):
+        return sum(m.quantity for m in self.stock_movements)
+```
+
+---
+
+## 5️⃣ Purchase
+
+```python
+from sqlalchemy import Column, String, Numeric, Enum, ForeignKey
+from sqlalchemy.orm import relationship
+import enum
+from app.models.base import UUIDBase
+
+class PurchaseStatus(enum.Enum):
+    pending = "pending"
+    partial = "partial"
+    paid = "paid"
+
+class Purchase(UUIDBase):
+    __tablename__ = "purchases"
+
+    supplier_id = Column(String(36), ForeignKey("suppliers.id"))
+    user_id = Column(String(36), ForeignKey("users.id"))
+
+    reference = Column(String(255), unique=True)
+    total_amount = Column(Numeric(12, 2))
+    paid_amount = Column(Numeric(12, 2), default=0)
+    status = Column(Enum(PurchaseStatus), default=PurchaseStatus.pending)
+
+    supplier = relationship("Supplier", back_populates="purchases")
+    user = relationship("User")
+    items = relationship("PurchaseItem", back_populates="purchase")
+    payments = relationship(
+        "Payment",
+        primaryjoin="and_(Payment.payable_id==Purchase.id, "
+                    "Payment.payable_type=='purchase')"
+    )
+```
+
+---
+
+## 6️⃣ PurchaseItem
+
+```python
+from sqlalchemy import Column, String, Integer, Numeric, ForeignKey
+from sqlalchemy.orm import relationship
+from app.models.base import UUIDBase
+
+class PurchaseItem(UUIDBase):
+    __tablename__ = "purchase_items"
+
+    purchase_id = Column(String(36), ForeignKey("purchases.id"))
+    product_id = Column(String(36), ForeignKey("products.id"))
+
+    quantity = Column(Integer)
+    unit_price = Column(Numeric(12, 2))
+    subtotal = Column(Numeric(12, 2))
+
+    purchase = relationship("Purchase", back_populates="items")
+    product = relationship("Product")
+```
+
+---
+
+## 7️⃣ Sale (avec balance calculée)
+
+```python
+from sqlalchemy import Column, String, Numeric, Enum, ForeignKey
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.hybrid import hybrid_property
+import enum
+from app.models.base import UUIDBase
+
+class SaleStatus(enum.Enum):
+    paid = "paid"
+    partial = "partial"
+    credit = "credit"
+
+class Sale(UUIDBase):
+    __tablename__ = "sales"
+
+    customer_id = Column(String(36), ForeignKey("customers.id"), nullable=True)
+    user_id = Column(String(36), ForeignKey("users.id"))
+
+    reference = Column(String(255), unique=True)
+    total_amount = Column(Numeric(12, 2))
+    discount = Column(Numeric(12, 2), default=0)
+    paid_amount = Column(Numeric(12, 2), default=0)
+    status = Column(Enum(SaleStatus), default=SaleStatus.paid)
+
+    customer = relationship("Customer", back_populates="sales")
+    user = relationship("User")
+    items = relationship("SaleItem", back_populates="sale")
+    payments = relationship(
+        "Payment",
+        primaryjoin="and_(Payment.payable_id==Sale.id, "
+                    "Payment.payable_type=='sale')"
+    )
+
+    @hybrid_property
+    def balance(self):
+        return self.total_amount - self.paid_amount
+```
+
+---
+
+## 8️⃣ SaleItem
+
+```python
+from sqlalchemy import Column, String, Integer, Numeric, ForeignKey
+from sqlalchemy.orm import relationship
+from app.models.base import UUIDBase
+
+class SaleItem(UUIDBase):
+    __tablename__ = "sale_items"
+
+    sale_id = Column(String(36), ForeignKey("sales.id"))
+    product_id = Column(String(36), ForeignKey("products.id"))
+
+    quantity = Column(Integer)
+    unit_price = Column(Numeric(12, 2))
+    subtotal = Column(Numeric(12, 2))
+
+    sale = relationship("Sale", back_populates="items")
+    product = relationship("Product")
+```
+
+---
+
+## 9️⃣ StockMovement (🔥 cœur du système)
+
+```python
+from sqlalchemy import Column, String, Integer, Enum, ForeignKey, Text, DateTime
+from sqlalchemy.orm import relationship
+from datetime import datetime
+import enum
+from app.models.base import UUIDBase
+
+class StockType(enum.Enum):
+    in_ = "in"
+    out = "out"
+    adjust = "adjust"
+
+class StockMovement(UUIDBase):
+    __tablename__ = "stock_movements"
+
+    product_id = Column(String(36), ForeignKey("products.id"))
+    user_id = Column(String(36), ForeignKey("users.id"))
+
+    type = Column(Enum(StockType))
+    quantity = Column(Integer)
+
+    source_type = Column(String(50))
+    source_id = Column(String(36))
+    note = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    product = relationship("Product", back_populates="stock_movements")
+    user = relationship("User")
+```
+
+---
+
+## 🔟 Payment (polymorphique)
+
+```python
+from sqlalchemy import Column, String, Numeric, ForeignKey
+from sqlalchemy.orm import relationship
+from app.models.base import UUIDBase
+
+class Payment(UUIDBase):
+    __tablename__ = "payments"
+
+    payable_type = Column(String(50))  # sale | purchase
+    payable_id = Column(String(36))
+
+    amount = Column(Numeric(12, 2))
+    method = Column(String(50))
+    user_id = Column(String(36), ForeignKey("users.id"))
+
+    user = relationship("User")
+```
+
+---
+
+## 1️⃣1️⃣ User (relations)
+
+```python
+from sqlalchemy import Column, String
+from sqlalchemy.orm import relationship
+from app.models.base import UUIDBase
+
+class User(UUIDBase):
+    __tablename__ = "users"
+
+    name = Column(String(255))
+
+    sales = relationship("Sale")
+    purchases = relationship("Purchase")
+```
+
+---
+
+## ✅ Bonnes pratiques respectées (FastAPI)
+
+✔ Relations explicites
+✔ UUID partout
+✔ Stock calculé dynamiquement
+✔ Paiements polymorphiques
+✔ Aucun champ `stock` dans `products`
+✔ Logique métier prête
+
+---
+
+## 🚀 PROCHAINE ÉTAPE (ÉTAPE 4)
+
+👉 **Logique métier POS**
+
+* Vente (transaction atomique)
+* Vérification stock
+* Création stock_movements
+* Paiement
+* Annulation / retour
+
+👉 Dis-moi :
+**On commence par la VENTE ou les ACHATS ?** 🔥

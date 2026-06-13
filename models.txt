@@ -1,0 +1,343 @@
+pip install fastapi uvicorn[standard] sqlalchemy pymysql alembic python-dotenv python-jose[cryptography] passlib[bcrypt]
+
+
+Parfait 👍
+On va **transposer proprement ton schéma Laravel vers FastAPI**, avec **SQLAlchemy** (approche la plus stable et pro pour FastAPI).
+
+Je vais te donner :
+
+1. ✅ **Structure recommandée du projet FastAPI**
+2. ✅ **Base SQLAlchemy (engine + Base)**
+3. ✅ **Modèles SQLAlchemy équivalents à tes migrations Laravel**
+4. ✅ **Gestion du polymorphisme (`payments`)**
+5. ✅ **Ordre de création des tables (important pour les FK)**
+
+---
+
+## 1️⃣ Structure recommandée FastAPI
+
+```text
+app/
+├── main.py
+├── database.py
+├── models/
+│   ├── __init__.py
+│   ├── user.py
+│   ├── category.py
+│   ├── supplier.py
+│   ├── customer.py
+│   ├── product.py
+│   ├── purchase.py
+│   ├── purchase_item.py
+│   ├── sale.py
+│   ├── sale_item.py
+│   ├── stock_movement.py
+│   ├── payment.py
+```
+
+---
+
+## 2️⃣ Database (database.py)
+
+```python
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+DATABASE_URL = "mysql+pymysql://user:password@localhost/stock_db"
+
+engine = create_engine(DATABASE_URL, echo=True)
+SessionLocal = sessionmaker(bind=engine)
+
+Base = declarative_base()
+```
+
+---
+
+## 3️⃣ Modèles SQLAlchemy (équivalent exact Laravel)
+
+---
+
+### users (déjà existant)
+
+*(supposé déjà présent)*
+
+```python
+from sqlalchemy import Column, Integer, String
+from app.database import Base
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255))
+```
+
+---
+
+### categories
+
+```python
+from sqlalchemy import Column, Integer, String
+from app.database import Base
+
+class Category(Base):
+    __tablename__ = "categories"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), unique=True, nullable=False)
+```
+
+---
+
+### suppliers
+
+```python
+from sqlalchemy import Column, Integer, String, Text
+from app.database import Base
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    phone = Column(String(50))
+    email = Column(String(255))
+    address = Column(Text)
+```
+
+---
+
+### customers
+
+```python
+from sqlalchemy import Column, Integer, String, Text, Numeric
+from app.database import Base
+
+class Customer(Base):
+    __tablename__ = "customers"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    phone = Column(String(50))
+    email = Column(String(255))
+    address = Column(Text)
+    credit_limit = Column(Numeric(12, 2), default=0)
+```
+
+---
+
+### products
+
+```python
+from sqlalchemy import Column, Integer, String, Numeric, Boolean, ForeignKey
+from app.database import Base
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id = Column(Integer, primary_key=True)
+    category_id = Column(Integer, ForeignKey("categories.id", ondelete="CASCADE"))
+    supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True)
+
+    barcode = Column(String(255), unique=True)
+    name = Column(String(255))
+    purchase_price = Column(Numeric(12, 2))
+    sale_price = Column(Numeric(12, 2))
+    alert_stock = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+```
+
+---
+
+### purchases
+
+```python
+from sqlalchemy import Column, Integer, String, Numeric, Enum, ForeignKey
+from app.database import Base
+import enum
+
+class PurchaseStatus(enum.Enum):
+    pending = "pending"
+    partial = "partial"
+    paid = "paid"
+
+class Purchase(Base):
+    __tablename__ = "purchases"
+
+    id = Column(Integer, primary_key=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"))
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+
+    reference = Column(String(255), unique=True)
+    total_amount = Column(Numeric(12, 2))
+    paid_amount = Column(Numeric(12, 2), default=0)
+    status = Column(Enum(PurchaseStatus), default=PurchaseStatus.pending)
+```
+
+---
+
+### purchase_items
+
+```python
+from sqlalchemy import Column, Integer, Numeric, ForeignKey
+from app.database import Base
+
+class PurchaseItem(Base):
+    __tablename__ = "purchase_items"
+
+    id = Column(Integer, primary_key=True)
+    purchase_id = Column(Integer, ForeignKey("purchases.id", ondelete="CASCADE"))
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"))
+
+    quantity = Column(Integer)
+    unit_price = Column(Numeric(12, 2))
+    subtotal = Column(Numeric(12, 2))
+```
+
+---
+
+### sales
+
+```python
+from sqlalchemy import Column, Integer, String, Numeric, Enum, ForeignKey
+from app.database import Base
+import enum
+
+class SaleStatus(enum.Enum):
+    paid = "paid"
+    partial = "partial"
+    credit = "credit"
+
+class PaymentMethod(enum.Enum):
+    cash = "cash"
+    card = "card"
+    mobile = "mobile"
+
+class Sale(Base):
+    __tablename__ = "sales"
+
+    id = Column(Integer, primary_key=True)
+    customer_id = Column(Integer, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+
+    reference = Column(String(255), unique=True)
+    total_amount = Column(Numeric(12, 2))
+    discount = Column(Numeric(12, 2), default=0)
+    paid_amount = Column(Numeric(12, 2), default=0)
+
+    payment_method = Column(Enum(PaymentMethod), nullable=True)
+    status = Column(Enum(SaleStatus), default=SaleStatus.paid)
+```
+
+---
+
+### sale_items
+
+```python
+from sqlalchemy import Column, Integer, Numeric, ForeignKey
+from app.database import Base
+
+class SaleItem(Base):
+    __tablename__ = "sale_items"
+
+    id = Column(Integer, primary_key=True)
+    sale_id = Column(Integer, ForeignKey("sales.id", ondelete="CASCADE"))
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"))
+
+    quantity = Column(Integer)
+    unit_price = Column(Numeric(12, 2))
+    subtotal = Column(Numeric(12, 2))
+```
+
+---
+
+### stock_movements (🔥 cœur du système)
+
+```python
+from sqlalchemy import Column, Integer, String, Enum, ForeignKey, Text, DateTime, Index
+from app.database import Base
+import enum
+from datetime import datetime
+
+class StockType(enum.Enum):
+    in_ = "in"
+    out = "out"
+    adjust = "adjust"
+
+class StockMovement(Base):
+    __tablename__ = "stock_movements"
+
+    id = Column(Integer, primary_key=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"))
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+
+    type = Column(Enum(StockType))
+    quantity = Column(Integer)
+
+    source_type = Column(String(50))
+    source_id = Column(Integer, nullable=True)
+
+    note = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_product_source", "product_id", "source_type"),
+    )
+```
+
+---
+
+### payments (polymorphique)
+
+```python
+from sqlalchemy import Column, Integer, String, Numeric, ForeignKey
+from app.database import Base
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True)
+    payable_type = Column(String(50))   # sale / purchase
+    payable_id = Column(Integer)
+
+    amount = Column(Numeric(12, 2))
+    method = Column(String(50))
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+```
+
+---
+
+## 4️⃣ Création des tables (ordre important)
+
+```python
+from app.database import engine, Base
+from app.models import *
+
+Base.metadata.create_all(bind=engine)
+```
+
+👉 SQLAlchemy gère automatiquement l’ordre grâce aux **ForeignKey**.
+
+---
+
+## 5️⃣ Ce que tu gagnes avec FastAPI 🚀
+
+✔ Performance élevée
+✔ Validation automatique (Pydantic)
+✔ API REST + WebSocket
+✔ Très bon pour desktop (PySide6)
+✔ Compatible async / sync
+
+---
+
+Si tu veux, au prochain message je peux te montrer :
+
+* 🔐 Auth JWT FastAPI
+* 📦 Service Stock (auto calcul entrée/sortie)
+* 💳 Paiements (sale / purchase auto)
+* 🔄 Migration Alembic
+* 🖥 API optimisée pour ton client PySide6
+
+Dis-moi ce que tu veux faire ensuite 👍
+

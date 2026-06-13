@@ -1,0 +1,233 @@
+Parfait 👍
+On refait **l’ÉTAPE 6 – LOGIQUE DES RETOURS (VENTE & ACHAT)** **en FastAPI**, en gardant **exactement les mêmes règles métier** que ton code Laravel.
+
+Je vais partir sur :
+
+* **FastAPI**
+* **SQLAlchemy ORM**
+* **UUID**
+* **Transactions propres**
+* **Historique intact**
+* **StockMovement comme source de vérité**
+
+---
+
+# 🧠 PRÉREQUIS (STRUCTURE)
+
+### Modèles utilisés
+
+* `Sale`
+* `SaleItem`
+* `Purchase`
+* `PurchaseItem`
+* `StockMovement`
+* `Payment`
+* `Product`
+* `User`
+
+👉 Tous avec `id: UUID`
+
+---
+
+# 1️⃣ RETOUR CLIENT (VENTE)
+
+## 📥 Payload (Pydantic)
+
+```python
+from pydantic import BaseModel
+from uuid import UUID
+from typing import List
+
+class SaleReturnItem(BaseModel):
+    product_id: UUID
+    quantity: int
+
+class SaleReturnPayload(BaseModel):
+    sale_id: UUID
+    items: List[SaleReturnItem]
+    refund_amount: float = 0
+```
+
+---
+
+## 🧱 Endpoint FastAPI
+
+```python
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from uuid import uuid4
+from app.database import get_db
+from app.models import Sale, SaleItem, StockMovement, Payment
+from datetime import datetime
+
+router = APIRouter(prefix="/sale-returns", tags=["Sale Returns"])
+
+@router.post("/")
+def create_sale_return(
+    payload: SaleReturnPayload,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    try:
+        sale = db.query(Sale).filter(Sale.id == payload.sale_id).first()
+        if not sale:
+            raise HTTPException(404, "Vente introuvable")
+
+        refund_total = 0
+
+        for item in payload.items:
+            sale_item = db.query(SaleItem).filter(
+                SaleItem.sale_id == sale.id,
+                SaleItem.product_id == item.product_id
+            ).first()
+
+            if not sale_item or item.quantity > sale_item.quantity:
+                raise HTTPException(400, "Quantité retour invalide")
+
+            refund_total += sale_item.unit_price * item.quantity
+
+            # Stock IN
+            db.add(StockMovement(
+                id=uuid4(),
+                product_id=item.product_id,
+                user_id=current_user.id,
+                type="in",
+                quantity=item.quantity,
+                source_type="sale_return",
+                source_id=sale.id,
+                note="Retour client",
+                created_at=datetime.utcnow()
+            ))
+
+        # Remboursement
+        if payload.refund_amount > 0:
+            db.add(Payment(
+                id=uuid4(),
+                payable_type="sale",
+                payable_id=sale.id,
+                amount=-payload.refund_amount,
+                method="cash",
+                user_id=current_user.id
+            ))
+
+        sale.total_amount -= refund_total
+        sale.paid_amount -= payload.refund_amount
+
+        db.commit()
+
+        return {
+            "message": "Retour client effectué",
+            "refund_total": refund_total
+        }
+
+    except Exception:
+        db.rollback()
+        raise
+```
+
+---
+
+# 2️⃣ RETOUR FOURNISSEUR (ACHAT)
+
+## 📥 Payload
+
+```python
+class PurchaseReturnItem(BaseModel):
+    product_id: UUID
+    quantity: int
+
+class PurchaseReturnPayload(BaseModel):
+    purchase_id: UUID
+    items: List[PurchaseReturnItem]
+```
+
+---
+
+## 🧱 Endpoint FastAPI
+
+```python
+@router.post("/purchase")
+def create_purchase_return(
+    payload: PurchaseReturnPayload,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    try:
+        purchase = db.query(Purchase).filter(Purchase.id == payload.purchase_id).first()
+        if not purchase:
+            raise HTTPException(404, "Achat introuvable")
+
+        return_total = 0
+
+        for item in payload.items:
+            purchase_item = db.query(PurchaseItem).filter(
+                PurchaseItem.purchase_id == purchase.id,
+                PurchaseItem.product_id == item.product_id
+            ).first()
+
+            if not purchase_item or item.quantity > purchase_item.quantity:
+                raise HTTPException(400, "Quantité retour invalide")
+
+            return_total += purchase_item.unit_price * item.quantity
+
+            # Stock OUT
+            db.add(StockMovement(
+                id=uuid4(),
+                product_id=item.product_id,
+                user_id=current_user.id,
+                type="out",
+                quantity=-item.quantity,
+                source_type="purchase_return",
+                source_id=purchase.id,
+                note="Retour fournisseur",
+                created_at=datetime.utcnow()
+            ))
+
+        purchase.total_amount -= return_total
+
+        db.commit()
+
+        return {
+            "message": "Retour fournisseur effectué",
+            "return_total": return_total
+        }
+
+    except Exception:
+        db.rollback()
+        raise
+```
+
+---
+
+# 📊 IMPACT STOCK (INCHANGÉ)
+
+| Action             | Stock |
+| ------------------ | ----- |
+| Vente              | ➖     |
+| Achat              | ➕     |
+| Retour client      | ➕     |
+| Retour fournisseur | ➖     |
+
+---
+
+# 🔐 GARANTIES MÉTIER
+
+✔️ Aucune suppression
+✔️ Historique complet
+✔️ Paiements traçables
+✔️ Compatible audit
+✔️ UUID safe (sync, offline, multi-sites)
+
+---
+
+# 🚀 PROCHAINE SUITE
+
+👉 **ÉTAPE 7 – RAPPORTS (FastAPI)**
+
+* Stock réel
+* Chiffre d’affaires
+* Dettes clients/fournisseurs
+* Bénéfice
+
+💬 Dis-moi :
+**On fait les RAPPORTS FastAPI maintenant ou l’UI POS (Vue / Flutter / Desktop PySide) ?**

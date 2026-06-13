@@ -1,0 +1,75 @@
+name: pos_connect
+description: POS Connect — Système de caisse moderne inspiré de QuickBooks.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^14.6.2
+
+  # HTTP
+  dio: ^5.7.0
+
+  # Secure storage (tokens JWT)
+  flutter_secure_storage: ^9.2.2
+
+  # Key-value storage (more reliable on Flutter Web)
+  shared_preferences: ^2.3.3
+
+  # Fonts
+  google_fonts: ^6.2.1
+
+  # Internationalisation / formatage
+  intl: ^0.20.2
+
+  # Charts pour le dashboard
+  fl_chart: ^0.69.0
+
+  # UUID
+  uuid: ^4.5.1
+
+  # File picker (image upload, works on Flutter Web)
+  file_picker: ^8.1.3
+
+  # Auto-startup on Windows/macOS/Linux (kiosk mode)
+  launch_at_startup: ^0.5.1
+
+  # Cached network image
+  cached_network_image: ^3.3.1
+
+  # PDF generation & printing
+  pdf: ^3.11.0
+  printing: ^5.13.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  msix: ^3.16.8
+
+flutter:
+  uses-material-design: true
+
+msix_config:
+  display_name: POS Connect
+  publisher_display_name: POS Connect
+  identity_name: com.kikipllc.posconnect
+  publisher: CN=POS Connect
+  msix_version: 1.0.0.0
+  logo_path: windows/runner/resources/app_icon.ico
+  capabilities: 'internetClient,privateNetworkClientServer'
+  languages: fr-FR,en-US
+  store: false
+  sign_msix: false

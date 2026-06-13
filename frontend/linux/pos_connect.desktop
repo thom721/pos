@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=POS Connect
+Comment=Système de caisse moderne
+Exec=pos_connect
+Icon=pos_connect
+Type=Application
+Categories=Office;Finance;
+StartupWMClass=pos_connect
