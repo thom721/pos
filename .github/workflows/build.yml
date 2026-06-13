@@ -20,9 +20,14 @@ permissions:
 # ─── Variables globales ────────────────────────────────────────────────────────
 env:
   PYTHON_VERSION: '3.11'
+  FLUTTER_VERSION: '3.44.2'
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  BACKEND  —  Nuitka standalone
+#  NB: les --include-package tiers ont été retirés.
+#      Nuitka suit les imports automatiquement via --standalone.
+#      Les packages chargés dynamiquement (pymysql, etc.) sont importés
+#      explicitement dans server_main.py pour forcer leur inclusion.
 # ══════════════════════════════════════════════════════════════════════════════
 
 jobs:
@@ -51,34 +56,20 @@ jobs:
           pip install -r requirements_win.txt
           pip install nuitka ordered-set
 
+      - name: Verify packages
+        shell: pwsh
+        run: |
+          python -c "import fastapi, sqlalchemy, uvicorn, pydantic; print('OK')"
+
       - name: Compile avec Nuitka
+        shell: pwsh
         run: |
           python -m nuitka `
             --standalone `
             --assume-yes-for-downloads `
             --include-package=api `
-            --include-package=fastapi `
-            --include-package=starlette `
-            --include-package=uvicorn `
-            --include-package=pydantic `
-            --include-package=pydantic_core `
-            --include-package=sqlalchemy `
+            --include-package-data=api `
             --include-package=alembic `
-            --include-package=pymysql `
-            --include-package=pwdlib `
-            --include-package=passlib `
-            --include-package=argon2 `
-            --include-package=bcrypt `
-            --include-package=jose `
-            --include-package=jwt `
-            --include-package=cryptography `
-            --include-package=email_validator `
-            --include-package=dotenv `
-            --include-package=multipart `
-            --include-package=anyio `
-            --include-package=httptools `
-            --include-package=websockets `
-            --include-package=watchfiles `
             --include-package-data=alembic `
             --include-data-files=alembic.ini=alembic.ini `
             --include-data-files=pos_server.ini.example=pos_server.ini.example `
@@ -121,29 +112,8 @@ jobs:
             --standalone \
             --assume-yes-for-downloads \
             --include-package=api \
-            --include-package=fastapi \
-            --include-package=starlette \
-            --include-package=uvicorn \
-            --include-package=pydantic \
-            --include-package=pydantic_core \
-            --include-package=sqlalchemy \
+            --include-package-data=api \
             --include-package=alembic \
-            --include-package=pymysql \
-            --include-package=pwdlib \
-            --include-package=passlib \
-            --include-package=argon2 \
-            --include-package=bcrypt \
-            --include-package=jose \
-            --include-package=jwt \
-            --include-package=cryptography \
-            --include-package=email_validator \
-            --include-package=dotenv \
-            --include-package=multipart \
-            --include-package=anyio \
-            --include-package=httptools \
-            --include-package=uvloop \
-            --include-package=websockets \
-            --include-package=watchfiles \
             --include-package-data=alembic \
             --include-data-files=alembic.ini=alembic.ini \
             --include-data-files=pos_server.ini.example=pos_server.ini.example \
@@ -161,7 +131,7 @@ jobs:
   # ── macOS ────────────────────────────────────────────────────────────────────
   backend-macos:
     name:  Backend — macOS
-    runs-on: macos-14     # Apple Silicon (M1) — plus rapide et moins cher
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -183,29 +153,8 @@ jobs:
             --standalone \
             --assume-yes-for-downloads \
             --include-package=api \
-            --include-package=fastapi \
-            --include-package=starlette \
-            --include-package=uvicorn \
-            --include-package=pydantic \
-            --include-package=pydantic_core \
-            --include-package=sqlalchemy \
+            --include-package-data=api \
             --include-package=alembic \
-            --include-package=pymysql \
-            --include-package=pwdlib \
-            --include-package=passlib \
-            --include-package=argon2 \
-            --include-package=bcrypt \
-            --include-package=jose \
-            --include-package=jwt \
-            --include-package=cryptography \
-            --include-package=email_validator \
-            --include-package=dotenv \
-            --include-package=multipart \
-            --include-package=anyio \
-            --include-package=httptools \
-            --include-package=uvloop \
-            --include-package=websockets \
-            --include-package=watchfiles \
             --include-package-data=alembic \
             --include-data-files=alembic.ini=alembic.ini \
             --include-data-files=pos_server.ini.example=pos_server.ini.example \
@@ -234,6 +183,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
@@ -268,6 +218,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
@@ -298,6 +249,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
@@ -309,10 +261,9 @@ jobs:
         working-directory: frontend
         run: flutter build macos --release
 
-      - name: Create DMG
+      - name: Create archive
         run: |
           cd frontend/build/macos/Build/Products/Release
-          # Créer une archive .tar.gz (DMG nécessite des outils supplémentaires)
           tar -czf posconnect-macos-app.tar.gz "POS Connect.app"
 
       - name: Upload artifact
@@ -387,7 +338,6 @@ jobs:
             packages/posconnect-macos-*.tar.gz
           retention-days: 30
 
-      # Publier automatiquement sur GitHub Releases si déclenché par un tag
       - name: Créer GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -396,17 +346,11 @@ jobs:
           body: |
             ## POS Connect v${{ steps.version.outputs.VERSION }}
 
-            ### Téléchargements
             | Plateforme | Fichier |
             |-----------|---------|
             | Windows   | `posconnect-windows-${{ steps.version.outputs.VERSION }}.zip` |
             | Linux     | `posconnect-linux-${{ steps.version.outputs.VERSION }}.tar.gz` |
             | macOS     | `posconnect-macos-${{ steps.version.outputs.VERSION }}.tar.gz` |
-
-            ### Installation
-            1. Extraire l'archive
-            2. Copier `pos_server.ini.example` → `pos_server.ini` et configurer
-            3. Lancer `posconnect-server` (serveur) et `pos_connect` (interface)
           files: |
             packages/posconnect-windows-*.zip
             packages/posconnect-linux-*.tar.gz
