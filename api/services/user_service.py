@@ -1,10 +1,9 @@
 from typing import List, Optional
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from api.models.User import User  # SQLAlchemy
 from api.services.auth_service import AuthService
-import hashlib
 from fastapi import HTTPException
-from passlib.context import CryptContext
 from api.services.auth import get_password_hash
 
 from api.schemas.user import UserCreate, UserUpdate, UserRead  # Pydantic
@@ -15,6 +14,9 @@ class UserService:
         self.auth = AuthService(db) 
 
     def create(self, data: UserCreate) -> User:
+        existing = self.db.query(User).filter(User.username == data.username).first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Le nom d'utilisateur '{data.username}' est déjà pris.")
         try:
             user = User(
                 fname=data.fname,
@@ -32,9 +34,11 @@ class UserService:
             self.db.commit()
             self.db.refresh(user)
             return user
+        except IntegrityError:
+            self.db.rollback()
+            raise HTTPException(status_code=400, detail=f"Le nom d'utilisateur '{data.username}' est déjà pris.")
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            self.db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
 
     def change_password(self, user_id: str, new_password: str) -> User:
