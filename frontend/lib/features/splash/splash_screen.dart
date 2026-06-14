@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -80,7 +81,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       final res = await dio.get('/api/setup/health');
       final setupDone = res.data['setup_done'] as bool? ?? true;
       if (!mounted) return;
-      if (!setupDone) {
+      // Sur web, l'installer n'existe pas — on va toujours vers login
+      if (!setupDone && !kIsWeb) {
         context.go('/install');
         return;
       }

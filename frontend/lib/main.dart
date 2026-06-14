@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -12,7 +13,7 @@ void main() async {
   await initializeDateFormatting('fr');
   await initServerUrl();
 
-  if (Platform.isWindows || Platform.isLinux) {
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
     launchAtStartup.setup(
       appName: 'POS Connect',
       appPath: Platform.resolvedExecutable,
