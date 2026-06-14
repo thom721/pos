@@ -859,11 +859,11 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
       if (_failed) return;
 
       await _step('Installation du service système', () async {
-        // Call service_wrapper via process
-        final result = await Process.run(
-          Platform.isWindows ? 'service_wrapper.exe' : './service_wrapper',
-          ['install'],
-        );
+        final wrapperName = Platform.isWindows ? 'service_wrapper.exe' : './service_wrapper';
+        final wrapperFile = File(wrapperName.replaceFirst('./', ''));
+        // Skip silently if service_wrapper is absent (remote-only client)
+        if (!wrapperFile.existsSync()) return;
+        final result = await Process.run(wrapperName, ['install']);
         if (result.exitCode != 0) {
           throw Exception(result.stderr.toString());
         }
