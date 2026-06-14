@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 
@@ -32,8 +34,10 @@ class InstallConfig {
   String adminEmail;
   String adminPhone;
   String adminPassword;
+  String serverUrl;
 
   InstallConfig({
+    this.serverUrl = '',
     this.mode = InstallMode.both,
     this.dbType = DbType.mysql,
     this.dbHost = 'localhost',
@@ -77,6 +81,7 @@ class _InstallerScreenState extends ConsumerState<InstallerScreen> {
   final List<String> _steps = [
     'Bienvenue',
     'Mode',
+    'Adresse serveur',
     'Base de données',
     'Connexion DB',
     'Compte admin',
@@ -100,30 +105,37 @@ class _InstallerScreenState extends ConsumerState<InstallerScreen> {
       case 1:
         return _ModePage(onNext: _next, onBack: _back);
       case 2:
+        // Adresse serveur uniquement pour mode client
+        if (cfg.mode != InstallMode.client) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(3));
+          return const SizedBox.shrink();
+        }
+        return _ServerAddressPage(onNext: _next, onBack: _back);
+      case 3:
         if (!needsServer) {
-          // Skip DB + admin steps for client-only
-          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(5));
+          // client-only : sauter DB + admin
+          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(6));
           return const SizedBox.shrink();
         }
         return _DbChoicePage(onNext: _next, onBack: _back);
-      case 3:
+      case 4:
         if (!needsServer) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(5));
+          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(6));
           return const SizedBox.shrink();
         }
         return cfg.dbType == DbType.mysql
             ? _MysqlSetupPage(onNext: _next, onBack: _back)
             : _SqliteInfoPage(onNext: _next, onBack: _back);
-      case 4:
+      case 5:
         if (!needsServer) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(5));
+          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(6));
           return const SizedBox.shrink();
         }
         return _AdminAccountPage(onNext: _next, onBack: _back);
-      case 5:
+      case 6:
         return _InstallationPage(
             onDone: _next, onBack: _back, needsServer: needsServer);
-      case 6:
+      case 7:
         return const _DonePage();
       default:
         return const SizedBox.shrink();
@@ -276,6 +288,131 @@ class _WelcomePage extends StatelessWidget {
               'Notez bien les identifiants du compte admin que vous allez créer.',
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Page 1b — Adresse du serveur (mode client uniquement)
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _ServerAddressPage extends ConsumerStatefulWidget {
+  final VoidCallback onNext;
+  final VoidCallback onBack;
+  const _ServerAddressPage({required this.onNext, required this.onBack});
+
+  @override
+  ConsumerState<_ServerAddressPage> createState() => _ServerAddressPageState();
+}
+
+class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
+  late TextEditingController _urlCtrl;
+  bool _testing = false;
+  String? _error;
+  bool _ok = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final saved = ref.read(_configProvider).serverUrl;
+    _urlCtrl = TextEditingController(
+      text: saved.isNotEmpty ? saved : AppConstants.baseUrl,
+    );
+  }
+
+  @override
+  void dispose() {
+    _urlCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _test() async {
+    final url = _urlCtrl.text.trim().replaceAll(RegExp(r'/+$'), '');
+    if (url.isEmpty) return;
+    setState(() { _testing = true; _error = null; _ok = false; });
+    try {
+      await saveServerUrl(url);
+      final res = await dio.get('/api/setup/health');
+      final data = res.data as Map<String, dynamic>;
+      if (data['status'] == 'ok') {
+        final c = ref.read(_configProvider);
+        ref.read(_configProvider.notifier).state = c..serverUrl = url;
+        setState(() => _ok = true);
+      }
+    } catch (e) {
+      await saveServerUrl('');
+      final msg = e is DioException ? extractErrorMessage(e) : e.toString();
+      setState(() => _error = 'Impossible de joindre le serveur: $msg');
+    } finally {
+      setState(() => _testing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _PageShell(
+      title: 'Adresse du serveur',
+      subtitle: 'Indiquez où se trouve le serveur POS Connect',
+      onNext: _ok ? widget.onNext : null,
+      onBack: widget.onBack,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Entrez l\'adresse IP du serveur POS Connect sur votre réseau local.',
+            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 24),
+          _Field(
+            ctrl: _urlCtrl,
+            label: 'URL du serveur',
+            hint: 'http://192.168.1.100:8002',
+            keyboardType: TextInputType.url,
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _testing ? null : _test,
+            icon: _testing
+                ? const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.wifi_find_rounded, size: 16),
+            label: Text(_testing ? 'Test en cours...' : 'Tester la connexion'),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_error!,
+                    style: const TextStyle(color: AppColors.error, fontSize: 12))),
+              ]),
+            ),
+          ],
+          if (_ok) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(children: [
+                Icon(Icons.check_circle_outline, color: AppColors.success, size: 18),
+                SizedBox(width: 8),
+                Text('Serveur trouvé ! Connexion établie.',
+                    style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+          ],
         ],
       ),
     );
