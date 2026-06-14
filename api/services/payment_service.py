@@ -8,7 +8,7 @@ from api.models.Purchase import Purchase
 from api.models.Debt import Debt
 
 
-def add_payment(db: Session, data, user_id: str):
+def add_payment(db: Session, data, user_id: str, tenant_id: str | None = None):
     reference_type = data.reference_type.upper()
     reference_id = str(data.reference_id)
 
@@ -32,6 +32,8 @@ def add_payment(db: Session, data, user_id: str):
         method=data.method.upper(),
         user_id=user_id
     )
+    if tenant_id:
+        payment.tenant_id = tenant_id
     db.add(payment)
 
     entity.paid_amount = (entity.paid_amount or Decimal("0")) + amount

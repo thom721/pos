@@ -5,16 +5,17 @@ from api.models.User import User  # SQLAlchemy
 from api.services.auth_service import AuthService
 from fastapi import HTTPException
 from api.services.auth import get_password_hash
+from api.services.base_service import TenantService
 
 from api.schemas.user import UserCreate, UserUpdate, UserRead  # Pydantic
 
-class UserService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.auth = AuthService(db) 
+class UserService(TenantService):
+    def __init__(self, db: Session, tenant_id: str | None = None):
+        super().__init__(db, tenant_id)
+        self.auth = AuthService(db)
 
     def create(self, data: UserCreate) -> User:
-        existing = self.db.query(User).filter(User.username == data.username).first()
+        existing = self._q(User).filter(User.username == data.username).first()
         if existing:
             raise HTTPException(status_code=400, detail=f"Le nom d'utilisateur '{data.username}' est déjà pris.")
         try:
@@ -30,6 +31,7 @@ class UserService:
                 permissions=data.permissions or [],
                 must_change_password=True,
             )
+            self._set_tenant(user)
             self.db.add(user)
             self.db.commit()
             self.db.refresh(user)
@@ -52,10 +54,10 @@ class UserService:
         return user
 
     def get(self, user_id: str) -> Optional[User]:
-        return self.db.query(User).filter(User.id == user_id).first()
+        return self._q(User).filter(User.id == user_id).first()
 
     def list(self) -> List[User]:
-        return self.db.query(User).all()
+        return self._q(User).all()
 
     def update(self, user_id: str, data: UserUpdate) -> Optional[User]:
         user = self.get(user_id)

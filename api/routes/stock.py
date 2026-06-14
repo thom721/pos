@@ -17,7 +17,7 @@ router = APIRouter(prefix="/stock-movements", tags=["Stock"])
 @router.get("/", response_model=PaginatedResponse[StockMovementRead])
 def read_stock_movements(
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.STOCK_READ)),
+    current_user: User = Depends(require_permission(P.STOCK_READ)),
     page: int = Query(1, ge=1),
     limit: int = Query(20, le=100),
     search: Optional[str] = None,
@@ -30,4 +30,5 @@ def read_stock_movements(
         db=db, page=page, limit=limit, search=search,
         stock_type=stock_type, source_type=source_type,
         date_from=date_from, date_to=date_to,
+        tenant_id=current_user.tenant_id,
     )

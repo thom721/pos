@@ -6,6 +6,7 @@ from .base import UUIDBase
 
 class Debt(UUIDBase):
     __tablename__ = "debts"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     total_amount   = Column(Numeric(12, 2), nullable=False)
     paid_amount    = Column(Numeric(12, 2), nullable=False, default=0)

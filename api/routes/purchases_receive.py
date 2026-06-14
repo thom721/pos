@@ -24,6 +24,6 @@ def store_receipt(
 def pending_items(
     purchase_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.PURCHASES_READ)),
+    current_user: User = Depends(require_permission(P.PURCHASES_READ)),
 ):
     return get_pending_items(db, purchase_id)

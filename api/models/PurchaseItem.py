@@ -4,6 +4,7 @@ from .base import UUIDBase
 
 class PurchaseItem(UUIDBase):
     __tablename__ = "purchase_items"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     purchase_id = Column(String(36), ForeignKey("purchases.id"), nullable=False)
     product_id = Column(String(36), ForeignKey("products.id"), nullable=False)

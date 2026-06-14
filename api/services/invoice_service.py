@@ -5,31 +5,38 @@ from api.models.Invoice import Invoice, InvoiceItem
 from api.schemas.invoice import InvoiceCreate, InvoiceUpdate
 
 
-def list_invoices(db: Session, page: int = 1, limit: int = 20):
+def list_invoices(db: Session, page: int = 1, limit: int = 20, tenant_id: str | None = None):
     query = (
         db.query(Invoice)
         .options(joinedload(Invoice.items))
         .order_by(Invoice.created_at.desc())
     )
+    if tenant_id:
+        query = query.filter(Invoice.tenant_id == tenant_id)
     total = query.count()
     items = query.offset((page - 1) * limit).limit(limit).all()
     return {"data": items, "meta": {"page": page, "limit": limit, "total": total}}
 
 
-def get_invoice(db: Session, invoice_id: str):
-    inv = (
+def get_invoice(db: Session, invoice_id: str, tenant_id: str | None = None):
+    query = (
         db.query(Invoice)
         .options(joinedload(Invoice.items))
         .filter(Invoice.id == invoice_id)
-        .first()
     )
+    if tenant_id:
+        query = query.filter(Invoice.tenant_id == tenant_id)
+    inv = query.first()
     if not inv:
         raise HTTPException(404, "Facture introuvable")
     return inv
 
 
-def create_invoice(db: Session, data: InvoiceCreate, user_id: str):
-    existing = db.query(Invoice).filter(Invoice.reference == data.reference).first()
+def create_invoice(db: Session, data: InvoiceCreate, user_id: str, tenant_id: str | None = None):
+    query = db.query(Invoice).filter(Invoice.reference == data.reference)
+    if tenant_id:
+        query = query.filter(Invoice.tenant_id == tenant_id)
+    existing = query.first()
     if existing:
         raise HTTPException(400, f"Référence '{data.reference}' déjà utilisée")
 
@@ -45,6 +52,8 @@ def create_invoice(db: Session, data: InvoiceCreate, user_id: str):
         status=data.status,
         user_id=user_id,
     )
+    if tenant_id:
+        invoice.tenant_id = tenant_id
     db.add(invoice)
     db.flush()
 
@@ -60,11 +69,11 @@ def create_invoice(db: Session, data: InvoiceCreate, user_id: str):
 
     db.commit()
     db.refresh(invoice)
-    return get_invoice(db, invoice.id)
+    return get_invoice(db, invoice.id, tenant_id=tenant_id)
 
 
-def update_invoice(db: Session, invoice_id: str, data: InvoiceUpdate):
-    invoice = get_invoice(db, invoice_id)
+def update_invoice(db: Session, invoice_id: str, data: InvoiceUpdate, tenant_id: str | None = None):
+    invoice = get_invoice(db, invoice_id, tenant_id=tenant_id)
 
     if data.status is not None:
         invoice.status = data.status
@@ -96,11 +105,11 @@ def update_invoice(db: Session, invoice_id: str, data: InvoiceUpdate):
             ))
 
     db.commit()
-    return get_invoice(db, invoice_id)
+    return get_invoice(db, invoice_id, tenant_id=tenant_id)
 
 
-def record_payment(db: Session, invoice_id: str, amount: float):
-    invoice = get_invoice(db, invoice_id)
+def record_payment(db: Session, invoice_id: str, amount: float, tenant_id: str | None = None):
+    invoice = get_invoice(db, invoice_id, tenant_id=tenant_id)
 
     subtotal = float(sum(i.subtotal for i in invoice.items))
     total = subtotal - float(invoice.discount)
@@ -117,10 +126,10 @@ def record_payment(db: Session, invoice_id: str, amount: float):
         invoice.status = "partial"
 
     db.commit()
-    return get_invoice(db, invoice_id)
+    return get_invoice(db, invoice_id, tenant_id=tenant_id)
 
 
-def delete_invoice(db: Session, invoice_id: str):
-    invoice = get_invoice(db, invoice_id)
+def delete_invoice(db: Session, invoice_id: str, tenant_id: str | None = None):
+    invoice = get_invoice(db, invoice_id, tenant_id=tenant_id)
     db.delete(invoice)
     db.commit()

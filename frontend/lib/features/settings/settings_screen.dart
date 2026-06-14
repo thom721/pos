@@ -1,10 +1,14 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/sync_provider.dart';
+import 'package:printing/printing.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -320,8 +324,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
             ),
+
+            // ── Imprimantes ───────────────────────────────────────────────
+            if (!kIsWeb) ...[
+              const SizedBox(height: 24),
+              _SectionHeader(
+                  icon: Icons.print_rounded, title: 'Imprimantes'),
+              const SizedBox(height: 16),
+              _PrinterConfigSection(settings: settings, notifier: notifier),
+            ],
+
             // ── Système (Windows uniquement) ─────────────────────────────
-            if (Platform.isWindows || Platform.isLinux) ...[
+            if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) ...[
               const SizedBox(height: 24),
               _SectionHeader(icon: Icons.computer_rounded, title: 'Système'),
               const SizedBox(height: 16),
@@ -341,8 +355,348 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 24),
+
+            // ── Synchronisation cloud ─────────────────────────────────────
+            const _SyncSection(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Printer configuration section ──────────────────────────────────────────
+
+class _PrinterConfigSection extends StatefulWidget {
+  final AppSettings settings;
+  final SettingsNotifier notifier;
+
+  const _PrinterConfigSection({
+    required this.settings,
+    required this.notifier,
+  });
+
+  @override
+  State<_PrinterConfigSection> createState() => _PrinterConfigSectionState();
+}
+
+class _PrinterConfigSectionState extends State<_PrinterConfigSection> {
+  List<Printer> _printers = [];
+  bool _loadingPrinters = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrinters();
+  }
+
+  Future<void> _loadPrinters() async {
+    List<Printer> printers = [];
+    try {
+      printers = await Printing.listPrinters();
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _printers = printers;
+        _loadingPrinters = false;
+      });
+    }
+  }
+
+  // Finds the Printer whose url matches the stored name, or null.
+  Printer? _findPrinter(String url) {
+    if (url.isEmpty) return null;
+    try {
+      return _printers.firstWhere((p) => p.url == url);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loadingPrinters) {
+      return _Card(
+        child: const Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 12),
+                Text('Détection des imprimantes...',
+                    style: TextStyle(
+                        fontSize: 13, color: AppColors.textSecondary)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_printers.isEmpty) {
+      return _Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.print_disabled_rounded,
+                    size: 20, color: AppColors.warning),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text('Aucune imprimante détectée sur cet appareil.',
+                    style: TextStyle(
+                        fontSize: 13, color: AppColors.textSecondary)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, size: 20),
+                tooltip: 'Réessayer',
+                onPressed: () {
+                  setState(() => _loadingPrinters = true);
+                  _loadPrinters();
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final posPrinter = _findPrinter(widget.settings.posPrinterName);
+    final docPrinter = _findPrinter(widget.settings.docPrinterName);
+
+    return _Card(
+      child: Column(
+        children: [
+          // ── Imprimante reçus caisse ─────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.receipt_long_rounded,
+                      size: 18, color: AppColors.primary),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Imprimante reçus caisse',
+                          style: TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text('Pour les tickets de caisse POS',
+                          style: TextStyle(
+                              fontSize: 11, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: _PrinterDropdown(
+              printers: _printers,
+              selected: posPrinter,
+              onChanged: (p) => widget.notifier.save(
+                  widget.settings.copyWith(posPrinterName: p?.url ?? '')),
+            ),
+          ),
+          ListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            title: const Text('Impression automatique à chaque vente',
+                style: TextStyle(fontSize: 13)),
+            trailing: Switch(
+              value: widget.settings.posAutoPrint,
+              thumbColor: WidgetStateProperty.resolveWith(
+                (s) => s.contains(WidgetState.selected) ? Colors.white : null,
+              ),
+              trackColor: WidgetStateProperty.resolveWith(
+                (s) => s.contains(WidgetState.selected)
+                    ? AppColors.primary
+                    : null,
+              ),
+              onChanged: (v) => widget.notifier
+                  .save(widget.settings.copyWith(posAutoPrint: v)),
+            ),
+          ),
+
+          const Divider(height: 1),
+
+          // ── Imprimante documents ────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.info.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.description_rounded,
+                      size: 18, color: AppColors.info),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Imprimante documents',
+                          style: TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text('Pour les factures, proformas et autres',
+                          style: TextStyle(
+                              fontSize: 11, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: _PrinterDropdown(
+              printers: _printers,
+              selected: docPrinter,
+              onChanged: (p) => widget.notifier.save(
+                  widget.settings.copyWith(docPrinterName: p?.url ?? '')),
+            ),
+          ),
+          ListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            title: const Text('Impression automatique à chaque document',
+                style: TextStyle(fontSize: 13)),
+            trailing: Switch(
+              value: widget.settings.docAutoPrint,
+              thumbColor: WidgetStateProperty.resolveWith(
+                (s) => s.contains(WidgetState.selected) ? Colors.white : null,
+              ),
+              trackColor: WidgetStateProperty.resolveWith(
+                (s) => s.contains(WidgetState.selected)
+                    ? AppColors.info
+                    : null,
+              ),
+              onChanged: (v) => widget.notifier
+                  .save(widget.settings.copyWith(docAutoPrint: v)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline_rounded,
+                    size: 14, color: AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Sans imprimante configurée, la boîte de dialogue système s\'affiche.',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textSecondary),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  tooltip: 'Actualiser la liste',
+                  onPressed: () {
+                    setState(() => _loadingPrinters = true);
+                    _loadPrinters();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrinterDropdown extends StatelessWidget {
+  final List<Printer> printers;
+  final Printer? selected;
+  final ValueChanged<Printer?> onChanged;
+
+  const _PrinterDropdown({
+    required this.printers,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InputDecorator(
+      decoration: const InputDecoration(
+        isDense: true,
+        prefixIcon: Icon(Icons.print_rounded, size: 18),
+        contentPadding: EdgeInsets.fromLTRB(0, 8, 12, 8),
+      ),
+      child: DropdownButton<Printer?>(
+        value: selected,
+        isExpanded: true,
+        underline: const SizedBox(),
+        hint: const Text('Sélectionner une imprimante',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+        items: [
+          const DropdownMenuItem<Printer?>(
+            value: null,
+            child: Text('— Aucune (boîte de dialogue système) —',
+                style:
+                    TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+          ),
+          ...printers.map((p) => DropdownMenuItem<Printer?>(
+                value: p,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        p.name,
+                        style: const TextStyle(fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (p.isDefault) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text('défaut',
+                            style: TextStyle(
+                                fontSize: 10, color: AppColors.primary)),
+                      ),
+                    ],
+                  ],
+                ),
+              )),
+        ],
+        onChanged: onChanged,
       ),
     );
   }
@@ -605,6 +959,243 @@ class _CurrencyTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Sync section ──────────────────────────────────────────────────────────────
+
+class _SyncSection extends ConsumerStatefulWidget {
+  const _SyncSection();
+
+  @override
+  ConsumerState<_SyncSection> createState() => _SyncSectionState();
+}
+
+class _SyncSectionState extends ConsumerState<_SyncSection> {
+  final _cloudUrlCtrl = TextEditingController();
+  final _emailCtrl    = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  bool _obscure  = true;
+  bool _showForm = false;
+
+  @override
+  void dispose() {
+    _cloudUrlCtrl.dispose();
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _configure() async {
+    final ok = await ref.read(syncProvider.notifier).configure(
+      cloudUrl: _cloudUrlCtrl.text.trim(),
+      email:    _emailCtrl.text.trim(),
+      password: _passwordCtrl.text,
+    );
+    if (!mounted) return;
+    final s = ref.read(syncProvider);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok ? (s.lastResult ?? 'OK') : (s.error ?? 'Erreur')),
+      backgroundColor: ok ? AppColors.success : AppColors.error,
+    ));
+    if (ok) setState(() => _showForm = false);
+  }
+
+  Future<void> _runSync() async {
+    await ref.read(syncProvider.notifier).runSync();
+    if (!mounted) return;
+    final s = ref.read(syncProvider);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(s.error ?? s.lastResult ?? 'Sync terminé'),
+      backgroundColor: s.error != null ? AppColors.error : AppColors.success,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final syncState   = ref.watch(syncProvider);
+    final statusAsync = ref.watch(syncStatusProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(icon: Icons.sync_rounded, title: 'Synchronisation cloud'),
+        const SizedBox(height: 16),
+        _Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Status ───────────────────────────────────────────────────
+              statusAsync.when(
+                loading: () => const LinearProgressIndicator(),
+                error: (e, _) => Text('Erreur: $e',
+                    style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                data: (status) {
+                  final configured = status['configured'] as bool? ?? false;
+                  final cloudUrl   = status['cloud_url'] as String? ?? '';
+                  final entities   = (status['entities'] as List?) ?? [];
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Icon(
+                          configured ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                          size: 18,
+                          color: configured ? AppColors.success : AppColors.textSecondary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            configured
+                                ? 'Connecté à $cloudUrl'
+                                : 'Non configuré — liez ce serveur à votre compte cloud',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: configured ? AppColors.success : AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ]),
+                      if (configured && entities.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        const Divider(height: 1),
+                        const SizedBox(height: 8),
+                        ...entities.map((e) => _EntityRow(entity: e as Map<String, dynamic>)),
+                      ],
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // ── Actions ──────────────────────────────────────────────────
+              Row(children: [
+                OutlinedButton.icon(
+                  onPressed: () => setState(() => _showForm = !_showForm),
+                  icon: const Icon(Icons.settings_ethernet_rounded, size: 16),
+                  label: Text(_showForm ? 'Fermer' : 'Configurer'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: syncState.isRunning ? null : _runSync,
+                  icon: syncState.isRunning
+                      ? const SizedBox(
+                          width: 14, height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.sync_rounded, size: 16),
+                  label: const Text('Synchroniser'),
+                ),
+              ]),
+
+              // ── Config form ───────────────────────────────────────────────
+              if (_showForm) ...[
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                const SizedBox(height: 16),
+                Text('Connexion au serveur cloud',
+                    style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _cloudUrlCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'URL du serveur cloud',
+                    hintText: 'https://api.posconnect.ht',
+                    prefixIcon: Icon(Icons.cloud_outlined),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Email du compte cloud',
+                    prefixIcon: Icon(Icons.email_outlined),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _passwordCtrl,
+                  obscureText: _obscure,
+                  decoration: InputDecoration(
+                    labelText: 'Mot de passe',
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    isDense: true,
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                      onPressed: () => setState(() => _obscure = !_obscure),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: syncState.isConfiguring ? null : _configure,
+                    child: syncState.isConfiguring
+                        ? const SizedBox(
+                            height: 16, width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Lier ce serveur au cloud'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          ),  // Padding
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+}
+
+class _EntityRow extends StatelessWidget {
+  final Map<String, dynamic> entity;
+  const _EntityRow({required this.entity});
+
+  @override
+  Widget build(BuildContext context) {
+    final type     = entity['entity_type'] as String? ?? '';
+    final pushed   = entity['records_pushed'] as int? ?? 0;
+    final pulled   = entity['records_pulled'] as int? ?? 0;
+    final lastPush = entity['last_push_at'] as String?;
+    final error    = entity['last_error'] as String?;
+
+    String? fmtPush;
+    if (lastPush != null) {
+      try {
+        fmtPush = DateFormat('dd/MM HH:mm').format(DateTime.parse(lastPush).toLocal());
+      } catch (_) {}
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(children: [
+        SizedBox(width: 110, child: Text(type, style: const TextStyle(fontSize: 12))),
+        Icon(
+          error != null ? Icons.error_outline : Icons.check_circle_outline,
+          size: 14,
+          color: error != null ? AppColors.error : AppColors.success,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            error != null
+                ? error
+                : '↑$pushed  ↓$pulled${fmtPush != null ? '  $fmtPush' : ''}',
+            style: TextStyle(
+              fontSize: 11,
+              color: error != null ? AppColors.error : AppColors.textSecondary,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ]),
     );
   }
 }

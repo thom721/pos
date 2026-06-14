@@ -1,9 +1,10 @@
-from sqlalchemy import Column, String, Numeric, Boolean, Text
+from sqlalchemy import ForeignKey, Column, String, Numeric, Boolean, Text
 from .base import UUIDBase
 
 class AppConfig(UUIDBase):
     """Single-row global config — use config_service.get_or_create() to access."""
     __tablename__ = "app_config"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     # Business identity (shared across devices)
     business_name   = Column(String(200), default='Mon Commerce')
@@ -22,3 +23,9 @@ class AppConfig(UUIDBase):
     tax_rate        = Column(Numeric(5, 2),  default=0.0)
     show_tax        = Column(Boolean, default=False)
     receipt_footer  = Column(Text, default='Merci pour votre achat !')
+
+    # Printer configuration
+    pos_printer_name = Column(String(500), nullable=False, default='')
+    pos_auto_print   = Column(Boolean,     nullable=False, default=False)
+    doc_printer_name = Column(String(500), nullable=False, default='')
+    doc_auto_print   = Column(Boolean,     nullable=False, default=False)

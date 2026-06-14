@@ -5,6 +5,7 @@ from .base import UUIDBase
 
 class EmployeeLoan(UUIDBase):
     __tablename__ = "employee_loans"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     reference          = Column(String(50),  unique=True, nullable=False, index=True)
     employee_id        = Column(String(36),  ForeignKey("users.id"),  nullable=False, index=True)

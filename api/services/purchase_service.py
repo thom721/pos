@@ -8,11 +8,11 @@ from api.models.Product import Product
 from api.models.Payment import Payment
 from api.models.StockMovement import StockMovement
 from api.models.PurchaseItem import PurchaseItem
-from api.models.Purchase import Purchase 
-from api.models.Supplier import Supplier 
-from api.models.Debt import Debt 
+from api.models.Purchase import Purchase
+from api.models.Supplier import Supplier
+from api.models.Debt import Debt
 from sqlalchemy import or_, and_
- 
+
 
 
 def list_purchases(
@@ -23,6 +23,7 @@ def list_purchases(
     status: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    tenant_id: str | None = None,
 ):
     query = (
         db.query(Purchase)
@@ -33,6 +34,9 @@ def list_purchases(
             joinedload(Purchase.payments),
         )
     )
+
+    if tenant_id:
+        query = query.filter(Purchase.tenant_id == tenant_id)
 
     # 🔍 Recherche (reference + supplier)
     if search:
@@ -74,8 +78,8 @@ def list_purchases(
         }
     }
 
-def get_purchase(db: Session, purchase_id: str):
-    return (
+def get_purchase(db: Session, purchase_id: str, tenant_id: str | None = None):
+    query = (
         db.query(Purchase)
         .options(
             joinedload(Purchase.supplier),
@@ -84,11 +88,13 @@ def get_purchase(db: Session, purchase_id: str):
             joinedload(Purchase.payments)
         )
         .filter(Purchase.id == purchase_id)
-        .first()
     )
+    if tenant_id:
+        query = query.filter(Purchase.tenant_id == tenant_id)
+    return query.first()
 
 
-def create_purchase(db: Session, data, user_id: str):
+def create_purchase(db: Session, data, user_id: str, tenant_id: str | None = None):
     if not data.items:
         raise HTTPException(400, "Aucun produit")
 
@@ -121,6 +127,8 @@ def create_purchase(db: Session, data, user_id: str):
         paid_amount=data.paid_amount,
         status=status
     )
+    if tenant_id:
+        purchase.tenant_id = tenant_id
     db.add(purchase)
     db.flush()
 
@@ -138,17 +146,20 @@ def create_purchase(db: Session, data, user_id: str):
 
     # Paiement
     if data.paid_amount > 0:
-        db.add(Payment(
+        pmt = Payment(
             reference_type="PURCHASE",
             reference_id=purchase.id,
             amount=data.paid_amount,
             method="cash",
             user_id=user_id
-        ))
+        )
+        if tenant_id:
+            pmt.tenant_id = tenant_id
+        db.add(pmt)
 
     if total > data.paid_amount:
         balance = total - data.paid_amount
-        db.add(Debt(
+        debt = Debt(
             reference_type="PURCHASE",
             reference_id=purchase.id,
             partner_type="SUPPLIER",
@@ -156,11 +167,12 @@ def create_purchase(db: Session, data, user_id: str):
             total_amount=total,
             paid_amount=data.paid_amount,
             balance=balance,
-            status="UNPAID" if data.paid_amount == 0 else"PARTIAL"
-        ))
+            status="UNPAID" if data.paid_amount == 0 else "PARTIAL"
+        )
+        if tenant_id:
+            debt.tenant_id = tenant_id
+        db.add(debt)
 
     db.commit()  # <-- commit ici
     db.refresh(purchase)
     return purchase
-
-

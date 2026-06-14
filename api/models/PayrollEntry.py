@@ -5,6 +5,7 @@ from .base import UUIDBase
 
 class PayrollEntry(UUIDBase):
     __tablename__ = "payroll_entries"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     period_id         = Column(String(36),   ForeignKey("payroll_periods.id"), nullable=False, index=True)
     employee_id       = Column(String(36),   ForeignKey("users.id"),           nullable=False, index=True)

@@ -4,7 +4,7 @@ import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 
-// ── Provider ──────────────────────────────────────────────────────────────────
+// ── Providers ─────────────────────────────────────────────────────────────────
 
 final _usersListProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
@@ -12,50 +12,23 @@ final _usersListProvider =
   return (res.data as List).cast<Map<String, dynamic>>();
 });
 
-// ═════════════════════════════════════════════════════════════════════════════
-// Roles metadata
-// ═════════════════════════════════════════════════════════════════════════════
-
-const _rolesMeta = [
-  (
-    id: 'admin',
-    label: 'Administrateur',
-    color: Color(0xFF7C3AED),
-    icon: Icons.shield_rounded,
-    desc: 'Accès total à toutes les fonctionnalités',
-  ),
-  (
-    id: 'manager',
-    label: 'Gérant',
-    color: Color(0xFF0284C7),
-    icon: Icons.manage_accounts_rounded,
-    desc: 'Tout sauf créer/supprimer des utilisateurs',
-  ),
-  (
-    id: 'cashier',
-    label: 'Caissier',
-    color: Color(0xFF059669),
-    icon: Icons.point_of_sale_rounded,
-    desc: 'Ventes, clients, paiements, factures',
-  ),
-  (
-    id: 'stock_manager',
-    label: 'Resp. Stock',
-    color: Color(0xFFD97706),
-    icon: Icons.warehouse_rounded,
-    desc: 'Produits, achats, inventaire, fournisseurs',
-  ),
-];
+/// Roles loaded from API — includes built-in and custom roles.
+final _rolesProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final res = await dio.get('/api/roles');
+  return (res.data as List).cast<Map<String, dynamic>>();
+});
 
 // Permission groups for the matrix display
 const _permMatrix = [
   (
     group: 'Ventes',
     perms: [
-      (label: 'Créer',  perm: Perm.salesCreate),
-      (label: 'Voir',   perm: Perm.salesRead),
-      (label: 'Modifier',perm: Perm.salesUpdate),
-      (label: 'Annuler',perm: Perm.salesCancel),
+      (label: 'Créer',    perm: Perm.salesCreate),
+      (label: 'Voir',     perm: Perm.salesRead),
+      (label: 'Modifier', perm: Perm.salesUpdate),
+      (label: 'Annuler',  perm: Perm.salesCancel),
+      (label: 'Remise',   perm: Perm.salesDiscount),
     ]
   ),
   (
@@ -159,9 +132,26 @@ const _permMatrix = [
   ),
 ];
 
-bool _roleHas(String roleId, String perm) {
-  if (roleId == 'admin') return true;
-  final perms = rolePermissions[roleId] ?? {};
+Color _hexColor(String? hex) {
+  if (hex == null || hex.isEmpty) return Colors.blueGrey;
+  try {
+    return Color(int.parse('FF${hex.replaceFirst('#', '')}', radix: 16));
+  } catch (_) {
+    return Colors.blueGrey;
+  }
+}
+
+IconData _roleIcon(String roleId) => switch (roleId) {
+  'admin'         => Icons.shield_rounded,
+  'manager'       => Icons.manage_accounts_rounded,
+  'cashier'       => Icons.point_of_sale_rounded,
+  'stock_manager' => Icons.warehouse_rounded,
+  _               => Icons.badge_rounded,
+};
+
+bool _roleHasPerm(Map<String, dynamic> role, String perm) {
+  if (role['name'] == 'admin') return true;
+  final perms = (role['permissions'] as List?)?.map((e) => e.toString()).toSet() ?? <String>{};
   return perms.contains('all') || perms.contains(perm);
 }
 
@@ -232,8 +222,9 @@ class _UsersTab extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error:   (e, _) => Center(child: Text('Erreur: $e',
           style: const TextStyle(color: AppColors.error))),
-      data: (users) => Column(
-        children: [
+      data: (users) {
+        final rolesData = ref.watch(_rolesProvider).valueOrNull ?? [];
+        return Column(children: [
           // Summary chips
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
@@ -243,12 +234,14 @@ class _UsersTab extends ConsumerWidget {
                 children: [
                   _SummaryChip('Total', users.length, Colors.blueGrey),
                   const SizedBox(width: 8),
-                  ..._rolesMeta.map((r) {
+                  ...rolesData.map((r) {
+                    final rName = r['name'] as String;
                     final count = users.where((u) =>
-                        ((u['roles'] as List?) ?? []).contains(r.id)).length;
+                        ((u['roles'] as List?) ?? []).contains(rName)).length;
                     return Padding(
                       padding: const EdgeInsets.only(right: 8),
-                      child: _SummaryChip(r.label, count, r.color),
+                      child: _SummaryChip(r['label'] as String, count,
+                          _hexColor(r['color'] as String?)),
                     );
                   }),
                 ],
@@ -286,8 +279,8 @@ class _UsersTab extends ConsumerWidget {
               ),
             ),
           ),
-        ],
-      ),
+        ]);
+      },
     );
   }
 
@@ -354,7 +347,7 @@ class _UsersTab extends ConsumerWidget {
 
 // ── User row ──────────────────────────────────────────────────────────────────
 
-class _UserRow extends StatelessWidget {
+class _UserRow extends ConsumerWidget {
   final Map<String, dynamic> user;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -369,18 +362,24 @@ class _UserRow extends StatelessWidget {
 
   String get _currentRole {
     final roles = (user['roles'] as List?) ?? [];
-    if (roles.contains('admin')) return 'admin';
-    if (roles.contains('manager')) return 'manager';
-    if (roles.contains('stock_manager')) return 'stock_manager';
-    return 'cashier';
+    return roles.isNotEmpty ? roles.first.toString() : 'cashier';
   }
 
   @override
-  Widget build(BuildContext context) {
-    final name = '${user['fname'] ?? ''} ${user['lname'] ?? ''}'.trim();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final name   = '${user['fname'] ?? ''} ${user['lname'] ?? ''}'.trim();
     final active = user['is_active'] as bool? ?? true;
-    final meta = _rolesMeta.firstWhere((r) => r.id == _currentRole,
-        orElse: () => _rolesMeta.last);
+    final rolesAsync = ref.watch(_rolesProvider);
+
+    final roleColor = rolesAsync.whenOrNull(
+          data: (roles) {
+            final match = roles.where((r) => r['name'] == _currentRole);
+            return match.isNotEmpty
+                ? _hexColor(match.first['color'] as String?)
+                : null;
+          },
+        ) ??
+        Colors.blueGrey;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -392,12 +391,12 @@ class _UserRow extends StatelessWidget {
             CircleAvatar(
               radius: 20,
               backgroundColor: active
-                  ? meta.color.withValues(alpha: 0.15)
+                  ? roleColor.withValues(alpha: 0.15)
                   : Colors.grey.shade200,
               child: Text(
                 name.isNotEmpty ? name[0].toUpperCase() : '?',
                 style: TextStyle(
-                    color: active ? meta.color : Colors.grey,
+                    color: active ? roleColor : Colors.grey,
                     fontWeight: FontWeight.w700),
               ),
             ),
@@ -409,47 +408,74 @@ class _UserRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(name.isNotEmpty ? name : user['username'] ?? '—',
-                      style: const TextStyle(fontWeight: FontWeight.w600,
-                          fontSize: 14)),
-                  Text('@${user['username'] ?? ''}  ·  ${user['email'] ?? ''}',
-                      style: const TextStyle(fontSize: 11,
-                          color: AppColors.textSecondary)),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 14)),
+                  Text(
+                      '@${user['username'] ?? ''}  ·  ${user['email'] ?? ''}',
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.textSecondary)),
                 ],
               ),
             ),
 
-            // Role dropdown — inline change
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(
-                color: meta.color.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: meta.color.withValues(alpha: 0.3)),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _currentRole,
-                  isDense: true,
-                  icon: Icon(Icons.arrow_drop_down, color: meta.color, size: 18),
-                  style: TextStyle(color: meta.color, fontSize: 12,
-                      fontWeight: FontWeight.w600),
-                  items: _rolesMeta.map((r) => DropdownMenuItem(
-                    value: r.id,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(r.icon, size: 14, color: r.color),
-                        const SizedBox(width: 6),
-                        Text(r.label, style: TextStyle(color: r.color,
-                            fontSize: 12, fontWeight: FontWeight.w600)),
-                      ],
+            // Role dropdown — dynamic
+            rolesAsync.when(
+              loading: () => const SizedBox(
+                  width: 100,
+                  child: LinearProgressIndicator()),
+              error: (_, __) => const SizedBox.shrink(),
+              data: (roles) {
+                final currentExists =
+                    roles.any((r) => r['name'] == _currentRole);
+                final effectiveRole =
+                    currentExists ? _currentRole : roles.first['name'] as String;
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: roleColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: roleColor.withValues(alpha: 0.3)),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: effectiveRole,
+                      isDense: true,
+                      icon: Icon(Icons.arrow_drop_down,
+                          color: roleColor, size: 18),
+                      style: TextStyle(
+                          color: roleColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600),
+                      items: roles
+                          .map((r) => DropdownMenuItem<String>(
+                                value: r['name'] as String,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(_roleIcon(r['name'] as String),
+                                        size: 14,
+                                        color: _hexColor(
+                                            r['color'] as String?)),
+                                    const SizedBox(width: 6),
+                                    Text(r['label'] as String,
+                                        style: TextStyle(
+                                            color: _hexColor(
+                                                r['color'] as String?),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v != null && v != effectiveRole) onRoleChange(v);
+                      },
                     ),
-                  )).toList(),
-                  onChanged: (v) {
-                    if (v != null && v != _currentRole) onRoleChange(v);
-                  },
-                ),
-              ),
+                  ),
+                );
+              },
             ),
             const SizedBox(width: 8),
 
@@ -462,7 +488,8 @@ class _UserRow extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(active ? 'Actif' : 'Inactif',
-                  style: TextStyle(fontSize: 10,
+                  style: TextStyle(
+                      fontSize: 10,
                       color: active ? AppColors.success : AppColors.error,
                       fontWeight: FontWeight.w600)),
             ),
@@ -470,14 +497,14 @@ class _UserRow extends StatelessWidget {
 
             // Actions
             IconButton(
-              icon: const Icon(Icons.edit_outlined, size: 17,
-                  color: AppColors.primary),
+              icon: const Icon(Icons.edit_outlined,
+                  size: 17, color: AppColors.primary),
               tooltip: 'Modifier',
               onPressed: onEdit,
             ),
             IconButton(
-              icon: const Icon(Icons.delete_outline, size: 17,
-                  color: AppColors.error),
+              icon: const Icon(Icons.delete_outline,
+                  size: 17, color: AppColors.error),
               tooltip: 'Supprimer',
               onPressed: onDelete,
             ),
@@ -489,29 +516,59 @@ class _UserRow extends StatelessWidget {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Tab 2 — Permissions Matrix
+// Tab 2 — Roles & Permissions (dynamic, editable)
 // ═════════════════════════════════════════════════════════════════════════════
 
-class _PermissionsMatrixTab extends StatelessWidget {
+class _PermissionsMatrixTab extends ConsumerWidget {
   const _PermissionsMatrixTab();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rolesAsync = ref.watch(_rolesProvider);
+
+    return rolesAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+          child: Text('Erreur: $e',
+              style: const TextStyle(color: AppColors.error))),
+      data: (roles) => _buildContent(context, ref, roles),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, WidgetRef ref,
+      List<Map<String, dynamic>> roles) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Role cards summary
-          const Text('Rôles disponibles',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
+          // Header
           Row(
-            children: _rolesMeta
-                .map((r) => Expanded(child: Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: _RoleCard(role: r),
-                    )))
+            children: [
+              const Text('Rôles',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: () => _showCreate(context, ref),
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('Nouveau rôle'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Role cards
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: roles
+                .map((r) => _RoleCard(
+                      role: r,
+                      onEdit: () => _showEdit(context, ref, r),
+                      onDelete: (r['is_builtin'] as bool? ?? true)
+                          ? null
+                          : () => _deleteRole(context, ref, r['name'] as String),
+                    ))
                 .toList(),
           ),
 
@@ -519,130 +576,209 @@ class _PermissionsMatrixTab extends StatelessWidget {
           const Text('Matrice des permissions',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          const Text('✓ = permission accordée par le rôle  ·  — = non accordée',
-              style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          const Text(
+              'Cliquez sur "Éditer" pour modifier les permissions d\'un rôle',
+              style:
+                  TextStyle(fontSize: 11, color: AppColors.textSecondary)),
           const SizedBox(height: 12),
 
-          _buildMatrix(),
+          _buildMatrix(roles),
         ],
       ),
     );
   }
 
-  Widget _buildMatrix() {
-    const roleIds = ['admin', 'manager', 'cashier', 'stock_manager'];
+  void _showCreate(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (_) =>
+          _CreateRoleDialog(onCreated: () => ref.invalidate(_rolesProvider)),
+    );
+  }
 
-    return Table(
-      columnWidths: const {
-        0: FlexColumnWidth(2.2),
-        1: FlexColumnWidth(1),
-        2: FlexColumnWidth(1),
-        3: FlexColumnWidth(1),
-        4: FlexColumnWidth(1),
-      },
-      border: TableBorder.all(color: AppColors.divider, width: 0.5,
-          borderRadius: BorderRadius.circular(8)),
-      children: [
-        // Header row
-        TableRow(
-          decoration: const BoxDecoration(color: Color(0xFFF1F5F9)),
-          children: [
-            _TH('Permission', isFirst: true),
-            ..._rolesMeta.map((r) => _TH(r.label, color: r.color)),
-          ],
-        ),
+  void _showEdit(BuildContext context, WidgetRef ref,
+      Map<String, dynamic> role) {
+    showDialog(
+      context: context,
+      builder: (_) => _RolePermissionsDialog(
+          role: role, onSaved: () => ref.invalidate(_rolesProvider)),
+    );
+  }
 
-        // Data rows — grouped by section
-        for (final group in _permMatrix) ...[
-          // Group header
+  Future<void> _deleteRole(
+      BuildContext context, WidgetRef ref, String name) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Supprimer ce rôle ?'),
+        content: const Text(
+            'Les utilisateurs avec ce rôle perdront ses permissions spécifiques.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style:
+                FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await dio.delete('/api/roles/$name');
+      ref.invalidate(_rolesProvider);
+    }
+  }
+
+  Widget _buildMatrix(List<Map<String, dynamic>> roles) {
+    final colCount = roles.length;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Table(
+        defaultColumnWidth: const IntrinsicColumnWidth(),
+        border: TableBorder.all(
+            color: AppColors.divider,
+            width: 0.5,
+            borderRadius: BorderRadius.circular(8)),
+        children: [
+          // Header
           TableRow(
-            decoration: const BoxDecoration(color: Color(0xFFF8FAFC)),
+            decoration: const BoxDecoration(color: Color(0xFFF1F5F9)),
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-                child: Text(group.group,
-                    style: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w700,
-                        color: AppColors.textSecondary,
-                        letterSpacing: 0.3)),
-              ),
-              ...List.generate(4, (_) => const SizedBox.shrink()),
+              _TH('Permission', isFirst: true),
+              ...roles.map((r) => _TH(r['label'] as String,
+                  color: _hexColor(r['color'] as String?))),
             ],
           ),
+
           // Permission rows
-          for (final p in group.perms)
+          for (final group in _permMatrix) ...[
             TableRow(
+              decoration: const BoxDecoration(color: Color(0xFFF8FAFC)),
               children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+                  child: Text(group.group,
+                      style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textSecondary,
+                          letterSpacing: 0.3)),
+                ),
+                ...List.generate(colCount, (_) => const SizedBox(height: 22)),
+              ],
+            ),
+            for (final p in group.perms)
+              TableRow(children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 5, 12, 5),
                   child: Text(p.label,
-                      style: const TextStyle(fontSize: 12,
-                          color: AppColors.textPrimary)),
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textPrimary)),
                 ),
-                ...roleIds.map((rid) => _PermCell(
-                    has: _roleHas(rid, p.perm),
-                    color: _rolesMeta
-                        .firstWhere((r) => r.id == rid)
-                        .color)),
-              ],
-            ),
+                ...roles.map((r) => _PermCell(
+                      has: _roleHasPerm(r, p.perm),
+                      color: _hexColor(r['color'] as String?),
+                    )),
+              ]),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
 
+// ── Role card ─────────────────────────────────────────────────────────────────
+
 class _RoleCard extends StatelessWidget {
-  final ({String id, String label, Color color, IconData icon, String desc}) role;
-  const _RoleCard({required this.role});
+  final Map<String, dynamic> role;
+  final VoidCallback onEdit;
+  final VoidCallback? onDelete;
+
+  const _RoleCard({
+    required this.role,
+    required this.onEdit,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final permCount = role.id == 'admin'
-        ? 'Toutes'
-        : '${(rolePermissions[role.id] ?? {}).length} permissions';
+    final name    = role['name'] as String;
+    final label   = role['label'] as String;
+    final color   = _hexColor(role['color'] as String?);
+    final perms   = (role['permissions'] as List?) ?? [];
+    final isAdmin = name == 'admin';
+    final count   = isAdmin ? 'Toutes' : '${perms.length} permissions';
 
     return Container(
-      width: 180,
-      margin: const EdgeInsets.only(right: 10),
-      padding: const EdgeInsets.all(14),
+      width: 190,
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: role.color.withValues(alpha: 0.06),
+        color: color.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: role.color.withValues(alpha: 0.25)),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
-                color: role.color.withValues(alpha: 0.15),
+                color: color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(role.icon, color: role.color, size: 18),
+              child: Icon(_roleIcon(name), color: color, size: 16),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
-              child: Text(role.label,
-                  style: TextStyle(fontWeight: FontWeight.w700,
-                      fontSize: 13, color: role.color)),
+              child: Text(label,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: color)),
             ),
           ]),
-          const SizedBox(height: 8),
-          Text(role.desc,
-              style: const TextStyle(fontSize: 11,
-                  color: AppColors.textSecondary)),
           const SizedBox(height: 6),
-          Text(permCount,
-              style: TextStyle(fontSize: 11,
-                  color: role.color, fontWeight: FontWeight.w600)),
+          Text(count,
+              style: TextStyle(
+                  fontSize: 11,
+                  color: color,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: isAdmin ? null : onEdit,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  visualDensity: VisualDensity.compact,
+                ),
+                icon: const Icon(Icons.edit_rounded, size: 13),
+                label: const Text('Éditer', style: TextStyle(fontSize: 11)),
+              ),
+            ),
+            if (onDelete != null) ...[
+              const SizedBox(width: 6),
+              IconButton(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline,
+                    size: 16, color: AppColors.error),
+                tooltip: 'Supprimer',
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(4),
+              ),
+            ],
+          ]),
         ],
       ),
     );
   }
 }
+
+// ── Table helpers ─────────────────────────────────────────────────────────────
 
 class _TH extends StatelessWidget {
   final String text;
@@ -657,7 +793,8 @@ class _TH extends StatelessWidget {
           horizontal: isFirst ? 12 : 16, vertical: 8),
       child: Text(text,
           style: TextStyle(
-              fontSize: 11, fontWeight: FontWeight.w700,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
               color: color ?? AppColors.textPrimary)),
     );
   }
@@ -675,7 +812,8 @@ class _PermCell extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 5),
         child: has
             ? Container(
-                width: 20, height: 20,
+                width: 20,
+                height: 20,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(4),
@@ -683,7 +821,449 @@ class _PermCell extends StatelessWidget {
                 child: Icon(Icons.check_rounded, size: 13, color: color),
               )
             : const Text('—',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                style: TextStyle(
+                    color: AppColors.textSecondary, fontSize: 12)),
+      ),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Role edit dialog — permissions checkboxes
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _RolePermissionsDialog extends StatefulWidget {
+  final Map<String, dynamic> role;
+  final VoidCallback onSaved;
+  const _RolePermissionsDialog({required this.role, required this.onSaved});
+
+  @override
+  State<_RolePermissionsDialog> createState() =>
+      _RolePermissionsDialogState();
+}
+
+class _RolePermissionsDialogState extends State<_RolePermissionsDialog> {
+  late Set<String> _selected;
+  late final TextEditingController _labelCtrl;
+  bool _saving = false;
+
+  bool get _isBuiltin => widget.role['is_builtin'] as bool? ?? true;
+
+  @override
+  void initState() {
+    super.initState();
+    final perms = (widget.role['permissions'] as List?)
+            ?.map((e) => e.toString())
+            .toSet() ??
+        <String>{};
+    _selected = Set.from(perms);
+    _labelCtrl =
+        TextEditingController(text: widget.role['label'] as String? ?? '');
+  }
+
+  @override
+  void dispose() {
+    _labelCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final body = <String, dynamic>{'permissions': _selected.toList()};
+      if (!_isBuiltin) body['label'] = _labelCtrl.text.trim();
+      await dio.put('/api/roles/${widget.role['name']}', data: body);
+      widget.onSaved();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Erreur: ${extractErrorMessage(e as dynamic)}'),
+              backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _hexColor(widget.role['color'] as String?);
+    final label = widget.role['label'] as String;
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 700),
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.08),
+                border: Border(
+                    bottom: BorderSide(
+                        color: color.withValues(alpha: 0.2))),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Row(children: [
+                Icon(_roleIcon(widget.role['name'] as String),
+                    color: color, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('Permissions — $label',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: color)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ]),
+            ),
+
+            // Label field (custom roles only)
+            if (!_isBuiltin)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                child: TextFormField(
+                  controller: _labelCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'Nom affiché du rôle', isDense: true),
+                ),
+              ),
+
+            // Permissions list
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                children: [
+                  for (final group in _permMatrix) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
+                      child: Text(group.group,
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: color,
+                              letterSpacing: 0.3)),
+                    ),
+                    for (final p in group.perms)
+                      CheckboxListTile(
+                        value: _selected.contains(p.perm),
+                        onChanged: (v) => setState(() {
+                          if (v == true) {
+                            _selected.add(p.perm);
+                          } else {
+                            _selected.remove(p.perm);
+                          }
+                        }),
+                        title: Text(p.label,
+                            style: const TextStyle(fontSize: 13)),
+                        subtitle: Text(p.perm,
+                            style: const TextStyle(
+                                fontSize: 10,
+                                color: AppColors.textSecondary)),
+                        dense: true,
+                        activeColor: color,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                  ],
+                ],
+              ),
+            ),
+
+            // Footer
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12),
+              child: Row(children: [
+                Text('${_selected.length} permissions sélectionnées',
+                    style: TextStyle(
+                        fontSize: 12, color: color,
+                        fontWeight: FontWeight.w600)),
+                const Spacer(),
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Annuler')),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _saving ? null : _save,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2))
+                      : const Text('Enregistrer'),
+                ),
+              ]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Create custom role dialog
+// ═════════════════════════════════════════════════════════════════════════════
+
+const _kColorPalette = [
+  '#7C3AED', '#0284C7', '#059669', '#D97706',
+  '#DC2626', '#DB2777', '#0891B2', '#65A30D',
+];
+
+class _CreateRoleDialog extends StatefulWidget {
+  final VoidCallback onCreated;
+  const _CreateRoleDialog({required this.onCreated});
+
+  @override
+  State<_CreateRoleDialog> createState() => _CreateRoleDialogState();
+}
+
+class _CreateRoleDialogState extends State<_CreateRoleDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameCtrl  = TextEditingController();
+  final _labelCtrl = TextEditingController();
+  String _color = _kColorPalette[0];
+  final Set<String> _selected = {};
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _labelCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() { _saving = true; _error = null; });
+    try {
+      await dio.post('/api/roles', data: {
+        'name':        _nameCtrl.text.trim(),
+        'label':       _labelCtrl.text.trim(),
+        'color':       _color,
+        'permissions': _selected.toList(),
+      });
+      widget.onCreated();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() {
+        _saving = false;
+        _error = extractErrorMessage(e as dynamic);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _hexColor(_color);
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 720),
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.06),
+                border: const Border(
+                    bottom: BorderSide(color: AppColors.divider)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.add_circle_outline_rounded,
+                    color: AppColors.primary, size: 20),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text('Nouveau rôle personnalisé',
+                      style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w700)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ]),
+            ),
+
+            Expanded(
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _labelCtrl,
+                          decoration: const InputDecoration(
+                              labelText: 'Nom affiché *', isDense: true),
+                          validator: (v) =>
+                              (v?.isEmpty ?? true) ? 'Requis' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _nameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Identifiant *',
+                            isDense: true,
+                            hintText: 'ex: supervisor',
+                          ),
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) return 'Requis';
+                            if (!RegExp(r'^[a-z_]+$').hasMatch(v.trim())) {
+                              return 'Minuscules et _ uniquement';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 14),
+
+                    // Color picker
+                    const Text('Couleur',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      children: _kColorPalette.map((hex) {
+                        final c = _hexColor(hex);
+                        return GestureDetector(
+                          onTap: () => setState(() => _color = hex),
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: c,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: _color == hex
+                                    ? Colors.white
+                                    : Colors.transparent,
+                                width: 3,
+                              ),
+                              boxShadow: _color == hex
+                                  ? [BoxShadow(color: c, blurRadius: 6)]
+                                  : null,
+                            ),
+                            child: _color == hex
+                                ? const Icon(Icons.check_rounded,
+                                    color: Colors.white, size: 14)
+                                : null,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Permissions
+                    Text('Permissions — ${_selected.length} sélectionnées',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: color)),
+                    const SizedBox(height: 4),
+                    for (final group in _permMatrix) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(0, 10, 0, 4),
+                        child: Text(group.group,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textSecondary,
+                                letterSpacing: 0.3)),
+                      ),
+                      for (final p in group.perms)
+                        CheckboxListTile(
+                          value: _selected.contains(p.perm),
+                          onChanged: (v) => setState(() {
+                            if (v == true) {
+                              _selected.add(p.perm);
+                            } else {
+                              _selected.remove(p.perm);
+                            }
+                          }),
+                          title: Text(p.label,
+                              style: const TextStyle(fontSize: 13)),
+                          subtitle: Text(p.perm,
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors.textSecondary)),
+                          dense: true,
+                          activeColor: color,
+                          controlAffinity: ListTileControlAffinity.leading,
+                        ),
+                    ],
+
+                    if (_error != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(_error!,
+                            style: const TextStyle(
+                                color: AppColors.error, fontSize: 13)),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12),
+              child: Row(children: [
+                const Spacer(),
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Annuler')),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _saving ? null : _save,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2))
+                      : const Text('Créer le rôle'),
+                ),
+              ]),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -693,16 +1273,16 @@ class _PermCell extends StatelessWidget {
 // User form dialog (create / edit)
 // ═════════════════════════════════════════════════════════════════════════════
 
-class _UserFormDialog extends StatefulWidget {
+class _UserFormDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic>? existing;
   final VoidCallback onSaved;
   const _UserFormDialog({this.existing, required this.onSaved});
 
   @override
-  State<_UserFormDialog> createState() => _UserFormDialogState();
+  ConsumerState<_UserFormDialog> createState() => _UserFormDialogState();
 }
 
-class _UserFormDialogState extends State<_UserFormDialog> {
+class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _fnameCtrl;
   late final TextEditingController _lnameCtrl;
@@ -716,13 +1296,6 @@ class _UserFormDialogState extends State<_UserFormDialog> {
   bool _saving = false;
 
   bool get _isEdit => widget.existing != null;
-
-  static const _roles = [
-    (id: 'admin',         label: 'Administrateur',    desc: 'Accès complet'),
-    (id: 'manager',       label: 'Gérant',             desc: 'Tout sauf gestion utilisateurs'),
-    (id: 'cashier',       label: 'Caissier',           desc: 'Ventes, clients, factures'),
-    (id: 'stock_manager', label: 'Resp. Stock',        desc: 'Produits, achats, inventaire'),
-  ];
 
   @override
   void initState() {
@@ -738,15 +1311,10 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     _isActive     = e?['is_active'] as bool? ?? true;
 
     final roles = (e?['roles'] as List?)?.map((r) => r.toString()).toList() ?? [];
-    if (roles.contains('admin') ||
-        ((e?['permissions'] as List?)?.contains('all') ?? false)) {
+    if (roles.isNotEmpty) {
+      _selectedRole = roles.first;
+    } else if ((e?['permissions'] as List?)?.contains('all') ?? false) {
       _selectedRole = 'admin';
-    } else if (roles.contains('manager')) {
-      _selectedRole = 'manager';
-    } else if (roles.contains('stock_manager')) {
-      _selectedRole = 'stock_manager';
-    } else {
-      _selectedRole = 'cashier';
     }
   }
 
@@ -784,7 +1352,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e'),
+          SnackBar(content: Text('Erreur: ${extractErrorMessage(e as dynamic)}'),
               backgroundColor: AppColors.error),
         );
       }
@@ -795,8 +1363,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedMeta = _rolesMeta.firstWhere(
-        (r) => r.id == _selectedRole, orElse: () => _rolesMeta.last);
+    final rolesAsync = ref.watch(_rolesProvider);
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -823,21 +1390,17 @@ class _UserFormDialogState extends State<_UserFormDialog> {
 
                 // Name row
                 Row(children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _fnameCtrl,
-                      decoration: const InputDecoration(labelText: 'Prénom'),
-                      validator: (v) => (v?.isEmpty ?? true) ? 'Requis' : null,
-                    ),
-                  ),
+                  Expanded(child: TextFormField(
+                    controller: _fnameCtrl,
+                    decoration: const InputDecoration(labelText: 'Prénom'),
+                    validator: (v) => (v?.isEmpty ?? true) ? 'Requis' : null,
+                  )),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _lnameCtrl,
-                      decoration: const InputDecoration(labelText: 'Nom'),
-                      validator: (v) => (v?.isEmpty ?? true) ? 'Requis' : null,
-                    ),
-                  ),
+                  Expanded(child: TextFormField(
+                    controller: _lnameCtrl,
+                    decoration: const InputDecoration(labelText: 'Nom'),
+                    validator: (v) => (v?.isEmpty ?? true) ? 'Requis' : null,
+                  )),
                 ]),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -858,143 +1421,42 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                 ),
                 const SizedBox(height: 12),
                 Row(children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _phoneCtrl,
-                      decoration: const InputDecoration(
-                          labelText: 'Téléphone',
-                          prefixIcon: Icon(Icons.phone_outlined)),
-                    ),
-                  ),
+                  Expanded(child: TextFormField(
+                    controller: _phoneCtrl,
+                    decoration: const InputDecoration(
+                        labelText: 'Téléphone',
+                        prefixIcon: Icon(Icons.phone_outlined)),
+                  )),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _pwdCtrl,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        labelText: _isEdit ? 'Mot de passe (optionnel)' : 'Mot de passe',
-                        prefixIcon: const Icon(Icons.lock_outline_rounded),
-                        hintText: _isEdit ? 'Laisser vide = inchangé' : null,
-                      ),
-                      validator: (v) =>
-                          (!_isEdit && (v?.isEmpty ?? true)) ? 'Requis' : null,
+                  Expanded(child: TextFormField(
+                    controller: _pwdCtrl,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: _isEdit ? 'Mot de passe (optionnel)' : 'Mot de passe',
+                      prefixIcon: const Icon(Icons.lock_outline_rounded),
+                      hintText: _isEdit ? 'Laisser vide = inchangé' : null,
                     ),
-                  ),
+                    validator: (v) =>
+                        (!_isEdit && (v?.isEmpty ?? true)) ? 'Requis' : null,
+                  )),
                 ]),
                 const SizedBox(height: 20),
 
-                // Role selection — visual cards
+                // Role selection — dynamic from API
                 const Text('Rôle',
                     style: TextStyle(fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: AppColors.textSecondary)),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8, runSpacing: 8,
-                  children: _roles.map((r) {
-                    final meta = _rolesMeta.firstWhere((m) => m.id == r.id);
-                    final selected = _selectedRole == r.id;
-                    return GestureDetector(
-                      onTap: () => setState(() => _selectedRole = r.id),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? meta.color.withValues(alpha: 0.12)
-                              : AppColors.surface,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: selected
-                                ? meta.color
-                                : AppColors.divider,
-                            width: selected ? 1.5 : 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(meta.icon, size: 15,
-                                color: selected ? meta.color
-                                    : AppColors.textSecondary),
-                            const SizedBox(width: 6),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(r.label,
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: selected ? meta.color
-                                            : AppColors.textPrimary)),
-                                Text(r.desc,
-                                    style: const TextStyle(fontSize: 10,
-                                        color: AppColors.textSecondary)),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-
-                // Permissions preview for selected role
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: selectedMeta.color.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                        color: selectedMeta.color.withValues(alpha: 0.2)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Icon(selectedMeta.icon, size: 14,
-                            color: selectedMeta.color),
-                        const SizedBox(width: 6),
-                        Text('Permissions du rôle ${selectedMeta.label}',
-                            style: TextStyle(fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: selectedMeta.color)),
-                      ]),
-                      const SizedBox(height: 8),
-                      if (_selectedRole == 'admin')
-                        const Text(
-                            'Accès total — toutes les fonctionnalités',
-                            style: TextStyle(fontSize: 11,
-                                color: AppColors.textSecondary))
-                      else
-                        Wrap(
-                          spacing: 4, runSpacing: 4,
-                          children: _getKeyPerms(_selectedRole)
-                              .map((p) => Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 7, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: selectedMeta.color
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(p,
-                                        style: TextStyle(
-                                            fontSize: 10,
-                                            color: selectedMeta.color)),
-                                  ))
-                              .toList(),
-                        ),
-                    ],
-                  ),
+                rolesAsync.when(
+                  loading: () => const LinearProgressIndicator(),
+                  error: (_, __) => const Text('Impossible de charger les rôles'),
+                  data: (roles) => _buildRolePicker(roles),
                 ),
 
                 const SizedBox(height: 12),
                 Row(children: [
-                  const Text('Compte actif',
-                      style: TextStyle(fontSize: 13)),
+                  const Text('Compte actif', style: TextStyle(fontSize: 13)),
                   const SizedBox(width: 8),
                   Switch.adaptive(
                     value: _isActive,
@@ -1020,17 +1482,114 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     );
   }
 
-  List<String> _getKeyPerms(String roleId) {
-    final perms = rolePermissions[roleId] ?? {};
+  Widget _buildRolePicker(List<Map<String, dynamic>> roles) {
+    // Ensure selected role exists in loaded list
+    final names = roles.map((r) => r['name'] as String).toSet();
+    if (!names.contains(_selectedRole)) {
+      _selectedRole = names.firstWhere(
+          (n) => n == 'cashier', orElse: () => names.first);
+    }
+
+    final selected = roles.firstWhere(
+        (r) => r['name'] == _selectedRole,
+        orElse: () => roles.first);
+    final selColor = _hexColor(selected['color'] as String?);
+    final selPerms = (selected['permissions'] as List?) ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8, runSpacing: 8,
+          children: roles.map((r) {
+            final rColor = _hexColor(r['color'] as String?);
+            final rName  = r['name'] as String;
+            final isSelected = _selectedRole == rName;
+            return GestureDetector(
+              onTap: () => setState(() => _selectedRole = rName),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? rColor.withValues(alpha: 0.12)
+                      : AppColors.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isSelected ? rColor : AppColors.divider,
+                    width: isSelected ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(_roleIcon(rName), size: 15,
+                      color: isSelected ? rColor : AppColors.textSecondary),
+                  const SizedBox(width: 6),
+                  Text(r['label'] as String,
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isSelected ? rColor : AppColors.textPrimary)),
+                ]),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 12),
+        // Permission preview
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: selColor.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: selColor.withValues(alpha: 0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(_roleIcon(_selectedRole), size: 14, color: selColor),
+                const SizedBox(width: 6),
+                Text('Permissions du rôle ${selected['label']}',
+                    style: TextStyle(fontSize: 12,
+                        fontWeight: FontWeight.w600, color: selColor)),
+              ]),
+              const SizedBox(height: 8),
+              if (selPerms.contains('all'))
+                const Text('Accès total — toutes les fonctionnalités',
+                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary))
+              else
+                Wrap(
+                  spacing: 4, runSpacing: 4,
+                  children: _resolvePermLabels(selPerms.cast<String>())
+                      .take(12)
+                      .map((p) => Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: selColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(p,
+                                style: TextStyle(
+                                    fontSize: 10, color: selColor)),
+                          ))
+                      .toList(),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<String> _resolvePermLabels(List<String> perms) {
     final labels = <String>[];
     for (final group in _permMatrix) {
       for (final p in group.perms) {
-        if (perms.contains(p.perm)) {
-          labels.add('${group.group}: ${p.label}');
-        }
+        if (perms.contains(p.perm)) labels.add('${group.group}: ${p.label}');
       }
     }
-    return labels.take(12).toList();
+    return labels;
   }
 }
 

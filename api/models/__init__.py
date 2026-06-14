@@ -1,3 +1,8 @@
+from api.models.Tenant import Tenant
+from api.models.BillingPayment import BillingPayment
+from api.models.PosRegister import PosRegister
+from api.models.CashierSession import CashierSession
+from api.models.OfflineSyncQueue import OfflineSyncQueue
 from api.models.User import User
 from api.models.Category import Category
 from api.models.Supplier import Supplier
@@ -22,3 +27,6 @@ from api.models.EmployeeLoan import EmployeeLoan
 from api.models.PayrollPeriod import PayrollPeriod
 from api.models.PayrollEntry import PayrollEntry
 from api.models.PayrollLoanDeduction import PayrollLoanDeduction
+from api.models.Role import Role
+from api.models.PlatformConfig import PlatformConfig
+from api.models.SyncState import SyncState

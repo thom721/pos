@@ -15,10 +15,10 @@ router = APIRouter(tags=['Users'])
 def create_user(
     data: UserCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.USERS_CREATE)),
+    current_user: User = Depends(require_permission(P.USERS_CREATE)),
 ):
     try:
-        return UserService(db).create(data)
+        return UserService(db, tenant_id=current_user.tenant_id).create(data)
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -28,18 +28,18 @@ def create_user(
 @router.get("/users/", response_model=List[UserRead])
 def list_users(
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.USERS_READ)),
+    current_user: User = Depends(require_permission(P.USERS_READ)),
 ):
-    return UserService(db).list()
+    return UserService(db, tenant_id=current_user.tenant_id).list()
 
 
 @router.get("/users/{user_id}", response_model=UserRead)
 def get_user(
     user_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.USERS_READ)),
+    current_user: User = Depends(require_permission(P.USERS_READ)),
 ):
-    user = UserService(db).get(user_id)
+    user = UserService(db, tenant_id=current_user.tenant_id).get(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
@@ -50,9 +50,9 @@ def update_user(
     user_id: str,
     data: UserUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.USERS_UPDATE)),
+    current_user: User = Depends(require_permission(P.USERS_UPDATE)),
 ):
-    user = UserService(db).update(user_id, data)
+    user = UserService(db, tenant_id=current_user.tenant_id).update(user_id, data)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
@@ -68,7 +68,7 @@ def change_my_password(
         raise HTTPException(status_code=400, detail="Les mots de passe ne correspondent pas")
     if len(data.new_password) < 6:
         raise HTTPException(status_code=400, detail="Le mot de passe doit contenir au moins 6 caractères")
-    UserService(db).change_password(current_user.id, data.new_password)
+    UserService(db, tenant_id=current_user.tenant_id).change_password(current_user.id, data.new_password)
     return {"ok": True}
 
 
@@ -76,9 +76,9 @@ def change_my_password(
 def delete_user(
     user_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.USERS_DELETE)),
+    current_user: User = Depends(require_permission(P.USERS_DELETE)),
 ):
-    success = UserService(db).delete(user_id)
+    success = UserService(db, tenant_id=current_user.tenant_id).delete(user_id)
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
     return {"ok": True}

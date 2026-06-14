@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/debts", tags=["Debts"])
 @router.get("/", response_model=PaginatedResponse[DebtRead])
 def read_debts(
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.DEBTS_READ)),
+    current_user: User = Depends(require_permission(P.DEBTS_READ)),
     page: int = Query(1, ge=1),
     limit: int = Query(10, le=100),
     partner_type: Optional[str] = Query(None),
@@ -25,6 +25,9 @@ def read_debts(
     partner_id: Optional[str] = None,
 ):
     query = db.query(Debt)
+
+    if current_user.tenant_id:
+        query = query.filter(Debt.tenant_id == current_user.tenant_id)
 
     if partner_type:
         query = query.filter(Debt.partner_type == partner_type.upper())

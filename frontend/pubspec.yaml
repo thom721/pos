@@ -49,6 +49,9 @@ dependencies:
   # Cached network image
   cached_network_image: ^3.3.1
 
+  # URL launcher (open Stripe checkout in browser)
+  url_launcher: ^6.3.1
+
   # PDF generation & printing
   pdf: ^3.11.0
   printing: ^5.13.2

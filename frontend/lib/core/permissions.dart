@@ -31,10 +31,11 @@ abstract class Perm {
   static const customersDelete = 'customers.delete';
 
   // Sales
-  static const salesCreate = 'sales.create';
-  static const salesRead   = 'sales.read';
-  static const salesUpdate = 'sales.update';
-  static const salesCancel = 'sales.cancel';
+  static const salesCreate   = 'sales.create';
+  static const salesRead     = 'sales.read';
+  static const salesUpdate   = 'sales.update';
+  static const salesCancel   = 'sales.cancel';
+  static const salesDiscount = 'sales.discount'; // appliquer une remise caisse
 
   // Purchases
   static const purchasesCreate  = 'purchases.create';
@@ -108,7 +109,7 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.categoriesCreate, Perm.categoriesRead, Perm.categoriesUpdate, Perm.categoriesDelete,
     Perm.suppliersCreate, Perm.suppliersRead, Perm.suppliersUpdate, Perm.suppliersDelete,
     Perm.customersCreate, Perm.customersRead, Perm.customersUpdate, Perm.customersDelete,
-    Perm.salesCreate, Perm.salesRead, Perm.salesUpdate, Perm.salesCancel,
+    Perm.salesCreate, Perm.salesRead, Perm.salesUpdate, Perm.salesCancel, Perm.salesDiscount,
     Perm.purchasesCreate, Perm.purchasesRead, Perm.purchasesUpdate, Perm.purchasesReceive,
     Perm.paymentsCreate, Perm.paymentsRead,
     Perm.debtsRead,

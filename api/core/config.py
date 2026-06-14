@@ -43,6 +43,12 @@ def load_ini_config() -> dict:
         "SERVER_HOST": srv.get("host",    os.getenv("SERVER_HOST", "0.0.0.0")),
         "SERVER_PORT": int(srv.get("port", os.getenv("SERVER_PORT", "8002"))),
         "ACCESS_TOKEN_EXPIRE_MINUTES": int(srv.get("token_expire_minutes", "480")),
+        "ADMIN_SECRET":        srv.get("admin_secret",        os.getenv("ADMIN_SECRET",        "")),
+        "ADMIN_EMAIL":         srv.get("admin_email",         os.getenv("ADMIN_EMAIL",         "")),
+        "ADMIN_PASSWORD_HASH": srv.get("admin_password_hash", os.getenv("ADMIN_PASSWORD_HASH", "")),
+        "CLOUD_SYNC_URL":      srv.get("cloud_sync_url",      os.getenv("CLOUD_SYNC_URL",      "")),
+        "CLOUD_SYNC_TOKEN":    srv.get("cloud_sync_token",    os.getenv("CLOUD_SYNC_TOKEN",    "")),
+        "CLOUD_SYNC_ENABLED":  srv.get("cloud_sync_enabled",  os.getenv("CLOUD_SYNC_ENABLED",  "false")).lower() == "true",
     }
 
 
@@ -62,6 +68,21 @@ class Settings(BaseSettings):
 
     SERVER_HOST: str = "0.0.0.0"
     SERVER_PORT: int = 8002
+
+    # SaaS / multi-tenant
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_PRICE_ID: str = ""
+    STRIPE_SUCCESS_URL: str = ""
+    STRIPE_CANCEL_URL: str = ""
+    ADMIN_SECRET: str = ""
+    ADMIN_EMAIL: str = ""
+    ADMIN_PASSWORD_HASH: str = ""
+
+    # Local ↔ Cloud synchronisation
+    CLOUD_SYNC_URL:     str  = ""
+    CLOUD_SYNC_TOKEN:   str  = ""
+    CLOUD_SYNC_ENABLED: bool = False
 
     class Config:
         env_file = ".env"
@@ -104,7 +125,9 @@ def write_ini_config(cfg_data: dict, path: Path = None) -> Path:
         k = key.lower()
         if k in ("type", "host", "port", "name", "user", "password", "path"):
             cfg["database"][k] = str(val)
-        elif k in ("secret_key", "token_expire_minutes"):
+        elif k in ("secret_key", "token_expire_minutes", "admin_secret",
+                   "admin_email", "admin_password_hash",
+                   "cloud_sync_url", "cloud_sync_token", "cloud_sync_enabled"):
             cfg["server"][k] = str(val)
         elif k == "server_host":
             cfg["server"]["host"] = str(val)

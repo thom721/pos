@@ -15,26 +15,26 @@ router = APIRouter(prefix="", tags=['Customers'])
 def create_customer(
     data: CustomerCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.CUSTOMERS_CREATE)),
+    current_user: User = Depends(require_permission(P.CUSTOMERS_CREATE)),
 ):
-    return CustomerService(db).create(data)
+    return CustomerService(db, tenant_id=current_user.tenant_id).create(data)
 
 
 @router.get("/customers/", response_model=List[CustomerRead])
 def list_customers(
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.CUSTOMERS_READ)),
+    current_user: User = Depends(require_permission(P.CUSTOMERS_READ)),
 ):
-    return CustomerService(db).list()
+    return CustomerService(db, tenant_id=current_user.tenant_id).list()
 
 
 @router.get("/customers/{customer_id}", response_model=CustomerRead)
 def get_customer(
     customer_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.CUSTOMERS_READ)),
+    current_user: User = Depends(require_permission(P.CUSTOMERS_READ)),
 ):
-    customer = CustomerService(db).get(customer_id)
+    customer = CustomerService(db, tenant_id=current_user.tenant_id).get(customer_id)
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     return customer
@@ -45,9 +45,9 @@ def update_customer(
     customer_id: str,
     data: CustomerUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.CUSTOMERS_UPDATE)),
+    current_user: User = Depends(require_permission(P.CUSTOMERS_UPDATE)),
 ):
-    customer = CustomerService(db).update(customer_id, data)
+    customer = CustomerService(db, tenant_id=current_user.tenant_id).update(customer_id, data)
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     return customer
@@ -57,9 +57,9 @@ def update_customer(
 def delete_customer(
     customer_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.CUSTOMERS_DELETE)),
+    current_user: User = Depends(require_permission(P.CUSTOMERS_DELETE)),
 ):
-    success = CustomerService(db).delete(customer_id)
+    success = CustomerService(db, tenant_id=current_user.tenant_id).delete(customer_id)
     if not success:
         raise HTTPException(status_code=404, detail="Customer not found")
     return {"ok": True}

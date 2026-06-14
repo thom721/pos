@@ -4,6 +4,7 @@ from .base import UUIDBase
 
 class InventoryRecord(UUIDBase):
     __tablename__ = "inventory_records"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     reference = Column(String(100), nullable=False)
     inventory_type = Column(String(20), nullable=False)  # 'full' | 'partial'

@@ -18,9 +18,9 @@ def get_returns(
     page: int = Query(1, ge=1),
     limit: int = Query(20, le=100),
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.RETURNS_READ)),
+    current_user: User = Depends(require_permission(P.RETURNS_READ)),
 ):
-    return list_returns(db, return_type=return_type, page=page, limit=limit)
+    return list_returns(db, return_type=return_type, page=page, limit=limit, tenant_id=current_user.tenant_id)
 
 
 @router.post("/sale")
@@ -36,6 +36,7 @@ def sale_return(
         refund_amount=payload.refund_amount,
         user_id=current_user.id,
         reason=payload.reason,
+        tenant_id=current_user.tenant_id,
     )
     return {"message": "Retour client effectué", "refund_total": refund_total}
 
@@ -52,5 +53,6 @@ def purchase_return(
         items=[item.dict() for item in payload.items],
         user_id=current_user.id,
         reason=payload.reason,
+        tenant_id=current_user.tenant_id,
     )
     return {"message": "Retour fournisseur effectué", "return_total": return_total}

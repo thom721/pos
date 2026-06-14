@@ -46,6 +46,7 @@ def list_sales(
     status: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    tenant_id: str | None = None,
 ):
     query = (
         db.query(Sale)
@@ -56,6 +57,9 @@ def list_sales(
             joinedload(Sale.payments),
         )
     )
+
+    if tenant_id:
+        query = query.filter(Sale.tenant_id == tenant_id)
 
     if search:
         query = query.outerjoin(Customer, Sale.customer_id == Customer.id).filter(
@@ -97,8 +101,8 @@ def list_sales(
     }
 
 
-def get_sale(db: Session, sale_id: str):
-    sale = (
+def get_sale(db: Session, sale_id: str, tenant_id: str | None = None):
+    query = (
         db.query(Sale)
         .options(
             joinedload(Sale.customer),
@@ -107,22 +111,26 @@ def get_sale(db: Session, sale_id: str):
             joinedload(Sale.payments),
         )
         .filter(Sale.id == sale_id)
-        .first()
     )
+    if tenant_id:
+        query = query.filter(Sale.tenant_id == tenant_id)
+    sale = query.first()
     if sale:
         _inject_returned_qty(db, [sale])
     return sale
 
-def update_sale(db: Session, sale_id: str, data, user_id: str):
+def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | None = None):
     from api.models.Debt import Debt
     from api.models.StockMovement import StockType
 
-    sale = (
+    query = (
         db.query(Sale)
         .options(joinedload(Sale.items))
         .filter(Sale.id == sale_id)
-        .first()
     )
+    if tenant_id:
+        query = query.filter(Sale.tenant_id == tenant_id)
+    sale = query.first()
     if not sale:
         raise HTTPException(404, "Vente introuvable")
     if sale.status == "CANCELLED":
@@ -142,7 +150,7 @@ def update_sale(db: Session, sale_id: str, data, user_id: str):
 
     # 1. Revert stock for old items
     for old_item in sale.items:
-        db.add(StockMovement(
+        mv = StockMovement(
             product_id=old_item.product_id,
             user_id=user_id,
             type=StockType.in_,
@@ -150,7 +158,10 @@ def update_sale(db: Session, sale_id: str, data, user_id: str):
             source_type="sale_edit_revert",
             source_id=sale.id,
             note="Correction vente — réversion anciens articles",
-        ))
+        )
+        if tenant_id:
+            mv.tenant_id = tenant_id
+        db.add(mv)
 
     # 2. Delete old items
     for old_item in sale.items:
@@ -175,7 +186,7 @@ def update_sale(db: Session, sale_id: str, data, user_id: str):
             original_price=product.sale_price,
             subtotal=subtotal,
         ))
-        db.add(StockMovement(
+        mv = StockMovement(
             product_id=product.id,
             user_id=user_id,
             type=StockType.out,
@@ -183,7 +194,10 @@ def update_sale(db: Session, sale_id: str, data, user_id: str):
             source_type="SALE",
             source_id=sale.id,
             note="Vente POS (modification)",
-        ))
+        )
+        if tenant_id:
+            mv.tenant_id = tenant_id
+        db.add(mv)
 
     # 4. Recalculate totals
     discount = data.discount or 0.0
@@ -199,26 +213,32 @@ def update_sale(db: Session, sale_id: str, data, user_id: str):
 
     if diff < 0:
         refund = abs(diff)
-        db.add(Payment(
+        pmt = Payment(
             reference_type="SALE",
             reference_id=sale.id,
             amount=-refund,
             method="CASH",
             note="Remboursement modification vente",
             user_id=user_id,
-        ))
+        )
+        if tenant_id:
+            pmt.tenant_id = tenant_id
+        db.add(pmt)
         new_paid = original_paid - refund
     else:
         new_paid = original_paid + additional
         if additional > 0:
-            db.add(Payment(
+            pmt = Payment(
                 reference_type="SALE",
                 reference_id=sale.id,
                 amount=additional,
                 method=data.payment_method or "CASH",
                 note="Paiement supplémentaire — modification vente",
                 user_id=user_id,
-            ))
+            )
+            if tenant_id:
+                pmt.tenant_id = tenant_id
+            db.add(pmt)
 
     sale.paid_amount = max(0, new_paid)
 
@@ -246,7 +266,7 @@ def update_sale(db: Session, sale_id: str, data, user_id: str):
             existing_debt.status = "PARTIAL" if float(sale.paid_amount) > 0 else "UNPAID"
             existing_debt.partner_id = str(sale.customer_id)
         else:
-            db.add(Debt(
+            debt = Debt(
                 reference_type="SALE",
                 reference_id=sale.id,
                 partner_type="CUSTOMER",
@@ -255,7 +275,10 @@ def update_sale(db: Session, sale_id: str, data, user_id: str):
                 paid_amount=float(sale.paid_amount),
                 balance=balance,
                 status="PARTIAL" if float(sale.paid_amount) > 0 else "UNPAID",
-            ))
+            )
+            if tenant_id:
+                debt.tenant_id = tenant_id
+            db.add(debt)
     elif existing_debt:
         existing_debt.total_amount = final
         existing_debt.paid_amount = float(sale.paid_amount)
@@ -271,6 +294,7 @@ def create_sale(
     db: Session,
     data,
     user_id: str,
+    tenant_id: str | None = None,
 ):
     from api.models.Debt import Debt
     from api.models.StockMovement import StockType
@@ -321,6 +345,8 @@ def create_sale(
         paid_amount=paid,
         status="UNPAID"
     )
+    if tenant_id:
+        sale.tenant_id = tenant_id
     db.add(sale)
     db.flush()
 
@@ -338,7 +364,7 @@ def create_sale(
             subtotal=applied_price * item.quantity
         ))
 
-        db.add(StockMovement(
+        mv = StockMovement(
             product_id=product.id,
             user_id=user_id,
             type=StockType.out,
@@ -346,21 +372,27 @@ def create_sale(
             source_type="SALE",
             source_id=sale.id,
             note="Vente POS"
-        ))
+        )
+        if tenant_id:
+            mv.tenant_id = tenant_id
+        db.add(mv)
 
     # 4️⃣ Paiement + statut + dette
     if paid > 0:
         note = None
         if data.payment_method == "CARD" and data.approval_code:
             note = f"Code approbation terminal : {data.approval_code}"
-        db.add(Payment(
+        pmt = Payment(
             reference_type="SALE",
             reference_id=sale.id,
             amount=paid,
             method=data.payment_method,
             note=note,
             user_id=user_id,
-        ))
+        )
+        if tenant_id:
+            pmt.tenant_id = tenant_id
+        db.add(pmt)
 
     balance = total_after_discount - paid
 
@@ -372,7 +404,7 @@ def create_sale(
         sale.status = "PARTIAL"
 
     if balance > 0 and data.customer_id:
-        db.add(Debt(
+        debt = Debt(
             reference_type="SALE",
             reference_id=sale.id,
             partner_type="CUSTOMER",
@@ -381,28 +413,33 @@ def create_sale(
             paid_amount=paid,
             balance=balance,
             status="PARTIAL" if paid > 0 else "UNPAID"
-        ))
+        )
+        if tenant_id:
+            debt.tenant_id = tenant_id
+        db.add(debt)
 
     db.commit()
     db.refresh(sale)
     return sale
 
 
-def cancel_sale(db: Session, sale_id: str, user_id: str):
+def cancel_sale(db: Session, sale_id: str, user_id: str, tenant_id: str | None = None):
     from api.models.StockMovement import StockType
 
-    sale = (
+    query = (
         db.query(Sale)
         .options(joinedload(Sale.items))
         .filter(Sale.id == sale_id)
-        .first()
     )
+    if tenant_id:
+        query = query.filter(Sale.tenant_id == tenant_id)
+    sale = query.first()
 
     if not sale:
         raise HTTPException(404, "Vente introuvable")
 
     for item in sale.items:
-        db.add(StockMovement(
+        mv = StockMovement(
             product_id=item.product_id,
             user_id=user_id,
             type=StockType.in_,
@@ -410,8 +447,10 @@ def cancel_sale(db: Session, sale_id: str, user_id: str):
             source_type="sale_cancel",
             source_id=sale.id,
             note="Annulation vente"
-        ))
+        )
+        if tenant_id:
+            mv.tenant_id = tenant_id
+        db.add(mv)
 
     sale.status = "CANCELLED"
     db.commit()
-

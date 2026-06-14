@@ -7,14 +7,18 @@ def recalc_debt(
     *,
     reference_type: str,
     reference_id: str,
+    tenant_id: str | None = None,
 ):
     from api.models.Debt import Debt
-    from api.models.Payment import Payment 
+    from api.models.Payment import Payment
 
-    debt = db.query(Debt).filter(
+    query = db.query(Debt).filter(
         Debt.reference_type == reference_type,
         Debt.reference_id == reference_id
-    ).first()
+    )
+    if tenant_id:
+        query = query.filter(Debt.tenant_id == tenant_id)
+    debt = query.first()
 
     if not debt:
         return None

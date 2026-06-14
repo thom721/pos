@@ -1,0 +1,308 @@
+"""
+Sync router — two roles:
+
+  CLOUD side  (multi-tenant server):
+    POST /api/sync/token          — exchange tenant credentials for a long-lived sync token
+    POST /api/sync/push           — receive bulk records from a local server
+    GET  /api/sync/pull           — return records updated since a given timestamp
+
+  LOCAL side  (local server, DB_TYPE=sqlite or local mysql):
+    GET  /api/sync/status         — sync state per entity
+    POST /api/sync/run            — trigger an immediate sync cycle
+    POST /api/sync/configure      — save cloud URL + token to pos_server.ini
+"""
+import logging
+from datetime import datetime, timezone, timedelta
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import jwt as _jwt
+from pydantic import BaseModel
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.orm import Session
+
+from api.core.config import settings, write_ini_config
+from api.database import get_db
+from api.models.Category import Category
+from api.models.Customer import Customer
+from api.models.Payment import Payment
+from api.models.Product import Product
+from api.models.Purchase import Purchase
+from api.models.PurchaseItem import PurchaseItem
+from api.models.ReturnRecord import ReturnRecord
+from api.models.Sale import Sale
+from api.models.SaleItem import SaleItem
+from api.models.Supplier import Supplier
+from api.models.Tenant import Tenant
+
+router = APIRouter(prefix="/api/sync", tags=["Sync"])
+_log = logging.getLogger("pos.sync")
+
+# ── Model registry ────────────────────────────────────────────────────────────
+
+_MODEL_MAP: dict[str, Any] = {
+    "category":      Category,
+    "supplier":      Supplier,
+    "product":       Product,
+    "customer":      Customer,
+    "sale":          Sale,
+    "sale_item":     SaleItem,
+    "payment":       Payment,
+    "purchase":      Purchase,
+    "purchase_item": PurchaseItem,
+    "return_record": ReturnRecord,
+}
+
+# ── Pydantic schemas ──────────────────────────────────────────────────────────
+
+class SyncTokenRequest(BaseModel):
+    owner_email: str
+    password:    str
+    device_id:   str = "default"
+
+
+class PushRequest(BaseModel):
+    entity_type: str
+    records:     list[dict]
+
+
+class SyncConfigRequest(BaseModel):
+    cloud_url:   str
+    owner_email: str
+    password:    str
+    device_id:   str = "default"
+
+
+# ── Auth helpers ──────────────────────────────────────────────────────────────
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+def _make_sync_token(tenant_id: str, device_id: str) -> str:
+    payload = {
+        "sub":       f"sync:{tenant_id}",
+        "role":      "sync",
+        "tenant_id": tenant_id,
+        "device_id": device_id,
+        "exp":       datetime.utcnow() + timedelta(days=365),
+    }
+    return _jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
+def _decode_sync_token(token: str) -> dict:
+    try:
+        payload = _jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("role") != "sync":
+            raise ValueError("not a sync token")
+        return payload
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail=f"Sync token invalide: {exc}")
+
+
+def require_sync_token(
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> dict:
+    if not creds:
+        raise HTTPException(status_code=401, detail="Token de synchronisation requis")
+    return _decode_sync_token(creds.credentials)
+
+
+# ── Utility ───────────────────────────────────────────────────────────────────
+
+def _parse_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _row_to_dict(row: Any) -> dict:
+    d = {}
+    for c in sa_inspect(type(row)).columns:
+        v = getattr(row, c.key)
+        if isinstance(v, datetime):
+            v = v.isoformat()
+        elif hasattr(v, "__float__") and not isinstance(v, (int, float, bool)):
+            v = float(v)
+        d[c.key] = v
+    return d
+
+
+# ── CLOUD: issue sync token ───────────────────────────────────────────────────
+
+@router.post("/token")
+def issue_sync_token(payload: SyncTokenRequest, db: Session = Depends(get_db)):
+    """Exchange tenant owner credentials for a long-lived sync token."""
+    from pwdlib import PasswordHash as _PH
+    from api.models.User import User
+
+    tenant = db.query(Tenant).filter(
+        Tenant.owner_email == payload.owner_email,
+        Tenant.is_local == False,  # noqa: E712
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Boutique cloud introuvable pour cet email")
+
+    user = db.query(User).filter(
+        User.email == payload.owner_email,
+        User.tenant_id == tenant.id,
+    ).first()
+    if not user or not _PH.recommended().verify(payload.password, user.password):
+        raise HTTPException(status_code=403, detail="Email ou mot de passe incorrect")
+
+    return {
+        "sync_token":      _make_sync_token(tenant.id, payload.device_id),
+        "tenant_id":       tenant.id,
+        "tenant_slug":     tenant.slug,
+        "business_name":   tenant.business_name,
+        "expires_in_days": 365,
+    }
+
+
+# ── CLOUD: receive push ───────────────────────────────────────────────────────
+
+@router.post("/push")
+def sync_push(
+    body:   PushRequest,
+    claims: dict = Depends(require_sync_token),
+    db:     Session = Depends(get_db),
+):
+    """Local server pushes records here. Upserts each under the authenticated tenant."""
+    tenant_id   = claims["tenant_id"]
+    model       = _MODEL_MAP.get(body.entity_type)
+    if not model:
+        raise HTTPException(status_code=400, detail=f"Type d'entité inconnu: {body.entity_type}")
+
+    col_names = {c.key for c in sa_inspect(model).columns}
+    inserted = updated = skipped = 0
+
+    for rec in body.records:
+        if "tenant_id" in col_names:
+            rec["tenant_id"] = tenant_id
+        clean = {k: v for k, v in rec.items() if k in col_names}
+        rid = clean.get("id")
+        if not rid:
+            skipped += 1
+            continue
+
+        existing = db.get(model, rid)
+        if existing is None:
+            try:
+                db.add(model(**clean))
+                db.flush()
+                inserted += 1
+            except Exception as exc:
+                _log.warning("push insert %s %s: %s", body.entity_type, rid, exc)
+                db.rollback()
+                skipped += 1
+        else:
+            remote_ts = _parse_dt(clean.get("updated_at"))
+            local_ts  = existing.updated_at
+            if local_ts and local_ts.tzinfo is None:
+                local_ts = local_ts.replace(tzinfo=timezone.utc)
+            if remote_ts and (not local_ts or remote_ts > local_ts):
+                for k, v in clean.items():
+                    if k != "id":
+                        setattr(existing, k, v)
+                updated += 1
+            else:
+                skipped += 1
+
+    db.commit()
+    return {
+        "ok": True, "entity_type": body.entity_type,
+        "inserted": inserted, "updated": updated, "skipped": skipped,
+    }
+
+
+# ── CLOUD: serve pull ─────────────────────────────────────────────────────────
+
+@router.get("/pull")
+def sync_pull(
+    entity_type: str = Query(...),
+    since:       str = Query("1970-01-01T00:00:00+00:00"),
+    claims:      dict = Depends(require_sync_token),
+    db:          Session = Depends(get_db),
+):
+    """Return records updated since `since` for the authenticated tenant."""
+    tenant_id = claims["tenant_id"]
+    model     = _MODEL_MAP.get(entity_type)
+    if not model:
+        raise HTTPException(status_code=400, detail=f"Type d'entité inconnu: {entity_type}")
+
+    col_names = {c.key for c in sa_inspect(model).columns}
+    since_dt  = _parse_dt(since)
+
+    query = db.query(model)
+    if "tenant_id" in col_names:
+        query = query.filter(model.tenant_id == tenant_id)
+    if since_dt:
+        query = query.filter(model.updated_at > since_dt)
+
+    records = [_row_to_dict(r) for r in query.limit(2000).all()]
+    return {"entity_type": entity_type, "count": len(records), "records": records}
+
+
+# ── LOCAL: status ─────────────────────────────────────────────────────────────
+
+@router.get("/status")
+def sync_status(db: Session = Depends(get_db)):
+    from api.services.local_sync_service import get_sync_status
+    return get_sync_status(db)
+
+
+# ── LOCAL: trigger sync ───────────────────────────────────────────────────────
+
+@router.post("/run")
+def sync_run(db: Session = Depends(get_db)):
+    from api.services.local_sync_service import run_sync
+    result = run_sync(db)
+    if not result.get("ok") and not result.get("pushed") and not result.get("pulled"):
+        raise HTTPException(status_code=503, detail=result.get("error", "Sync échoué"))
+    return result
+
+
+# ── LOCAL: configure cloud connection ─────────────────────────────────────────
+
+@router.post("/configure")
+def sync_configure(body: SyncConfigRequest, db: Session = Depends(get_db)):
+    """Exchange credentials with cloud, save sync token to pos_server.ini."""
+    import httpx
+
+    cloud_url = body.cloud_url.rstrip("/")
+    try:
+        resp = httpx.post(
+            f"{cloud_url}/api/sync/token",
+            json={"owner_email": body.owner_email,
+                  "password":    body.password,
+                  "device_id":   body.device_id},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.json().get("detail", str(exc))
+        raise HTTPException(status_code=exc.response.status_code, detail=detail)
+    except Exception as exc:
+        raise HTTPException(status_code=503,
+                            detail=f"Impossible de joindre le serveur cloud: {exc}")
+
+    write_ini_config({
+        "cloud_sync_url":     cloud_url,
+        "cloud_sync_token":   data["sync_token"],
+        "cloud_sync_enabled": "true",
+    })
+    settings.CLOUD_SYNC_URL     = cloud_url
+    settings.CLOUD_SYNC_TOKEN   = data["sync_token"]
+    settings.CLOUD_SYNC_ENABLED = True
+
+    return {
+        "ok":            True,
+        "tenant_slug":   data.get("tenant_slug"),
+        "business_name": data.get("business_name"),
+        "message":       "Synchronisation configurée avec succès",
+    }

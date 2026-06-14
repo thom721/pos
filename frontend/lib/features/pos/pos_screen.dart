@@ -1,17 +1,21 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dio/dio.dart' show FormData, Options, DioException;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
+import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
+import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
 import 'package:pos_connect/providers/customer_provider.dart';
 import 'package:pos_connect/providers/draft_provider.dart';
+import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/pos_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
@@ -47,7 +51,14 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
   Future<void> _fetch() async {
     try {
       final sale = await SaleRepository().getSale(widget.saleId);
-      if (mounted) setState(() { _sale = sale; _loading = false; });
+      if (mounted) {
+        setState(() { _sale = sale; _loading = false; });
+        // Auto-print if configured
+        final settings = ref.read(settingsProvider);
+        if (settings.posAutoPrint) {
+          _print();
+        }
+      }
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
@@ -59,6 +70,23 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
     final settings = ref.read(settingsProvider);
     try {
       final bytes = await buildReceiptPdf(_sale!, settings);
+      // If a specific printer is configured, print directly to it.
+      if (settings.posPrinterName.isNotEmpty) {
+        final printers = await Printing.listPrinters();
+        final printer = printers.cast<Printer?>().firstWhere(
+          (p) => p?.url == settings.posPrinterName,
+          orElse: () => null,
+        );
+        if (printer != null) {
+          await Printing.directPrintPdf(
+            printer: printer,
+            onLayout: (_) => bytes,
+            name: 'Recu_${_sale!.reference}',
+          );
+          return;
+        }
+      }
+      // Fallback: OS print dialog
       await Printing.layoutPdf(
         onLayout: (_) => bytes,
         name: 'Recu_${_sale!.reference}',
@@ -770,6 +798,7 @@ class _CartPanel extends ConsumerStatefulWidget {
 class _CartPanelState extends ConsumerState<_CartPanel> {
   final _discountCtrl = TextEditingController(text: '0');
   final _paidCtrl = TextEditingController(text: '0');
+  bool _discountUnlocked = false;
 
   @override
   void dispose() {
@@ -781,6 +810,15 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   void _resetFields() {
     _discountCtrl.text = '0';
     _paidCtrl.text = '0';
+    setState(() => _discountUnlocked = false);
+  }
+
+  Future<void> _requestDiscountAuth(BuildContext context, PosNotifier notifier) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => const _SupervisorAuthDialog(),
+    );
+    if (ok == true && mounted) setState(() => _discountUnlocked = true);
   }
 
   void _syncFields(PosState pos) {
@@ -848,18 +886,19 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     final notifier = ref.read(posProvider.notifier);
     final drafts = ref.watch(draftsProvider);
     final isEdit = pos.isEditMode;
+    final canDiscount = ref.watch(hasPermissionProvider(Perm.salesDiscount));
 
     return LayoutBuilder(
       builder: (context, constraints) {
         // Réserve au minimum 100dp pour la zone panier (empty state = 100dp)
         final paymentMaxH = (constraints.maxHeight - 48 - 100).clamp(150.0, 500.0);
-        return _buildCart(context, pos, notifier, drafts, isEdit, paymentMaxH);
+        return _buildCart(context, pos, notifier, drafts, isEdit, paymentMaxH, canDiscount);
       },
     );
   }
 
   Widget _buildCart(BuildContext context, PosState pos, PosNotifier notifier,
-      List<DraftCart> drafts, bool isEdit, double paymentMaxH) {
+      List<DraftCart> drafts, bool isEdit, double paymentMaxH, bool canDiscount) {
     return Column(
       children: [
         // ── Edit mode banner ──────────────────────────────────────────
@@ -1028,15 +1067,31 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
               // Remise caisse
               Row(
                 children: [
-                  const Expanded(
-                    child: Text('Remise caisse (HTG)',
-                        style: TextStyle(
-                            color: AppColors.textSecondary, fontSize: 13)),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Text('Remise caisse (HTG)',
+                            style: TextStyle(
+                                color: AppColors.textSecondary, fontSize: 13)),
+                        if (!canDiscount && !_discountUnlocked) ...[
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: () => _requestDiscountAuth(context, notifier),
+                            child: const Tooltip(
+                              message: 'Autorisation requise',
+                              child: Icon(Icons.lock_rounded,
+                                  size: 14, color: AppColors.textSecondary),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                   SizedBox(
                     width: 100,
                     child: TextField(
                       controller: _discountCtrl,
+                      enabled: canDiscount || _discountUnlocked,
                       keyboardType: TextInputType.number,
                       style: const TextStyle(fontSize: 13),
                       decoration: const InputDecoration(
@@ -1296,6 +1351,20 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                                 backgroundColor: AppColors.success,
                               ));
                             }
+                            return;
+                          }
+
+                          // Crédit → client obligatoire
+                          if ((pos.total - pos.paidAmount) > 0.005 &&
+                              pos.customerId == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'Sélectionnez un client pour une vente à crédit.'),
+                                backgroundColor: AppColors.error,
+                                duration: Duration(seconds: 3),
+                              ),
+                            );
                             return;
                           }
 
@@ -1600,6 +1669,7 @@ class _CardApprovalDialog extends StatefulWidget {
 }
 
 class _CardApprovalDialogState extends State<_CardApprovalDialog> {
+
   final _ctrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
@@ -1714,6 +1784,165 @@ class _CardApprovalDialogState extends State<_CardApprovalDialog> {
           onPressed: _confirm,
           icon: const Icon(Icons.check_rounded, size: 16),
           label: const Text('Confirmer le paiement'),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Supervisor authorization dialog ───────────────────────────────────────────
+
+class _SupervisorAuthDialog extends StatefulWidget {
+  const _SupervisorAuthDialog();
+
+  @override
+  State<_SupervisorAuthDialog> createState() => _SupervisorAuthDialogState();
+}
+
+class _SupervisorAuthDialogState extends State<_SupervisorAuthDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _userCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  bool _loading = false;
+  String? _error;
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _userCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() { _loading = true; _error = null; });
+
+    try {
+      final response = await dio.post(
+        '/api/auth/login',
+        data: FormData.fromMap({
+          'username': _userCtrl.text.trim(),
+          'password': _passCtrl.text,
+        }),
+        options: Options(contentType: 'application/x-www-form-urlencoded'),
+      );
+
+      final token = AuthToken.fromJson(response.data as Map<String, dynamic>);
+      if (token.user == null) {
+        setState(() { _loading = false; _error = 'Réponse invalide du serveur.'; });
+        return;
+      }
+
+      final supervisor = UserModel.fromJson(token.user!);
+      if (supervisor.hasPermission(Perm.salesDiscount)) {
+        if (mounted) Navigator.pop(context, true);
+      } else {
+        setState(() {
+          _loading = false;
+          _error = "Cet utilisateur n'a pas la permission d'accorder des remises.";
+        });
+      }
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      setState(() {
+        _loading = false;
+        _error = status == 401
+            ? 'Identifiants incorrects.'
+            : 'Erreur de connexion. Réessayez.';
+      });
+    } catch (_) {
+      setState(() { _loading = false; _error = 'Erreur inattendue. Réessayez.'; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.warning.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.lock_open_rounded,
+              color: AppColors.warning, size: 20),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(
+          child: Text('Autorisation superviseur',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+        ),
+      ]),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Un superviseur doit s\'authentifier pour autoriser cette remise.',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _userCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Nom d\'utilisateur',
+                prefixIcon: Icon(Icons.person_outline, size: 20),
+                isDense: true,
+              ),
+              validator: (v) => v == null || v.trim().isEmpty ? 'Requis' : null,
+              onFieldSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _passCtrl,
+              obscureText: _obscure,
+              decoration: InputDecoration(
+                labelText: 'Mot de passe',
+                prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                isDense: true,
+                suffixIcon: IconButton(
+                  icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility,
+                      size: 18),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+              validator: (v) => v == null || v.isEmpty ? 'Requis' : null,
+              onFieldSubmitted: (_) => _submit(),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(_error!,
+                    style:
+                        const TextStyle(color: AppColors.error, fontSize: 13)),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : () => Navigator.pop(context, false),
+          child: const Text('Annuler'),
+        ),
+        FilledButton(
+          onPressed: _loading ? null : _submit,
+          child: _loading
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child:
+                      CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Autoriser'),
         ),
       ],
     );

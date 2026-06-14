@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 from datetime import datetime
 
-from api.models.StockMovement import StockMovement 
+from api.models.StockMovement import StockMovement
 from api.models.Product import Product
 
 
@@ -15,6 +15,7 @@ def list_stock_movements(
     source_type: str | None = None,
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    tenant_id: str | None = None,
 ):
     query = (
         db.query(StockMovement)
@@ -23,6 +24,9 @@ def list_stock_movements(
             joinedload(StockMovement.user),
         )
     )
+
+    if tenant_id:
+        query = query.filter(StockMovement.tenant_id == tenant_id)
 
     # 🔍 Recherche (produit ou note)
     if search:

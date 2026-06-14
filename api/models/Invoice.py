@@ -5,6 +5,7 @@ from .base import UUIDBase
 
 class Invoice(UUIDBase):
     __tablename__ = "invoices"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     reference = Column(String(50), unique=True, nullable=False)
     date = Column(DateTime(timezone=True), nullable=False)

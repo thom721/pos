@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/features/auth/login_screen.dart';
+import 'package:pos_connect/features/auth/register_screen.dart';
+import 'package:pos_connect/features/billing/billing_screen.dart';
 import 'package:pos_connect/features/dashboard/dashboard_screen.dart';
 import 'package:pos_connect/features/pos/pos_screen.dart';
 import 'package:pos_connect/features/sales/sales_screen.dart';
@@ -23,6 +25,7 @@ import 'package:pos_connect/features/auth/force_change_password_screen.dart';
 import 'package:pos_connect/features/installer/installer_screen.dart';
 import 'package:pos_connect/features/hr/hr_screen.dart';
 import 'package:pos_connect/features/users/users_screen.dart';
+import 'package:pos_connect/features/admin/admin_screen.dart';
 import 'package:pos_connect/shared/widgets/app_shell.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -36,7 +39,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       final location = state.matchedLocation;
 
       if (location == '/splash') return null;
-      if (location == '/install') return null; // always accessible pre-setup
+      if (location == '/install') return null;
+      if (location == '/register') return null; // always accessible
+      if (location == '/admin') return null; // super-admin panel — has its own auth
       if (!isLoggedIn && location != '/login') return '/login';
       if (isLoggedIn && location == '/login') {
         return mustChange ? '/change-password' : '/dashboard';
@@ -65,6 +70,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/install',
         builder: (context, state) => const InstallerScreen(),
+      ),
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
+      GoRoute(
+        path: '/admin',
+        builder: (context, state) => const AdminScreen(),
       ),
       ShellRoute(
         builder: (context, state, child) => AppShell(child: child),
@@ -136,6 +149,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings',
             builder: (context, state) => const SettingsScreen(),
+          ),
+          GoRoute(
+            path: '/billing',
+            builder: (context, state) => const BillingScreen(),
           ),
         ],
       ),

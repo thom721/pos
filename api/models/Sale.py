@@ -15,6 +15,7 @@ class SaleStatus(enum.Enum):
 
 class Sale(UUIDBase):
     __tablename__ = "sales"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     customer_id  = Column(String(36), ForeignKey("customers.id"), nullable=True)
     user_id      = Column(String(36), ForeignKey("users.id"))

@@ -17,9 +17,9 @@ router = APIRouter(prefix="/api/inventory", tags=["Inventory"])
 def preview_inventory(
     category_ids: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.INVENTORY_READ)),
+    current_user: User = Depends(require_permission(P.INVENTORY_READ)),
 ):
-    return {"data": get_preview(db, category_ids)}
+    return {"data": get_preview(db, category_ids, tenant_id=current_user.tenant_id)}
 
 
 @router.get("/")
@@ -27,18 +27,18 @@ def read_inventories(
     page: int = Query(1, ge=1),
     limit: int = Query(20, le=100),
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.INVENTORY_READ)),
+    current_user: User = Depends(require_permission(P.INVENTORY_READ)),
 ):
-    return list_inventories(db, page=page, limit=limit)
+    return list_inventories(db, page=page, limit=limit, tenant_id=current_user.tenant_id)
 
 
 @router.get("/{inventory_id}")
 def read_inventory(
     inventory_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.INVENTORY_READ)),
+    current_user: User = Depends(require_permission(P.INVENTORY_READ)),
 ):
-    record = get_inventory(db, inventory_id)
+    record = get_inventory(db, inventory_id, tenant_id=current_user.tenant_id)
     if not record:
         raise HTTPException(404, "Inventaire introuvable")
     try:
@@ -64,7 +64,7 @@ def store_inventory(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.INVENTORY_CREATE)),
 ):
-    record = create_inventory(db, payload, current_user.id)
+    record = create_inventory(db, payload, current_user.id, tenant_id=current_user.tenant_id)
     return {
         "message": "Inventaire enregistré avec succès",
         "inventory_id": record.id,

@@ -7,6 +7,7 @@ from .base import UUIDBase
 
 class Payment(UUIDBase):
     __tablename__ = "payments"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     reference_id   = Column(String(36), nullable=False)
     reference_type = Column(

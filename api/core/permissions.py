@@ -36,10 +36,11 @@ class P:
     CUSTOMERS_DELETE  = "customers.delete"
 
     # Sales
-    SALES_CREATE  = "sales.create"
-    SALES_READ    = "sales.read"
-    SALES_UPDATE  = "sales.update"
-    SALES_CANCEL  = "sales.cancel"
+    SALES_CREATE    = "sales.create"
+    SALES_READ      = "sales.read"
+    SALES_UPDATE    = "sales.update"
+    SALES_CANCEL    = "sales.cancel"
+    SALES_DISCOUNT  = "sales.discount"
 
     # Purchases
     PURCHASES_CREATE   = "purchases.create"
@@ -116,7 +117,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.CATEGORIES_CREATE, P.CATEGORIES_READ, P.CATEGORIES_UPDATE, P.CATEGORIES_DELETE,
         P.SUPPLIERS_CREATE, P.SUPPLIERS_READ, P.SUPPLIERS_UPDATE, P.SUPPLIERS_DELETE,
         P.CUSTOMERS_CREATE, P.CUSTOMERS_READ, P.CUSTOMERS_UPDATE, P.CUSTOMERS_DELETE,
-        P.SALES_CREATE, P.SALES_READ, P.SALES_UPDATE, P.SALES_CANCEL,
+        P.SALES_CREATE, P.SALES_READ, P.SALES_UPDATE, P.SALES_CANCEL, P.SALES_DISCOUNT,
         P.PURCHASES_CREATE, P.PURCHASES_READ, P.PURCHASES_UPDATE, P.PURCHASES_RECEIVE,
         P.PAYMENTS_CREATE, P.PAYMENTS_READ,
         P.DEBTS_READ,
@@ -156,6 +157,21 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.CONFIG_READ,
     },
 }
+
+
+def load_roles_from_db(db_roles: list) -> None:
+    """
+    Merge DB-stored role permissions into ROLE_PERMISSIONS.
+    Called at startup and after any role update.
+    db_roles: list of Role ORM objects.
+    """
+    for role in db_roles:
+        perms = role.permissions or []
+        ROLE_PERMISSIONS[role.name] = set(perms)
+
+
+def get_all_role_names() -> list[str]:
+    return list(ROLE_PERMISSIONS.keys())
 
 
 def has_permission(

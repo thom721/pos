@@ -9,7 +9,7 @@ class UserCreate(BaseModel):
     lname: str
     username: str
     phone: str
-    address: str
+    address: Optional[str] = None
     password: str
     email: EmailStr
     is_active: bool = True
@@ -23,7 +23,7 @@ class UserUpdate(BaseModel):
     lname: str
     username: str
     phone: str
-    address: str
+    address: Optional[str] = None
     password: str
     email: EmailStr
     is_active: bool = True
@@ -41,8 +41,8 @@ class UserRead(BaseModel):
     fname: str
     lname: str
     username: str
-    phone: str
-    address: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
     password: str
     email: EmailStr
     is_active: bool = True
@@ -54,8 +54,8 @@ class UserOut(BaseModel):
     id: str
     username: str
     fname: str
-    lname: str 
-    phone: str
-    address: str
+    lname: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
 # orm_mode = True
  

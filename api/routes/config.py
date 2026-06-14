@@ -13,15 +13,15 @@ router = APIRouter(prefix="/api/config", tags=["Config"])
 @router.get("/", response_model=ConfigRead)
 def get_config(
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.CONFIG_READ)),
+    current_user: User = Depends(require_permission(P.CONFIG_READ)),
 ):
-    return config_service.get_or_create(db)
+    return config_service.get_or_create(db, tenant_id=current_user.tenant_id)
 
 
 @router.put("/", response_model=ConfigRead)
 def update_config(
     data: ConfigUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.CONFIG_UPDATE)),
+    current_user: User = Depends(require_permission(P.CONFIG_UPDATE)),
 ):
-    return config_service.update(db, data.model_dump(exclude_none=True))
+    return config_service.update(db, data.model_dump(exclude_none=True), tenant_id=current_user.tenant_id)

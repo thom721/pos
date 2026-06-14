@@ -5,6 +5,7 @@ from .base import UUIDBase
 
 class PayrollPeriod(UUIDBase):
     __tablename__ = "payroll_periods"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     reference         = Column(String(50),   unique=True, nullable=False, index=True)
     label             = Column(String(100),  nullable=False)          # "Juin 2026"

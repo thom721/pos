@@ -54,12 +54,19 @@ class Auth:
             user = self.get_user(username)
             if not user or not self.verify_password(password, user.password):
                 return None
-            return user 
+            return user
         except Exception as e:
             import traceback
             traceback.print_exc()
             print(f"___________ → {e}")
             raise HTTPException(status_code=500, detail=str(e))
+
+    def authenticate_by_email(self, email: str, password: str):
+        """Used by cloud login (email is the global unique identifier)."""
+        user = self.db.query(Out).filter(Out.email == email).first()
+        if not user or not self.verify_password(password, user.password):
+            return None
+        return user
 
 
 

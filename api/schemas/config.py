@@ -16,6 +16,10 @@ class ConfigRead(BaseModel):
     tax_rate: float = 0.0
     show_tax: bool = False
     receipt_footer: str = 'Merci pour votre achat !'
+    pos_printer_name: str = ''
+    pos_auto_print: bool = False
+    doc_printer_name: str = ''
+    doc_auto_print: bool = False
 
     class Config:
         from_attributes = True
@@ -35,3 +39,7 @@ class ConfigUpdate(BaseModel):
     tax_rate: Optional[float] = None
     show_tax: Optional[bool] = None
     receipt_footer: Optional[str] = None
+    pos_printer_name: Optional[str] = None
+    pos_auto_print: Optional[bool] = None
+    doc_printer_name: Optional[str] = None
+    doc_auto_print: Optional[bool] = None

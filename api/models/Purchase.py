@@ -13,6 +13,7 @@ class PurchaseStatus(enum.Enum):
 
 class Purchase(UUIDBase):
     __tablename__ = "purchases"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     supplier_id  = Column(String(36), ForeignKey("suppliers.id"), nullable=False)
     user_id      = Column(String(36), ForeignKey("users.id"))

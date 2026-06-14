@@ -13,20 +13,21 @@ from api.schemas.payroll import PayrollPeriodCreate, PayrollEntryAdjust
 
 # ── Reference helpers ─────────────────────────────────────────────────────────
 
-def _period_ref(db: Session) -> str:
+def _period_ref(db: Session, tenant_id: str | None = None) -> str:
     today = date.today()
     prefix = f"PAY-{today.year}{today.month:02d}-"
-    count = db.query(PayrollPeriod).filter(
-        PayrollPeriod.reference.like(f"{prefix}%")
-    ).count()
+    query = db.query(PayrollPeriod).filter(PayrollPeriod.reference.like(f"{prefix}%"))
+    if tenant_id:
+        query = query.filter(PayrollPeriod.tenant_id == tenant_id)
+    count = query.count()
     return f"{prefix}{count + 1:03d}"
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
-def create_period(db: Session, data: PayrollPeriodCreate, created_by: str) -> PayrollPeriod:
+def create_period(db: Session, data: PayrollPeriodCreate, created_by: str, tenant_id: str | None = None) -> PayrollPeriod:
     period = PayrollPeriod(
-        reference    = _period_ref(db),
+        reference    = _period_ref(db, tenant_id=tenant_id),
         label        = data.label,
         period_start = data.period_start,
         period_end   = data.period_end,
@@ -35,21 +36,29 @@ def create_period(db: Session, data: PayrollPeriodCreate, created_by: str) -> Pa
         notes        = data.notes,
         created_by   = created_by,
     )
+    if tenant_id:
+        period.tenant_id = tenant_id
     db.add(period)
     db.commit()
     db.refresh(period)
     return period
 
 
-def get_period(db: Session, period_id: str) -> PayrollPeriod:
-    period = db.get(PayrollPeriod, period_id)
+def get_period(db: Session, period_id: str, tenant_id: str | None = None) -> PayrollPeriod:
+    query = db.query(PayrollPeriod).filter(PayrollPeriod.id == period_id)
+    if tenant_id:
+        query = query.filter(PayrollPeriod.tenant_id == tenant_id)
+    period = query.first()
     if not period:
         raise HTTPException(404, "Période de paie introuvable")
     return period
 
 
-def list_periods(db: Session, page: int = 1, limit: int = 20) -> dict:
-    q = db.query(PayrollPeriod).order_by(PayrollPeriod.created_at.desc())
+def list_periods(db: Session, page: int = 1, limit: int = 20, tenant_id: str | None = None) -> dict:
+    q = db.query(PayrollPeriod)
+    if tenant_id:
+        q = q.filter(PayrollPeriod.tenant_id == tenant_id)
+    q = q.order_by(PayrollPeriod.created_at.desc())
     total = q.count()
     items = q.offset((page - 1) * limit).limit(limit).all()
     return {
@@ -61,7 +70,7 @@ def list_periods(db: Session, page: int = 1, limit: int = 20) -> dict:
 
 # ── Process (compute entries from employee profiles + loans) ──────────────────
 
-def process_period(db: Session, period_id: str) -> PayrollPeriod:
+def process_period(db: Session, period_id: str, tenant_id: str | None = None) -> PayrollPeriod:
     """
     Compute a payroll period:
     1. Load all active employee profiles
@@ -69,14 +78,17 @@ def process_period(db: Session, period_id: str) -> PayrollPeriod:
     3. Create/replace PayrollEntry + PayrollLoanDeduction rows
     4. Update period totals and set status = "processing"
     """
-    period = get_period(db, period_id)
+    period = get_period(db, period_id, tenant_id=tenant_id)
     if period.status not in ("draft", "processing"):
         raise HTTPException(400, f"Impossible de traiter une période en statut '{period.status}'")
 
     # Delete any existing entries for this period (re-processing)
     db.query(PayrollEntry).filter_by(period_id=period_id).delete(synchronize_session="fetch")
 
-    profiles = db.query(EmployeeProfile).filter_by(is_active=True).all()
+    query = db.query(EmployeeProfile).filter(EmployeeProfile.is_active == True)
+    if tenant_id:
+        query = query.filter(EmployeeProfile.tenant_id == tenant_id)
+    profiles = query.all()
     if not profiles:
         raise HTTPException(400, "Aucun profil employé actif trouvé")
 
@@ -139,7 +151,7 @@ def process_period(db: Session, period_id: str) -> PayrollPeriod:
     return period
 
 
-def adjust_entry(db: Session, entry_id: str, data: PayrollEntryAdjust) -> PayrollEntry:
+def adjust_entry(db: Session, entry_id: str, data: PayrollEntryAdjust, tenant_id: str | None = None) -> PayrollEntry:
     entry = db.get(PayrollEntry, entry_id)
     if not entry:
         raise HTTPException(404, "Ligne de paie introuvable")
@@ -167,11 +179,11 @@ def adjust_entry(db: Session, entry_id: str, data: PayrollEntryAdjust) -> Payrol
     return entry
 
 
-def pay_period(db: Session, period_id: str) -> PayrollPeriod:
+def pay_period(db: Session, period_id: str, tenant_id: str | None = None) -> PayrollPeriod:
     """
     Mark all entries as paid and update loan balances.
     """
-    period = get_period(db, period_id)
+    period = get_period(db, period_id, tenant_id=tenant_id)
     if period.status != "processing":
         raise HTTPException(400, "La période doit être en statut 'processing' pour être payée")
 
@@ -197,8 +209,8 @@ def pay_period(db: Session, period_id: str) -> PayrollPeriod:
     return period
 
 
-def cancel_period(db: Session, period_id: str) -> PayrollPeriod:
-    period = get_period(db, period_id)
+def cancel_period(db: Session, period_id: str, tenant_id: str | None = None) -> PayrollPeriod:
+    period = get_period(db, period_id, tenant_id=tenant_id)
     if period.status == "paid":
         raise HTTPException(400, "Impossible d'annuler une période déjà payée")
     period.status = "cancelled"
@@ -207,8 +219,8 @@ def cancel_period(db: Session, period_id: str) -> PayrollPeriod:
     return period
 
 
-def get_period_detail(db: Session, period_id: str) -> dict:
-    period = get_period(db, period_id)
+def get_period_detail(db: Session, period_id: str, tenant_id: str | None = None) -> dict:
+    period = get_period(db, period_id, tenant_id=tenant_id)
     entries = db.query(PayrollEntry).filter_by(period_id=period_id).all()
 
     entries_out = []

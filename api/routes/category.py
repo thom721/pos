@@ -15,26 +15,26 @@ router = APIRouter(prefix="/api", tags=['Categories'])
 def create_category(
     data: Union[CategoryResponse, List[CategoryResponse]],
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.CATEGORIES_CREATE)),
+    current_user: User = Depends(require_permission(P.CATEGORIES_CREATE)),
 ):
-    return CategoryService(db).create(data)
+    return CategoryService(db, tenant_id=current_user.tenant_id).create(data)
 
 
 @router.get("/categories/")
 def list_categories(
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.CATEGORIES_READ)),
+    current_user: User = Depends(require_permission(P.CATEGORIES_READ)),
 ):
-    return {"data": CategoryService(db).list()}
+    return {"data": CategoryService(db, tenant_id=current_user.tenant_id).list()}
 
 
 @router.get("/categories/{category_id}", response_model=CategoryRead)
 def get_category(
     category_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.CATEGORIES_READ)),
+    current_user: User = Depends(require_permission(P.CATEGORIES_READ)),
 ):
-    category = CategoryService(db).get(category_id)
+    category = CategoryService(db, tenant_id=current_user.tenant_id).get(category_id)
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     return category
@@ -45,9 +45,9 @@ def update_category(
     category_id: str,
     data: CategoryUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.CATEGORIES_UPDATE)),
+    current_user: User = Depends(require_permission(P.CATEGORIES_UPDATE)),
 ):
-    category = CategoryService(db).update(category_id, data)
+    category = CategoryService(db, tenant_id=current_user.tenant_id).update(category_id, data)
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
     return category
@@ -57,9 +57,9 @@ def update_category(
 def delete_category(
     category_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.CATEGORIES_DELETE)),
+    current_user: User = Depends(require_permission(P.CATEGORIES_DELETE)),
 ):
-    success = CategoryService(db).delete(category_id)
+    success = CategoryService(db, tenant_id=current_user.tenant_id).delete(category_id)
     if not success:
         raise HTTPException(status_code=404, detail="Category not found")
     return {"ok": True}

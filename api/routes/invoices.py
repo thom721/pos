@@ -16,18 +16,18 @@ def list_invoices(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.INVOICES_READ)),
+    current_user: User = Depends(require_permission(P.INVOICES_READ)),
 ):
-    return invoice_service.list_invoices(db, page=page, limit=limit)
+    return invoice_service.list_invoices(db, page=page, limit=limit, tenant_id=current_user.tenant_id)
 
 
 @router.get("/{invoice_id}", response_model=InvoiceRead)
 def get_invoice(
     invoice_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.INVOICES_READ)),
+    current_user: User = Depends(require_permission(P.INVOICES_READ)),
 ):
-    return invoice_service.get_invoice(db, invoice_id)
+    return invoice_service.get_invoice(db, invoice_id, tenant_id=current_user.tenant_id)
 
 
 @router.post("/", response_model=InvoiceRead)
@@ -36,7 +36,7 @@ def create_invoice(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.INVOICES_CREATE)),
 ):
-    return invoice_service.create_invoice(db, data, user_id=current_user.id)
+    return invoice_service.create_invoice(db, data, user_id=current_user.id, tenant_id=current_user.tenant_id)
 
 
 @router.put("/{invoice_id}", response_model=InvoiceRead)
@@ -44,9 +44,9 @@ def update_invoice(
     invoice_id: str,
     data: InvoiceUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.INVOICES_UPDATE)),
+    current_user: User = Depends(require_permission(P.INVOICES_UPDATE)),
 ):
-    return invoice_service.update_invoice(db, invoice_id, data)
+    return invoice_service.update_invoice(db, invoice_id, data, tenant_id=current_user.tenant_id)
 
 
 @router.post("/{invoice_id}/payment", response_model=InvoiceRead)
@@ -54,16 +54,16 @@ def record_payment(
     invoice_id: str,
     data: InvoicePaymentInput,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.PAYMENTS_CREATE)),
+    current_user: User = Depends(require_permission(P.PAYMENTS_CREATE)),
 ):
-    return invoice_service.record_payment(db, invoice_id, data.amount)
+    return invoice_service.record_payment(db, invoice_id, data.amount, tenant_id=current_user.tenant_id)
 
 
 @router.delete("/{invoice_id}", response_model=dict)
 def delete_invoice(
     invoice_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.INVOICES_DELETE)),
+    current_user: User = Depends(require_permission(P.INVOICES_DELETE)),
 ):
-    invoice_service.delete_invoice(db, invoice_id)
+    invoice_service.delete_invoice(db, invoice_id, tenant_id=current_user.tenant_id)
     return {"ok": True}

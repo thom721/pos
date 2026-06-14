@@ -1,9 +1,10 @@
-from sqlalchemy import Column, String, Text
+from sqlalchemy import ForeignKey, Column, String, Text
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
 class Supplier(UUIDBase):
     __tablename__ = "suppliers"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     name = Column(String(255), nullable=False)
     phone = Column(String(50), nullable=False)

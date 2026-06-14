@@ -15,26 +15,26 @@ router = APIRouter(prefix="", tags=['Suppliers'])
 def create_supplier(
     data: SupplierCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.SUPPLIERS_CREATE)),
+    current_user: User = Depends(require_permission(P.SUPPLIERS_CREATE)),
 ):
-    return SupplierService(db).create(data)
+    return SupplierService(db, tenant_id=current_user.tenant_id).create(data)
 
 
 @router.get("/suppliers/", response_model=List[SupplierRead])
 def list_suppliers(
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.SUPPLIERS_READ)),
+    current_user: User = Depends(require_permission(P.SUPPLIERS_READ)),
 ):
-    return SupplierService(db).list()
+    return SupplierService(db, tenant_id=current_user.tenant_id).list()
 
 
 @router.get("/suppliers/{supplier_id}", response_model=SupplierRead)
 def get_supplier(
     supplier_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.SUPPLIERS_READ)),
+    current_user: User = Depends(require_permission(P.SUPPLIERS_READ)),
 ):
-    supplier = SupplierService(db).get(supplier_id)
+    supplier = SupplierService(db, tenant_id=current_user.tenant_id).get(supplier_id)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
     return supplier
@@ -45,9 +45,9 @@ def update_supplier(
     supplier_id: str,
     data: SupplierUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.SUPPLIERS_UPDATE)),
+    current_user: User = Depends(require_permission(P.SUPPLIERS_UPDATE)),
 ):
-    supplier = SupplierService(db).update(supplier_id, data)
+    supplier = SupplierService(db, tenant_id=current_user.tenant_id).update(supplier_id, data)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
     return supplier
@@ -57,9 +57,9 @@ def update_supplier(
 def delete_supplier(
     supplier_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.SUPPLIERS_DELETE)),
+    current_user: User = Depends(require_permission(P.SUPPLIERS_DELETE)),
 ):
-    success = SupplierService(db).delete(supplier_id)
+    success = SupplierService(db, tenant_id=current_user.tenant_id).delete(supplier_id)
     if not success:
         raise HTTPException(status_code=404, detail="Supplier not found")
     return {"ok": True}

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/return_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
@@ -8,6 +9,7 @@ import 'package:pos_connect/data/models/purchase_model.dart';
 import 'package:pos_connect/data/repositories/return_repository.dart';
 import 'package:pos_connect/providers/return_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/shared/utils/return_pdf.dart';
 
 final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
 
@@ -147,28 +149,27 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen>
 
   void _showNewReturnDialog(BuildContext context) {
     if (_isSaleTab) {
-      showDialog(
+      showDialog<bool>(
         context: context,
         barrierDismissible: false,
         builder: (_) => _NewSaleReturnDialog(
-          onSubmit: (saleId, items, refund, reason) async {
-            final ok = await ref.read(returnsProvider.notifier).createSaleReturn(
-                  saleId: saleId,
-                  items: items,
-                  refundAmount: refund,
-                  reason: reason,
-                );
-            if (ok && context.mounted) {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('Retour client enregistré'),
-                    backgroundColor: AppColors.success),
-              );
-            }
-          },
+          onSubmit: (saleId, items, refund, reason) =>
+              ref.read(returnsProvider.notifier).createSaleReturn(
+                saleId: saleId,
+                items: items,
+                refundAmount: refund,
+                reason: reason,
+              ),
         ),
-      );
+      ).then((ok) {
+        if ((ok ?? false) && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Retour client enregistré'),
+                backgroundColor: AppColors.success),
+          );
+        }
+      });
     } else {
       showDialog(
         context: context,
@@ -256,7 +257,7 @@ class _ReturnsList extends StatelessWidget {
 
 // ── Return card ────────────────────────────────────────────────────────────
 
-class _ReturnCard extends StatelessWidget {
+class _ReturnCard extends ConsumerStatefulWidget {
   final ReturnModel ret;
   final NumberFormat fmt;
   final String type;
@@ -265,8 +266,48 @@ class _ReturnCard extends StatelessWidget {
       {required this.ret, required this.fmt, required this.type});
 
   @override
+  ConsumerState<_ReturnCard> createState() => _ReturnCardState();
+}
+
+class _ReturnCardState extends ConsumerState<_ReturnCard> {
+  bool _printing = false;
+
+  Future<void> _print() async {
+    setState(() => _printing = true);
+    try {
+      final settings = ref.read(settingsProvider);
+      final bytes = await buildReturnPdf(widget.ret, settings);
+      final s = ref.read(settingsProvider);
+      if (s.docPrinterName.isNotEmpty) {
+        final printers = await Printing.listPrinters();
+        final printer = printers.cast<Printer?>().firstWhere(
+          (p) => p?.url == s.docPrinterName,
+          orElse: () => null,
+        );
+        if (printer != null) {
+          await Printing.directPrintPdf(
+            printer: printer,
+            onLayout: (_) => bytes,
+            name: 'Retour_${widget.ret.docReference}',
+          );
+          return;
+        }
+      }
+      await Printing.layoutPdf(
+        onLayout: (_) => bytes,
+        name: 'Retour_${widget.ret.docReference}',
+      );
+    } finally {
+      if (mounted) setState(() => _printing = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final isSale = type == 'sale';
+    final ret = widget.ret;
+    final fmt = widget.fmt;
+    final isSale = widget.type == 'sale';
+
     return Material(
       color: AppColors.surface,
       shape: RoundedRectangleBorder(
@@ -314,21 +355,43 @@ class _ReturnCard extends StatelessWidget {
               ),
           ],
         ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              fmt.format(ret.totalReturned),
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: 14),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  fmt.format(ret.totalReturned),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 14),
+                ),
+                if (isSale && ret.refundAmount > 0)
+                  Text(
+                    'Remboursé : ${fmt.format(ret.refundAmount)}',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.success),
+                  ),
+              ],
             ),
-            if (isSale && ret.refundAmount > 0)
-              Text(
-                'Remboursé : ${fmt.format(ret.refundAmount)}',
-                style: const TextStyle(
-                    fontSize: 11, color: AppColors.success),
+            // Print button (sale returns only)
+            if (isSale) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                icon: _printing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.print_rounded, size: 18),
+                tooltip: 'Imprimer le bon de retour',
+                color: AppColors.primary,
+                onPressed: _printing ? null : _print,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               ),
+            ],
           ],
         ),
         children: [
@@ -373,8 +436,8 @@ class _ReturnCard extends StatelessWidget {
 
 // ── New sale return dialog ─────────────────────────────────────────────────
 
-class _NewSaleReturnDialog extends StatefulWidget {
-  final Future<void> Function(
+class _NewSaleReturnDialog extends ConsumerStatefulWidget {
+  final Future<bool> Function(
       String saleId,
       List<Map<String, dynamic>> items,
       double refundAmount,
@@ -383,10 +446,11 @@ class _NewSaleReturnDialog extends StatefulWidget {
   const _NewSaleReturnDialog({required this.onSubmit});
 
   @override
-  State<_NewSaleReturnDialog> createState() => _NewSaleReturnDialogState();
+  ConsumerState<_NewSaleReturnDialog> createState() =>
+      _NewSaleReturnDialogState();
 }
 
-class _NewSaleReturnDialogState extends State<_NewSaleReturnDialog> {
+class _NewSaleReturnDialogState extends ConsumerState<_NewSaleReturnDialog> {
   final _searchCtrl = TextEditingController();
   final _reasonCtrl = TextEditingController();
   final _refundCtrl = TextEditingController();
@@ -394,9 +458,12 @@ class _NewSaleReturnDialogState extends State<_NewSaleReturnDialog> {
 
   bool _searching = false;
   bool _submitting = false;
+  bool _printing = false;
+  bool _submitted = false;
   String? _searchError;
 
   SaleModel? _sale;
+  ReturnModel? _localReturn;
 
   // qty controllers per item index
   final Map<int, TextEditingController> _qtyCtrls = {};
@@ -476,17 +543,84 @@ class _NewSaleReturnDialogState extends State<_NewSaleReturnDialog> {
   bool get _canSubmit =>
       _sale != null && _selectedItems.isNotEmpty && !_submitting;
 
+  ReturnModel _buildLocalReturn() {
+    final refund = double.tryParse(_refundCtrl.text) ?? _computedRefund;
+    final items = <ReturnItemModel>[];
+    for (var i = 0; i < _sale!.items.length; i++) {
+      final qty = double.tryParse(_qtyCtrls[i]?.text ?? '0') ?? 0;
+      if (qty > 0) {
+        final si = _sale!.items[i];
+        items.add(ReturnItemModel(
+          productName: si.productName ?? 'Produit',
+          quantity: qty,
+          unitPrice: si.unitPrice,
+          subtotal: qty * si.unitPrice,
+        ));
+      }
+    }
+    return ReturnModel(
+      id: '',
+      returnType: 'sale',
+      docReference: _sale!.reference,
+      totalReturned: _computedRefund,
+      refundAmount: refund,
+      reason: _reasonCtrl.text.trim().isEmpty ? null : _reasonCtrl.text.trim(),
+      createdAt: DateTime.now(),
+      items: items,
+    );
+  }
+
   Future<void> _submit() async {
     final items = _selectedItems;
     if (items.isEmpty) return;
+    final local = _buildLocalReturn();
     setState(() => _submitting = true);
-    await widget.onSubmit(
+    final ok = await widget.onSubmit(
       _sale!.id,
       items,
       double.tryParse(_refundCtrl.text) ?? _computedRefund,
       _reasonCtrl.text.trim().isEmpty ? null : _reasonCtrl.text.trim(),
     );
-    if (mounted) setState(() => _submitting = false);
+    if (mounted) {
+      setState(() {
+        _submitting = false;
+        if (ok) {
+          _submitted = true;
+          _localReturn = local;
+        }
+      });
+    }
+  }
+
+  Future<void> _printReturn() async {
+    final ret = _localReturn;
+    if (ret == null) return;
+    setState(() => _printing = true);
+    try {
+      final settings = ref.read(settingsProvider);
+      final bytes = await buildReturnPdf(ret, settings);
+      if (settings.docPrinterName.isNotEmpty) {
+        final printers = await Printing.listPrinters();
+        final printer = printers.cast<Printer?>().firstWhere(
+          (p) => p?.url == settings.docPrinterName,
+          orElse: () => null,
+        );
+        if (printer != null) {
+          await Printing.directPrintPdf(
+            printer: printer,
+            onLayout: (_) => bytes,
+            name: 'Retour_${ret.docReference}',
+          );
+          return;
+        }
+      }
+      await Printing.layoutPdf(
+        onLayout: (_) => bytes,
+        name: 'Retour_${ret.docReference}',
+      );
+    } finally {
+      if (mounted) setState(() => _printing = false);
+    }
   }
 
   @override
@@ -507,153 +641,162 @@ class _NewSaleReturnDialogState extends State<_NewSaleReturnDialog> {
             ),
 
             // Body
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Search
-                    Row(children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _searchCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Référence de la vente (ex: VNT-XXXXX)',
-                            prefixIcon: Icon(Icons.search_rounded),
-                            isDense: true,
-                          ),
-                          onSubmitted: (_) => _search(),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: _searching ? null : _search,
-                        child: _searching
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                    color: Colors.white, strokeWidth: 2))
-                            : const Text('Chercher'),
-                      ),
-                    ]),
-
-                    if (_searchError != null) ...[
-                      const SizedBox(height: 8),
-                      _ErrorText(_searchError!),
-                    ],
-
-                    if (_sale != null) ...[
-                      const SizedBox(height: 16),
-                      _SaleInfoBanner(sale: _sale!),
-                      const SizedBox(height: 16),
-                      const Text('Articles à retourner',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 14)),
-                      const SizedBox(height: 8),
-                      ..._sale!.items.asMap().entries.map((e) {
-                        final i = e.key;
-                        final item = e.value;
-                        final maxQty = item.quantity;
-                        final ctrl = _qtyCtrls[i]!;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Row(children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(item.productName ?? 'Produit',
-                                      style: const TextStyle(fontSize: 13)),
-                                  Text(
-                                    'Vendu : ${_fmtQty(maxQty)} — Prix : ${item.unitPrice.toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.textSecondary),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            SizedBox(
-                              width: 90,
-                              child: TextField(
-                                controller: ctrl,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                        decimal: true),
-                                textAlign: TextAlign.center,
-                                decoration: InputDecoration(
-                                  labelText: 'Qté retour',
-                                  isDense: true,
-                                  helperText: 'max ${_fmtQty(maxQty)}',
-                                ),
-                                onChanged: (_) {
-                                  final qty =
-                                      double.tryParse(ctrl.text) ?? 0;
-                                  if (qty > maxQty) {
-                                    ctrl.text = _fmtQty(maxQty);
-                                  }
-                                  setState(_updateRefund);
-                                },
-                              ),
-                            ),
-                          ]),
-                        );
-                      }),
-
-                      const Divider(height: 24),
-
-                      // Refund amount
+            if (_submitted && _localReturn != null)
+              _ReceiptPhase(
+                ret: _localReturn!,
+                printing: _printing,
+                onPrint: _printReturn,
+                onClose: () => Navigator.pop(context, true),
+              )
+            else ...[
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Search
                       Row(children: [
-                        const Expanded(
-                          child: Text('Montant remboursé',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w600, fontSize: 14)),
-                        ),
-                        SizedBox(
-                          width: 130,
+                        Expanded(
                           child: TextField(
-                            controller: _refundCtrl,
-                            keyboardType:
-                                const TextInputType.numberWithOptions(
-                                    decimal: true),
-                            textAlign: TextAlign.right,
+                            controller: _searchCtrl,
                             decoration: const InputDecoration(
+                              labelText: 'Référence de la vente (ex: VNT-XXXXX)',
+                              prefixIcon: Icon(Icons.search_rounded),
                               isDense: true,
-                              contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 8),
                             ),
+                            onSubmitted: (_) => _search(),
                           ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: _searching ? null : _search,
+                          child: _searching
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      color: Colors.white, strokeWidth: 2))
+                              : const Text('Chercher'),
                         ),
                       ]),
-                      const SizedBox(height: 12),
 
-                      // Reason
-                      TextField(
-                        controller: _reasonCtrl,
-                        maxLines: 2,
-                        decoration: const InputDecoration(
-                          labelText: 'Motif du retour (optionnel)',
-                          hintText:
-                              'Ex: Produit défectueux, Mauvaise taille...',
-                          isDense: true,
+                      if (_searchError != null) ...[
+                        const SizedBox(height: 8),
+                        _ErrorText(_searchError!),
+                      ],
+
+                      if (_sale != null) ...[
+                        const SizedBox(height: 16),
+                        _SaleInfoBanner(sale: _sale!),
+                        const SizedBox(height: 16),
+                        const Text('Articles à retourner',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 14)),
+                        const SizedBox(height: 8),
+                        ..._sale!.items.asMap().entries.map((e) {
+                          final i = e.key;
+                          final item = e.value;
+                          final maxQty = item.quantity;
+                          final ctrl = _qtyCtrls[i]!;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(item.productName ?? 'Produit',
+                                        style: const TextStyle(fontSize: 13)),
+                                    Text(
+                                      'Vendu : ${_fmtQty(maxQty)} — Prix : ${item.unitPrice.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.textSecondary),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 90,
+                                child: TextField(
+                                  controller: ctrl,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                          decimal: true),
+                                  textAlign: TextAlign.center,
+                                  decoration: InputDecoration(
+                                    labelText: 'Qté retour',
+                                    isDense: true,
+                                    helperText: 'max ${_fmtQty(maxQty)}',
+                                  ),
+                                  onChanged: (_) {
+                                    final qty =
+                                        double.tryParse(ctrl.text) ?? 0;
+                                    if (qty > maxQty) {
+                                      ctrl.text = _fmtQty(maxQty);
+                                    }
+                                    setState(_updateRefund);
+                                  },
+                                ),
+                              ),
+                            ]),
+                          );
+                        }),
+
+                        const Divider(height: 24),
+
+                        // Refund amount
+                        Row(children: [
+                          const Expanded(
+                            child: Text('Montant remboursé',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600, fontSize: 14)),
+                          ),
+                          SizedBox(
+                            width: 130,
+                            child: TextField(
+                              controller: _refundCtrl,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                              textAlign: TextAlign.right,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 8),
+                              ),
+                            ),
+                          ),
+                        ]),
+                        const SizedBox(height: 12),
+
+                        // Reason
+                        TextField(
+                          controller: _reasonCtrl,
+                          maxLines: 2,
+                          decoration: const InputDecoration(
+                            labelText: 'Motif du retour (optionnel)',
+                            hintText:
+                                'Ex: Produit défectueux, Mauvaise taille...',
+                            isDense: true,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
 
-            // Footer
-            _DialogFooter(
-              onCancel: () => Navigator.pop(context),
-              onConfirm: _canSubmit ? _submit : null,
-              submitting: _submitting,
-              confirmLabel: 'Enregistrer le retour',
-            ),
+              // Footer
+              _DialogFooter(
+                onCancel: () => Navigator.pop(context),
+                onConfirm: _canSubmit ? _submit : null,
+                submitting: _submitting,
+                confirmLabel: 'Enregistrer le retour',
+              ),
+            ],
           ],
         ),
       ),
@@ -899,6 +1042,89 @@ class _NewPurchaseReturnDialogState
               onConfirm: _canSubmit ? _submit : null,
               submitting: _submitting,
               confirmLabel: 'Enregistrer le retour',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Receipt phase (shown after successful return creation) ─────────────────
+
+class _ReceiptPhase extends StatelessWidget {
+  final ReturnModel ret;
+  final bool printing;
+  final VoidCallback onPrint;
+  final VoidCallback onClose;
+
+  const _ReceiptPhase({
+    required this.ret,
+    required this.printing,
+    required this.onPrint,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat.currency(
+        locale: 'fr_HT', symbol: '', decimalDigits: 2);
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_circle_rounded,
+                  color: AppColors.success, size: 36),
+            ),
+            const SizedBox(height: 16),
+            const Text('Retour client enregistré',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Text(
+              'Réf: ${ret.docReference}  •  ${ret.items.length} article(s)',
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 13),
+            ),
+            if (ret.refundAmount > 0) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Remboursé : ${fmt.format(ret.refundAmount)}',
+                style: const TextStyle(
+                    color: AppColors.success,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14),
+              ),
+            ],
+            const SizedBox(height: 32),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: printing ? null : onPrint,
+                  icon: printing
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.print_rounded, size: 16),
+                  label: const Text('Imprimer le bon de retour'),
+                ),
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close_rounded, size: 16),
+                  label: const Text('Fermer'),
+                ),
+              ],
             ),
           ],
         ),

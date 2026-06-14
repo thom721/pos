@@ -20,9 +20,9 @@ router = APIRouter(prefix="/api", tags=["Products"])
 def create_product(
     data: Union[ProductCreate, List[ProductCreate]],
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.PRODUCTS_CREATE)),
+    current_user: User = Depends(require_permission(P.PRODUCTS_CREATE)),
 ):
-    return ProductService(db).create(data)
+    return ProductService(db, tenant_id=current_user.tenant_id).create(data)
 
 
 @router.get("/products/", response_model=PaginatedResponse[ProductRead])
@@ -31,18 +31,18 @@ def list_products(
     per_page: int = Query(5, ge=1, le=100),
     search: str | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.PRODUCTS_READ)),
+    current_user: User = Depends(require_permission(P.PRODUCTS_READ)),
 ):
-    return ProductService(db).list(page=page, per_page=per_page, search=search)
+    return ProductService(db, tenant_id=current_user.tenant_id).list(page=page, per_page=per_page, search=search)
 
 
 @router.get("/products/{product_id}", response_model=ProductRead)
 def get_product(
     product_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.PRODUCTS_READ)),
+    current_user: User = Depends(require_permission(P.PRODUCTS_READ)),
 ):
-    product = ProductService(db).get(product_id)
+    product = ProductService(db, tenant_id=current_user.tenant_id).get(product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
@@ -53,9 +53,9 @@ def update_product(
     product_id: str,
     data: ProductUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
+    current_user: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
 ):
-    product = ProductService(db).update(product_id, data)
+    product = ProductService(db, tenant_id=current_user.tenant_id).update(product_id, data)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
@@ -65,9 +65,9 @@ def update_product(
 def delete_product(
     product_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.PRODUCTS_DELETE)),
+    current_user: User = Depends(require_permission(P.PRODUCTS_DELETE)),
 ):
-    success = ProductService(db).delete(product_id)
+    success = ProductService(db, tenant_id=current_user.tenant_id).delete(product_id)
     if not success:
         raise HTTPException(status_code=404, detail="Product not found")
     return {"ok": True}
@@ -82,7 +82,7 @@ async def upload_product_image(
     product_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
+    current_user: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
 ):
     product = db.get(Product, product_id)
     if not product:

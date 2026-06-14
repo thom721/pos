@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/providers/auth_provider.dart';
 
-const _kKey = 'pos_app_settings';
+const _kKeyPrefix = 'pos_app_settings';
 
 class AppSettings {
   final String businessName;
@@ -20,6 +23,11 @@ class AppSettings {
   // Exchange rates: 1 foreign unit = X HTG (taux du jour)
   final double rateUsd;
   final double rateEur;
+  // Printer configuration
+  final String posPrinterName;
+  final bool posAutoPrint;
+  final String docPrinterName;
+  final bool docAutoPrint;
 
   const AppSettings({
     this.businessName = 'Mon Commerce',
@@ -35,6 +43,10 @@ class AppSettings {
     this.receiptFooter = 'Merci pour votre achat !',
     this.rateUsd = 130.0,
     this.rateEur = 140.0,
+    this.posPrinterName = '',
+    this.posAutoPrint = false,
+    this.docPrinterName = '',
+    this.docAutoPrint = false,
   });
 
   AppSettings copyWith({
@@ -51,6 +63,10 @@ class AppSettings {
     String? receiptFooter,
     double? rateUsd,
     double? rateEur,
+    String? posPrinterName,
+    bool? posAutoPrint,
+    String? docPrinterName,
+    bool? docAutoPrint,
   }) =>
       AppSettings(
         businessName: businessName ?? this.businessName,
@@ -66,6 +82,10 @@ class AppSettings {
         receiptFooter: receiptFooter ?? this.receiptFooter,
         rateUsd: rateUsd ?? this.rateUsd,
         rateEur: rateEur ?? this.rateEur,
+        posPrinterName: posPrinterName ?? this.posPrinterName,
+        posAutoPrint: posAutoPrint ?? this.posAutoPrint,
+        docPrinterName: docPrinterName ?? this.docPrinterName,
+        docAutoPrint: docAutoPrint ?? this.docAutoPrint,
       );
 
   // Serialize to API (snake_case)
@@ -83,6 +103,10 @@ class AppSettings {
         'receipt_footer': receiptFooter,
         'rate_usd': rateUsd,
         'rate_eur': rateEur,
+        'pos_printer_name': posPrinterName,
+        'pos_auto_print': posAutoPrint,
+        'doc_printer_name': docPrinterName,
+        'doc_auto_print': docAutoPrint,
       };
 
   // Parse from API response (snake_case)
@@ -100,6 +124,10 @@ class AppSettings {
         receiptFooter: j['receipt_footer'] as String? ?? 'Merci pour votre achat !',
         rateUsd: (j['rate_usd'] as num?)?.toDouble() ?? 130.0,
         rateEur: (j['rate_eur'] as num?)?.toDouble() ?? 140.0,
+        posPrinterName: j['pos_printer_name'] as String? ?? '',
+        posAutoPrint: j['pos_auto_print'] as bool? ?? false,
+        docPrinterName: j['doc_printer_name'] as String? ?? '',
+        docAutoPrint: j['doc_auto_print'] as bool? ?? false,
       );
 
   // Serialize for local cache (camelCase — backward compat)
@@ -117,6 +145,10 @@ class AppSettings {
         'receiptFooter': receiptFooter,
         'rateUsd': rateUsd,
         'rateEur': rateEur,
+        'posPrinterName': posPrinterName,
+        'posAutoPrint': posAutoPrint,
+        'docPrinterName': docPrinterName,
+        'docAutoPrint': docAutoPrint,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -133,53 +165,77 @@ class AppSettings {
         receiptFooter: j['receiptFooter'] as String? ?? 'Merci pour votre achat !',
         rateUsd: (j['rateUsd'] as num?)?.toDouble() ?? 130.0,
         rateEur: (j['rateEur'] as num?)?.toDouble() ?? 140.0,
+        posPrinterName: j['posPrinterName'] as String? ?? '',
+        posAutoPrint: j['posAutoPrint'] as bool? ?? false,
+        docPrinterName: j['docPrinterName'] as String? ?? '',
+        docAutoPrint: j['docAutoPrint'] as bool? ?? false,
       );
 }
 
 class SettingsNotifier extends StateNotifier<AppSettings> {
+  final Ref _ref;
   final FlutterSecureStorage _storage;
 
-  SettingsNotifier(this._storage) : super(const AppSettings()) {
+  SettingsNotifier(this._ref, this._storage) : super(const AppSettings()) {
+    _ref.listen<AuthState>(authProvider, (prev, next) {
+      // Reload settings whenever the authenticated user changes
+      if (prev?.user?.id != next.user?.id) {
+        _load();
+      }
+    });
     _load();
   }
 
+  /// Returns a tenant-scoped cache key so different tenants never share local cache.
+  Future<String> _cacheKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    final tenantRaw = prefs.getString(AppConstants.tenantKey);
+    if (tenantRaw != null) {
+      try {
+        final tenant = jsonDecode(tenantRaw) as Map<String, dynamic>;
+        final id = tenant['id'] as String?;
+        if (id != null && id.isNotEmpty) return '${_kKeyPrefix}_$id';
+      } catch (_) {}
+    }
+    // Local mode or no tenant: use user-scoped key from auth state
+    final userId = _ref.read(authProvider).user?.id;
+    if (userId != null && userId.isNotEmpty) return '${_kKeyPrefix}_$userId';
+    return _kKeyPrefix;
+  }
+
   Future<void> _load() async {
-    // Try local cache first for fast startup
-    final raw = await _storage.read(key: _kKey);
+    final key = await _cacheKey();
+    // Apply local cache first for fast startup
+    final raw = await _storage.read(key: key);
     if (raw != null) {
       try {
         state = AppSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
       } catch (_) {}
     }
-    // Then sync from API (authoritative source for multi-device support)
+    // Sync from API (authoritative — always tenant-filtered via JWT)
     try {
       final res = await dio.get('/api/config/');
       if (res.statusCode == 200) {
-        final apiSettings = AppSettings.fromApiJson(
-            res.data as Map<String, dynamic>);
+        final apiSettings = AppSettings.fromApiJson(res.data as Map<String, dynamic>);
         state = apiSettings;
-        // Update local cache silently
-        await _storage.write(key: _kKey, value: jsonEncode(apiSettings.toJson()));
+        await _storage.write(key: key, value: jsonEncode(apiSettings.toJson()));
       }
     } catch (_) {
-      // Network unavailable — local cache is already applied above
+      // Network unavailable — local cache already applied above
     }
   }
 
   Future<void> save(AppSettings settings) async {
     state = settings;
-    // Save to API (primary — shared across all devices)
     try {
       await dio.put('/api/config/', data: settings.toApiJson());
-    } catch (_) {
-      // Offline — local cache will sync on next load
-    }
-    // Always update local cache as fallback
-    await _storage.write(key: _kKey, value: jsonEncode(settings.toJson()));
+    } catch (_) {}
+    final key = await _cacheKey();
+    await _storage.write(key: key, value: jsonEncode(settings.toJson()));
   }
 }
 
 final settingsProvider =
     StateNotifierProvider<SettingsNotifier, AppSettings>((ref) {
-  return SettingsNotifier(const FlutterSecureStorage());
+  return SettingsNotifier(ref, const FlutterSecureStorage());
 });

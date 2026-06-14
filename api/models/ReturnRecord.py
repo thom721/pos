@@ -5,6 +5,7 @@ from .base import UUIDBase
 class ReturnRecord(UUIDBase):
     """Tracks every processed return (sale or purchase) for history/listing."""
     __tablename__ = "return_records"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     return_type   = Column(String(20), nullable=False)   # 'sale' | 'purchase'
     reference_id  = Column(String(36), nullable=False)   # sale.id or purchase.id

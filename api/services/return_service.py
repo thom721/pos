@@ -25,13 +25,16 @@ def process_sale_return(
     refund_amount: float,
     user_id: str,
     reason: str | None = None,
+    tenant_id: str | None = None,
 ):
-    sale = (
+    query = (
         db.query(Sale)
         .options(joinedload(Sale.items).joinedload(SaleItem.product))
         .filter(Sale.id == sale_id)
-        .first()
     )
+    if tenant_id:
+        query = query.filter(Sale.tenant_id == tenant_id)
+    sale = query.first()
     if not sale:
         raise HTTPException(404, "Vente introuvable")
 
@@ -69,7 +72,7 @@ def process_sale_return(
         })
 
         # Stock comes back IN
-        db.add(StockMovement(
+        mv = StockMovement(
             product_id=str(item['product_id']),
             user_id=user_id,
             type=StockType.in_,
@@ -77,19 +80,25 @@ def process_sale_return(
             source_type="sale_return",
             source_id=sale.id,
             note=f"Retour client{f' — {reason}' if reason else ''}",
-        ))
+        )
+        if tenant_id:
+            mv.tenant_id = tenant_id
+        db.add(mv)
 
     # Record refund payment (negative reduces paid_amount)
     actual_refund = refund_amount if refund_amount > 0 else refund_total
     if actual_refund > 0:
-        db.add(Payment(
+        pmt = Payment(
             reference_type="SALE",
             reference_id=sale.id,
             amount=-actual_refund,
             method="CASH",
             note=f"Remboursement retour{f' — {reason}' if reason else ''}",
             user_id=user_id,
-        ))
+        )
+        if tenant_id:
+            pmt.tenant_id = tenant_id
+        db.add(pmt)
 
     # Adjust sale totals
     sale.total_amount = max(0, float(sale.total_amount) - refund_total)
@@ -97,7 +106,7 @@ def process_sale_return(
     sale.paid_amount  = max(0, float(sale.paid_amount)  - actual_refund)
 
     # Persist return record for history
-    db.add(ReturnRecord(
+    rr = ReturnRecord(
         return_type="sale",
         reference_id=sale.id,
         doc_reference=sale.reference,
@@ -106,7 +115,10 @@ def process_sale_return(
         reason=reason,
         user_id=user_id,
         items_json=json.dumps(items_summary),
-    ))
+    )
+    if tenant_id:
+        rr.tenant_id = tenant_id
+    db.add(rr)
 
     db.commit()
     return refund_total
@@ -122,13 +134,16 @@ def process_purchase_return(
     items: list,
     user_id: str,
     reason: str | None = None,
+    tenant_id: str | None = None,
 ):
-    purchase = (
+    query = (
         db.query(Purchase)
         .options(joinedload(Purchase.items).joinedload(PurchaseItem.product))
         .filter(Purchase.id == purchase_id)
-        .first()
     )
+    if tenant_id:
+        query = query.filter(Purchase.tenant_id == tenant_id)
+    purchase = query.first()
     if not purchase:
         raise HTTPException(404, "Achat introuvable")
 
@@ -168,7 +183,7 @@ def process_purchase_return(
         })
 
         # Stock goes OUT — quantity négative pour réduire le stock
-        db.add(StockMovement(
+        mv = StockMovement(
             product_id=str(item['product_id']),
             user_id=user_id,
             type=StockType.out,
@@ -176,13 +191,16 @@ def process_purchase_return(
             source_type="purchase_return",
             source_id=purchase.id,
             note=f"Retour fournisseur{f' — {reason}' if reason else ''}",
-        ))
+        )
+        if tenant_id:
+            mv.tenant_id = tenant_id
+        db.add(mv)
 
     # Adjust purchase total
     purchase.total_amount = max(0, float(purchase.total_amount) - return_total)
 
     # Persist return record
-    db.add(ReturnRecord(
+    rr = ReturnRecord(
         return_type="purchase",
         reference_id=purchase.id,
         doc_reference=purchase.reference,
@@ -191,7 +209,10 @@ def process_purchase_return(
         reason=reason,
         user_id=user_id,
         items_json=json.dumps(items_summary),
-    ))
+    )
+    if tenant_id:
+        rr.tenant_id = tenant_id
+    db.add(rr)
 
     db.commit()
     return return_total
@@ -201,8 +222,16 @@ def process_purchase_return(
 # List returns
 # ─────────────────────────────────────────────────────────────────────────────
 
-def list_returns(db: Session, return_type: str | None = None, page: int = 1, limit: int = 20):
+def list_returns(
+    db: Session,
+    return_type: str | None = None,
+    page: int = 1,
+    limit: int = 20,
+    tenant_id: str | None = None,
+):
     query = db.query(ReturnRecord)
+    if tenant_id:
+        query = query.filter(ReturnRecord.tenant_id == tenant_id)
     if return_type:
         query = query.filter(ReturnRecord.return_type == return_type)
 

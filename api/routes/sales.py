@@ -22,7 +22,7 @@ def store_sale(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_CREATE)),
 ):
-    sale = create_sale(db, payload, current_user.id)
+    sale = create_sale(db, payload, current_user.id, tenant_id=current_user.tenant_id)
     return {"message": "Vente enregistrée avec succès", "sale_id": sale.id}
 
 
@@ -38,7 +38,8 @@ def read_sales(
     date_to: Optional[datetime] = Query(None),
 ):
     return list_sales(db=db, page=page, limit=limit, search=search,
-                      status=status, date_from=date_from, date_to=date_to)
+                      status=status, date_from=date_from, date_to=date_to,
+                      tenant_id=current_user.tenant_id)
 
 
 @router.get("/products/search", response_model=LegacyPaginatedResponse[ProductSaleItem])
@@ -47,18 +48,18 @@ def search_products_for_sale(
     page: int = Query(1, ge=1),
     per_page: int = Query(10, ge=1, le=20),
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.SALES_CREATE)),
+    current_user: User = Depends(require_permission(P.SALES_CREATE)),
 ):
-    return ProductService(db).list(page=page, per_page=per_page, search=search)
+    return ProductService(db, tenant_id=current_user.tenant_id).list(page=page, per_page=per_page, search=search)
 
 
 @router.get("/{sale_id}", response_model=SaleRead)
 def read_sale(
     sale_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.SALES_READ)),
+    current_user: User = Depends(require_permission(P.SALES_READ)),
 ):
-    sale = get_sale(db, sale_id)
+    sale = get_sale(db, sale_id, tenant_id=current_user.tenant_id)
     if not sale:
         raise HTTPException(404, "Vente introuvable")
     return sale
@@ -71,7 +72,7 @@ def update_sale_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_UPDATE)),
 ):
-    sale = update_sale(db, sale_id, payload, current_user.id)
+    sale = update_sale(db, sale_id, payload, current_user.id, tenant_id=current_user.tenant_id)
     return {"message": "Vente modifiée avec succès", "sale_id": sale.id}
 
 
@@ -81,5 +82,5 @@ def cancel_sale_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_CANCEL)),
 ):
-    cancel_sale(db, sale_id, current_user.id)
+    cancel_sale(db, sale_id, current_user.id, tenant_id=current_user.tenant_id)
     return {"message": "Vente annulée avec succès"}

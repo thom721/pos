@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -70,10 +71,11 @@ const Map<String, String> _routePermission = {
   '/events':     Perm.reportsReadAll,
   '/statistics': Perm.reportsReadAll,
   '/hr':         Perm.employeesRead,
-  '/settings':   Perm.configRead,
+  '/settings':   Perm.configUpdate,
 };
 
 bool _canShowItem(_NavItem item, UserModel? user) {
+  if (kIsWeb && item.route == '/pos') return false; // Caisse non disponible sur web
   final perm = _routePermission[item.route];
   if (perm == null) return true;
   return user?.hasPermission(perm) ?? false;
@@ -104,11 +106,12 @@ class _DesktopShell extends ConsumerWidget {
     final user = ref.watch(authProvider).user;
     final isAdmin = ref.watch(isAdminProvider);
     final location = GoRouterState.of(context).uri.toString();
-    final rawInitial = user?.fname.isNotEmpty == true
-        ? user!.fname
-        : (user?.username.isNotEmpty == true ? user!.username : 'U');
-    final initial =
-        rawInitial.isEmpty ? 'U' : rawInitial[0].toUpperCase();
+    final tenant = ref.watch(tenantProvider).valueOrNull;
+    final isCloudMode = tenant != null;
+    final businessName = tenant?['business_name'] as String?;
+    final displayName = businessName ?? user?.fullName ?? 'Utilisateur';
+    final rawInitial = displayName.isNotEmpty ? displayName : 'U';
+    final initial = rawInitial[0].toUpperCase();
 
     return Scaffold(
       body: Row(
@@ -198,6 +201,13 @@ class _DesktopShell extends ConsumerWidget {
                               isActive: location.startsWith(item.route),
                               onTap: () => context.go(item.route),
                             )),
+                        if (isCloudMode)
+                          _SidebarItem(
+                            item: const _NavItem('Abonnement',
+                                Icons.workspace_premium_rounded, '/billing'),
+                            isActive: location.startsWith('/billing'),
+                            onTap: () => context.go('/billing'),
+                          ),
                       ],
                     ],
                   ),
@@ -243,7 +253,7 @@ class _DesktopShell extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              user?.fullName ?? 'Utilisateur',
+                              displayName,
                               style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 12,

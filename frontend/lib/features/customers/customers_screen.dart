@@ -109,6 +109,10 @@ class _CustomerCard extends ConsumerWidget {
           children: [
             Text(customer.phone,
                 style: const TextStyle(fontSize: 12)),
+            if (customer.nif != null)
+              Text('NIF/CIN: ${customer.nif}',
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 12)),
             if (customer.email != null)
               Text(customer.email!,
                   style: const TextStyle(
@@ -149,6 +153,7 @@ class _CustomerFormDialogState
     extends ConsumerState<_CustomerFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameCtrl;
+  late final TextEditingController _nifCtrl;
   late final TextEditingController _phoneCtrl;
   late final TextEditingController _emailCtrl;
   late final TextEditingController _addressCtrl;
@@ -162,6 +167,7 @@ class _CustomerFormDialogState
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.customer?.name ?? '');
+    _nifCtrl = TextEditingController(text: widget.customer?.nif ?? '');
     _phoneCtrl =
         TextEditingController(text: widget.customer?.phone ?? '');
     _emailCtrl =
@@ -175,6 +181,7 @@ class _CustomerFormDialogState
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _nifCtrl.dispose();
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
     _addressCtrl.dispose();
@@ -197,6 +204,13 @@ class _CustomerFormDialogState
                 controller: _nameCtrl,
                 decoration: const InputDecoration(labelText: 'Nom *'),
                 validator: (v) => v!.isEmpty ? 'Requis' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _nifCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'NIF / CIN',
+                    hintText: 'Numéro d\'identification fiscale ou CIN'),
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -258,6 +272,7 @@ class _CustomerFormDialogState
     try {
       final data = {
         'name': _nameCtrl.text.trim(),
+        'nif': _nifCtrl.text.trim().isEmpty ? null : _nifCtrl.text.trim(),
         'phone': _phoneCtrl.text.trim(),
         'email': _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
         'address': _addressCtrl.text.trim(),

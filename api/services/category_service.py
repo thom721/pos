@@ -3,18 +3,20 @@ from fastapi import HTTPException
 from api.models.Category import Category
 from api.schemas.category import CategoryCreate, CategoryUpdate
 from typing import List, Union
+from api.services.base_service import TenantService
 
-class CategoryService:
-    def __init__(self, db: Session):
-        self.db = db
+class CategoryService(TenantService):
+    def __init__(self, db: Session, tenant_id: str | None = None):
+        super().__init__(db, tenant_id)
 
     def create1(self, data: CategoryCreate):
         category = Category(**data.dict())
+        self._set_tenant(category)
         self.db.add(category)
         self.db.commit()
         self.db.refresh(category)
         return category
-    
+
     def create(self, data: Union[CategoryCreate, List[CategoryCreate], dict, List[dict]]):
         try:
             if not isinstance(data, list):
@@ -24,15 +26,17 @@ class CategoryService:
 
             for item in data:
                 payload = item if isinstance(item, dict) else item.dict()
-                category = Category(**payload)
-                self.db.add(category)
-                categories.append(category)
 
-                exists = self.db.query(Category).filter_by(name=payload["name"]).first()
+                exists = self._q(Category).filter(Category.name == payload["name"]).first()
                 if exists:
                     print(exists)
                     # continue
                     raise HTTPException(400, f"Category {payload['name']} already exists")
+
+                category = Category(**payload)
+                self._set_tenant(category)
+                self.db.add(category)
+                categories.append(category)
 
             self.db.commit()
 
@@ -48,10 +52,10 @@ class CategoryService:
 
 
     def list(self):
-        return self.db.query(Category).all()
+        return self._q(Category).all()
 
     def get(self, category_id: str):
-        return self.db.query(Category).filter(Category.id == category_id).first()
+        return self._q(Category).filter(Category.id == category_id).first()
 
     def update(self, category_id: str, data: CategoryUpdate):
         category = self.get(category_id)

@@ -81,3 +81,56 @@ git add .github/workflows/build.yml server_main.py pos_server.ini.example .gitig
 git commit -m "ci: add GitHub Actions build workflow"
 git push origin main
 Ensuite retourne sur GitHub → Actions — le workflow "Build POS Connect" apparaîtra dans la liste à gauche, avec le bouton "Run workflow" visible à droite.
+
+
+
+
+Une fois le Run #4 terminé avec tous les ✅, voici comment installer sur Linux :
+
+Téléchargement
+Sur la page du run GitHub → bas de page → télécharger backend-linux et frontend-linux
+
+Installation
+
+# 1. Créer un dossier d'installation
+mkdir -p ~/posconnect && cd ~/posconnect
+
+# 2. Extraire les archives
+unzip backend-linux.zip -d .
+unzip frontend-linux.zip -d .
+
+# 3. Configurer la base de données
+cp pos_server.ini.example pos_server.ini
+nano pos_server.ini   # remplir host/user/password MySQL
+Lancer le serveur (terminal 1)
+
+cd ~/posconnect
+chmod +x posconnect-server
+./posconnect-server
+Lancer l'interface (terminal 2)
+
+cd ~/posconnect
+chmod +x pos_connect
+./pos_connect
+En tant que service systemd (démarrage automatique)
+
+sudo nano /etc/systemd/system/posconnect.service
+
+[Unit]
+Description=POS Connect Server
+After=network.target mysql.service
+
+[Service]
+WorkingDirectory=/home/tonuser/posconnect
+ExecStart=/home/tonuser/posconnect/posconnect-server
+Restart=always
+User=tonuser
+
+[Install]
+WantedBy=multi-user.target
+
+sudo systemctl daemon-reload
+sudo systemctl enable posconnect
+sudo systemctl start posconnect
+Le serveur démarre alors automatiquement au boot sans besoin de login.
+

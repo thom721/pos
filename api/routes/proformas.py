@@ -16,18 +16,18 @@ def list_proformas(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.PROFORMAS_READ)),
+    current_user: User = Depends(require_permission(P.PROFORMAS_READ)),
 ):
-    return proforma_service.list_proformas(db, page=page, limit=limit)
+    return proforma_service.list_proformas(db, page=page, limit=limit, tenant_id=current_user.tenant_id)
 
 
 @router.get("/{proforma_id}", response_model=ProformaRead)
 def get_proforma(
     proforma_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.PROFORMAS_READ)),
+    current_user: User = Depends(require_permission(P.PROFORMAS_READ)),
 ):
-    return proforma_service.get_proforma(db, proforma_id)
+    return proforma_service.get_proforma(db, proforma_id, tenant_id=current_user.tenant_id)
 
 
 @router.post("/", response_model=ProformaRead)
@@ -36,7 +36,7 @@ def create_proforma(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PROFORMAS_CREATE)),
 ):
-    return proforma_service.create_proforma(db, data, user_id=current_user.id)
+    return proforma_service.create_proforma(db, data, user_id=current_user.id, tenant_id=current_user.tenant_id)
 
 
 @router.put("/{proforma_id}", response_model=ProformaRead)
@@ -44,16 +44,16 @@ def update_proforma(
     proforma_id: str,
     data: ProformaUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.PROFORMAS_UPDATE)),
+    current_user: User = Depends(require_permission(P.PROFORMAS_UPDATE)),
 ):
-    return proforma_service.update_proforma(db, proforma_id, data)
+    return proforma_service.update_proforma(db, proforma_id, data, tenant_id=current_user.tenant_id)
 
 
 @router.delete("/{proforma_id}", response_model=dict)
 def delete_proforma(
     proforma_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(P.PROFORMAS_DELETE)),
+    current_user: User = Depends(require_permission(P.PROFORMAS_DELETE)),
 ):
-    proforma_service.delete_proforma(db, proforma_id)
+    proforma_service.delete_proforma(db, proforma_id, tenant_id=current_user.tenant_id)
     return {"ok": True}

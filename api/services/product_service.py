@@ -7,13 +7,14 @@ from api.models.Product import Product
 from api.models.Category import Category
 from api.models.Supplier import Supplier
 from api.schemas.product import ProductCreate, ProductUpdate
+from api.services.base_service import TenantService
 
 logger = logging.getLogger(__name__)
 
 
-class ProductService:
-    def __init__(self, db: Session):
-        self.db = db
+class ProductService(TenantService):
+    def __init__(self, db: Session, tenant_id: str | None = None):
+        super().__init__(db, tenant_id)
 
     def create(self, data: Union[ProductCreate, List[ProductCreate], dict, List[dict]]):
         if not isinstance(data, list):
@@ -24,8 +25,8 @@ class ProductService:
         for item in data:
             payload = item if isinstance(item, dict) else item.dict()
 
-            # Vérifie l'unicité avant insertion
-            exists = self.db.query(Product).filter_by(name=payload["name"]).first()
+            # Vérifie l'unicité avant insertion (tenant-scoped)
+            exists = self._q(Product).filter(Product.name == payload["name"]).first()
             if exists:
                 raise HTTPException(400, f"Un produit nommé '{payload['name']}' existe déjà")
 
@@ -39,6 +40,7 @@ class ProductService:
                 raise HTTPException(400, "Fournisseur introuvable")
 
             product = Product(**payload)
+            self._set_tenant(product)
             self.db.add(product)
             products.append(product)
 
@@ -55,11 +57,11 @@ class ProductService:
         return products[0] if len(products) == 1 else products
 
     def get(self, product_id: str) -> Optional[Product]:
-        return self.db.query(Product).filter(Product.id == product_id).first()
+        return self._q(Product).filter(Product.id == product_id).first()
 
     def list(self, page: int = 1, per_page: int = 5, search: Optional[str] = None):
         # selectinload pour les collections (évite le problème joinedload + pagination)
-        query = self.db.query(Product).options(
+        query = self._q(Product).options(
             joinedload(Product.category),
             selectinload(Product.stock_movements),
         )

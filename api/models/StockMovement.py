@@ -12,6 +12,7 @@ class StockType(enum.Enum):
 
 class StockMovement(UUIDBase):
     __tablename__ = "stock_movements"
+    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     product_id  = Column(String(36), ForeignKey("products.id"))
     user_id     = Column(String(36), ForeignKey("users.id"))

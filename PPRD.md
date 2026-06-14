@@ -2,7 +2,7 @@
 # POS Connect — Système de Caisse Multi-Plateforme
 
 **Date :** 2026-06-14
-**Version :** 0.4 (en développement actif)
+**Version :** 0.5 (en développement actif)
 **Stack backend :** Python 3.11 · FastAPI · SQLAlchemy · MySQL / SQLite · JWT
 **Stack frontend :** Flutter 3.x · Riverpod · go_router · Dio · SharedPreferences
 
@@ -134,6 +134,68 @@ Le backend lit sa configuration dans cet ordre de priorité :
 - [x] Android (APK) — build GitHub Actions
 - [x] Web/Chrome — compatible (`kIsWeb` guards sur `dart:io`)
 
+### 3.10 Architecture SaaS multi-tenant
+
+- [x] Modèle `Tenant` : slug, business_name, owner_email, status, is_local
+- [x] `tenant_id` (UUID FK) sur toutes les tables métier
+- [x] `TenantService` — base class injectant automatiquement le `tenant_id` dans tous les CRUD
+- [x] Middleware `get_current_tenant()` : vérifie statut + gère la période de grâce
+- [x] Tenant `__local__` créé au démarrage pour les déploiements hors SaaS (champ `is_local=True`)
+- [x] Backfill automatique `tenant_id = NULL → __local__` sur toutes les tables au démarrage
+
+### 3.11 Panel d'administration SaaS (`/admin`)
+
+- [x] Authentification email + mot de passe (argon2id, via `pwdlib`)
+  - Hash stocké dans `pos_server.ini` (`admin_password_hash`) ou `.env`
+  - JWT superadmin : `{"sub": "superadmin", "role": "superadmin"}` — expiry 24h
+- [x] Liste et gestion des tenants (statut, dates, plan)
+- [x] Modification du statut tenant : `trial`, `active`, `expired`, `suspended`
+- [x] Config plateforme (`PlatformConfig`) :
+  - Numéros MonCash et NatCash
+  - Prix des plans (mensuel, annuel)
+  - Durée de l'essai gratuit (`trial_days`, configurable)
+  - Mode paiement par service : `manual` ou `api_auto`
+    - **Manuel** : le client paie le numéro affiché et saisit sa référence
+    - **API auto** : paiement déclenché via l'API MonCash/NatCash (à venir)
+
+### 3.12 Facturation et abonnements
+
+- [x] Endpoint `GET /api/billing/status` : jours restants, statut, `is_grace`, `grace_days_left`
+- [x] Endpoint `GET /api/billing/config` : numéros, prix, modes MonCash/NatCash (accès tenants)
+- [x] Calcul précis des jours restants : `math.ceil(delta.total_seconds() / 86400)` (évite d'afficher 29j au lieu de 30j)
+- [x] Cycle de vie abonnement :
+  1. **trial** — essai gratuit (durée = `platform_config.trial_days`)
+  2. **expired** — essai/plan expiré, grâce de 10 jours (`GRACE_DAYS = 10`), app fonctionne encore
+  3. **suspended** — grâce expirée, accès bloqué (HTTP 403)
+  4. **active** — abonnement payant en cours
+- [x] Bandeau orange "période de grâce" dans l'écran de facturation Flutter
+- [x] Écran facturation utilise les vraies données de `billing/config` (numéros, prix)
+- [x] Statut "Expiré" affiché dans le panel admin avec couleur `deepOrange`
+
+### 3.13 Synchronisation local ↔ cloud
+
+#### Serveur cloud (multi-tenant)
+- [x] `POST /api/sync/token` — tenant email+password → JWT sync (rôle `sync`, expiry 365j)
+- [x] `POST /api/sync/push` — upsert de records dans la DB cloud (tenant_id injecté du token)
+- [x] `GET /api/sync/pull?entity_type=&since=` — retourne records modifiés depuis `since`
+- [x] `GET /api/sync/status` — état de la configuration et statistiques par entité
+- [x] `POST /api/sync/run` — déclenche un cycle de synchronisation complet
+- [x] `POST /api/sync/configure` — appelle `/api/sync/token` sur le cloud, sauvegarde dans `pos_server.ini`
+
+#### Serveur local (`local_sync_service.py`)
+- [x] Entités **bidirectionnelles** (catalog) : `category`, `supplier`, `product`, `customer`
+- [x] Entités **push only** (transactions) : `sale`, `sale_item`, `payment`, `purchase`, `purchase_item`, `return_record`
+- [x] Résolution de conflits : **last-write-wins** sur `updated_at`
+- [x] Table `SyncState` : `entity_type`, `last_push_at`, `last_pull_at`, `records_pushed`, `records_pulled`, `last_error`
+- [x] Sécurité push : `tenant_id` exclu de la payload — assigné côté cloud via JWT
+
+#### UI Flutter (Settings)
+- [x] Section "Synchronisation Cloud" visible à tous les admins
+- [x] Formulaire de configuration (URL cloud, email, mot de passe)
+- [x] Tableau des statistiques par entité (push/pull, horodatage, erreurs)
+- [x] Bouton "Synchroniser maintenant" avec résultat affiché (`Envoyé: X | Reçu: Y`)
+- [x] Statut de connexion (configuré / non configuré)
+
 ---
 
 ## 4. Bugs connus et points d'attention
@@ -146,6 +208,10 @@ Le backend lit sa configuration dans cet ordre de priorité :
 | B2 | Résolu | `create-db` / `init` utilisaient le moteur global (mauvais credentials au 1er démarrage) |
 | B3 | Résolu | `pos_server.ini` écrit trop tard (fin du wizard) → maintenant écrit dès le test DB |
 | B4 | Actif | `pos_server.ini` non rechargé en cours d'exécution → redémarrage serveur requis après wizard |
+| B5 | Résolu | Admin auth : `Auth.verify_password()` appelé comme méthode statique → utilise `pwdlib` directement |
+| B6 | Résolu | Jours d'essai affichés : `timedelta.days` (floor) → `math.ceil(delta.total_seconds() / 86400)` |
+| B7 | Résolu | `trial_ends_at` non mis à jour en base au bon nombre de jours → commit explicite requis |
+| B8 | Résolu | `No module named 'requests'` dans `local_sync_service` → remplacé par `httpx` |
 
 ### 4.2 Frontend
 
@@ -157,6 +223,9 @@ Le backend lit sa configuration dans cet ordre de priorité :
 | F4 | Résolu | `Platform._operatingSystem` crash sur web → guards `!kIsWeb` |
 | F5 | Résolu | Bouton "Lancer POS Connect" inactif → navigate vers `/login` |
 | F6 | Actif | Serveur non redémarré automatiquement après wizard sur desktop (service_wrapper optionnel) |
+| F7 | Résolu | Panel admin "Erreur de chargement" sur Paramètres → colonnes `moncash_mode`/`natcash_mode` manquantes en DB |
+| F8 | Résolu | Données admin non rafraîchies après save → `_loaded = false` manquant avant `ref.invalidate()` |
+| F9 | Résolu | Section sync invisible → condition `tenant == null` excluait les cloud users → condition supprimée |
 
 ---
 
@@ -208,10 +277,19 @@ password = votre_mot_de_passe
 path     = ./pos_data.db  # utilisé uniquement si type=sqlite
 
 [server]
-host                 = 0.0.0.0
-port                 = 8002
-secret_key           = <généré automatiquement>
-token_expire_minutes = 480
+host                  = 0.0.0.0
+port                  = 8002
+secret_key            = <généré automatiquement>
+token_expire_minutes  = 480
+# Compte super-admin pour le panel /admin
+# Hash généré avec : python -c "from pwdlib import PasswordHash; print(PasswordHash.recommended().hash('MonMotDePasse'))"
+admin_email           = admin@posconnect.ht
+admin_password_hash   = $argon2id$v=19$...
+
+# Synchronisation local ↔ cloud (rempli par POST /api/sync/configure)
+cloud_sync_url        =
+cloud_sync_token      =
+cloud_sync_enabled    = false
 ```
 
 ### .env (fallback développement)
@@ -231,24 +309,32 @@ SECRET_KEY=change_me_use_openssl_rand_hex_32
 ## 7. Schéma de base de données
 
 ```
-users           categories      suppliers
-  │                │               │
-  │           products ────────────┘
-  │               │
-  ├── sales ──────┤
-  │     └── sale_items
-  │     └── payments (reference_type=SALE)
-  │     └── debts   (reference_type=SALE)
+tenants         ← gestionnaire d'accès SaaS (status, trial_ends_at, plan)
   │
-  └── purchases ──┤
-        └── purchase_items
-              └── purchase_receipt_items
-        └── purchase_receipts
-        └── payments (reference_type=PURCHASE)
-        └── debts   (reference_type=PURCHASE)
+  ├── users           categories      suppliers
+  │     │                │               │
+  │     │           products ────────────┘
+  │     │               │
+  │     ├── sales ──────┤
+  │     │     └── sale_items
+  │     │     └── payments (reference_type=SALE)
+  │     │     └── debts   (reference_type=SALE)
+  │     │
+  │     └── purchases ──┤
+  │           └── purchase_items
+  │                 └── purchase_receipt_items
+  │           └── purchase_receipts
+  │           └── payments (reference_type=PURCHASE)
+  │           └── debts   (reference_type=PURCHASE)
+  │
+  └── (toutes les tables ci-dessus ont tenant_id UUID FK)
 
-stock_movements ← lié à Product + User + source (sale/purchase/adjust)
-app_config      ← paramètres persistants (multi-device sync)
+stock_movements   ← lié à Product + User + source (sale/purchase/adjust)
+app_config        ← paramètres persistants (multi-device sync)
+platform_config   ← config SaaS globale (numéros, prix, modes, trial_days)
+billing_payments  ← historique paiements abonnements
+sync_state        ← état de synchro par entity_type (last_push_at, last_pull_at, counts)
+roles             ← rôles personnalisés par tenant
 ```
 
 ---
@@ -260,7 +346,12 @@ app_config      ← paramètres persistants (multi-device sync)
 | Haute | Rechargement automatique de `pos_server.ini` sans redémarrage |
 | Haute | Page de configuration URL serveur sur web (remplace le wizard) |
 | Haute | Service système automatique (systemd) pour démarrage au boot |
+| Haute | Synchronisation automatique périodique (cron / background task) |
+| Haute | Intégration API MonCash pour paiements automatiques (mode `api_auto`) |
+| Haute | Intégration API NatCash pour paiements automatiques (mode `api_auto`) |
 | Moyenne | Dashboard statistiques complet |
 | Moyenne | Impression tickets (intégration `printing`) |
+| Moyenne | Portail self-service tenant (upgrade plan, historique factures) |
 | Basse | Migration de données SQLite → MySQL |
 | Basse | Tests unitaires backend (pytest) |
+| Basse | Webhook callbacks après paiement MonCash/NatCash |
