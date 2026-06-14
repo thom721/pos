@@ -76,7 +76,7 @@ class MigrateRequest(BaseModel):
 
 def _is_setup_done(db: Session) -> bool:
     try:
-        return db.query(User).filter(User.roles.cast(str).contains("admin")).count() > 0
+        return db.query(User).count() > 0
     except Exception:
         return False
 
