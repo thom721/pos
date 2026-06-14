@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 
@@ -77,6 +78,13 @@ class InstallerScreen extends ConsumerStatefulWidget {
 
 class _InstallerScreenState extends ConsumerState<InstallerScreen> {
   int _step = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Le wizard repart toujours du défaut compilé — SharedPreferences ignoré jusqu'à la fin
+    dio.options.baseUrl = AppConstants.baseUrl;
+  }
 
   final List<String> _steps = [
     'Bienvenue',
@@ -313,8 +321,15 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
   void initState() {
     super.initState();
     final cfg = ref.read(_configProvider);
+    final isClient = cfg.mode == InstallMode.client;
     _urlCtrl = TextEditingController(
-      text: cfg.serverUrl.isNotEmpty ? cfg.serverUrl : dio.options.baseUrl,
+      // Client : utilise l'URL runtime (compilée ou sauvegardée)
+      // Serveur/Both : localhost en attendant la détection de l'IP locale
+      text: cfg.serverUrl.isNotEmpty
+          ? cfg.serverUrl
+          : isClient
+              ? dio.options.baseUrl
+              : 'http://localhost:8002',
     );
     _detectLocalIps();
   }
@@ -333,7 +348,15 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
           .map((a) => a.address)
           .where((ip) => !ip.startsWith('127.'))
           .toList();
-      if (mounted) setState(() => _localIps = ips);
+      if (!mounted) return;
+      setState(() => _localIps = ips);
+      // En mode serveur, on utilise automatiquement la première IP locale détectée
+      final cfg = ref.read(_configProvider);
+      if (cfg.mode != InstallMode.client && ips.isNotEmpty && cfg.serverUrl.isEmpty) {
+        final detected = 'http://${ips.first}:8002';
+        _urlCtrl.text = detected;
+        ref.read(_configProvider.notifier).state = cfg..serverUrl = detected;
+      }
     } catch (_) {}
   }
 
@@ -343,7 +366,8 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
     final previousUrl = dio.options.baseUrl;
     setState(() { _testing = true; _error = null; _ok = false; });
     try {
-      await saveServerUrl(url);
+      // Mise à jour en mémoire uniquement — SharedPreferences écrit à la fin du wizard
+      dio.options.baseUrl = url;
       final res = await dio.get('/api/setup/health');
       final data = res.data as Map<String, dynamic>;
       if (data['status'] == 'ok') {
@@ -352,7 +376,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
         setState(() => _ok = true);
       }
     } catch (e) {
-      await saveServerUrl(previousUrl); // restaure l'URL précédente, pas le défaut compilé
+      dio.options.baseUrl = previousUrl; // restaure sans toucher SharedPreferences
       final msg = e is DioException ? extractErrorMessage(e) : e.toString();
       setState(() => _error = 'Impossible de joindre le serveur: $msg');
     } finally {
@@ -1200,6 +1224,8 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
     }
 
     if (!_failed) {
+      // Persiste l'URL du serveur dans SharedPreferences une seule fois, à la fin
+      await saveServerUrl(cfg.serverUrl.isNotEmpty ? cfg.serverUrl : dio.options.baseUrl);
       setState(() { _done = true; _running = false; });
       await Future.delayed(const Duration(milliseconds: 500));
       widget.onDone();
