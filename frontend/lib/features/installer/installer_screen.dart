@@ -105,11 +105,6 @@ class _InstallerScreenState extends ConsumerState<InstallerScreen> {
       case 1:
         return _ModePage(onNext: _next, onBack: _back);
       case 2:
-        // Adresse serveur uniquement pour mode client
-        if (cfg.mode != InstallMode.client) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(3));
-          return const SizedBox.shrink();
-        }
         return _ServerAddressPage(onNext: _next, onBack: _back);
       case 3:
         if (!needsServer) {
@@ -312,20 +307,34 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
   bool _testing = false;
   String? _error;
   bool _ok = false;
+  List<String> _localIps = [];
 
   @override
   void initState() {
     super.initState();
-    final saved = ref.read(_configProvider).serverUrl;
+    final cfg = ref.read(_configProvider);
     _urlCtrl = TextEditingController(
-      text: saved.isNotEmpty ? saved : AppConstants.baseUrl,
+      text: cfg.serverUrl.isNotEmpty ? cfg.serverUrl : AppConstants.baseUrl,
     );
+    _detectLocalIps();
   }
 
   @override
   void dispose() {
     _urlCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _detectLocalIps() async {
+    try {
+      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
+      final ips = interfaces
+          .expand((i) => i.addresses)
+          .map((a) => a.address)
+          .where((ip) => !ip.startsWith('127.'))
+          .toList();
+      if (mounted) setState(() => _localIps = ips);
+    } catch (_) {}
   }
 
   Future<void> _test() async {
@@ -352,26 +361,67 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
 
   @override
   Widget build(BuildContext context) {
+    final cfg = ref.watch(_configProvider);
+    final isClient = cfg.mode == InstallMode.client;
+
     return _PageShell(
       title: 'Adresse du serveur',
-      subtitle: 'Indiquez où se trouve le serveur POS Connect',
+      subtitle: isClient
+          ? 'Indiquez où se trouve le serveur POS Connect'
+          : 'Adresse de ce serveur sur le réseau',
       onNext: _ok ? widget.onNext : null,
       onBack: widget.onBack,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Entrez l\'adresse IP du serveur POS Connect sur votre réseau local.',
-            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 24),
-          _Field(
-            ctrl: _urlCtrl,
-            label: 'URL du serveur',
-            hint: 'http://192.168.1.100:8002',
-            keyboardType: TextInputType.url,
-          ),
-          const SizedBox(height: 16),
+          if (!isClient) ...[
+            // Mode serveur / both : afficher les IPs locales
+            const Text(
+              'Les postes clients devront utiliser cette adresse pour se connecter.',
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            if (_localIps.isNotEmpty)
+              ..._localIps.map((ip) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.lan_rounded, color: AppColors.primary, size: 18),
+                    const SizedBox(width: 10),
+                    Text('http://$ip:8002',
+                        style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+              )),
+            const SizedBox(height: 16),
+            const Text(
+              'Testez la connexion pour confirmer que le serveur est accessible.',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 8),
+          ] else ...[
+            const Text(
+              'Entrez l\'adresse IP du serveur POS Connect sur votre réseau local.',
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 24),
+            _Field(
+              ctrl: _urlCtrl,
+              label: 'URL du serveur',
+              hint: 'http://192.168.1.100:8002',
+              keyboardType: TextInputType.url,
+            ),
+            const SizedBox(height: 16),
+          ],
           FilledButton.icon(
             onPressed: _testing ? null : _test,
             icon: _testing
@@ -408,7 +458,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
               child: const Row(children: [
                 Icon(Icons.check_circle_outline, color: AppColors.success, size: 18),
                 SizedBox(width: 8),
-                Text('Serveur trouvé ! Connexion établie.',
+                Text('Connexion établie !',
                     style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600)),
               ]),
             ),
