@@ -82,12 +82,16 @@ def _is_setup_done(db: Session) -> bool:
 
 
 def _test_mysql(host, port, name, user, password) -> str | None:
-    """Returns None on success, error message on failure."""
+    """
+    Teste les credentials MySQL sans spécifier de base de données.
+    Évite l'erreur 1049 (Unknown database) si pos_db n'existe pas encore.
+    """
     import urllib.parse
     try:
         from sqlalchemy import create_engine as _ce
         pw = urllib.parse.quote_plus(password)
-        url = f"mysql+pymysql://{user}:{pw}@{host}:{port}/{name}"
+        # Connexion sans base — teste uniquement host/user/password
+        url = f"mysql+pymysql://{user}:{pw}@{host}:{port}/"
         eng = _ce(url, connect_args={"connect_timeout": 5})
         with eng.connect() as c:
             c.execute(text("SELECT 1"))

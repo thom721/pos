@@ -670,7 +670,11 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
     } catch (e) {
       final msg = e is DioException ? extractErrorMessage(e) : e.toString();
       final accessDenied = msg.contains('1045') || msg.toLowerCase().contains('access denied');
-      setState(() { _error = msg; _isAccessDenied = accessDenied; });
+      final unknownDb = msg.contains('1049') || msg.toLowerCase().contains('unknown database');
+      final display = unknownDb
+          ? 'Base de données introuvable. Elle sera créée automatiquement à l\'étape suivante.'
+          : msg;
+      setState(() { _error = display; _isAccessDenied = accessDenied; });
     } finally {
       setState(() => _testing = false);
     }
