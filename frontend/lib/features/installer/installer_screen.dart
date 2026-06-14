@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
@@ -1392,13 +1393,7 @@ class _DonePage extends ConsumerWidget {
             width: double.infinity,
             height: 48,
             child: ElevatedButton.icon(
-              onPressed: () {
-                // Launch the POS app or close installer
-                if (cfg.mode != InstallMode.server) {
-                  // Open POS Connect client
-                }
-                // For server-only, just inform
-              },
+              onPressed: () => context.go('/login'),
               icon: const Icon(Icons.launch_rounded),
               label: Text(cfg.mode == InstallMode.server
                   ? 'Fermer l\'installateur'
