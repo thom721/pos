@@ -4,7 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:pos_connect/core/constants.dart';
+import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/product_model.dart';
@@ -16,7 +16,7 @@ import 'package:pos_connect/providers/product_provider.dart';
 final _fmt =
     NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
 
-String _imgUrl(String path) => '${AppConstants.baseUrl}$path';
+String _imgUrl(String path) => '${dio.options.baseUrl}$path';
 
 class ProductsScreen extends ConsumerWidget {
   const ProductsScreen({super.key});

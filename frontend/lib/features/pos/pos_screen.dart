@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
-import 'package:pos_connect/core/constants.dart';
+import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/product_model.dart';
@@ -666,7 +666,7 @@ class _ProductCard extends ConsumerWidget {
                   children: [
                     if (product.imageUrl != null && product.imageUrl!.isNotEmpty)
                       CachedNetworkImage(
-                        imageUrl: '${AppConstants.baseUrl}${product.imageUrl}',
+                        imageUrl: '${dio.options.baseUrl}${product.imageUrl}',
                         fit: BoxFit.cover,
                         placeholder: (_, __) => _ProductCardPlaceholder(product: product),
                         errorWidget: (_, __, ___) => _ProductCardPlaceholder(product: product),
