@@ -1,174 +1,234 @@
 # PPRD — Product & Project Requirements Document
-# POS API — Système de Caisse FastAPI
+# POS Connect — Système de Caisse Multi-Plateforme
 
-**Date :** 2026-06-10
-**Version :** 0.1 (en développement)
-**Stack :** Python 3.11 · FastAPI · SQLAlchemy · MySQL · JWT
+**Date :** 2026-06-14
+**Version :** 0.4 (en développement actif)
+**Stack backend :** Python 3.11 · FastAPI · SQLAlchemy · MySQL / SQLite · JWT
+**Stack frontend :** Flutter 3.x · Riverpod · go_router · Dio · SharedPreferences
 
 ---
 
 ## 1. Vue d'ensemble du projet
 
-API REST pour un logiciel de point de vente (POS) destiné à gérer les ventes, achats, stock, clients, fournisseurs et paiements. Consommé par une interface desktop (PySide6/Python GUI) ou web.
+Système de point de vente (POS) complet avec :
+- **Backend API** (FastAPI) : REST, JWT, MySQL ou SQLite configurable
+- **Frontend Flutter** (POS Connect) : application multi-plateforme (Linux, Windows, macOS, Android, Web/Chrome)
+- **Wizard d'installation** : assistant guidé de configuration serveur/client intégré dans l'app Flutter
 
 ---
 
-## 2. Fonctionnalités implémentées
+## 2. Architecture
 
-### 2.1 Authentification
+### 2.1 Backend (pos_api)
+
+| Composant | Technologie |
+|-----------|-------------|
+| Framework | FastAPI 0.127 |
+| ORM | SQLAlchemy 2.0 |
+| Base de données | MySQL (PyMySQL) ou SQLite |
+| Migrations | Alembic 1.17 |
+| Auth | JWT (PyJWT / python-jose) |
+| Validation | Pydantic v2 |
+| Serveur | Uvicorn |
+| Config | `pos_server.ini` (priorité) + `.env` (fallback) |
+
+### 2.2 Frontend (pos_connect / Flutter)
+
+| Composant | Technologie |
+|-----------|-------------|
+| Framework | Flutter 3.x |
+| État | Riverpod (StateProvider, ConsumerWidget) |
+| Navigation | go_router |
+| HTTP | Dio (singleton, baseUrl dynamique) |
+| Persistance URL | SharedPreferences |
+| Plateformes | Linux · Windows · macOS · Android · Web |
+
+### 2.3 Configuration serveur
+
+Le backend lit sa configuration dans cet ordre de priorité :
+1. `pos_server.ini` (généré automatiquement par le wizard)
+2. Variables d'environnement / `.env`
+3. Valeurs par défaut (MySQL localhost)
+
+---
+
+## 3. Fonctionnalités implémentées
+
+### 3.1 Wizard d'installation (InstallerScreen)
+
+- [x] Étape 1 — Bienvenue
+- [x] Étape 2 — Choix du mode : Serveur / Client / Les deux
+- [x] Étape 3 — Adresse serveur
+  - Client : saisie manuelle de l'URL serveur + test connexion
+  - Serveur/Both : détection automatique des IPs locales via `NetworkInterface.list()`
+  - Test connexion obligatoire avant de continuer
+  - URL mise à jour en mémoire (`dio.options.baseUrl`) pendant le wizard, SharedPreferences écrit uniquement à la fin
+  - Wizard repart toujours du défaut compilé (`AppConstants.baseUrl`) — ignore les SharedPreferences stale
+- [x] Étape 4 — Choix base de données (MySQL ou SQLite)
+- [x] Étape 5 — Configuration MySQL
+  - Détection automatique auth_socket (Debian/Ubuntu)
+  - Bouton "Corriger automatiquement (sudo)" via `Process.start('sudo', ['-S', 'mysql', ...])`
+  - `pos_server.ini` écrit dès que le test de connexion réussit
+- [x] Étape 6 — Compte administrateur
+- [x] Étape 7 — Installation (create-db + init + service_wrapper)
+  - Moteur temporaire SQLAlchemy bâti sur les credentials de la requête (indépendant du moteur global démarré au lancement)
+  - `pos_server.ini` finalisé avec `secret_key` aléatoire
+  - SharedPreferences mis à jour avec l'URL confirmée
+- [x] Étape 8 — Terminé → bouton "Lancer POS Connect" navigue vers `/login`
+- [x] Web : wizard jamais affiché (`kIsWeb` guard dans splash)
+
+### 3.2 Authentification
 - [x] Login username/password → JWT Bearer token
 - [x] Middleware `get_current_user` via OAuth2PasswordBearer
-- [x] Roles et permissions stockés en JSON dans le modèle User
+- [x] Roles et permissions JSON dans le modèle User
+- [x] Changement de mot de passe forcé (`must_change_password`)
 
-### 2.2 Catalogue
+### 3.3 Catalogue
 - [x] CRUD Catégories
-- [x] CRUD Produits (avec barcode, prix d'achat, prix de vente, seuil d'alerte)
+- [x] CRUD Produits (barcode, prix achat/vente, seuil alerte, images)
 - [x] CRUD Fournisseurs
-- [x] Recherche produits avec pagination (pour la caisse)
+- [x] Recherche produits avec pagination (caisse)
+- [x] Images produits servies via l'API, URL dynamique (`dio.options.baseUrl`)
 
-### 2.3 Clients
-- [x] CRUD Clients (nom, téléphone, email, adresse, limite de crédit)
-
-### 2.4 Ventes
+### 3.4 Ventes
 - [x] Création vente avec lignes (SaleItem)
 - [x] Vérification stock avant vente
 - [x] Mouvements stock OUT automatiques
-- [x] Enregistrement paiement
+- [x] Enregistrement paiement (CASH / BANK / MOBILE)
 - [x] Création dette automatique si paiement partiel
 - [x] Statuts : UNPAID / PAID / PARTIAL
-- [x] Annulation de vente (cancel_sale)
-- [x] Retour client (process_sale_return)
+- [x] Annulation de vente
+- [x] Retour client
 
-### 2.5 Achats fournisseurs
+### 3.5 Achats fournisseurs
 - [x] Création commande achat avec lignes
-- [x] Paiement partiel/total à la commande
+- [x] Paiement partiel/total
 - [x] Réception partielle ou totale (PurchaseReceipt)
 - [x] Mouvements stock IN à la réception
-- [x] Statuts : pending / partial / paid
-- [x] Retour fournisseur (process_purchase_return)
-- [x] Liste avec filtres (search, status, date)
+- [x] Retour fournisseur
 
-### 2.6 Stock
+### 3.6 Stock
 - [x] Stock calculé via somme des StockMovement (pas de champ direct)
 - [x] Types : in / out / adjust
 - [x] Historique des mouvements avec filtres et pagination
 
-### 2.7 Paiements et Dettes
+### 3.7 Paiements et Dettes
 - [x] Modèle Payment polymorphique (SALE ou PURCHASE)
 - [x] Modèle Debt avec partner (CUSTOMER ou SUPPLIER)
-- [x] Méthodes paiement : CASH / BANK / MOBILE
 
-### 2.8 Infrastructure
-- [x] UUIDs pour toutes les entités (pas d'auto-increment)
-- [x] Timestamps automatiques `created_at` / `updated_at` sur toutes les tables
-- [x] Pagination générique (PaginateHelper / PaginatedResponse)
-- [x] Gestion centralisée des erreurs (422, 401, 500)
-- [x] Alembic configuré pour les migrations
+### 3.8 Infrastructure backend
+- [x] UUIDs pour toutes les entités
+- [x] Timestamps automatiques sur toutes les tables
+- [x] Pagination générique
+- [x] `pos_server.ini` auto-généré par le wizard (plus besoin de copie manuelle)
+- [x] `_is_setup_done` basé sur `COUNT(*) > 0` (compatible MySQL JSON column)
+- [x] Endpoint `/setup/health` → `setup_done` bool
+- [x] Endpoint `/setup/test-db` → écrit `pos_server.ini` si succès
+- [x] Endpoint `/setup/create-db` → moteur temporaire, indépendant du global
+- [x] Endpoint `/setup/init` → moteur temporaire, crée admin dans la bonne base
 
----
-
-## 3. Ce qui MANQUE — Bugs et lacunes critiques
-
-### 3.1 Bugs bloquants
-
-| # | Fichier | Problème |
-|---|---------|----------|
-| B1 | `api/models/Sale.py` | Le champ `paid_amount` est absent du modèle Sale mais utilisé dans `sale_service.py` (ligne 51, 80, 93) → AttributeError en production |
-| B2 | `api/models/Sale.py` | `balance` hybrid property référence `self.paid_amount` qui n'existe pas |
-| B3 | `api/models/Customer.py` | `balance` hybrid property référence `s.paid_amount` sur Sale → même bug |
-| B4 | `api/services/return_service.py` | Utilise `sale.paid_amount` et `purchase.quantity` qui n'existent pas |
-| B5 | `api/services/ReceiptService.py` | `type="in_"` envoyé à StockMovement alors que l'enum attend `"in"` (avec underscore uniquement sur le nom Python, pas la valeur) |
-| B6 | `api/models/Debt.py` | `reference_type` enum accepte 'SALE' et 'PURCHASE' mais `Customer.debts` filtre sur `reference_type == 'CUSTOMER'` → la relation ne fonctionne jamais |
-| B7 | `api/routes/sales.py` | `user_id: str = "USER_UUID_Ici"` — authentification désactivée, toutes les ventes sont attribuées à une chaîne fictive |
-| B8 | `api/services/sale_service.py` | `'Cassier' in user.permission` : faute de frappe (`permission` vs `permissions`) et vérification non implémentée dans la vraie fonction `create_sale` |
-| B9 | `api/core/security.py` | `SECRET_KEY = "SUPER_SECRET_KEY"` hardcodé — différent de la clé dans `dependencies/auth.py` → tokens invalides entre modules |
-
-### 3.2 Sécurité
-
-| # | Problème | Impact |
-|---|----------|--------|
-| S1 | `database.py` : mot de passe MySQL `@#1900` hardcodé en clair | Credentials exposés dans le code source |
-| S2 | `SECRET_KEY` JWT défini à 3 endroits différents (`security.py`, `dependencies/auth.py`, `routes/auth.py`) avec des valeurs différentes | Tokens signés avec une clé, vérifiés avec une autre |
-| S3 | `config.py` utilise `SECRET_KEY = "CHANGE_ME"` mais aucun fichier `.env` n'est fourni | Déploiement avec clé non sécurisée |
-| S4 | Aucune validation que `reference_type` du Payment correspond au bon type en base | Paiement croisé possible (payer une vente comme un achat) |
-
-### 3.3 Fonctionnalités manquantes
-
-| # | Feature | Priorité |
-|---|---------|----------|
-| F1 | `GET /api/sales/` — liste des ventes avec filtres et pagination | Haute |
-| F2 | `GET /api/sales/{id}` — détail d'une vente | Haute |
-| F3 | `SaleRead` schema Pydantic — réponse structurée pour les ventes | Haute |
-| F4 | Endpoint paiement additionnel : `POST /api/payments/` — ajouter un paiement à une vente ou achat existant | Haute |
-| F5 | `GET /api/debts/` — liste des dettes clients et fournisseurs | Haute |
-| F6 | Dashboard / statistiques : total ventes, chiffre d'affaires, bénéfice brut | Moyenne |
-| F7 | `PATCH /api/sales/{id}/cancel` — annulation de vente depuis l'API | Moyenne |
-| F8 | `GET /api/products/{id}/stock` — niveau de stock d'un produit | Moyenne |
-| F9 | Gestion des alertes stock (produits sous le seuil `alert_stock`) | Moyenne |
-| F10 | Champ `is_active` sur User (présent dans les commentaires mais absent du modèle) | Basse |
-| F11 | Refresh token endpoint | Basse |
-
-### 3.4 Code à nettoyer
-
-| # | Fichier | Problème |
-|---|---------|----------|
-| C1 | `api/services/sale_service.py` | 4 versions de `create_sale` coexistent : `create_sale`, `create_sale1`, `create_sale33`, `process_sale_payment` → code mort |
-| C2 | `api/services/purchase_service.py` | `create_purchase1111` — version abandonnée toujours présente |
-| C3 | `api/dependencies/auth copy.py` | Fichier backup "auth copy.py" dans le code source |
-| C4 | `api/routes/login copy.py` | Fichier backup "login copy.py" dans le code source |
-| C5 | `api/schemas/login copy.py` | Idem |
-| C6 | `api/main.py` | ~100 lignes de notes PostgreSQL/MongoDB en commentaires en bas de fichier |
-| C7 | `api/database.py` | ~40 lignes de notes d'installation MongoDB en commentaires |
-| C8 | `api/dependencies/auth.py` | `get_current_user22222` et `get_current_usereee` — fonctions abandonnées avec numéros |
-| C9 | Dossier `alembic/` à la racine + `api/alembic/` | Double configuration Alembic — risque de confusion |
-
-### 3.5 Configuration et déploiement
-
-| # | Problème |
-|---|----------|
-| D1 | Pas de fichier `.env.example` — impossible de configurer l'environnement sans lire le code |
-| D2 | L'environnement virtuel (`bin/`, `lib/`, `include/`) est dans le répertoire projet → doit être exclu |
-| D3 | Pas de `.gitignore` — le venv sera commité par accident |
-| D4 | Pas de `Dockerfile` ni `docker-compose.yml` |
-| D5 | `DATABASE_URL` hardcodée dans `database.py`, pas lue depuis `.env` |
-
-### 3.6 Tests
-
-| # | Problème |
-|---|----------|
-| T1 | Aucun fichier de test dans le projet |
-| T2 | Pas de `pytest` dans `requirements.txt` |
-| T3 | Pas de fixtures pour la base de données de test |
+### 3.9 Multi-plateforme
+- [x] Linux (desktop natif) — build GitHub Actions
+- [x] Windows (desktop natif) — build GitHub Actions
+- [x] macOS (desktop natif) — build GitHub Actions
+- [x] Android (APK) — build GitHub Actions
+- [x] Web/Chrome — compatible (`kIsWeb` guards sur `dart:io`)
 
 ---
 
-## 4. Priorités de correction recommandées
+## 4. Bugs connus et points d'attention
 
-### Phase 1 — Corrections bloquantes (à faire maintenant)
+### 4.1 Backend
 
-1. **Ajouter `paid_amount` au modèle Sale** (B1, B2, B3, B4)
-2. **Unifier la SECRET_KEY** — lire depuis `config.py` / `.env` partout (S2, S3)
-3. **Corriger le bug `reference_type == 'CUSTOMER'`** dans Debt/Customer (B6)
-4. **Activer l'auth JWT sur `/api/sales/`** (B7)
-5. **Corriger `type="in_"` → `type="in"` dans ReceiptService** (B5)
+| # | Statut | Problème |
+|---|--------|----------|
+| B1 | Résolu | `_is_setup_done` utilisait un filtre JSON incompatible MySQL → remplacé par `count()` |
+| B2 | Résolu | `create-db` / `init` utilisaient le moteur global (mauvais credentials au 1er démarrage) |
+| B3 | Résolu | `pos_server.ini` écrit trop tard (fin du wizard) → maintenant écrit dès le test DB |
+| B4 | Actif | `pos_server.ini` non rechargé en cours d'exécution → redémarrage serveur requis après wizard |
 
-### Phase 2 — Fonctionnalités essentielles
+### 4.2 Frontend
 
-6. **Créer `SaleRead` schema et `GET /api/sales/`** (F1, F2, F3)
-7. **Endpoint paiement additionnel** (F4)
-8. **Endpoint liste dettes** (F5)
-9. **Déplacer DATABASE_URL dans `.env`** (D5)
-10. **Créer `.env.example` et `.gitignore`** (D1, D3)
-
-### Phase 3 — Nettoyage et qualité
-
-11. Supprimer le code mort (C1–C9)
-12. Ajouter les tests unitaires de base (T1–T3)
-13. Dashboard/statistiques (F6)
+| # | Statut | Problème |
+|---|--------|----------|
+| F1 | Résolu | URL serveur sauvegardée dans SharedPreferences à chaque test → maintenant uniquement à la fin |
+| F2 | Résolu | Wizard lisait SharedPreferences stale → maintenant reset à `AppConstants.baseUrl` à l'ouverture |
+| F3 | Résolu | Images produits URL hardcodée (compile-time) → maintenant `dio.options.baseUrl` (runtime) |
+| F4 | Résolu | `Platform._operatingSystem` crash sur web → guards `!kIsWeb` |
+| F5 | Résolu | Bouton "Lancer POS Connect" inactif → navigate vers `/login` |
+| F6 | Actif | Serveur non redémarré automatiquement après wizard sur desktop (service_wrapper optionnel) |
 
 ---
 
-## 5. Schéma de base de données cible
+## 5. Déploiement
+
+### 5.1 Serveur (Debian/Ubuntu recommandé)
+
+```bash
+cd ~/posconnect
+./pos_api          # Lance le backend FastAPI sur le port 8002
+./pos_connect      # Lance le wizard + client Flutter
+```
+
+Le wizard crée automatiquement `pos_server.ini` et la base de données.
+
+### 5.2 Client (autre machine)
+
+1. Copier `pos_connect` sur la machine cliente
+2. Lancer l'app → wizard → Mode "Client uniquement"
+3. Entrer l'URL du serveur (ex: `http://192.168.0.110:8002`)
+4. Tester la connexion → login
+
+### 5.3 Web (Chrome)
+
+L'app Flutter fonctionne dans un navigateur. L'URL serveur est le défaut compilé (`AppConstants.baseUrl`). Le wizard d'installation n'est pas disponible sur web.
+
+### 5.4 Build CI/CD
+
+GitHub Actions construit automatiquement sur chaque push vers `main` :
+- `pos_connect-linux.tar.gz`
+- `pos_connect-windows.zip`
+- `pos_connect-macos.zip`
+- `pos_connect-android.apk`
+
+---
+
+## 6. Configuration
+
+### pos_server.ini (généré automatiquement par le wizard)
+
+```ini
+[database]
+type     = mysql          # mysql | sqlite
+host     = localhost
+port     = 3306
+name     = pos_db
+user     = root
+password = votre_mot_de_passe
+path     = ./pos_data.db  # utilisé uniquement si type=sqlite
+
+[server]
+host                 = 0.0.0.0
+port                 = 8002
+secret_key           = <généré automatiquement>
+token_expire_minutes = 480
+```
+
+### .env (fallback développement)
+
+```env
+DB_TYPE=mysql
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=votre_mot_de_passe
+DB_NAME=pos_db
+SECRET_KEY=change_me_use_openssl_rand_hex_32
+```
+
+---
+
+## 7. Schéma de base de données
 
 ```
 users           categories      suppliers
@@ -188,4 +248,19 @@ users           categories      suppliers
         └── debts   (reference_type=PURCHASE)
 
 stock_movements ← lié à Product + User + source (sale/purchase/adjust)
+app_config      ← paramètres persistants (multi-device sync)
 ```
+
+---
+
+## 8. Prochaines étapes
+
+| Priorité | Feature |
+|----------|---------|
+| Haute | Rechargement automatique de `pos_server.ini` sans redémarrage |
+| Haute | Page de configuration URL serveur sur web (remplace le wizard) |
+| Haute | Service système automatique (systemd) pour démarrage au boot |
+| Moyenne | Dashboard statistiques complet |
+| Moyenne | Impression tickets (intégration `printing`) |
+| Basse | Migration de données SQLite → MySQL |
+| Basse | Tests unitaires backend (pytest) |
