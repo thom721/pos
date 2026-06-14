@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 
@@ -315,7 +314,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
     super.initState();
     final cfg = ref.read(_configProvider);
     _urlCtrl = TextEditingController(
-      text: cfg.serverUrl.isNotEmpty ? cfg.serverUrl : AppConstants.baseUrl,
+      text: cfg.serverUrl.isNotEmpty ? cfg.serverUrl : dio.options.baseUrl,
     );
     _detectLocalIps();
   }
@@ -341,6 +340,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
   Future<void> _test() async {
     final url = _urlCtrl.text.trim().replaceAll(RegExp(r'/+$'), '');
     if (url.isEmpty) return;
+    final previousUrl = dio.options.baseUrl;
     setState(() { _testing = true; _error = null; _ok = false; });
     try {
       await saveServerUrl(url);
@@ -352,7 +352,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
         setState(() => _ok = true);
       }
     } catch (e) {
-      await saveServerUrl('');
+      await saveServerUrl(previousUrl); // restaure l'URL précédente, pas le défaut compilé
       final msg = e is DioException ? extractErrorMessage(e) : e.toString();
       setState(() => _error = 'Impossible de joindre le serveur: $msg');
     } finally {
