@@ -242,10 +242,19 @@ def detect_mysql():
 def test_db_connection(data: DbTestRequest):
     """Test database connectivity before saving config."""
     if data.db_type == "sqlite":
+        # Écriture anticipée de pos_server.ini pour que le prochain démarrage soit correct
+        write_ini_config({
+            "type": "sqlite", "path": data.path,
+        })
         return {"ok": True, "message": "SQLite: aucune connexion réseau requise."}
 
     err = _test_mysql(data.host, data.port, data.name, data.user, data.password)
     if err is None:
+        # Écriture anticipée de pos_server.ini dès que les credentials sont validés
+        write_ini_config({
+            "type": data.db_type, "host": data.host, "port": data.port,
+            "name": data.name, "user": data.user, "password": data.password,
+        })
         return {"ok": True, "message": "Connexion MySQL réussie."}
 
     # Sur Debian/Ubuntu, MySQL root utilise auth_socket — tentative de configuration automatique
@@ -253,9 +262,12 @@ def test_db_connection(data: DbTestRequest):
     if is_access_denied and data.host in ("localhost", "127.0.0.1"):
         fixed = _auto_fix_mysql_socket(data.user, data.password)
         if fixed:
-            # Retenter la connexion après configuration automatique
             err2 = _test_mysql(data.host, data.port, data.name, data.user, data.password)
             if err2 is None:
+                write_ini_config({
+                    "type": data.db_type, "host": data.host, "port": data.port,
+                    "name": data.name, "user": data.user, "password": data.password,
+                })
                 return {
                     "ok": True,
                     "message": f"Connexion réussie. Authentification MySQL configurée automatiquement pour '{data.user}'.",
@@ -266,83 +278,109 @@ def test_db_connection(data: DbTestRequest):
 
 
 @router.post("/create-db")
-def create_database(data: DbTestRequest, db: Session = Depends(get_db)):
-    """Create the database schema (Alembic migrations)."""
-    if _is_setup_done(db):
-        raise HTTPException(403, "Setup déjà effectué.")
-
+def create_database(data: DbTestRequest):
+    """Create the database schema using the credentials from the request."""
     try:
-        # For MySQL: create DB if it doesn't exist
+        import urllib.parse
+        from sqlalchemy import create_engine as _ce
+
         if data.db_type == "mysql":
-            import urllib.parse
-            from sqlalchemy import create_engine as _ce
             pw = urllib.parse.quote_plus(data.password)
+            # 1. Créer la base si elle n'existe pas
             root_url = f"mysql+pymysql://{data.user}:{pw}@{data.host}:{data.port}"
-            eng = _ce(root_url)
-            with eng.connect() as c:
+            eng_root = _ce(root_url, connect_args={"connect_timeout": 10})
+            with eng_root.connect() as c:
                 c.execute(text(
                     f"CREATE DATABASE IF NOT EXISTS `{data.name}` "
                     f"CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
                 ))
-            eng.dispose()
+            eng_root.dispose()
+            # 2. Créer les tables dans la bonne base avec le bon moteur
+            target_url = f"mysql+pymysql://{data.user}:{pw}@{data.host}:{data.port}/{data.name}"
+            target_eng = _ce(target_url, connect_args={"connect_timeout": 10})
+        else:
+            target_eng = _ce(f"sqlite:///{data.path}", connect_args={"check_same_thread": False})
 
-        # Create all tables
-        Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=target_eng)
+        target_eng.dispose()
         return {"ok": True}
     except Exception as e:
         raise HTTPException(500, f"Erreur création base: {e}")
 
 
 @router.post("/init")
-def initial_setup(data: InitRequest, db: Session = Depends(get_db)):
+def initial_setup(data: InitRequest):
     """
     One-time setup: write config + create admin account.
-    Disabled permanently once an admin exists.
+    Uses a fresh engine built from request credentials — works even if
+    the server started without pos_server.ini.
     """
-    if _is_setup_done(db):
-        raise HTTPException(403, "Setup déjà effectué. Endpoint désactivé.")
-
-    # Validate password strength
-    if len(data.admin_password) < 8:
-        raise HTTPException(400, "Le mot de passe doit contenir au moins 8 caractères.")
-
-    # Check username not taken
-    if db.query(User).filter(User.username == data.username).first():
-        raise HTTPException(400, "Ce nom d'utilisateur est déjà pris.")
-
-    # Write pos_server.ini
     import secrets
-    secret = data.secret_key or secrets.token_hex(32)
-    write_ini_config({
-        "type":     data.db_type,
-        "host":     data.host,
-        "port":     str(data.port),
-        "name":     data.name,
-        "user":     data.user,
-        "password": data.password,
-        "path":     data.path,
-        "secret_key":   secret,
-        "server_host":  data.server_host,
-        "server_port":  str(data.server_port),
-    })
+    import urllib.parse
+    from sqlalchemy import create_engine as _ce
+    from sqlalchemy.orm import sessionmaker
 
-    # Create admin user
-    admin = User(
-        fname=data.fname,
-        lname=data.lname,
-        username=data.username,
-        email=data.email,
-        phone=data.phone,
-        address="",
-        password=get_password_hash(data.admin_password),
-        roles=["admin"],
-        permissions=["all"],
-        must_change_password=False,
-    )
-    db.add(admin)
-    db.commit()
+    # Build engine targeting the configured database
+    if data.db_type == "mysql":
+        pw = urllib.parse.quote_plus(data.password)
+        url = f"mysql+pymysql://{data.user}:{pw}@{data.host}:{data.port}/{data.name}"
+        target_eng = _ce(url, connect_args={"connect_timeout": 10})
+    else:
+        target_eng = _ce(
+            f"sqlite:///{data.path}",
+            connect_args={"check_same_thread": False},
+        )
 
-    return {"ok": True, "message": f"Compte admin '{data.username}' créé avec succès."}
+    TargetSession = sessionmaker(bind=target_eng)
+    db = TargetSession()
+    try:
+        if _is_setup_done(db):
+            raise HTTPException(403, "Setup déjà effectué. Endpoint désactivé.")
+
+        if len(data.admin_password) < 8:
+            raise HTTPException(400, "Le mot de passe doit contenir au moins 8 caractères.")
+
+        if db.query(User).filter(User.username == data.username).first():
+            raise HTTPException(400, "Ce nom d'utilisateur est déjà pris.")
+
+        # Write final pos_server.ini (avec secret_key)
+        secret = data.secret_key or secrets.token_hex(32)
+        write_ini_config({
+            "type":        data.db_type,
+            "host":        data.host,
+            "port":        str(data.port),
+            "name":        data.name,
+            "user":        data.user,
+            "password":    data.password,
+            "path":        data.path,
+            "secret_key":  secret,
+            "server_host": data.server_host,
+            "server_port": str(data.server_port),
+        })
+
+        admin = User(
+            fname=data.fname,
+            lname=data.lname,
+            username=data.username,
+            email=data.email,
+            phone=data.phone,
+            address="",
+            password=get_password_hash(data.admin_password),
+            roles=["admin"],
+            permissions=["all"],
+            must_change_password=False,
+        )
+        db.add(admin)
+        db.commit()
+        return {"ok": True, "message": f"Compte admin '{data.username}' créé avec succès."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Erreur initialisation: {e}")
+    finally:
+        db.close()
+        target_eng.dispose()
 
 
 @router.post("/migrate-db")
