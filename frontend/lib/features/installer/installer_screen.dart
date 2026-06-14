@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -621,6 +622,7 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
   late TextEditingController _host, _port, _name, _user, _pass;
   String? _error;
   bool _isAccessDenied = false;
+  bool _fixingSocket = false;
   String? _mysqlInstructions;
   bool _testing = false;
   bool _tested = false;
@@ -645,6 +647,76 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
         setState(() => _mysqlInstructions = data['instructions'] as String);
       }
     } catch (_) {}
+  }
+
+  Future<void> _autoFixWithSudo() async {
+    final sudoPass = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final ctrl = TextEditingController();
+        return AlertDialog(
+          title: const Text('Mot de passe système'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Entrez le mot de passe sudo de cet utilisateur '
+                'pour configurer MySQL automatiquement.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                obscureText: true,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Mot de passe sudo',
+                  prefixIcon: Icon(Icons.lock_outline),
+                ),
+                onSubmitted: (_) => Navigator.pop(ctx, ctrl.text),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, ctrl.text),
+                child: const Text('Corriger')),
+          ],
+        );
+      },
+    );
+    if (sudoPass == null || sudoPass.isEmpty) return;
+
+    setState(() { _fixingSocket = true; _error = null; });
+    try {
+      final dbUser = _user.text.trim();
+      final dbPass = _pass.text;
+      final sql =
+          "ALTER USER '$dbUser'@'localhost' "
+          "IDENTIFIED WITH mysql_native_password BY '$dbPass'; "
+          "FLUSH PRIVILEGES;";
+      final process = await Process.start(
+        'sudo', ['-S', 'mysql', '-u', dbUser, '-e', sql],
+      );
+      process.stdin.writeln(sudoPass);
+      await process.stdin.close();
+      final exitCode = await process.exitCode;
+      final stderr = await process.stderr.transform(utf8.decoder).join();
+      if (exitCode == 0) {
+        setState(() { _error = null; _isAccessDenied = false; });
+        await _test();
+      } else {
+        setState(() => _error = stderr.isNotEmpty ? stderr : 'Échec — vérifiez votre mot de passe sudo.');
+      }
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      setState(() => _fixingSocket = false);
+    }
   }
 
   Future<void> _test() async {
@@ -794,6 +866,23 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
                               fontFamily: 'monospace',
                               fontSize: 11,
                               color: Color(0xFF7DD3FC)),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.warning),
+                          onPressed: _fixingSocket ? null : _autoFixWithSudo,
+                          icon: _fixingSocket
+                              ? const SizedBox(width: 16, height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.build_rounded, size: 16),
+                          label: Text(_fixingSocket
+                              ? 'Configuration en cours...'
+                              : 'Corriger automatiquement (sudo)'),
                         ),
                       ),
                     ],
