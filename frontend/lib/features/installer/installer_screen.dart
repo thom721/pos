@@ -620,6 +620,7 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _host, _port, _name, _user, _pass;
   String? _error;
+  bool _isAccessDenied = false;
   String? _mysqlInstructions;
   bool _testing = false;
   bool _tested = false;
@@ -648,7 +649,7 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
 
   Future<void> _test() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() { _testing = true; _error = null; });
+    setState(() { _testing = true; _error = null; _isAccessDenied = false; });
     try {
       await dio.post('/api/setup/test-db', data: {
         'db_type': 'mysql',
@@ -658,7 +659,6 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
         'user': _user.text.trim(),
         'password': _pass.text,
       });
-      // Save to config
       final c = ref.read(_configProvider);
       ref.read(_configProvider.notifier).state = c
         ..dbHost = _host.text.trim()
@@ -668,7 +668,9 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
         ..dbPassword = _pass.text;
       setState(() { _tested = true; });
     } catch (e) {
-      setState(() => _error = e.toString());
+      final msg = e is DioException ? extractErrorMessage(e) : e.toString();
+      final accessDenied = msg.contains('1045') || msg.toLowerCase().contains('access denied');
+      setState(() { _error = msg; _isAccessDenied = accessDenied; });
     } finally {
       setState(() => _testing = false);
     }
@@ -729,25 +731,72 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
               ),
             ]),
             const SizedBox(height: 20),
-            if (_error != null)
+            if (_error != null) ...[
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: AppColors.error.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: AppColors.error.withValues(alpha: 0.3)),
+                  border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
                 ),
-                child: Row(children: [
-                  const Icon(Icons.error_outline, color: AppColors.error,
-                      size: 18),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.error_outline, color: AppColors.error, size: 18),
                   const SizedBox(width: 8),
-                  Expanded(
-                      child: Text(_error!,
-                          style: const TextStyle(
-                              color: AppColors.error, fontSize: 12))),
+                  Expanded(child: Text(_error!,
+                      style: const TextStyle(color: AppColors.error, fontSize: 12))),
                 ]),
               ),
+              if (_isAccessDenied) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(children: [
+                        Icon(Icons.lightbulb_outline, color: AppColors.warning, size: 16),
+                        SizedBox(width: 6),
+                        Text('Debian / Ubuntu — auth_socket',
+                            style: TextStyle(
+                                color: AppColors.warning,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13)),
+                      ]),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'MySQL utilise "auth_socket" par défaut (pas de mot de passe).\n'
+                        'Exécutez ces commandes sur le serveur puis réessayez :',
+                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E2A38),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'sudo mysql -u root\n'
+                          "ALTER USER 'root'@'localhost' IDENTIFIED BY '${_pass.text}';\n"
+                          'FLUSH PRIVILEGES;\n'
+                          'exit',
+                          style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 11,
+                              color: Color(0xFF7DD3FC)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
             if (_tested)
               Container(
                 padding: const EdgeInsets.all(12),
