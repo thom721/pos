@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, DateTime, Text
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text
 from .base import UUIDBase
 
 
@@ -20,5 +20,16 @@ class Tenant(UUIDBase):
     is_local = Column(Boolean, nullable=False, default=False)
 
     # Stripe / payment
-    stripe_customer_id  = Column(String(100), nullable=True)
+    stripe_customer_id     = Column(String(100), nullable=True)
     stripe_subscription_id = Column(String(100), nullable=True)
+
+    # 'shared' = data hébergée sur posconnect.ht
+    # 'selfhosted' = data sur le propre serveur du tenant, seul billing sync posconnect.ht
+    type             = Column(String(20),  nullable=False, default='shared')
+    self_hosted_url  = Column(String(500), nullable=True)
+
+    # Nombre de caisses inclus dans le plan (positionnable par le superadmin)
+    max_caisses = Column(Integer, nullable=False, default=1)
+
+    # Autorise ce tenant self-hosted à gérer ses propres sous-tenants
+    can_manage_tenants = Column(Boolean, nullable=False, default=False)

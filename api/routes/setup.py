@@ -419,12 +419,14 @@ def connect_tenant(data: ConnectTenantRequest):
     try:
         resp = httpx.post(
             f"{cloud_url}/api/sync/token",
-            json={"email": data.email, "password": data.password},
+            json={"owner_email": data.email, "password": data.password},
             timeout=15,
         )
         resp.raise_for_status()
         body = resp.json()
-        sync_token = body.get("token") or body.get("access_token") or body.get("sync_token")
+        sync_token   = body.get("sync_token") or body.get("token") or body.get("access_token")
+        tenant_type  = body.get("tenant_type", "shared")
+        self_hosted_url = body.get("self_hosted_url") or None
     except httpx.HTTPStatusError as exc:
         code = exc.response.status_code
         if code in (401, 403):
@@ -437,6 +439,11 @@ def connect_tenant(data: ConnectTenantRequest):
         raise HTTPException(502, "Réponse inattendue du serveur cloud (token manquant)")
 
     # ── 2. Write pos_server.ini (db + server + sync config) ──────────────────
+    # Self-hosted: données business → self_hosted_url, billing → cloud_url
+    # Shared:      données business → cloud_url,       billing → cloud_url
+    data_sync_url = (self_hosted_url.rstrip("/") if self_hosted_url else cloud_url) \
+        if tenant_type == "selfhosted" else cloud_url
+
     secret = secrets.token_hex(32)
     write_ini_config({
         "type":               data.db_type,
@@ -449,9 +456,10 @@ def connect_tenant(data: ConnectTenantRequest):
         "secret_key":         secret,
         "server_host":        data.server_host,
         "server_port":        str(data.server_port),
-        "cloud_sync_url":     cloud_url,
+        "cloud_sync_url":     data_sync_url,
         "cloud_sync_token":   sync_token,
         "cloud_sync_enabled": "true",
+        "billing_url":        cloud_url,
     })
 
     # ── 3. Create local admin user in DB ─────────────────────────────────────
@@ -489,7 +497,12 @@ def connect_tenant(data: ConnectTenantRequest):
         )
         db.add(admin)
         db.commit()
-        return {"ok": True, "message": f"Installation liée au compte {data.email}"}
+        return {
+            "ok":             True,
+            "message":        f"Installation liée au compte {data.email}",
+            "tenant_type":    tenant_type,
+            "self_hosted_url": self_hosted_url,
+        }
     except Exception as exc:
         db.rollback()
         raise HTTPException(500, f"Erreur création compte local: {exc}")

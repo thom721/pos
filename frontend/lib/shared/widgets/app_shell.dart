@@ -104,16 +104,29 @@ class AppShell extends ConsumerWidget {
         ? _MobileShell(child: child)
         : _DesktopShell(child: child);
 
-    // Warning banner: overlay on top of the normal shell
+    final banners = <Widget>[];
+
+    // Licence expiry / offline warning
     if (license != null && license.hasWarning && license.message != null) {
+      banners.add(_LicenseWarningBanner(
+        message: license.message!,
+        isOffline: license.isOffline,
+      ));
+    }
+
+    // Caisse over-limit warning (non-blocking)
+    if (license != null && license.caisseOverLimit) {
+      final extra = license.currentCaisses - license.maxCaisses;
+      banners.add(_CaisseOverLimitBanner(
+        extra: extra,
+        priceHtg: license.pricePerExtraCaisseHtg,
+        priceUsd: license.pricePerExtraCaisseUsd,
+      ));
+    }
+
+    if (banners.isNotEmpty) {
       return Column(
-        children: [
-          _LicenseWarningBanner(
-            message: license.message!,
-            isOffline: license.isOffline,
-          ),
-          Expanded(child: shell),
-        ],
+        children: [...banners, Expanded(child: shell)],
       );
     }
 
@@ -751,6 +764,59 @@ class _LicenseBlockedScreen extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CaisseOverLimitBanner extends StatefulWidget {
+  final int extra;
+  final double priceHtg;
+  final double priceUsd;
+  const _CaisseOverLimitBanner({
+    required this.extra,
+    required this.priceHtg,
+    required this.priceUsd,
+  });
+
+  @override
+  State<_CaisseOverLimitBanner> createState() => _CaisseOverLimitBannerState();
+}
+
+class _CaisseOverLimitBannerState extends State<_CaisseOverLimitBanner> {
+  bool _dismissed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_dismissed) return const SizedBox.shrink();
+    final totalHtg = (widget.extra * widget.priceHtg).toStringAsFixed(0);
+    final totalUsd = (widget.extra * widget.priceUsd).toStringAsFixed(2);
+    return Material(
+      color: Colors.orange.shade700,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.point_of_sale_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${widget.extra} caisse(s) supplémentaire(s) — ${widget.extra} × ${widget.priceHtg.toStringAsFixed(0)} HTG = $totalHtg HTG / $totalUsd USD/mois',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 16),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () => setState(() => _dismissed = true),
+            ),
+          ],
         ),
       ),
     );

@@ -50,6 +50,7 @@ def load_ini_config() -> dict:
         "CLOUD_SYNC_TOKEN":    srv.get("cloud_sync_token",    os.getenv("CLOUD_SYNC_TOKEN",    "")),
         "CLOUD_SYNC_ENABLED":  srv.get("cloud_sync_enabled",  os.getenv("CLOUD_SYNC_ENABLED",  "false")).lower() == "true",
         "IDENTITY_PRIVATE_KEY": srv.get("identity_private_key", os.getenv("IDENTITY_PRIVATE_KEY", "")),
+        "BILLING_URL": srv.get("billing_url", os.getenv("BILLING_URL", "")),
     }
 
 
@@ -88,6 +89,10 @@ class Settings(BaseSettings):
     # Server identity — Ed25519 private key (base64 raw)
     # Generate: python -c "from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey; from cryptography.hazmat.primitives.serialization import Encoding,PrivateFormat,NoEncryption; import base64; k=Ed25519PrivateKey.generate(); print(base64.b64encode(k.private_bytes(Encoding.Raw,PrivateFormat.Raw,NoEncryption())).decode())"
     IDENTITY_PRIVATE_KEY: str = ""
+
+    # URL du serveur billing (posconnect.ht). Séparé de CLOUD_SYNC_URL pour les
+    # tenants self-hosted dont les données business vont vers leur propre serveur.
+    BILLING_URL: str = ""
 
     class Config:
         env_file = ".env"
@@ -133,7 +138,7 @@ def write_ini_config(cfg_data: dict, path: Path = None) -> Path:
         elif k in ("secret_key", "token_expire_minutes", "admin_secret",
                    "admin_email", "admin_password_hash",
                    "cloud_sync_url", "cloud_sync_token", "cloud_sync_enabled",
-                   "identity_private_key"):
+                   "identity_private_key", "billing_url"):
             cfg["server"][k] = str(val)
         elif k == "server_host":
             cfg["server"]["host"] = str(val)

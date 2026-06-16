@@ -16,10 +16,17 @@ enum LicenseAccess { allowed, warning, blocked }
 
 class LicenseStatus {
   final LicenseAccess access;
-  final String status;        // trial | active | expired | suspended | local
+  final String status;            // trial | active | expired | suspended | local
   final bool isOffline;
-  final int? daysLeft;        // trial or subscription days remaining
-  final String? message;      // shown when warning or blocked
+  final int? daysLeft;            // trial or subscription days remaining
+  final String? message;          // shown when warning or blocked
+  final String tenantType;        // 'shared' | 'selfhosted'
+  final String? selfHostedUrl;
+  final int maxCaisses;
+  final int currentCaisses;
+  final bool caisseOverLimit;
+  final double pricePerExtraCaisseHtg;
+  final double pricePerExtraCaisseUsd;
 
   const LicenseStatus({
     required this.access,
@@ -27,6 +34,13 @@ class LicenseStatus {
     this.isOffline = false,
     this.daysLeft,
     this.message,
+    this.tenantType = 'shared',
+    this.selfHostedUrl,
+    this.maxCaisses = 1,
+    this.currentCaisses = 0,
+    this.caisseOverLimit = false,
+    this.pricePerExtraCaisseHtg = 500.0,
+    this.pricePerExtraCaisseUsd = 4.0,
   });
 
   bool get isAllowed  => access != LicenseAccess.blocked;
@@ -63,17 +77,47 @@ class LicenseService {
       );
     }
 
-    final tenantStatus = payload['status'] as String? ?? 'unknown';
-    final validUntil   = _dt(payload['valid_until']);
-    final trialEndsAt  = _dt(payload['trial_ends_at']);
-    final subEndsAt    = _dt(payload['subscription_ends_at']);
+    final tenantStatus    = payload['status'] as String? ?? 'unknown';
+    final tenantType      = payload['tenant_type'] as String? ?? 'shared';
+    final selfHostedUrl   = payload['self_hosted_url'] as String?;
+    final maxCaisses      = (payload['max_caisses'] as num?)?.toInt() ?? 1;
+    final currentCaisses  = (payload['current_caisses'] as num?)?.toInt() ?? 0;
+    final caisseOverLimit = currentCaisses > maxCaisses;
+    final priceHtg = (payload['price_per_extra_caisse_htg'] as num?)?.toDouble() ?? 500.0;
+    final priceUsd = (payload['price_per_extra_caisse_usd'] as num?)?.toDouble() ?? 4.0;
+    final validUntil  = _dt(payload['valid_until']);
+    final trialEndsAt = _dt(payload['trial_ends_at']);
+    final subEndsAt   = _dt(payload['subscription_ends_at']);
+
+    // Helper to attach tenant/caisse fields to any LicenseStatus
+    LicenseStatus withMeta({
+      required LicenseAccess access,
+      required String status,
+      bool isOfflineVal = false,
+      int? daysLeft,
+      String? message,
+    }) =>
+        LicenseStatus(
+          access: access,
+          status: status,
+          isOffline: isOfflineVal,
+          daysLeft: daysLeft,
+          message: message,
+          tenantType: tenantType,
+          selfHostedUrl: selfHostedUrl,
+          maxCaisses: maxCaisses,
+          currentCaisses: currentCaisses,
+          caisseOverLimit: caisseOverLimit,
+          pricePerExtraCaisseHtg: priceHtg,
+          pricePerExtraCaisseUsd: priceUsd,
+        );
 
     // 4. Suspended — always blocked
     if (tenantStatus == 'suspended') {
-      return LicenseStatus(
+      return withMeta(
         access: LicenseAccess.blocked,
         status: tenantStatus,
-        isOffline: isOffline,
+        isOfflineVal: isOffline,
         message: 'Votre compte a été suspendu. Contactez le support POS Connect.',
       );
     }
@@ -88,34 +132,32 @@ class LicenseService {
 
     // 6. License still valid (server-stamped valid_until not reached)
     if (validUntil != null && now.isBefore(validUntil)) {
-      // Expired status but online → user should see warning to subscribe
       if (tenantStatus == 'expired' && !isOffline) {
-        return LicenseStatus(
+        return withMeta(
           access: LicenseAccess.warning,
           status: tenantStatus,
-          isOffline: false,
           daysLeft: daysLeft,
           message: 'Votre période d\'essai est terminée. Abonnez-vous pour continuer.',
         );
       }
-      return LicenseStatus(
+      return withMeta(
         access: LicenseAccess.allowed,
         status: tenantStatus,
-        isOffline: isOffline,
+        isOfflineVal: isOffline,
         daysLeft: daysLeft,
       );
     }
 
     // 7. valid_until has passed → offline grace period
     if (validUntil != null) {
-      final graceEnd  = validUntil.add(const Duration(days: _kOfflineGrace));
-      final inGrace   = now.isBefore(graceEnd);
+      final graceEnd = validUntil.add(const Duration(days: _kOfflineGrace));
+      final inGrace  = now.isBefore(graceEnd);
       if (inGrace) {
         final graceDays = (graceEnd.difference(now).inSeconds / 86400).ceil();
-        return LicenseStatus(
+        return withMeta(
           access: LicenseAccess.warning,
           status: tenantStatus,
-          isOffline: isOffline,
+          isOfflineVal: isOffline,
           daysLeft: daysLeft,
           message: isOffline
               ? 'Hors ligne — reconnectez-vous dans $graceDays jour(s) pour valider votre licence.'
@@ -125,10 +167,10 @@ class LicenseService {
     }
 
     // 8. Fully blocked
-    return LicenseStatus(
+    return withMeta(
       access: LicenseAccess.blocked,
       status: tenantStatus,
-      isOffline: isOffline,
+      isOfflineVal: isOffline,
       message: isOffline
           ? 'Reconnectez-vous à internet pour valider votre licence (expirée hors ligne).'
           : 'Votre abonnement a expiré. Veuillez renouveler votre abonnement.',

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
 from math import ceil
@@ -49,6 +49,8 @@ def get_billing_config(
         "natcash_mode":      cfg.natcash_mode or "manual",
         "support_email":     cfg.support_email,
         "support_whatsapp":  cfg.support_whatsapp,
+        "price_per_extra_caisse_htg": float(cfg.price_per_extra_caisse_htg),
+        "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
     }
 
 
@@ -95,16 +97,48 @@ def get_billing_status(
     }
 
 
-@router.get("/license")
-def get_license(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(P.CONFIG_READ)),
-):
-    """
-    Returns a signed license blob the Flutter app caches locally.
-    Allows offline operation for up to 7 days without server contact.
-    Signed with IDENTITY_PRIVATE_KEY (Ed25519) — verifiable without internet.
-    """
+def _build_license_payload(tenant: "Tenant", db: Session) -> dict:
+    """Build the raw license payload dict (shared by both license endpoints)."""
+    now         = datetime.now(timezone.utc)
+    valid_until = now + timedelta(days=7)
+
+    trial_end = tenant.trial_ends_at
+    if trial_end and trial_end.tzinfo is None:
+        trial_end = trial_end.replace(tzinfo=timezone.utc)
+
+    sub_end = getattr(tenant, "subscription_ends_at", None)
+    if sub_end and sub_end.tzinfo is None:
+        sub_end = sub_end.replace(tzinfo=timezone.utc)
+
+    users = db.query(User).filter(User.tenant_id == tenant.id).all()
+    caisse_count = sum(
+        1 for u in users
+        if u.roles and "cashier" in (u.roles if isinstance(u.roles, list) else [])
+    )
+
+    cfg = db.query(PlatformConfig).first()
+    price_extra_htg = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
+    price_extra_usd = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
+
+    return {
+        "tenant_id":            tenant.id,
+        "tenant_type":          tenant.type,
+        "self_hosted_url":      tenant.self_hosted_url or None,
+        "can_manage_tenants":   tenant.can_manage_tenants,
+        "status":               tenant.status,
+        "issued_at":            now.isoformat(),
+        "valid_until":          valid_until.isoformat(),
+        "trial_ends_at":        trial_end.isoformat() if trial_end else None,
+        "subscription_ends_at": sub_end.isoformat() if sub_end else None,
+        "max_caisses":          tenant.max_caisses,
+        "current_caisses":      caisse_count,
+        "price_per_extra_caisse_htg": price_extra_htg,
+        "price_per_extra_caisse_usd": price_extra_usd,
+    }
+
+
+def _sign_payload(payload: dict) -> dict:
+    """Sign a payload dict with IDENTITY_PRIVATE_KEY. Returns {data, signature}."""
     import json
     import base64
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -112,40 +146,106 @@ def get_license(
     raw_key = settings.IDENTITY_PRIVATE_KEY
     if not raw_key:
         raise HTTPException(503, "Identité serveur non configurée (IDENTITY_PRIVATE_KEY)")
-
-    tenant    = _get_tenant(db, current_user)
-    now       = datetime.now(timezone.utc)
-    valid_until = now + timedelta(days=7)
-
-    trial_end = tenant.trial_ends_at
-    if trial_end and trial_end.tzinfo is None:
-        trial_end = trial_end.replace(tzinfo=timezone.utc)
-
-    # subscription_ends_at: when is the paid subscription valid until
-    sub_end = getattr(tenant, "subscription_ends_at", None)
-    if sub_end and sub_end.tzinfo is None:
-        sub_end = sub_end.replace(tzinfo=timezone.utc)
-
-    payload = {
-        "tenant_id":            tenant.id,
-        "status":               tenant.status,
-        "issued_at":            now.isoformat(),
-        "valid_until":          valid_until.isoformat(),
-        "trial_ends_at":        trial_end.isoformat() if trial_end else None,
-        "subscription_ends_at": sub_end.isoformat() if sub_end else None,
-    }
-
     try:
         key_bytes  = base64.b64decode(raw_key)
         priv       = Ed25519PrivateKey.from_private_bytes(key_bytes)
         data_bytes = json.dumps(payload, separators=(",", ":")).encode()
         signature  = priv.sign(data_bytes)
+        return {
+            "data":      base64.b64encode(data_bytes).decode(),
+            "signature": base64.b64encode(signature).decode(),
+        }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(500, f"Erreur signature licence: {exc}")
 
+
+@router.get("/license-sync-proxy")
+def get_license_sync_proxy(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Called by self-hosted / local servers proxying for their Flutter clients.
+    Accepts a sync token (Bearer) instead of a user JWT.
+    Returns a signed license blob (signed with IDENTITY_PRIVATE_KEY on posconnect.ht).
+    """
+    from api.routes.sync import _decode_sync_token
+
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(401, "Token de synchronisation requis")
+
+    claims = _decode_sync_token(auth_header[7:])
+    tenant = db.query(Tenant).filter(Tenant.id == claims["tenant_id"]).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant introuvable")
+
+    return _sign_payload(_build_license_payload(tenant, db))
+
+
+@router.get("/license")
+def get_license(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.CONFIG_READ)),
+):
+    """
+    Returns a signed license blob the Flutter app caches locally.
+    - If BILLING_URL is configured (self-hosted / local server): proxies to
+      posconnect.ht using the stored sync token — transparent to Flutter clients.
+    - Otherwise (running ON posconnect.ht): signs and returns directly.
+    Signed with IDENTITY_PRIVATE_KEY (Ed25519) — verifiable without internet.
+    """
+    # ── Proxy mode: self-hosted / local server ────────────────────────────────
+    # BILLING_URL is set when this server is NOT posconnect.ht (set by wizard).
+    # In that case, proxy to posconnect.ht using the stored sync token so that
+    # the signed blob comes from posconnect.ht (Flutter verifies with hardcoded key).
+    import httpx as _httpx
+
+    billing_url  = (settings.BILLING_URL or "").rstrip("/")
+    sync_token   = settings.CLOUD_SYNC_TOKEN or ""
+
+    if billing_url and sync_token:
+        try:
+            r = _httpx.get(
+                f"{billing_url}/api/billing/license-sync-proxy",
+                headers={"Authorization": f"Bearer {sync_token}"},
+                timeout=10,
+            )
+            r.raise_for_status()
+            return r.json()
+        except _httpx.HTTPStatusError as exc:
+            raise HTTPException(exc.response.status_code,
+                                f"Erreur billing proxy: {exc.response.text[:200]}")
+        except Exception as exc:
+            raise HTTPException(503, f"Serveur de billing inaccessible: {exc}")
+
+    # ── Direct mode: this IS posconnect.ht ───────────────────────────────────
+    tenant = _get_tenant(db, current_user)
+    return _sign_payload(_build_license_payload(tenant, db))
+
+
+@router.get("/caisse-count")
+def get_caisse_count(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.CONFIG_READ)),
+):
+    """Returns current caisse count vs plan limit for the tenant."""
+    tenant = _get_tenant(db, current_user)
+    users  = db.query(User).filter(User.tenant_id == tenant.id).all()
+    count  = sum(
+        1 for u in users
+        if u.roles and "cashier" in (u.roles if isinstance(u.roles, list) else [])
+    )
+    cfg = db.query(PlatformConfig).first()
     return {
-        "data":      base64.b64encode(data_bytes).decode(),
-        "signature": base64.b64encode(signature).decode(),
+        "current_caisses": count,
+        "max_caisses":     tenant.max_caisses,
+        "over_limit":      count > tenant.max_caisses,
+        "extra_count":     max(0, count - tenant.max_caisses),
+        "price_per_extra_htg": float(cfg.price_per_extra_caisse_htg) if cfg else 500.0,
+        "price_per_extra_usd": float(cfg.price_per_extra_caisse_usd) if cfg else 4.0,
     }
 
 

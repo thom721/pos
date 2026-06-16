@@ -31,9 +31,24 @@ class AdminLogin(BaseModel):
     password: str
 
 
+class CreateTenantPayload(BaseModel):
+    business_name: str
+    owner_email:   str
+    password:      str
+    phone:         str | None = None
+    type:          str = "shared"          # 'shared' | 'selfhosted'
+    self_hosted_url: str | None = None
+    max_caisses:   int = 1
+    can_manage_tenants: bool = False
+
+
 class TenantPatch(BaseModel):
     status: str | None = None           # 'trial' | 'active' | 'suspended'
     extra_trial_days: int | None = None  # extend trial by N days
+    type: str | None = None             # 'shared' | 'selfhosted'
+    self_hosted_url: str | None = None
+    max_caisses: int | None = None
+    can_manage_tenants: bool | None = None
 
 
 class ManualActivatePayload(BaseModel):
@@ -54,6 +69,8 @@ class PlatformConfigUpdate(BaseModel):
     support_whatsapp: str | None = None
     moncash_mode: str | None = None   # 'manual' | 'api'
     natcash_mode: str | None = None   # 'manual' | 'api'
+    price_per_extra_caisse_htg: float | None = None
+    price_per_extra_caisse_usd: float | None = None
 
 
 # ── Internal helpers ────────────────────────────────────────────────────────
@@ -211,6 +228,10 @@ def list_tenants(
             "owner_email":            t.owner_email,
             "phone":                  t.phone,
             "status":                 t.status,
+            "type":                   t.type,
+            "self_hosted_url":        t.self_hosted_url,
+            "max_caisses":            t.max_caisses,
+            "can_manage_tenants":     t.can_manage_tenants,
             "days_left":              _days_left(t),
             "trial_ends_at":          t.trial_ends_at.isoformat() if t.trial_ends_at else None,
             "subscription_started_at": t.subscription_started_at.isoformat() if t.subscription_started_at else None,
@@ -221,6 +242,95 @@ def list_tenants(
         })
 
     return result
+
+
+# ── Create tenant ───────────────────────────────────────────────────────────
+
+@router.post("/tenants", status_code=201)
+def create_tenant(
+    body: CreateTenantPayload,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """Create a new cloud tenant with optional self-hosted configuration."""
+    import re
+    import secrets
+    from pwdlib import PasswordHash as _PH
+    from api.models.User import User
+    from api.core.config import settings as _settings
+
+    # Validate type
+    if body.type not in ("shared", "selfhosted"):
+        raise HTTPException(status_code=400, detail="type doit être 'shared' ou 'selfhosted'")
+    if body.type == "selfhosted" and not body.self_hosted_url:
+        raise HTTPException(status_code=400, detail="self_hosted_url est requis pour un tenant selfhosted")
+
+    # Unique slug from business name
+    base_slug = re.sub(r"[^a-z0-9]+", "-", body.business_name.lower()).strip("-") or "tenant"
+    slug = base_slug
+    attempt = 0
+    while db.query(Tenant).filter(Tenant.slug == slug).first():
+        attempt += 1
+        slug = f"{base_slug}-{attempt}"
+
+    if db.query(Tenant).filter(Tenant.owner_email == body.owner_email).first():
+        raise HTTPException(status_code=400, detail="Cet email est déjà associé à un tenant")
+
+    cfg = _get_platform_config(db)
+    trial_days = cfg.trial_days or 30
+
+    now = datetime.now(timezone.utc)
+    tenant = Tenant(
+        slug=slug,
+        business_name=body.business_name,
+        owner_email=body.owner_email,
+        phone=body.phone,
+        status="trial",
+        trial_ends_at=now + timedelta(days=trial_days),
+        is_local=False,
+        type=body.type,
+        self_hosted_url=body.self_hosted_url,
+        max_caisses=body.max_caisses,
+        can_manage_tenants=body.can_manage_tenants,
+    )
+    db.add(tenant)
+    db.flush()
+
+    # Create owner user account
+    username = body.owner_email.split("@")[0]
+    while db.query(User).filter(User.username == username).first():
+        username = f"{username}{secrets.token_hex(2)}"
+
+    owner_user = User(
+        tenant_id=tenant.id,
+        fname=body.business_name,
+        lname="",
+        username=username,
+        phone=body.phone or f"+000{secrets.token_hex(4)}",
+        email=body.owner_email,
+        roles=["owner", "manager", "cashier"],
+        permissions=[],
+        password=_PH.recommended().hash(body.password),
+        must_change_password=False,
+    )
+    db.add(owner_user)
+    db.commit()
+    db.refresh(tenant)
+
+    _log.info("Tenant créé: %s (%s) type=%s", tenant.slug, tenant.id, tenant.type)
+
+    return {
+        "id":                  tenant.id,
+        "slug":                tenant.slug,
+        "business_name":       tenant.business_name,
+        "owner_email":         tenant.owner_email,
+        "status":              tenant.status,
+        "type":                tenant.type,
+        "self_hosted_url":     tenant.self_hosted_url,
+        "max_caisses":         tenant.max_caisses,
+        "can_manage_tenants":  tenant.can_manage_tenants,
+        "trial_ends_at":       tenant.trial_ends_at.isoformat() if tenant.trial_ends_at else None,
+    }
 
 
 # ── Tenant detail ───────────────────────────────────────────────────────────
@@ -249,6 +359,10 @@ def get_tenant(
         "owner_email":            t.owner_email,
         "phone":                  t.phone,
         "status":                 t.status,
+        "type":                   t.type,
+        "self_hosted_url":        t.self_hosted_url,
+        "max_caisses":            t.max_caisses,
+        "can_manage_tenants":     t.can_manage_tenants,
         "days_left":              _days_left(t),
         "trial_ends_at":          t.trial_ends_at.isoformat() if t.trial_ends_at else None,
         "subscription_started_at": t.subscription_started_at.isoformat() if t.subscription_started_at else None,
@@ -285,13 +399,33 @@ def patch_tenant(
             base = base.replace(tzinfo=timezone.utc)
         t.trial_ends_at = base + timedelta(days=body.extra_trial_days)
 
+    if body.type is not None:
+        if body.type not in ("shared", "selfhosted"):
+            raise HTTPException(status_code=400, detail="type doit être 'shared' ou 'selfhosted'")
+        t.type = body.type
+
+    if body.self_hosted_url is not None:
+        t.self_hosted_url = body.self_hosted_url or None
+
+    if body.max_caisses is not None:
+        if body.max_caisses < 1:
+            raise HTTPException(status_code=400, detail="max_caisses doit être >= 1")
+        t.max_caisses = body.max_caisses
+
+    if body.can_manage_tenants is not None:
+        t.can_manage_tenants = body.can_manage_tenants
+
     db.commit()
     db.refresh(t)
     return {
-        "id":            t.id,
-        "status":        t.status,
-        "trial_ends_at": t.trial_ends_at.isoformat() if t.trial_ends_at else None,
-        "days_left":     _days_left(t),
+        "id":                 t.id,
+        "status":             t.status,
+        "type":               t.type,
+        "self_hosted_url":    t.self_hosted_url,
+        "max_caisses":        t.max_caisses,
+        "can_manage_tenants": t.can_manage_tenants,
+        "trial_ends_at":      t.trial_ends_at.isoformat() if t.trial_ends_at else None,
+        "days_left":          _days_left(t),
     }
 
 
@@ -384,6 +518,8 @@ def get_platform_config(
         "support_whatsapp":  cfg.support_whatsapp,
         "moncash_mode":      cfg.moncash_mode or "manual",
         "natcash_mode":      cfg.natcash_mode or "manual",
+        "price_per_extra_caisse_htg": float(cfg.price_per_extra_caisse_htg),
+        "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
         "created_at":        cfg.created_at.isoformat() if cfg.created_at else None,
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }
@@ -414,6 +550,11 @@ def update_platform_config(
             raise HTTPException(status_code=400, detail="natcash_mode invalide: 'manual' ou 'api'")
         cfg.natcash_mode = body.natcash_mode
 
+    if body.price_per_extra_caisse_htg is not None:
+        cfg.price_per_extra_caisse_htg = body.price_per_extra_caisse_htg
+    if body.price_per_extra_caisse_usd is not None:
+        cfg.price_per_extra_caisse_usd = body.price_per_extra_caisse_usd
+
     db.commit()
     db.refresh(cfg)
 
@@ -429,5 +570,7 @@ def update_platform_config(
         "support_whatsapp":  cfg.support_whatsapp,
         "moncash_mode":      cfg.moncash_mode or "manual",
         "natcash_mode":      cfg.natcash_mode or "manual",
+        "price_per_extra_caisse_htg": float(cfg.price_per_extra_caisse_htg),
+        "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }

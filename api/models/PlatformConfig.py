@@ -19,3 +19,7 @@ class PlatformConfig(UUIDBase):
     # Superadmin credentials — stored in DB for cloud/Docker persistence
     admin_email         = Column(String(200), nullable=False, default='')
     admin_password_hash = Column(String(255), nullable=False, default='')
+
+    # Prix par caisse supplémentaire (au-delà du max_caisses du plan)
+    price_per_extra_caisse_htg = Column(Numeric(10, 2), nullable=False, default=500.00)
+    price_per_extra_caisse_usd = Column(Numeric(10, 2), nullable=False, default=4.00)

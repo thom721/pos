@@ -35,3 +35,9 @@ cloud_sync_enabled    = false
 # UNIQUEMENT sur le serveur cloud SaaS — ne pas mettre sur les serveurs clients
 # Générer : python -c "from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey; from cryptography.hazmat.primitives.serialization import Encoding,PrivateFormat,NoEncryption; import base64; k=Ed25519PrivateKey.generate(); print(base64.b64encode(k.private_bytes(Encoding.Raw,PrivateFormat.Raw,NoEncryption())).decode())"
 identity_private_key  =
+
+# URL du serveur de billing (posconnect.ht).
+# Pour les tenants self-hosted, l'app Flutter utilise cette URL pour vérifier
+# la licence/plan même si les données business vont vers leur propre serveur.
+# Rempli automatiquement par le wizard lors de la connexion tenant.
+billing_url           =

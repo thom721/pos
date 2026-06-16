@@ -79,13 +79,14 @@ class SyncConfigRequest(BaseModel):
 _bearer = HTTPBearer(auto_error=False)
 
 
-def _make_sync_token(tenant_id: str, device_id: str) -> str:
+def _make_sync_token(tenant_id: str, device_id: str, tenant_type: str = "shared") -> str:
     payload = {
-        "sub":       f"sync:{tenant_id}",
-        "role":      "sync",
-        "tenant_id": tenant_id,
-        "device_id": device_id,
-        "exp":       datetime.utcnow() + timedelta(days=365),
+        "sub":         f"sync:{tenant_id}",
+        "role":        "sync",
+        "tenant_id":   tenant_id,
+        "device_id":   device_id,
+        "tenant_type": tenant_type,
+        "exp":         datetime.utcnow() + timedelta(days=365),
     }
     return _jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
@@ -155,11 +156,15 @@ def issue_sync_token(payload: SyncTokenRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Email ou mot de passe incorrect")
 
     return {
-        "sync_token":      _make_sync_token(tenant.id, payload.device_id),
-        "tenant_id":       tenant.id,
-        "tenant_slug":     tenant.slug,
-        "business_name":   tenant.business_name,
-        "expires_in_days": 365,
+        "sync_token":        _make_sync_token(tenant.id, payload.device_id, tenant.type),
+        "tenant_id":         tenant.id,
+        "tenant_slug":       tenant.slug,
+        "business_name":     tenant.business_name,
+        "tenant_type":       tenant.type,
+        "self_hosted_url":   tenant.self_hosted_url or None,
+        "can_manage_tenants": tenant.can_manage_tenants,
+        "max_caisses":       tenant.max_caisses,
+        "expires_in_days":   365,
     }
 
 
@@ -171,9 +176,22 @@ def sync_push(
     claims: dict = Depends(require_sync_token),
     db:     Session = Depends(get_db),
 ):
-    """Local server pushes records here. Upserts each under the authenticated tenant."""
+    """Local server pushes records here. Upserts each under the authenticated tenant.
+    Self-hosted tenants: business data is rejected — only billing sync is allowed.
+    """
     tenant_id   = claims["tenant_id"]
-    model       = _MODEL_MAP.get(body.entity_type)
+    tenant_type = claims.get("tenant_type", "shared")
+
+    # Self-hosted tenants store their business data on their own server.
+    # posconnect.ht only handles billing — reject any business entity push.
+    if tenant_type == "selfhosted":
+        raise HTTPException(
+            status_code=403,
+            detail="Tenant self-hosted : les données business ne se synchronisent pas sur posconnect.ht. "
+                   "Utilisez votre propre serveur (self_hosted_url).",
+        )
+
+    model = _MODEL_MAP.get(body.entity_type)
     if not model:
         raise HTTPException(status_code=400, detail=f"Type d'entité inconnu: {body.entity_type}")
 
@@ -228,9 +246,19 @@ def sync_pull(
     claims:      dict = Depends(require_sync_token),
     db:          Session = Depends(get_db),
 ):
-    """Return records updated since `since` for the authenticated tenant."""
-    tenant_id = claims["tenant_id"]
-    model     = _MODEL_MAP.get(entity_type)
+    """Return records updated since `since` for the authenticated tenant.
+    Self-hosted tenants: business data pull is rejected.
+    """
+    tenant_id   = claims["tenant_id"]
+    tenant_type = claims.get("tenant_type", "shared")
+
+    if tenant_type == "selfhosted":
+        raise HTTPException(
+            status_code=403,
+            detail="Tenant self-hosted : récupérez vos données depuis votre propre serveur (self_hosted_url).",
+        )
+
+    model = _MODEL_MAP.get(entity_type)
     if not model:
         raise HTTPException(status_code=400, detail=f"Type d'entité inconnu: {entity_type}")
 
