@@ -56,6 +56,9 @@ dependencies:
   pdf: ^3.11.0
   printing: ^5.13.2
 
+  # Cryptography — Ed25519 server identity verification
+  cryptography: ^2.7.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

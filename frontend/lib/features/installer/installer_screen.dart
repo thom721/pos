@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+import 'package:cryptography/cryptography.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -1057,35 +1059,81 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
     if (url.isEmpty || email.isEmpty || pwd.isEmpty) return;
 
     setState(() { _testing = true; _error = null; _verified = false; });
+
+    final cloudDio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+    ));
+
     try {
-      // Call cloud sync/token directly to validate credentials
-      final cloudDio = Dio(BaseOptions(
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
-      ));
-      final res = await cloudDio.post(
+      // ── Step 1 : verify server identity (Ed25519) ────────────────────
+      final nonce = _randomNonce();
+      final idRes = await cloudDio.get(
+        '$url/api/public/identity',
+        queryParameters: {'nonce': nonce},
+      );
+      final sigB64 = idRes.data['signature'] as String?;
+      if (sigB64 == null || idRes.data['app'] != 'pos-connect-saas') {
+        setState(() => _error = 'Ce serveur n\'est pas un serveur POS Connect.');
+        return;
+      }
+
+      final valid = await _verifySignature(nonce, sigB64);
+      if (!valid) {
+        setState(() => _error =
+            'Signature invalide — ce serveur n\'est pas un serveur POS Connect authentique.');
+        return;
+      }
+
+      // ── Step 2 : validate tenant credentials ─────────────────────────
+      await cloudDio.post(
         '$url/api/sync/token',
         data: {'email': email, 'password': pwd},
       );
-      if (res.data != null) {
-        final c = ref.read(_configProvider);
-        ref.read(_configProvider.notifier).state = c
-          ..cloudUrl       = url
-          ..tenantEmail    = email
-          ..tenantPassword = pwd;
-        setState(() => _verified = true);
-      }
+
+      final c = ref.read(_configProvider);
+      ref.read(_configProvider.notifier).state = c
+        ..cloudUrl       = url
+        ..tenantEmail    = email
+        ..tenantPassword = pwd;
+      setState(() => _verified = true);
+
     } on DioException catch (e) {
       final code = e.response?.statusCode;
       final msg  = code == 403 || code == 401
           ? 'Identifiants incorrects ou compte inactif'
           : e.response?.data?['detail']?.toString() ??
-            'Impossible de joindre le serveur cloud ($url)';
+            'Impossible de joindre le serveur ($url)';
       setState(() => _error = msg);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
       setState(() => _testing = false);
+    }
+  }
+
+  /// Generates a cryptographically random 24-char hex nonce.
+  String _randomNonce() {
+    final rng = Random.secure();
+    final bytes = List<int>.generate(12, (_) => rng.nextInt(256));
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  /// Verifies the Ed25519 signature from the server against the hardcoded public key.
+  Future<bool> _verifySignature(String nonce, String signatureB64) async {
+    try {
+      final pubKeyBytes = base64.decode(AppConstants.identityPublicKeyB64);
+      final sigBytes    = base64.decode(signatureB64);
+      final message     = utf8.encode('pos-connect-saas:$nonce');
+
+      final algorithm = Ed25519();
+      final publicKey = SimplePublicKey(pubKeyBytes, type: KeyPairType.ed25519);
+      return await algorithm.verify(
+        message,
+        signature: Signature(sigBytes, publicKey: publicKey),
+      );
+    } catch (_) {
+      return false;
     }
   }
 

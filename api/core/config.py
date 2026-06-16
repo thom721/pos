@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     CLOUD_SYNC_TOKEN:   str  = ""
     CLOUD_SYNC_ENABLED: bool = False
 
+    # Server identity — Ed25519 private key (base64 raw)
+    # Generate: python -c "from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey; from cryptography.hazmat.primitives.serialization import Encoding,PrivateFormat,NoEncryption; import base64; k=Ed25519PrivateKey.generate(); print(base64.b64encode(k.private_bytes(Encoding.Raw,PrivateFormat.Raw,NoEncryption())).decode())"
+    IDENTITY_PRIVATE_KEY: str = ""
+
     class Config:
         env_file = ".env"
         extra = "ignore"

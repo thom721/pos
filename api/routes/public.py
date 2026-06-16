@@ -2,7 +2,11 @@
 Public routes — no authentication required.
 Used by the Flutter Web registration/login flow and WordPress webhook.
 """
-from fastapi import APIRouter, Depends
+import base64
+import os
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from api.database import get_db
@@ -10,6 +14,50 @@ from api.schemas.tenant import TenantRegister, CloudLogin, CloudToken, TenantRea
 from api.services.tenant_service import register_tenant, cloud_login
 
 router = APIRouter(prefix="/api/public", tags=["Public"])
+_log = logging.getLogger("pos.public")
+
+# ── Server identity (Ed25519) ─────────────────────────────────────────────────
+
+def _load_identity_key():
+    """Load Ed25519 private key from env. Returns None if not configured."""
+    raw = os.getenv("IDENTITY_PRIVATE_KEY", "")
+    if not raw:
+        return None, None
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import (
+            Encoding, PublicFormat, PrivateFormat, NoEncryption,
+        )
+        key_bytes = base64.b64decode(raw)
+        priv = Ed25519PrivateKey.from_private_bytes(key_bytes)
+        pub  = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        return priv, pub
+    except Exception as exc:
+        _log.warning("IDENTITY_PRIVATE_KEY invalide : %s", exc)
+        return None, None
+
+_IDENTITY_PRIVATE_KEY, _IDENTITY_PUBLIC_KEY = _load_identity_key()
+_APP_NAME = "pos-connect-saas"
+
+
+@router.get("/identity")
+def server_identity(nonce: str = Query(..., min_length=8, max_length=64)):
+    """
+    Returns a signed proof-of-identity.
+    The Flutter wizard calls this with a random nonce; the server signs
+    "pos-connect-saas:{nonce}" with its Ed25519 private key.
+    The app verifies with the public key compiled into the binary.
+    """
+    if _IDENTITY_PRIVATE_KEY is None:
+        raise HTTPException(503, "Identité serveur non configurée (IDENTITY_PRIVATE_KEY manquant)")
+
+    message   = f"{_APP_NAME}:{nonce}".encode()
+    signature = _IDENTITY_PRIVATE_KEY.sign(message)
+
+    return {
+        "app":       _APP_NAME,
+        "signature": base64.b64encode(signature).decode(),
+    }
 
 
 @router.post("/register", status_code=201)
