@@ -13,7 +13,7 @@ class CustomerRepository {
       'limit': limit,
       if (search != null && search.isNotEmpty) 'search': search,
     };
-    final res = await dio.get('/customers/', queryParameters: params);
+    final res = await dio.get('/api/customers/', queryParameters: params);
     // API returns a plain list
     if (res.data is List) {
       final list = (res.data as List)
@@ -28,16 +28,16 @@ class CustomerRepository {
   }
 
   Future<CustomerModel> createCustomer(Map<String, dynamic> data) async {
-    final res = await dio.post('/customers/', data: data);
+    final res = await dio.post('/api/customers/', data: data);
     return CustomerModel.fromJson(res.data);
   }
 
   Future<CustomerModel> updateCustomer(String id, Map<String, dynamic> data) async {
-    final res = await dio.put('/customers/$id', data: data);
+    final res = await dio.put('/api/customers/$id', data: data);
     return CustomerModel.fromJson(res.data);
   }
 
   Future<void> deleteCustomer(String id) async {
-    await dio.delete('/customers/$id');
+    await dio.delete('/api/customers/$id');
   }
 }

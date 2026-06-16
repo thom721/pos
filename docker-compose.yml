@@ -1,0 +1,88 @@
+services:
+
+  # ── Base de données MySQL ───────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE:      ${MYSQL_DATABASE}
+      MYSQL_USER:          ${MYSQL_USER}
+      MYSQL_PASSWORD:      ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── API FastAPI ─────────────────────────────────────────────────────────────
+  fastapi:
+    image: python:3.11-slim
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "pip install -r requirements.txt -q &&
+             uvicorn api.main:app --host 0.0.0.0 --port 9003"
+    ports:
+      - "127.0.0.1:9003:9003"
+    volumes:
+      - .:/app
+      - web_static:/app/web          # Flutter web build (optionnel)
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      # ── Base de données (pointe vers le service mysql du compose) ──────────
+      DB_TYPE:     mysql
+      DB_HOST:     mysql             # nom du service Docker, pas "localhost"
+      DB_PORT:     3306
+      DB_NAME:     ${MYSQL_DATABASE}
+      DB_USER:     ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+
+      # ── Serveur ────────────────────────────────────────────────────────────
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PORT: 9003
+
+      # ── Sécurité JWT — OBLIGATOIRE en production ──────────────────────────
+      # Générer : openssl rand -hex 32
+      SECRET_KEY: ${SECRET_KEY}
+
+      # ── Identité serveur Ed25519 — OBLIGATOIRE pour billing/licence ────────
+      # Nécessaire UNIQUEMENT sur le serveur cloud (posconnect.ht).
+      # Générer :
+      #   python -c "
+      #   from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+      #   from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption
+      #   import base64
+      #   k = Ed25519PrivateKey.generate()
+      #   print(base64.b64encode(k.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())).decode())
+      #   "
+      IDENTITY_PRIVATE_KEY: ${IDENTITY_PRIVATE_KEY}
+
+      # ── CORS — origines autorisées pour le web ─────────────────────────────
+      # Plusieurs origines séparées par virgule.
+      # Pour autoriser TOUT (dev local seulement) : "*"
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://post.institutionlemignon.com}
+
+      # ── Flutter web SPA (servi par FastAPI si le dossier "web/" existe) ────
+      WEB_DIR: web
+
+      # ── Superadmin — optionnel : auto-généré au 1er démarrage si vide ──────
+      # Lire le mot de passe généré dans les logs :  docker compose logs fastapi
+      ADMIN_EMAIL:         ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+
+      # ── Billing — laisser vide sur posconnect.ht (serveur de billing lui-même)
+      BILLING_URL: ${BILLING_URL:-}
+
+      # ── Sync local↔cloud — laisser vide sauf si ce serveur est un client ───
+      CLOUD_SYNC_URL:     ${CLOUD_SYNC_URL:-}
+      CLOUD_SYNC_TOKEN:   ${CLOUD_SYNC_TOKEN:-}
+      CLOUD_SYNC_ENABLED: ${CLOUD_SYNC_ENABLED:-false}
+
+volumes:
+  mysql_data:
+  web_static:

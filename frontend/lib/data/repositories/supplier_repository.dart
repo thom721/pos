@@ -13,7 +13,7 @@ class SupplierRepository {
       'limit': limit,
       if (search != null && search.isNotEmpty) 'search': search,
     };
-    final res = await dio.get('/suppliers/', queryParameters: params);
+    final res = await dio.get('/api/suppliers/', queryParameters: params);
     // API returns a plain list
     if (res.data is List) {
       final list = (res.data as List)
@@ -28,16 +28,16 @@ class SupplierRepository {
   }
 
   Future<SupplierModel> createSupplier(Map<String, dynamic> data) async {
-    final res = await dio.post('/suppliers/', data: data);
+    final res = await dio.post('/api/suppliers/', data: data);
     return SupplierModel.fromJson(res.data);
   }
 
   Future<SupplierModel> updateSupplier(String id, Map<String, dynamic> data) async {
-    final res = await dio.put('/suppliers/$id', data: data);
+    final res = await dio.put('/api/suppliers/$id', data: data);
     return SupplierModel.fromJson(res.data);
   }
 
   Future<void> deleteSupplier(String id) async {
-    await dio.delete('/suppliers/$id');
+    await dio.delete('/api/suppliers/$id');
   }
 }

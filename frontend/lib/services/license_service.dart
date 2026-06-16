@@ -180,8 +180,8 @@ class LicenseService {
   // ── Clear cached license (on logout) ──────────────────────────────────────
 
   static Future<void> clearCache() async {
-    await _storage.delete(key: _kDataKey);
-    await _storage.delete(key: _kSigKey);
+    try { await _storage.delete(key: _kDataKey); } catch (_) {}
+    try { await _storage.delete(key: _kSigKey); } catch (_) {}
   }
 
   // ── Internal helpers ───────────────────────────────────────────────────────
@@ -193,8 +193,10 @@ class LicenseService {
       final sig  = res.data['signature'] as String?;
       if (data == null || sig == null) return null;
       if (!await _verifySignature(data, sig)) return null;
-      await _storage.write(key: _kDataKey, value: data);
-      await _storage.write(key: _kSigKey,  value: sig);
+      try {
+        await _storage.write(key: _kDataKey, value: data);
+        await _storage.write(key: _kSigKey,  value: sig);
+      } catch (_) {}
       return _decode(data);
     } catch (_) {
       return null;
@@ -202,11 +204,15 @@ class LicenseService {
   }
 
   static Future<Map<String, dynamic>?> _readCached() async {
-    final data = await _storage.read(key: _kDataKey);
-    final sig  = await _storage.read(key: _kSigKey);
-    if (data == null || sig == null) return null;
-    if (!await _verifySignature(data, sig)) return null;
-    return _decode(data);
+    try {
+      final data = await _storage.read(key: _kDataKey);
+      final sig  = await _storage.read(key: _kSigKey);
+      if (data == null || sig == null) return null;
+      if (!await _verifySignature(data, sig)) return null;
+      return _decode(data);
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<bool> _verifySignature(String dataB64, String sigB64) async {

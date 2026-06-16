@@ -231,7 +231,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       await dio.put('/api/config/', data: settings.toApiJson());
     } catch (_) {}
     final key = await _cacheKey();
-    await _storage.write(key: key, value: jsonEncode(settings.toJson()));
+    try {
+      await _storage.write(key: key, value: jsonEncode(settings.toJson()));
+    } catch (_) {}
   }
 }
 
