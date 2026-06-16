@@ -59,6 +59,23 @@ class InitRequest(BaseModel):
     secret_key: str = ""
 
 
+class ConnectTenantRequest(BaseModel):
+    """Wizard step: link local installation to a cloud tenant account."""
+    cloud_url: str
+    email: str
+    password: str
+    # DB config — to build engine targeting the configured database
+    db_type: str
+    host: str = "localhost"
+    port: int = 3306
+    name: str = "pos_db"
+    user: str = "root"
+    db_password: str = ""
+    path: str = "./pos_data.db"
+    server_host: str = "0.0.0.0"
+    server_port: int = 8002
+
+
 class MigrateRequest(BaseModel):
     """Switch from MySQL ↔ SQLite (admin credentials required)."""
     username: str
@@ -378,6 +395,104 @@ def initial_setup(data: InitRequest):
     except Exception as e:
         db.rollback()
         raise HTTPException(500, f"Erreur initialisation: {e}")
+    finally:
+        db.close()
+        target_eng.dispose()
+
+
+@router.post("/connect-tenant")
+def connect_tenant(data: ConnectTenantRequest):
+    """
+    Wizard finalization step: authenticate against the cloud SaaS, save sync
+    config to pos_server.ini, and create the local admin user.
+    Called once by the installer (replaces /setup/init for cloud-linked installs).
+    """
+    import secrets
+    import urllib.parse
+    import httpx
+    from sqlalchemy import create_engine as _ce
+    from sqlalchemy.orm import sessionmaker
+
+    cloud_url = data.cloud_url.rstrip("/")
+
+    # ── 1. Validate credentials against cloud ────────────────────────────────
+    try:
+        resp = httpx.post(
+            f"{cloud_url}/api/sync/token",
+            json={"email": data.email, "password": data.password},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        sync_token = body.get("token") or body.get("access_token") or body.get("sync_token")
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code
+        if code in (401, 403):
+            raise HTTPException(403, "Identifiants incorrects ou compte inactif sur le cloud")
+        raise HTTPException(502, f"Erreur serveur cloud ({code})")
+    except Exception as exc:
+        raise HTTPException(502, f"Impossible de joindre le serveur cloud: {exc}")
+
+    if not sync_token:
+        raise HTTPException(502, "Réponse inattendue du serveur cloud (token manquant)")
+
+    # ── 2. Write pos_server.ini (db + server + sync config) ──────────────────
+    secret = secrets.token_hex(32)
+    write_ini_config({
+        "type":               data.db_type,
+        "host":               data.host,
+        "port":               str(data.port),
+        "name":               data.name,
+        "user":               data.user,
+        "password":           data.db_password,
+        "path":               data.path,
+        "secret_key":         secret,
+        "server_host":        data.server_host,
+        "server_port":        str(data.server_port),
+        "cloud_sync_url":     cloud_url,
+        "cloud_sync_token":   sync_token,
+        "cloud_sync_enabled": "true",
+    })
+
+    # ── 3. Create local admin user in DB ─────────────────────────────────────
+    if data.db_type == "mysql":
+        pw = urllib.parse.quote_plus(data.db_password)
+        db_url = f"mysql+pymysql://{data.user}:{pw}@{data.host}:{data.port}/{data.name}"
+        target_eng = _ce(db_url, connect_args={"connect_timeout": 10})
+    else:
+        target_eng = _ce(
+            f"sqlite:///{data.path}",
+            connect_args={"check_same_thread": False},
+        )
+
+    Session = sessionmaker(bind=target_eng)
+    db = Session()
+    try:
+        if db.query(User).filter(User.email == data.email).first():
+            return {"ok": True, "message": "Compte déjà lié — configuration mise à jour."}
+
+        username = data.email.split("@")[0]
+        # Ensure username uniqueness
+        if db.query(User).filter(User.username == username).first():
+            username = f"{username}_{secrets.token_hex(3)}"
+
+        admin = User(
+            fname="Admin",
+            lname="",
+            username=username,
+            email=data.email,
+            phone="0000000000",
+            password=get_password_hash(data.password),
+            roles=["admin"],
+            permissions=["all"],
+            must_change_password=False,
+        )
+        db.add(admin)
+        db.commit()
+        return {"ok": True, "message": f"Installation liée au compte {data.email}"}
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, f"Erreur création compte local: {exc}")
     finally:
         db.close()
         target_eng.dispose()

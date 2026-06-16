@@ -30,14 +30,11 @@ class InstallConfig {
   // Server
   String serverHost;
   int serverPort;
-  // Admin account
-  String adminFname;
-  String adminLname;
-  String adminUsername;
-  String adminEmail;
-  String adminPhone;
-  String adminPassword;
   String serverUrl;
+  // Cloud tenant credentials (replaces local admin creation)
+  String cloudUrl;
+  String tenantEmail;
+  String tenantPassword;
 
   InstallConfig({
     this.serverUrl = '',
@@ -51,12 +48,9 @@ class InstallConfig {
     this.dbPath = './pos_data.db',
     this.serverHost = '0.0.0.0',
     this.serverPort = 8002,
-    this.adminFname = '',
-    this.adminLname = '',
-    this.adminUsername = '',
-    this.adminEmail = '',
-    this.adminPhone = '',
-    this.adminPassword = '',
+    this.cloudUrl = '',
+    this.tenantEmail = '',
+    this.tenantPassword = '',
   });
 }
 
@@ -94,7 +88,7 @@ class _InstallerScreenState extends ConsumerState<InstallerScreen> {
     'Adresse serveur',
     'Base de données',
     'Connexion DB',
-    'Compte admin',
+    'Compte cloud',
     'Installation',
     'Terminé',
   ];
@@ -136,7 +130,7 @@ class _InstallerScreenState extends ConsumerState<InstallerScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(6));
           return const SizedBox.shrink();
         }
-        return _AdminAccountPage(onNext: _next, onBack: _back);
+        return _TenantConnectPage(onNext: _next, onBack: _back);
       case 6:
         return _InstallationPage(
             onDone: _next, onBack: _back, needsServer: needsServer);
@@ -1020,128 +1014,173 @@ class _SqliteInfoPageState extends ConsumerState<_SqliteInfoPage> {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Page 4 — Compte administrateur
+// Page 4 — Connexion compte cloud
 // ═════════════════════════════════════════════════════════════════════════════
 
-class _AdminAccountPage extends ConsumerStatefulWidget {
+class _TenantConnectPage extends ConsumerStatefulWidget {
   final VoidCallback onNext;
   final VoidCallback onBack;
-  const _AdminAccountPage({required this.onNext, required this.onBack});
+  const _TenantConnectPage({required this.onNext, required this.onBack});
 
   @override
-  ConsumerState<_AdminAccountPage> createState() => _AdminAccountPageState();
+  ConsumerState<_TenantConnectPage> createState() => _TenantConnectPageState();
 }
 
-class _AdminAccountPageState extends ConsumerState<_AdminAccountPage> {
-  final _formKey = GlobalKey<FormState>();
-  late TextEditingController _fname, _lname, _user, _email, _phone, _pwd, _pwd2;
+class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
+  late TextEditingController _cloudUrl, _email, _pwd;
   bool _obscure = true;
+  bool _testing = false;
+  bool _verified = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _fname = TextEditingController();
-    _lname = TextEditingController();
-    _user  = TextEditingController();
-    _email = TextEditingController();
-    _phone = TextEditingController();
-    _pwd   = TextEditingController();
-    _pwd2  = TextEditingController();
+    final cfg = ref.read(_configProvider);
+    _cloudUrl = TextEditingController(text: cfg.cloudUrl);
+    _email    = TextEditingController(text: cfg.tenantEmail);
+    _pwd      = TextEditingController(text: cfg.tenantPassword);
+  }
+
+  @override
+  void dispose() {
+    _cloudUrl.dispose();
+    _email.dispose();
+    _pwd.dispose();
+    super.dispose();
+  }
+
+  Future<void> _verify() async {
+    final url   = _cloudUrl.text.trim().replaceAll(RegExp(r'/+$'), '');
+    final email = _email.text.trim();
+    final pwd   = _pwd.text;
+    if (url.isEmpty || email.isEmpty || pwd.isEmpty) return;
+
+    setState(() { _testing = true; _error = null; _verified = false; });
+    try {
+      // Call cloud sync/token directly to validate credentials
+      final cloudDio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ));
+      final res = await cloudDio.post(
+        '$url/api/sync/token',
+        data: {'email': email, 'password': pwd},
+      );
+      if (res.data != null) {
+        final c = ref.read(_configProvider);
+        ref.read(_configProvider.notifier).state = c
+          ..cloudUrl       = url
+          ..tenantEmail    = email
+          ..tenantPassword = pwd;
+        setState(() => _verified = true);
+      }
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      final msg  = code == 403 || code == 401
+          ? 'Identifiants incorrects ou compte inactif'
+          : e.response?.data?['detail']?.toString() ??
+            'Impossible de joindre le serveur cloud ($url)';
+      setState(() => _error = msg);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      setState(() => _testing = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return _PageShell(
-      title: 'Compte administrateur',
-      subtitle: 'Créez le premier compte avec tous les droits',
-      onNext: () {
-        if (!_formKey.currentState!.validate()) return;
-        final c = ref.read(_configProvider);
-        ref.read(_configProvider.notifier).state = c
-          ..adminFname    = _fname.text.trim()
-          ..adminLname    = _lname.text.trim()
-          ..adminUsername = _user.text.trim()
-          ..adminEmail    = _email.text.trim()
-          ..adminPhone    = _phone.text.trim()
-          ..adminPassword = _pwd.text;
-        widget.onNext();
-      },
+      title: 'Connexion au compte cloud',
+      subtitle: 'Liez cette installation à votre compte POS Connect',
+      onNext: _verified ? widget.onNext : null,
       onBack: widget.onBack,
-      child: Form(
-        key: _formKey,
-        child: Column(
-          children: [
-            Row(children: [
-              Expanded(child: _Field(ctrl: _fname, label: 'Prénom',
-                  validator: (v) => v!.isEmpty ? 'Requis' : null)),
-              const SizedBox(width: 12),
-              Expanded(child: _Field(ctrl: _lname, label: 'Nom',
-                  validator: (v) => v!.isEmpty ? 'Requis' : null)),
-            ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _InfoCard(
+            icon: Icons.cloud_outlined,
+            color: AppColors.primary,
+            title: 'Pourquoi lier au cloud ?',
+            items: const [
+              'Vos données se synchronisent automatiquement avec le cloud.',
+              'Vos licences et abonnements sont gérés depuis le portail web.',
+              'Récupérez vos données sur un nouveau poste en cas de panne.',
+            ],
+          ),
+          const SizedBox(height: 20),
+          _Field(
+            ctrl: _cloudUrl,
+            label: 'URL du serveur cloud',
+            hint: 'https://app.posconnect.ht',
+            keyboardType: TextInputType.url,
+          ),
+          const SizedBox(height: 12),
+          _Field(
+            ctrl: _email,
+            label: 'Email du compte',
+            hint: 'votre@email.com',
+            keyboardType: TextInputType.emailAddress,
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _pwd,
+            obscureText: _obscure,
+            decoration: InputDecoration(
+              labelText: 'Mot de passe',
+              suffixIcon: IconButton(
+                icon: Icon(_obscure
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined),
+                onPressed: () => setState(() => _obscure = !_obscure),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed: _testing ? null : _verify,
+            icon: _testing
+                ? const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.verified_user_outlined, size: 16),
+            label: Text(_testing ? 'Vérification...' : 'Vérifier la connexion'),
+          ),
+          if (_error != null) ...[
             const SizedBox(height: 12),
-            _Field(ctrl: _user, label: "Nom d'utilisateur",
-                hint: 'admin',
-                validator: (v) => v!.isEmpty ? 'Requis' : null),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(child: _Field(ctrl: _email, label: 'Email',
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (v) => v!.contains('@') ? null : 'Email invalide')),
-              const SizedBox(width: 12),
-              Expanded(child: _Field(ctrl: _phone, label: 'Téléphone',
-                  keyboardType: TextInputType.phone,
-                  validator: (v) => v!.isEmpty ? 'Requis' : null)),
-            ]),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(child: TextFormField(
-                controller: _pwd,
-                obscureText: _obscure,
-                decoration: InputDecoration(
-                  labelText: 'Mot de passe',
-                  suffixIcon: IconButton(
-                    icon: Icon(_obscure
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined),
-                    onPressed: () => setState(() => _obscure = !_obscure),
-                  ),
-                ),
-                validator: (v) => (v?.length ?? 0) < 8
-                    ? 'Minimum 8 caractères'
-                    : null,
-              )),
-              const SizedBox(width: 12),
-              Expanded(child: TextFormField(
-                controller: _pwd2,
-                obscureText: _obscure,
-                decoration: const InputDecoration(labelText: 'Confirmer'),
-                validator: (v) =>
-                    v != _pwd.text ? 'Ne correspond pas' : null,
-              )),
-            ]),
-            const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF7C3AED).withValues(alpha: 0.06),
+                color: AppColors.error.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                    color: const Color(0xFF7C3AED).withValues(alpha: 0.2)),
+                border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
               ),
-              child: const Row(children: [
-                Icon(Icons.shield_rounded, color: Color(0xFF7C3AED), size: 18),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Ce compte aura tous les droits. Gardez ces identifiants '
-                    'en lieu sûr — ils seront nécessaires pour gérer le serveur.',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF7C3AED)),
-                  ),
-                ),
+              child: Row(children: [
+                const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_error!,
+                    style: const TextStyle(color: AppColors.error, fontSize: 12))),
               ]),
             ),
           ],
-        ),
+          if (_verified) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(children: [
+                const Icon(Icons.check_circle_outline, color: AppColors.success, size: 18),
+                const SizedBox(width: 8),
+                Text('Compte vérifié — ${_email.text}',
+                    style: const TextStyle(
+                        color: AppColors.success, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1193,21 +1232,18 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
       });
       if (_failed) return;
 
-      await _step('Création du compte administrateur', () async {
-        await dio.post('/api/setup/init', data: {
-          'db_type': cfg.dbType == DbType.mysql ? 'mysql' : 'sqlite',
-          'host': cfg.dbHost,
-          'port': cfg.dbPort,
-          'name': cfg.dbName,
-          'user': cfg.dbUser,
-          'password': cfg.dbPassword,
-          'path': cfg.dbPath,
-          'fname': cfg.adminFname,
-          'lname': cfg.adminLname,
-          'username': cfg.adminUsername,
-          'email': cfg.adminEmail,
-          'phone': cfg.adminPhone,
-          'admin_password': cfg.adminPassword,
+      await _step('Liaison au compte cloud', () async {
+        await dio.post('/api/setup/connect-tenant', data: {
+          'cloud_url':   cfg.cloudUrl,
+          'email':       cfg.tenantEmail,
+          'password':    cfg.tenantPassword,
+          'db_type':     cfg.dbType == DbType.mysql ? 'mysql' : 'sqlite',
+          'host':        cfg.dbHost,
+          'port':        cfg.dbPort,
+          'name':        cfg.dbName,
+          'user':        cfg.dbUser,
+          'db_password': cfg.dbPassword,
+          'path':        cfg.dbPath,
           'server_host': cfg.serverHost,
           'server_port': cfg.serverPort,
         });
@@ -1366,9 +1402,9 @@ class _DonePage extends ConsumerWidget {
           const SizedBox(height: 24),
           if (needsServer) ...[
             _SummaryRow(
-                icon: Icons.person_rounded,
-                label: 'Compte admin',
-                value: cfg.adminUsername),
+                icon: Icons.cloud_done_rounded,
+                label: 'Compte cloud',
+                value: cfg.tenantEmail),
             _SummaryRow(
                 icon: Icons.storage_rounded,
                 label: 'Base de données',
@@ -1383,12 +1419,13 @@ class _DonePage extends ConsumerWidget {
           const SizedBox(height: 20),
           if (needsServer)
             const _InfoCard(
-              icon: Icons.lock_rounded,
+              icon: Icons.sync_rounded,
               color: AppColors.primary,
-              title: 'Accès à la console serveur',
+              title: 'Synchronisation active',
               body:
-                  'Pour gérer le serveur (démarrer/arrêter, changer de DB, voir les logs), '
-                  'utilisez les identifiants du compte admin que vous venez de créer.',
+                  'Ce serveur est lié à votre compte cloud. Vos données '
+                  'se synchronisent automatiquement. Connectez-vous avec '
+                  'vos identifiants cloud pour accéder à POS Connect.',
             ),
           const SizedBox(height: 20),
           SizedBox(
