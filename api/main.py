@@ -155,6 +155,102 @@ def _ensure_local_tenant(db) -> str:
     return tid
 
 
+def _ensure_cloud_admin(db, local_tid: str) -> None:
+    """
+    Garantit qu'un compte superadmin existe dans PlatformConfig ET dans users.
+    Priorité : PlatformConfig (DB) > settings (env/ini) > auto-génération.
+    Idempotent — ne fait rien si tout est déjà en place.
+    """
+    import secrets
+    from api.models.PlatformConfig import PlatformConfig
+    from api.models.User import User
+    from api.services.auth import get_password_hash
+    from api.core.config import settings
+
+    # ── 1. PlatformConfig singleton ──────────────────────────────────────────
+    cfg = db.query(PlatformConfig).first()
+    if not cfg:
+        cfg = PlatformConfig()
+        db.add(cfg)
+        db.flush()
+
+    # ── 2. Résoudre les credentials effectifs ────────────────────────────────
+    admin_email = cfg.admin_email or settings.ADMIN_EMAIL or ""
+    admin_hash  = cfg.admin_password_hash or settings.ADMIN_PASSWORD_HASH or ""
+    raw_password: str | None = None
+
+    if not admin_email:
+        # Première initialisation — génération automatique
+        raw_password = secrets.token_urlsafe(12)
+        admin_email  = settings.ADMIN_EMAIL or "admin@posconnect.ht"
+        admin_hash   = get_password_hash(raw_password)
+        cfg.admin_email         = admin_email
+        cfg.admin_password_hash = admin_hash
+        db.commit()
+        _log.info("=" * 62)
+        _log.info("  PREMIÈRE INITIALISATION — IDENTIFIANTS SUPERADMIN GÉNÉRÉS")
+        _log.info("  Email    : %s", admin_email)
+        _log.info("  Password : %s", raw_password)
+        _log.info("  → Changez ce mot de passe via le panel /admin")
+        _log.info("=" * 62)
+    else:
+        # Sync env/ini → DB si DB était vide (ex: migration depuis ancienne version)
+        changed = False
+        if not cfg.admin_email:
+            cfg.admin_email = admin_email
+            changed = True
+        if not cfg.admin_password_hash:
+            cfg.admin_password_hash = admin_hash
+            changed = True
+        if changed:
+            db.commit()
+
+    # ── 3. Mettre à jour settings en mémoire (auth endpoint lit settings) ───
+    settings.ADMIN_EMAIL         = admin_email
+    settings.ADMIN_PASSWORD_HASH = admin_hash
+
+    # ── 4. Créer l'utilisateur admin dans users si absent ───────────────────
+    existing = db.query(User).filter(
+        (User.username == "admin") | (User.email == admin_email)
+    ).first()
+    if existing:
+        return
+
+    # Si les credentials existaient déjà mais pas l'user → générer un nouveau mdp
+    if not raw_password:
+        raw_password = secrets.token_urlsafe(12)
+        admin_hash   = get_password_hash(raw_password)
+        cfg.admin_password_hash      = admin_hash
+        settings.ADMIN_PASSWORD_HASH = admin_hash
+        db.commit()
+        _log.info("=" * 62)
+        _log.info("  UTILISATEUR ADMIN RECRÉÉ — NOUVEAU MOT DE PASSE")
+        _log.info("  Email    : %s", admin_email)
+        _log.info("  Password : %s", raw_password)
+        _log.info("  → Changez ce mot de passe via le panel /admin")
+        _log.info("=" * 62)
+
+    try:
+        admin_user = User(
+            tenant_id=local_tid,
+            fname="Super",
+            lname="Admin",
+            username="admin",
+            phone="0000000000",
+            email=admin_email,
+            password=admin_hash,
+            roles=["admin"],
+            permissions=["all"],
+            must_change_password=True,
+        )
+        db.add(admin_user)
+        db.commit()
+        _log.info("Utilisateur admin créé dans users (tenant: %s)", local_tid)
+    except Exception as exc:
+        db.rollback()
+        _log.warning("Impossible de créer l'utilisateur admin dans users : %s", exc)
+
+
 @app.on_event("startup")
 def on_startup():
     from api.database import SessionLocal
@@ -172,7 +268,9 @@ def on_startup():
     db = SessionLocal()
     try:
         # 3. Tenant LOCAL — pour les déploiements en mode local (pas SaaS)
-        _ensure_local_tenant(db)
+        local_tid = _ensure_local_tenant(db)
+        # 4. Superadmin — auto-génère les credentials si absent, crée le user
+        _ensure_cloud_admin(db, local_tid)
         # Seed built-in roles if not present
         for rd in _BUILTIN_ROLES:
             existing = db.query(RoleModel).filter(RoleModel.name == rd["name"]).first()

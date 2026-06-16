@@ -16,3 +16,6 @@ class PlatformConfig(UUIDBase):
     # 'manual' = instructions manuelles | 'api' = traitement automatique via API
     moncash_mode      = Column(String(10),  nullable=False, default='manual')
     natcash_mode      = Column(String(10),  nullable=False, default='manual')
+    # Superadmin credentials — stored in DB for cloud/Docker persistence
+    admin_email         = Column(String(200), nullable=False, default='')
+    admin_password_hash = Column(String(255), nullable=False, default='')
