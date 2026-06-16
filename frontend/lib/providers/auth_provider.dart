@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
+import 'package:pos_connect/services/license_service.dart';
 
 class AuthState {
   final bool isAuthenticated;
@@ -122,6 +123,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     await _repo.logout();
+    await LicenseService.clearCache();
     state = const AuthState(isAuthenticated: false, isLoading: false);
   }
 }

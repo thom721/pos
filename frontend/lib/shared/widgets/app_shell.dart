@@ -7,7 +7,9 @@ import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
+import 'package:pos_connect/providers/license_provider.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
+import 'package:pos_connect/services/license_service.dart';
 
 class _NavItem {
   final String label;
@@ -88,10 +90,34 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!context.isMobile) {
-      return _DesktopShell(child: child);
+    final license = ref.watch(licenseProvider).valueOrNull;
+
+    // Blocked: replace entire shell with the block screen
+    if (license != null && license.access == LicenseAccess.blocked) {
+      return _LicenseBlockedScreen(
+        message: license.message ?? 'Accès bloqué.',
+        isOffline: license.isOffline,
+      );
     }
-    return _MobileShell(child: child);
+
+    final shell = context.isMobile
+        ? _MobileShell(child: child)
+        : _DesktopShell(child: child);
+
+    // Warning banner: overlay on top of the normal shell
+    if (license != null && license.hasWarning && license.message != null) {
+      return Column(
+        children: [
+          _LicenseWarningBanner(
+            message: license.message!,
+            isOffline: license.isOffline,
+          ),
+          Expanded(child: shell),
+        ],
+      );
+    }
+
+    return shell;
   }
 }
 
@@ -527,6 +553,7 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
                 ],
               ),
             ),
+
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -600,6 +627,130 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
               onTap: () => ref.read(authProvider.notifier).logout(),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// License widgets
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _LicenseWarningBanner extends StatefulWidget {
+  final String message;
+  final bool isOffline;
+  const _LicenseWarningBanner({required this.message, required this.isOffline});
+
+  @override
+  State<_LicenseWarningBanner> createState() => _LicenseWarningBannerState();
+}
+
+class _LicenseWarningBannerState extends State<_LicenseWarningBanner> {
+  bool _dismissed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_dismissed) return const SizedBox.shrink();
+    return Material(
+      color: widget.isOffline ? const Color(0xFFF59E0B) : const Color(0xFFEF4444),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              Icon(
+                widget.isOffline ? Icons.wifi_off_rounded : Icons.warning_amber_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  widget.message,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 16),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => setState(() => _dismissed = true),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LicenseBlockedScreen extends StatelessWidget {
+  final String message;
+  final bool isOffline;
+  const _LicenseBlockedScreen({required this.message, required this.isOffline});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1B2A3B),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isOffline ? Icons.wifi_off_rounded : Icons.lock_rounded,
+                  color: Colors.redAccent,
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                isOffline ? 'Connexion requise' : 'Accès suspendu',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 32),
+              if (isOffline)
+                FilledButton.icon(
+                  onPressed: () => context.go('/dashboard'),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Réessayer'),
+                )
+              else
+                FilledButton.icon(
+                  onPressed: () => context.go('/billing'),
+                  icon: const Icon(Icons.credit_card_rounded),
+                  label: const Text('Voir les abonnements'),
+                ),
+            ],
+          ),
         ),
       ),
     );

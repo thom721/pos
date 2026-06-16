@@ -95,6 +95,60 @@ def get_billing_status(
     }
 
 
+@router.get("/license")
+def get_license(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.CONFIG_READ)),
+):
+    """
+    Returns a signed license blob the Flutter app caches locally.
+    Allows offline operation for up to 7 days without server contact.
+    Signed with IDENTITY_PRIVATE_KEY (Ed25519) — verifiable without internet.
+    """
+    import json
+    import base64
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    raw_key = settings.IDENTITY_PRIVATE_KEY
+    if not raw_key:
+        raise HTTPException(503, "Identité serveur non configurée (IDENTITY_PRIVATE_KEY)")
+
+    tenant    = _get_tenant(db, current_user)
+    now       = datetime.now(timezone.utc)
+    valid_until = now + timedelta(days=7)
+
+    trial_end = tenant.trial_ends_at
+    if trial_end and trial_end.tzinfo is None:
+        trial_end = trial_end.replace(tzinfo=timezone.utc)
+
+    # subscription_ends_at: when is the paid subscription valid until
+    sub_end = getattr(tenant, "subscription_ends_at", None)
+    if sub_end and sub_end.tzinfo is None:
+        sub_end = sub_end.replace(tzinfo=timezone.utc)
+
+    payload = {
+        "tenant_id":            tenant.id,
+        "status":               tenant.status,
+        "issued_at":            now.isoformat(),
+        "valid_until":          valid_until.isoformat(),
+        "trial_ends_at":        trial_end.isoformat() if trial_end else None,
+        "subscription_ends_at": sub_end.isoformat() if sub_end else None,
+    }
+
+    try:
+        key_bytes  = base64.b64decode(raw_key)
+        priv       = Ed25519PrivateKey.from_private_bytes(key_bytes)
+        data_bytes = json.dumps(payload, separators=(",", ":")).encode()
+        signature  = priv.sign(data_bytes)
+    except Exception as exc:
+        raise HTTPException(500, f"Erreur signature licence: {exc}")
+
+    return {
+        "data":      base64.b64encode(data_bytes).decode(),
+        "signature": base64.b64encode(signature).decode(),
+    }
+
+
 @router.get("/payments")
 def list_payments(
     db: Session = Depends(get_db),
