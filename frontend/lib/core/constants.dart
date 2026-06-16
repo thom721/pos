@@ -1,12 +1,22 @@
 class AppConstants {
-  // ── Local server (default for local-mode deployments) ──────────────────
-  static const _serverIp = '192.168.0.104';
-  static String get baseUrl => 'http://$_serverIp:8002';
+  // ── Server URL — configurable at compile time via --dart-define ────────
+  // flutter build web --release \
+  //   --dart-define=SERVER_SCHEME=https \
+  //   --dart-define=SERVER_IP=api.posconnect.ht \
+  //   --dart-define=SERVER_PORT=443
+  static const _serverScheme =
+      String.fromEnvironment('SERVER_SCHEME', defaultValue: 'http');
+  static const _serverIp =
+      String.fromEnvironment('SERVER_IP', defaultValue: '192.168.0.104');
+  static const _serverPort =
+      String.fromEnvironment('SERVER_PORT', defaultValue: '8002');
+  static String get baseUrl => '$_serverScheme://$_serverIp:$_serverPort';
 
-  // ── Cloud SaaS URL ─────────────────────────────────────────────────────
-  // Change this to the production VPS URL before deploying.
-  static const cloudUrl =
-      'http://192.168.0.104:8002'; // TODO: replace with VPS URL
+  // ── Cloud SaaS URL (wizard + identity check) ───────────────────────────
+  static const cloudUrl = String.fromEnvironment(
+    'CLOUD_URL',
+    defaultValue: 'http://192.168.0.104:8002',
+  );
 
   // ── Server identity — Ed25519 public key (base64 raw, 32 bytes) ───────
   // Corresponds to IDENTITY_PRIVATE_KEY on the cloud server.

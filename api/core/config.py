@@ -50,7 +50,9 @@ def load_ini_config() -> dict:
         "CLOUD_SYNC_TOKEN":    srv.get("cloud_sync_token",    os.getenv("CLOUD_SYNC_TOKEN",    "")),
         "CLOUD_SYNC_ENABLED":  srv.get("cloud_sync_enabled",  os.getenv("CLOUD_SYNC_ENABLED",  "false")).lower() == "true",
         "IDENTITY_PRIVATE_KEY": srv.get("identity_private_key", os.getenv("IDENTITY_PRIVATE_KEY", "")),
-        "BILLING_URL": srv.get("billing_url", os.getenv("BILLING_URL", "")),
+        "BILLING_URL":   srv.get("billing_url",   os.getenv("BILLING_URL",   "")),
+        "CORS_ORIGINS":  srv.get("cors_origins",  os.getenv("CORS_ORIGINS",  "*")),
+        "WEB_DIR":       srv.get("web_dir",       os.getenv("WEB_DIR",       "web")),
     }
 
 
@@ -93,6 +95,14 @@ class Settings(BaseSettings):
     # URL du serveur billing (posconnect.ht). Séparé de CLOUD_SYNC_URL pour les
     # tenants self-hosted dont les données business vont vers leur propre serveur.
     BILLING_URL: str = ""
+
+    # CORS — origines autorisées (séparées par virgule, ou "*" pour tout autoriser)
+    # Production : "https://app.posconnect.ht,https://posconnect.ht"
+    CORS_ORIGINS: str = "*"
+
+    # Répertoire du build Flutter web (servi par FastAPI comme SPA)
+    # Laisser vide pour désactiver le serving web intégré.
+    WEB_DIR: str = "web"
 
     class Config:
         env_file = ".env"
@@ -138,7 +148,8 @@ def write_ini_config(cfg_data: dict, path: Path = None) -> Path:
         elif k in ("secret_key", "token_expire_minutes", "admin_secret",
                    "admin_email", "admin_password_hash",
                    "cloud_sync_url", "cloud_sync_token", "cloud_sync_enabled",
-                   "identity_private_key", "billing_url"):
+                   "identity_private_key", "billing_url",
+                   "cors_origins", "web_dir"):
             cfg["server"][k] = str(val)
         elif k == "server_host":
             cfg["server"]["host"] = str(val)

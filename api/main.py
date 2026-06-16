@@ -33,13 +33,27 @@ from fastapi.encoders import jsonable_encoder
 
 app = FastAPI()
 
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# Configurable via pos_server.ini [server] cors_origins ou CORS_ORIGINS env.
+# "*" = tout autoriser (dev / local).
+# Production : "https://app.posconnect.ht,https://posconnect.ht"
+from api.core.config import settings as _settings_cors
+
+_raw_origins = _settings_cors.CORS_ORIGINS or "*"
+_origins: list[str] | str = (
+    [o.strip() for o in _raw_origins.split(",") if o.strip()]
+    if _raw_origins != "*"
+    else ["*"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=_origins,
+    allow_credentials=_origins != ["*"],  # credentials only when origins are explicit
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 app.mount("/static", StaticFiles(directory="api/static"), name="static")
 
 app.include_router(user.router)
@@ -294,6 +308,19 @@ def on_startup():
 @app.get("/health", include_in_schema=False)
 async def health_root():
     return {"status": "ok"}
+
+
+# ── Flutter web SPA (servi uniquement si le dossier existe) ──────────────────
+# Le build Flutter web est copié dans WEB_DIR (défaut: "web/") à côté du serveur.
+# flutter build web --release  →  frontend/build/web/  →  copier dans web/
+import os as _os
+from pathlib import Path as _Path
+
+_web_dir = _Path(_settings_cors.WEB_DIR or "web")
+if _web_dir.exists() and _web_dir.is_dir():
+    # Monté EN DERNIER — les routes API prennent toujours la priorité.
+    app.mount("/", StaticFiles(directory=str(_web_dir), html=True), name="web")
+    _log.info("Flutter web SPA servi depuis : %s", _web_dir.resolve())
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():

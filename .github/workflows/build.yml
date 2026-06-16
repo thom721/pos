@@ -9,6 +9,22 @@ on:
         description: 'Version (ex: 1.0.0)'
         required: true
         default: '1.0.0'
+      web_server_scheme:
+        description: 'Schéma API pour le web (http | https)'
+        required: false
+        default: 'https'
+      web_server_ip:
+        description: 'Domaine ou IP de l'API pour le web (ex: api.posconnect.ht)'
+        required: false
+        default: 'api.posconnect.ht'
+      web_server_port:
+        description: 'Port API pour le web (443 pour https)'
+        required: false
+        default: '443'
+      web_cloud_url:
+        description: 'URL cloud complète pour le wizard web (ex: https://posconnect.ht)'
+        required: false
+        default: 'https://posconnect.ht'
   push:
     tags:
       - 'v*'
@@ -274,6 +290,52 @@ jobs:
           name: frontend-macos
           path: frontend/build/macos/Build/Products/Release/posconnect-macos-app.tar.gz
 
+  # ── Web ──────────────────────────────────────────────────────────────────────
+  frontend-web:
+    name: 🌐 Frontend — Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install packages
+        working-directory: frontend
+        run: flutter pub get
+
+      - name: Résoudre les paramètres serveur web
+        id: web_params
+        run: |
+          # Priorité : workflow_dispatch inputs → secrets → valeurs par défaut
+          SCHEME="${{ github.event.inputs.web_server_scheme || secrets.WEB_SERVER_SCHEME || 'https' }}"
+          IP="${{ github.event.inputs.web_server_ip || secrets.WEB_SERVER_IP || 'api.posconnect.ht' }}"
+          PORT="${{ github.event.inputs.web_server_port || secrets.WEB_SERVER_PORT || '443' }}"
+          CLOUD="${{ github.event.inputs.web_cloud_url || secrets.WEB_CLOUD_URL || 'https://posconnect.ht' }}"
+          echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
+          echo "ip=$IP"         >> $GITHUB_OUTPUT
+          echo "port=$PORT"     >> $GITHUB_OUTPUT
+          echo "cloud=$CLOUD"   >> $GITHUB_OUTPUT
+
+      - name: Build Web
+        working-directory: frontend
+        run: |
+          flutter build web --release \
+            --dart-define=SERVER_SCHEME=${{ steps.web_params.outputs.scheme }} \
+            --dart-define=SERVER_IP=${{ steps.web_params.outputs.ip }} \
+            --dart-define=SERVER_PORT=${{ steps.web_params.outputs.port }} \
+            --dart-define=CLOUD_URL=${{ steps.web_params.outputs.cloud }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-web
+          path: frontend/build/web/
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  RELEASE  —  Assembler et publier
 # ══════════════════════════════════════════════════════════════════════════════
@@ -287,6 +349,7 @@ jobs:
       - frontend-windows
       - frontend-linux
       - frontend-macos
+      - frontend-web
     runs-on: ubuntu-latest
     steps:
       - name: Télécharger tous les artifacts
@@ -327,6 +390,13 @@ jobs:
           cd packages
           tar -czf posconnect-macos-${{ steps.version.outputs.VERSION }}.tar.gz macos/
 
+      - name: Assembler Web (zip)
+        run: |
+          mkdir -p packages/web
+          cp -r artifacts/frontend-web/* packages/web/
+          cd packages
+          zip -r posconnect-web-${{ steps.version.outputs.VERSION }}.zip web/
+
       - name: Afficher les tailles
         run: ls -lh packages/*.zip packages/*.tar.gz
 
@@ -338,6 +408,7 @@ jobs:
             packages/posconnect-windows-*.zip
             packages/posconnect-linux-*.tar.gz
             packages/posconnect-macos-*.tar.gz
+            packages/posconnect-web-*.zip
           retention-days: 30
 
       - name: Créer GitHub Release
@@ -353,9 +424,15 @@ jobs:
             | Windows   | `posconnect-windows-${{ steps.version.outputs.VERSION }}.zip` |
             | Linux     | `posconnect-linux-${{ steps.version.outputs.VERSION }}.tar.gz` |
             | macOS     | `posconnect-macos-${{ steps.version.outputs.VERSION }}.tar.gz` |
+            | Web       | `posconnect-web-${{ steps.version.outputs.VERSION }}.zip` |
+
+            ### Déploiement Web
+            Extraire `posconnect-web-*.zip` dans le dossier `web/` à côté du serveur FastAPI,
+            ou servir avec Nginx (voir documentation).
           files: |
             packages/posconnect-windows-*.zip
             packages/posconnect-linux-*.tar.gz
             packages/posconnect-macos-*.tar.gz
+            packages/posconnect-web-*.zip
           draft: false
           prerelease: false

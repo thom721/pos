@@ -41,3 +41,13 @@ identity_private_key  =
 # la licence/plan même si les données business vont vers leur propre serveur.
 # Rempli automatiquement par le wizard lors de la connexion tenant.
 billing_url           =
+
+# Origines CORS autorisées (séparées par virgule).
+# "*" = tout autoriser (développement local).
+# Production : https://app.posconnect.ht,https://posconnect.ht
+cors_origins          = *
+
+# Répertoire du build Flutter web (servi par FastAPI comme SPA).
+# Copier le contenu de frontend/build/web/ dans ce dossier.
+# Laisser vide pour désactiver le serving web intégré.
+web_dir               = web
