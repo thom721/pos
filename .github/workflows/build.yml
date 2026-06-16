@@ -14,17 +14,17 @@ on:
         required: false
         default: 'https'
       web_server_ip:
-        description: 'Domaine ou IP de l'API pour le web (ex: api.posconnect.ht)'
+        description: 'Domaine ou IP de l''API pour le web'
         required: false
-        default: 'api.posconnect.ht'
+        default: 'post.institutionlemignon.com'
       web_server_port:
         description: 'Port API pour le web (443 pour https)'
         required: false
         default: '443'
       web_cloud_url:
-        description: 'URL cloud complète pour le wizard web (ex: https://posconnect.ht)'
+        description: 'URL cloud complète pour le wizard web'
         required: false
-        default: 'https://posconnect.ht'
+        default: 'https://post.institutionlemignon.com'
   push:
     tags:
       - 'v*'

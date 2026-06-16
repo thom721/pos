@@ -44,7 +44,7 @@ billing_url           =
 
 # Origines CORS autorisées (séparées par virgule).
 # "*" = tout autoriser (développement local).
-# Production : https://app.posconnect.ht,https://posconnect.ht
+# Production : https://post.institutionlemignon.com
 cors_origins          = *
 
 # Répertoire du build Flutter web (servi par FastAPI comme SPA).
