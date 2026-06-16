@@ -19,8 +19,9 @@ _log = logging.getLogger("pos.public")
 # ── Server identity (Ed25519) ─────────────────────────────────────────────────
 
 def _load_identity_key():
-    """Load Ed25519 private key from env. Returns None if not configured."""
-    raw = os.getenv("IDENTITY_PRIVATE_KEY", "")
+    """Load Ed25519 private key from settings (pos_server.ini > env > default)."""
+    from api.core.config import settings
+    raw = settings.IDENTITY_PRIVATE_KEY or os.getenv("IDENTITY_PRIVATE_KEY", "")
     if not raw:
         return None, None
     try:

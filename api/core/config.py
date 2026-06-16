@@ -49,6 +49,7 @@ def load_ini_config() -> dict:
         "CLOUD_SYNC_URL":      srv.get("cloud_sync_url",      os.getenv("CLOUD_SYNC_URL",      "")),
         "CLOUD_SYNC_TOKEN":    srv.get("cloud_sync_token",    os.getenv("CLOUD_SYNC_TOKEN",    "")),
         "CLOUD_SYNC_ENABLED":  srv.get("cloud_sync_enabled",  os.getenv("CLOUD_SYNC_ENABLED",  "false")).lower() == "true",
+        "IDENTITY_PRIVATE_KEY": srv.get("identity_private_key", os.getenv("IDENTITY_PRIVATE_KEY", "")),
     }
 
 
@@ -131,7 +132,8 @@ def write_ini_config(cfg_data: dict, path: Path = None) -> Path:
             cfg["database"][k] = str(val)
         elif k in ("secret_key", "token_expire_minutes", "admin_secret",
                    "admin_email", "admin_password_hash",
-                   "cloud_sync_url", "cloud_sync_token", "cloud_sync_enabled"):
+                   "cloud_sync_url", "cloud_sync_token", "cloud_sync_enabled",
+                   "identity_private_key"):
             cfg["server"][k] = str(val)
         elif k == "server_host":
             cfg["server"]["host"] = str(val)

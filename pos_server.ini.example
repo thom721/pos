@@ -30,3 +30,8 @@ admin_password_hash   =
 cloud_sync_url        =
 cloud_sync_token      =
 cloud_sync_enabled    = false
+
+# Identité serveur — clé privée Ed25519 (base64, 32 octets)
+# UNIQUEMENT sur le serveur cloud SaaS — ne pas mettre sur les serveurs clients
+# Générer : python -c "from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey; from cryptography.hazmat.primitives.serialization import Encoding,PrivateFormat,NoEncryption; import base64; k=Ed25519PrivateKey.generate(); print(base64.b64encode(k.private_bytes(Encoding.Raw,PrivateFormat.Raw,NoEncryption())).decode())"
+identity_private_key  =
