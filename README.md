@@ -1,6 +1,7 @@
 # POS Connect — Système de Caisse Multi-Plateforme
 
 Système de point de vente complet : **backend FastAPI** + **frontend Flutter** multi-plateforme.
+Architecture **SaaS multi-tenant** avec support des déploiements **self-hosted** (données hébergées chez le client).
 
 ---
 
@@ -29,8 +30,9 @@ cd ~/posconnect
 Le wizard guide pas à pas :
 - Choix du mode (Serveur / Client / Les deux)
 - Configuration MySQL ou SQLite
-- Création du compte administrateur
-- Génération automatique de `pos_server.ini`
+- Vérification d'identité Ed25519 du serveur cloud
+- Connexion au compte tenant posconnect.ht (shared ou self-hosted)
+- Génération automatique de `pos_server.ini` avec `cloud_sync_url` et `billing_url`
 
 ### 2. Lancer le backend manuellement
 
@@ -96,7 +98,8 @@ pos_api/
 | GET | `/api/setup/health` | État du serveur + `setup_done` |
 | POST | `/api/setup/test-db` | Test credentials DB → écrit `pos_server.ini` |
 | POST | `/api/setup/create-db` | Crée la base + tables |
-| POST | `/api/setup/init` | Crée le compte admin |
+| POST | `/api/setup/connect-tenant` | Lie l'installation à un compte tenant cloud |
+| GET | `/api/public/identity?nonce=` | Signature Ed25519 du serveur (vérification identité) |
 | POST | `/api/auth/login` | JWT token |
 | GET/POST | `/api/products/` | CRUD produits |
 | GET/POST | `/api/sales/` | CRUD ventes |
@@ -104,6 +107,11 @@ pos_api/
 | GET/POST | `/api/customers/` | CRUD clients |
 | GET/POST | `/api/debts/` | Dettes clients/fournisseurs |
 | GET | `/api/stock/` | Mouvements de stock |
+| GET | `/api/billing/license` | Blob de licence signé Ed25519 (cache offline 7j) |
+| GET | `/api/billing/caisse-count` | Caisses actives vs plan |
+| POST | `/api/sync/token` | Échange credentials → sync token (365j) |
+| POST | `/api/admin/tenants` | Créer un tenant (shared ou selfhosted) |
+| PATCH | `/api/admin/tenants/{id}` | Modifier statut, type, max_caisses |
 
 ---
 
@@ -113,7 +121,7 @@ pos_api/
 
 ```ini
 [database]
-type     = mysql          # mysql | sqlite
+type     = mysql
 host     = localhost
 port     = 3306
 name     = pos_db
@@ -123,8 +131,15 @@ password = votre_mot_de_passe
 [server]
 host                 = 0.0.0.0
 port                 = 8002
-secret_key           = <généré automatiquement 32 bytes>
+secret_key           = <généré automatiquement>
 token_expire_minutes = 480
+# Rempli par le wizard lors de la connexion tenant
+cloud_sync_url       = https://self-hosted-ou-cloud.example.com
+cloud_sync_token     = <sync JWT 365j>
+cloud_sync_enabled   = true
+billing_url          = https://posconnect.ht   # toujours posconnect.ht
+# Sur posconnect.ht uniquement — identité Ed25519
+identity_private_key =
 ```
 
 ### Créer un admin manuellement (sans wizard)

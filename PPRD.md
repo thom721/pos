@@ -1,8 +1,8 @@
 # PPRD — Product & Project Requirements Document
 # POS Connect — Système de Caisse Multi-Plateforme
 
-**Date :** 2026-06-14
-**Version :** 0.5 (en développement actif)
+**Date :** 2026-06-16
+**Version :** 0.6 (en développement actif)
 **Stack backend :** Python 3.11 · FastAPI · SQLAlchemy · MySQL / SQLite · JWT
 **Stack frontend :** Flutter 3.x · Riverpod · go_router · Dio · SharedPreferences
 
@@ -69,12 +69,18 @@ Le backend lit sa configuration dans cet ordre de priorité :
   - Détection automatique auth_socket (Debian/Ubuntu)
   - Bouton "Corriger automatiquement (sudo)" via `Process.start('sudo', ['-S', 'mysql', ...])`
   - `pos_server.ini` écrit dès que le test de connexion réussit
-- [x] Étape 6 — Compte administrateur
-- [x] Étape 7 — Installation (create-db + init + service_wrapper)
-  - Moteur temporaire SQLAlchemy bâti sur les credentials de la requête (indépendant du moteur global démarré au lancement)
-  - `pos_server.ini` finalisé avec `secret_key` aléatoire
+- [x] Étape 6 — Compte cloud (connexion tenant)
+  - Remplace la création d'un compte admin local
+  - Saisie : URL cloud, email tenant, mot de passe
+  - Vérification d'identité Ed25519 du serveur (nonce signé) avant envoi des credentials
+  - Connexion à `/api/sync/token` → récupère `tenant_type`, `self_hosted_url`, `max_caisses`
+  - Si `selfhosted` : `cloud_sync_url` pointe vers `self_hosted_url`, `billing_url` vers posconnect.ht
+  - Si `shared` : `cloud_sync_url` et `billing_url` pointent tous deux vers posconnect.ht
+- [x] Étape 7 — Installation (create-db + connect-tenant + service_wrapper)
+  - Moteur temporaire SQLAlchemy bâti sur les credentials de la requête
+  - `pos_server.ini` finalisé avec `secret_key` aléatoire, `billing_url`, `cloud_sync_token`
   - SharedPreferences mis à jour avec l'URL confirmée
-- [x] Étape 8 — Terminé → bouton "Lancer POS Connect" navigue vers `/login`
+- [x] Étape 8 — Terminé → affiche email tenant + "Synchronisation active"
 - [x] Web : wizard jamais affiché (`kIsWeb` guard dans splash)
 
 ### 3.2 Authentification
@@ -147,13 +153,20 @@ Le backend lit sa configuration dans cet ordre de priorité :
 
 - [x] Authentification email + mot de passe (argon2id, via `pwdlib`)
   - Hash stocké dans `pos_server.ini` (`admin_password_hash`) ou `.env`
+  - Premier démarrage cloud : auto-génération email/password → stocké dans `PlatformConfig` (DB), journal serveur
   - JWT superadmin : `{"sub": "superadmin", "role": "superadmin"}` — expiry 24h
-- [x] Liste et gestion des tenants (statut, dates, plan)
-- [x] Modification du statut tenant : `trial`, `active`, `expired`, `suspended`
+- [x] `POST /api/admin/tenants` — créer un tenant avec :
+  - `type` : `shared` (données sur posconnect.ht) ou `selfhosted` (données sur le propre serveur du tenant)
+  - `self_hosted_url` : URL du serveur self-hosted (obligatoire si `selfhosted`)
+  - `max_caisses` : nombre de caisses inclus dans le plan
+  - `can_manage_tenants` : autoriser le tenant self-hosted à gérer ses propres sous-tenants
+- [x] Liste et gestion des tenants (statut, type, max_caisses, can_manage_tenants)
+- [x] `PATCH /api/admin/tenants/{id}` — modifier statut, type, self_hosted_url, max_caisses, can_manage_tenants
 - [x] Config plateforme (`PlatformConfig`) :
   - Numéros MonCash et NatCash
   - Prix des plans (mensuel, annuel)
   - Durée de l'essai gratuit (`trial_days`, configurable)
+  - Prix par caisse supplémentaire : `price_per_extra_caisse_htg` / `price_per_extra_caisse_usd`
   - Mode paiement par service : `manual` ou `api_auto`
     - **Manuel** : le client paie le numéro affiché et saisit sa référence
     - **API auto** : paiement déclenché via l'API MonCash/NatCash (à venir)
@@ -161,26 +174,44 @@ Le backend lit sa configuration dans cet ordre de priorité :
 ### 3.12 Facturation et abonnements
 
 - [x] Endpoint `GET /api/billing/status` : jours restants, statut, `is_grace`, `grace_days_left`
-- [x] Endpoint `GET /api/billing/config` : numéros, prix, modes MonCash/NatCash (accès tenants)
-- [x] Calcul précis des jours restants : `math.ceil(delta.total_seconds() / 86400)` (évite d'afficher 29j au lieu de 30j)
+- [x] Endpoint `GET /api/billing/config` : numéros, prix, modes MonCash/NatCash, prix par caisse extra
+- [x] Endpoint `GET /api/billing/caisse-count` : caisses actives vs max_caisses, montant facturation extra
+- [x] Endpoint `GET /api/billing/license` : blob JSON signé Ed25519 (valide 7 jours) incluant :
+  - `tenant_type`, `self_hosted_url`, `max_caisses`, `current_caisses`
+  - `status`, `valid_until`, `trial_ends_at`, `subscription_ends_at`
+  - Prix par caisse supplémentaire
+  - **Proxy transparent** : si `BILLING_URL` est configuré (serveur self-hosted / local), proxyfie vers `GET /api/billing/license-sync-proxy` sur posconnect.ht avec le sync token
+- [x] Endpoint `GET /api/billing/license-sync-proxy` : accepte un sync token (Bearer) — cible du proxy self-hosted
+- [x] Calcul précis des jours restants (`math.ceil`)
 - [x] Cycle de vie abonnement :
   1. **trial** — essai gratuit (durée = `platform_config.trial_days`)
   2. **expired** — essai/plan expiré, grâce de 10 jours (`GRACE_DAYS = 10`), app fonctionne encore
   3. **suspended** — grâce expirée, accès bloqué (HTTP 403)
   4. **active** — abonnement payant en cours
 - [x] Bandeau orange "période de grâce" dans l'écran de facturation Flutter
-- [x] Écran facturation utilise les vraies données de `billing/config` (numéros, prix)
+- [x] Écran facturation utilise les vraies données de `billing/config`
 - [x] Statut "Expiré" affiché dans le panel admin avec couleur `deepOrange`
 
 ### 3.13 Synchronisation local ↔ cloud
 
 #### Serveur cloud (multi-tenant)
 - [x] `POST /api/sync/token` — tenant email+password → JWT sync (rôle `sync`, expiry 365j)
-- [x] `POST /api/sync/push` — upsert de records dans la DB cloud (tenant_id injecté du token)
+  - Retourne : `sync_token`, `tenant_type`, `self_hosted_url`, `max_caisses`, `can_manage_tenants`
+- [x] `POST /api/sync/push` — upsert de records dans la DB cloud
+  - **Bloqué pour les tenants `selfhosted`** : leurs données business ne sont pas stockées sur posconnect.ht
 - [x] `GET /api/sync/pull?entity_type=&since=` — retourne records modifiés depuis `since`
+  - **Bloqué pour les tenants `selfhosted`** : récupérer depuis `self_hosted_url`
 - [x] `GET /api/sync/status` — état de la configuration et statistiques par entité
 - [x] `POST /api/sync/run` — déclenche un cycle de synchronisation complet
 - [x] `POST /api/sync/configure` — appelle `/api/sync/token` sur le cloud, sauvegarde dans `pos_server.ini`
+
+#### Tenant `shared` — comportement inchangé
+- Toutes les données business synchronisées vers posconnect.ht
+
+#### Tenant `selfhosted` — sync minimal
+- Données business → leur propre serveur (`self_hosted_url`)
+- Seuls billing / statut / plan → posconnect.ht
+- Serveur local (client-server) : `cloud_sync_url` = `self_hosted_url` dans `pos_server.ini`
 
 #### Serveur local (`local_sync_service.py`)
 - [x] Entités **bidirectionnelles** (catalog) : `category`, `supplier`, `product`, `customer`
@@ -195,6 +226,40 @@ Le backend lit sa configuration dans cet ordre de priorité :
 - [x] Tableau des statistiques par entité (push/pull, horodatage, erreurs)
 - [x] Bouton "Synchroniser maintenant" avec résultat affiché (`Envoyé: X | Reçu: Y`)
 - [x] Statut de connexion (configuré / non configuré)
+
+### 3.14 Identité serveur Ed25519
+
+- [x] Clé privée Ed25519 (`IDENTITY_PRIVATE_KEY`) stockée dans `pos_server.ini` ou `.env` — lecture via `settings`
+- [x] Clé publique correspondante hardcodée dans le binaire Flutter (`AppConstants.identityPublicKeyB64`)
+- [x] `GET /api/public/identity?nonce=` — signe `{app}:{nonce}` avec la clé privée → retourne signature base64
+- [x] Wizard Flutter : avant connexion tenant, vérifie l'identité du serveur (nonce aléatoire → vérification Ed25519)
+  - Empêche la connexion à un serveur imposteur
+  - Nonce hex 24 chars généré avec `Random.secure()`
+
+### 3.15 Cache de licence offline
+
+- [x] `GET /api/billing/license` retourne un blob JSON signé Ed25519 (valide 7 jours)
+- [x] `LicenseService` (Flutter) :
+  - Essaie d'abord le serveur (frais), sinon lit le cache `FlutterSecureStorage`
+  - Vérifie la signature avec la clé publique hardcodée (posconnect.ht)
+  - `clearCache()` appelé au logout
+- [x] `licenseProvider` (Riverpod `FutureProvider`) — se reconstruit à chaque login/logout
+- [x] `AppShell` — selon `LicenseStatus.access` :
+  - `allowed` : shell normal (éventuellement bannière info)
+  - `warning` : bannière jaune (offline) ou rouge (expiré en grâce) + shell
+  - `blocked` : écran de blocage complet (suspendu ou grâce dépassée)
+- [x] Grâce offline : 7 jours `valid_until` + 3 jours = 10 jours max sans internet
+
+### 3.16 Mode self-hosted
+
+- [x] Tenant `type = 'selfhosted'` : données business hébergées sur le propre serveur du tenant
+- [x] `self_hosted_url` : URL du serveur du tenant, synchronisée via `/api/sync/token`
+- [x] `max_caisses` : nombre de postes caisse (rôle `cashier`) inclus dans le plan
+  - Comptage : `COUNT(users WHERE 'cashier' IN roles)`
+  - Dépassement facturé au prix `price_per_extra_caisse_htg/usd` configuré dans `PlatformConfig`
+- [x] `can_manage_tenants` : autorise un tenant self-hosted à gérer ses propres clients (champ admin)
+- [x] `AppShell` bannière orange si `caisseOverLimit` — affiche coût des caisses en excès
+- [x] Proxy billing transparent : le serveur self-hosted / local proxyfie `GET /api/billing/license` vers posconnect.ht — aucun changement côté Flutter
 
 ---
 
@@ -281,15 +346,24 @@ host                  = 0.0.0.0
 port                  = 8002
 secret_key            = <généré automatiquement>
 token_expire_minutes  = 480
-# Compte super-admin pour le panel /admin
-# Hash généré avec : python -c "from pwdlib import PasswordHash; print(PasswordHash.recommended().hash('MonMotDePasse'))"
+
+# Compte super-admin pour le panel /admin (auto-généré au 1er démarrage cloud)
 admin_email           = admin@posconnect.ht
 admin_password_hash   = $argon2id$v=19$...
 
-# Synchronisation local ↔ cloud (rempli par POST /api/sync/configure)
+# Synchronisation données business
+# shared  : cloud_sync_url = posconnect.ht
+# selfhosted : cloud_sync_url = self_hosted_url du tenant
 cloud_sync_url        =
 cloud_sync_token      =
 cloud_sync_enabled    = false
+
+# URL du serveur de billing (toujours posconnect.ht, séparé de cloud_sync_url)
+# Rempli par le wizard lors de la connexion tenant
+billing_url           =
+
+# Identité serveur Ed25519 (base64 raw 32 bytes) — UNIQUEMENT sur posconnect.ht
+identity_private_key  =
 ```
 
 ### .env (fallback développement)
@@ -309,7 +383,10 @@ SECRET_KEY=change_me_use_openssl_rand_hex_32
 ## 7. Schéma de base de données
 
 ```
-tenants         ← gestionnaire d'accès SaaS (status, trial_ends_at, plan)
+tenants         ← gestionnaire d'accès SaaS
+  │  status, trial_ends_at, plan
+  │  type ('shared'|'selfhosted'), self_hosted_url
+  │  max_caisses, can_manage_tenants
   │
   ├── users           categories      suppliers
   │     │                │               │
@@ -331,7 +408,9 @@ tenants         ← gestionnaire d'accès SaaS (status, trial_ends_at, plan)
 
 stock_movements   ← lié à Product + User + source (sale/purchase/adjust)
 app_config        ← paramètres persistants (multi-device sync)
-platform_config   ← config SaaS globale (numéros, prix, modes, trial_days)
+platform_config   ← config SaaS globale (numéros, prix, modes, trial_days,
+                     admin_email, admin_password_hash,
+                     price_per_extra_caisse_htg/usd)
 billing_payments  ← historique paiements abonnements
 sync_state        ← état de synchro par entity_type (last_push_at, last_pull_at, counts)
 roles             ← rôles personnalisés par tenant
@@ -349,9 +428,11 @@ roles             ← rôles personnalisés par tenant
 | Haute | Synchronisation automatique périodique (cron / background task) |
 | Haute | Intégration API MonCash pour paiements automatiques (mode `api_auto`) |
 | Haute | Intégration API NatCash pour paiements automatiques (mode `api_auto`) |
+| Haute | Portail self-service tenant (upgrade plan, changer self_hosted_url, voir caisses) |
+| Haute | Wizard configuration self-hosted server (BILLING_URL + CLOUD_SYNC_TOKEN via Docker env) |
 | Moyenne | Dashboard statistiques complet |
 | Moyenne | Impression tickets (intégration `printing`) |
-| Moyenne | Portail self-service tenant (upgrade plan, historique factures) |
+| Moyenne | Facture récapitulative mensuelle par tenant (extra caisses + plan) |
 | Basse | Migration de données SQLite → MySQL |
 | Basse | Tests unitaires backend (pytest) |
 | Basse | Webhook callbacks après paiement MonCash/NatCash |
