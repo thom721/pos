@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Models
@@ -88,8 +89,8 @@ class _InstallerScreenState extends ConsumerState<InstallerScreen> {
     'Bienvenue',
     'Mode',
     'Adresse serveur',
+    'Connexion',
     'Base de données',
-    'Connexion DB',
     'Compte cloud',
     'Installation',
     'Terminé',
@@ -114,9 +115,8 @@ class _InstallerScreenState extends ConsumerState<InstallerScreen> {
         return _ServerAddressPage(onNext: _next, onBack: _back);
       case 3:
         if (!needsServer) {
-          // client-only : sauter DB + admin
-          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(6));
-          return const SizedBox.shrink();
+          // client-only : connexion locale au serveur configuré
+          return _LocalLoginPage(onNext: _next, onBack: _back);
         }
         return _DbChoicePage(onNext: _next, onBack: _back);
       case 4:
@@ -1019,6 +1019,180 @@ class _SqliteInfoPageState extends ConsumerState<_SqliteInfoPage> {
 // Page 4 — Connexion compte cloud
 // ═════════════════════════════════════════════════════════════════════════════
 
+// ═════════════════════════════════════════════════════════════════════════════
+// Page 3 (client mode) — Connexion locale
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _LocalLoginPage extends ConsumerStatefulWidget {
+  final VoidCallback onNext;
+  final VoidCallback onBack;
+  const _LocalLoginPage({required this.onNext, required this.onBack});
+
+  @override
+  ConsumerState<_LocalLoginPage> createState() => _LocalLoginPageState();
+}
+
+class _LocalLoginPageState extends ConsumerState<_LocalLoginPage> {
+  late TextEditingController _userCtrl;
+  late TextEditingController _pwdCtrl;
+  bool _obscure = true;
+  bool _loading = false;
+  bool _loggedIn = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _userCtrl = TextEditingController();
+    _pwdCtrl  = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _userCtrl.dispose();
+    _pwdCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login() async {
+    final username = _userCtrl.text.trim();
+    final password = _pwdCtrl.text;
+    if (username.isEmpty || password.isEmpty) {
+      setState(() => _error = 'Remplissez les deux champs.');
+      return;
+    }
+    setState(() { _loading = true; _error = null; });
+    try {
+      final res = await dio.post(
+        '/api/auth/login',
+        data: 'username=$username&password=$password',
+        options: Options(contentType: 'application/x-www-form-urlencoded'),
+      );
+      final token = res.data['access_token'] as String?;
+      if (token == null) throw Exception('Token absent de la réponse');
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(AppConstants.tokenKey, token);
+      dio.options.headers['Authorization'] = 'Bearer $token';
+
+      setState(() => _loggedIn = true);
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      final msg = code == 401 || code == 403
+          ? 'Identifiants incorrects'
+          : e.response?.data?['detail']?.toString() ?? 'Erreur de connexion';
+      setState(() => _error = msg);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final serverUrl = ref.watch(_configProvider).serverUrl;
+    return _PageShell(
+      title: 'Connexion au serveur',
+      subtitle: 'Entrez vos identifiants POS Connect',
+      onNext: _loggedIn ? widget.onNext : null,
+      onBack: widget.onBack,
+      nextLabel: 'Continuer',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.07),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.dns_rounded, size: 16, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  serverUrl.isNotEmpty ? serverUrl : dio.options.baseUrl,
+                  style: const TextStyle(
+                    fontFamily: 'monospace', fontSize: 13,
+                    color: AppColors.primary, fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 20),
+          _Field(
+            ctrl: _userCtrl,
+            label: "Nom d'utilisateur",
+            hint: 'admin',
+            validator: (v) => v!.isEmpty ? 'Requis' : null,
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _pwdCtrl,
+            obscureText: _obscure,
+            decoration: InputDecoration(
+              labelText: 'Mot de passe',
+              prefixIcon: const Icon(Icons.lock_outline_rounded),
+              suffixIcon: IconButton(
+                icon: Icon(_obscure
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined),
+                onPressed: () => setState(() => _obscure = !_obscure),
+              ),
+            ),
+            onFieldSubmitted: (_) { if (!_loading) _login(); },
+          ),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed: _loading ? null : _login,
+            icon: _loading
+                ? const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.login_rounded, size: 16),
+            label: Text(_loading ? 'Connexion...' : 'Se connecter'),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_error!,
+                    style: const TextStyle(color: AppColors.error, fontSize: 12))),
+              ]),
+            ),
+          ],
+          if (_loggedIn) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(children: [
+                Icon(Icons.check_circle_outline, color: AppColors.success, size: 18),
+                SizedBox(width: 8),
+                Text('Connecté avec succès !',
+                    style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _TenantConnectPage extends ConsumerStatefulWidget {
   final VoidCallback onNext;
   final VoidCallback onBack;
@@ -1088,7 +1262,7 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
       // ── Step 2 : validate tenant credentials ─────────────────────────
       await cloudDio.post(
         '$url/api/sync/token',
-        data: {'email': email, 'password': pwd},
+        data: {'owner_email': email, 'password': pwd},
       );
 
       final c = ref.read(_configProvider);
@@ -1313,6 +1487,8 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
     if (!_failed) {
       // Persiste l'URL du serveur dans SharedPreferences une seule fois, à la fin
       await saveServerUrl(cfg.serverUrl.isNotEmpty ? cfg.serverUrl : dio.options.baseUrl);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(AppConstants.clientSetupDoneKey, true);
       setState(() { _done = true; _running = false; });
       await Future.delayed(const Duration(milliseconds: 500));
       widget.onDone();

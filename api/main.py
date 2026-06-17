@@ -1,4 +1,5 @@
 
+import asyncio
 import logging
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy import text
@@ -304,6 +305,58 @@ def on_startup():
         load_roles_from_db(db.query(RoleModel).all())
     finally:
         db.close()
+
+_AUTO_SYNC_INTERVAL = 300  # secondes entre chaque cycle (5 min)
+_auto_sync_task: asyncio.Task | None = None
+
+
+def _do_sync_cycle():
+    """Blocking sync cycle — run in thread via asyncio.to_thread."""
+    from api.services.local_sync_service import _load_sync_credentials, run_sync
+    from api.database import SessionLocal
+    url, token, enabled = _load_sync_credentials()
+    if not (enabled and url and token):
+        return None
+    db = SessionLocal()
+    try:
+        return run_sync(db)
+    finally:
+        db.close()
+
+
+async def _auto_sync_loop():
+    """Background loop: sync toutes les 5 min si cloud_sync_enabled=True."""
+    _slog = logging.getLogger("pos.autosync")
+    await asyncio.sleep(30)  # attendre que le serveur soit prêt
+    while True:
+        try:
+            result = await asyncio.to_thread(_do_sync_cycle)
+            if result is None:
+                pass  # pas encore configuré
+            elif result.get("ok"):
+                pushed_total = sum(result.get("pushed", {}).values())
+                pulled_total = sum(result.get("pulled", {}).values())
+                _slog.info("Auto-sync OK — pushed=%d pulled=%d", pushed_total, pulled_total)
+            else:
+                _slog.warning("Auto-sync partial — errors: %s", result.get("errors"))
+        except Exception as exc:
+            logging.getLogger("pos.autosync").error("Auto-sync loop error: %s", exc)
+        await asyncio.sleep(_AUTO_SYNC_INTERVAL)
+
+
+@app.on_event("startup")
+async def start_auto_sync():
+    global _auto_sync_task
+    _auto_sync_task = asyncio.create_task(_auto_sync_loop())
+
+
+def restart_auto_sync():
+    """Call this after sync/configure to restart the loop immediately."""
+    global _auto_sync_task
+    if _auto_sync_task and not _auto_sync_task.done():
+        _auto_sync_task.cancel()
+    _auto_sync_task = asyncio.create_task(_auto_sync_loop())
+
 
 @app.get("/health", include_in_schema=False)
 async def health_root():

@@ -93,13 +93,22 @@ def _headers(token: str) -> dict:
 
 # ── Main sync entry point ────────────────────────────────────────────────────
 
+def _load_sync_credentials() -> tuple[str, str, bool]:
+    """Read sync credentials from INI (fresh on every call, multi-worker safe)."""
+    from api.core.config import load_ini_config
+    cfg = load_ini_config()
+    url     = (cfg.get("CLOUD_SYNC_URL") or settings.CLOUD_SYNC_URL or "").rstrip("/")
+    token   = cfg.get("CLOUD_SYNC_TOKEN") or settings.CLOUD_SYNC_TOKEN or ""
+    enabled = cfg.get("CLOUD_SYNC_ENABLED", settings.CLOUD_SYNC_ENABLED)
+    return url, token, bool(enabled)
+
+
 def run_sync(db: Session) -> dict:
     """
     Runs a full push+pull cycle. Returns a summary dict.
-    Requires settings.CLOUD_SYNC_URL and settings.CLOUD_SYNC_TOKEN to be set.
+    Requires CLOUD_SYNC_URL and CLOUD_SYNC_TOKEN in pos_server.ini or settings.
     """
-    url   = (settings.CLOUD_SYNC_URL or "").rstrip("/")
-    token = settings.CLOUD_SYNC_TOKEN or ""
+    url, token, _ = _load_sync_credentials()
 
     if not url or not token:
         return {"ok": False, "error": "CLOUD_SYNC_URL ou CLOUD_SYNC_TOKEN non configuré"}
@@ -202,11 +211,12 @@ def _parse_dt(value: str | None) -> datetime | None:
 # ── Sync status ──────────────────────────────────────────────────────────────
 
 def get_sync_status(db: Session) -> dict:
+    url, token, enabled = _load_sync_credentials()
     states = db.query(SyncState).all()
     return {
-        "cloud_url":      settings.CLOUD_SYNC_URL or "",
-        "configured":     bool(settings.CLOUD_SYNC_URL and settings.CLOUD_SYNC_TOKEN),
-        "enabled":        settings.CLOUD_SYNC_ENABLED,
+        "cloud_url":      url,
+        "configured":     bool(url and token),
+        "enabled":        enabled,
         "entities": [
             {
                 "entity_type":    s.entity_type,

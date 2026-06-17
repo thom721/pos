@@ -15,7 +15,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt as _jwt
 from pydantic import BaseModel
@@ -296,8 +296,22 @@ def sync_run(db: Session = Depends(get_db)):
 
 # ── LOCAL: configure cloud connection ─────────────────────────────────────────
 
+def _bg_run_sync():
+    """Run a sync cycle in background (called after configure)."""
+    try:
+        from api.database import SessionLocal
+        from api.services.local_sync_service import run_sync
+        db = SessionLocal()
+        try:
+            run_sync(db)
+        finally:
+            db.close()
+    except Exception as exc:
+        _log.error("Background sync after configure error: %s", exc)
+
+
 @router.post("/configure")
-def sync_configure(body: SyncConfigRequest, db: Session = Depends(get_db)):
+def sync_configure(body: SyncConfigRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Exchange credentials with cloud, save sync token to pos_server.ini."""
     import httpx
 
@@ -328,9 +342,17 @@ def sync_configure(body: SyncConfigRequest, db: Session = Depends(get_db)):
     settings.CLOUD_SYNC_TOKEN   = data["sync_token"]
     settings.CLOUD_SYNC_ENABLED = True
 
+    # Trigger immediate sync + restart periodic loop
+    background_tasks.add_task(_bg_run_sync)
+    try:
+        from api.main import restart_auto_sync
+        restart_auto_sync()
+    except Exception:
+        pass  # main not yet importable in tests
+
     return {
         "ok":            True,
         "tenant_slug":   data.get("tenant_slug"),
         "business_name": data.get("business_name"),
-        "message":       "Synchronisation configurée avec succès",
+        "message":       "Synchronisation configurée avec succès — premier cycle lancé en arrière-plan",
     }
