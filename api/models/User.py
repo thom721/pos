@@ -9,7 +9,7 @@ class User(UUIDBase):
     fname    = Column(String(255), nullable=False)
     lname    = Column(String(255), nullable=False)
     username = Column(String(255), unique=True, index=True, nullable=False)
-    phone    = Column(String(255), unique=True, index=True, nullable=False)
+    phone    = Column(String(255), unique=True, index=True, nullable=True)
     address  = Column(String(255))
     email    = Column(String(255), unique=True, nullable=True)
 

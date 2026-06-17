@@ -175,12 +175,22 @@ def _ensure_cloud_admin(db, local_tid: str) -> None:
     Garantit qu'un compte superadmin existe dans PlatformConfig ET dans users.
     Priorité : PlatformConfig (DB) > settings (env/ini) > auto-génération.
     Idempotent — ne fait rien si tout est déjà en place.
+
+    Skippé si ce serveur est déjà configuré comme serveur tenant local
+    (cloud_sync_url présent dans INI) — dans ce cas le tenant crée son propre
+    compte admin via connect_tenant.
     """
     import secrets
     from api.models.PlatformConfig import PlatformConfig
     from api.models.User import User
     from api.services.auth import get_password_hash
-    from api.core.config import settings
+    from api.core.config import settings, load_ini_config
+
+    # Si le serveur est lié à un tenant cloud (cloud_sync_url configuré),
+    # ne pas créer de superadmin plateforme — le compte tenant suffira.
+    ini = load_ini_config()
+    if ini.get("CLOUD_SYNC_URL"):
+        return
 
     # ── 1. PlatformConfig singleton ──────────────────────────────────────────
     cfg = db.query(PlatformConfig).first()
@@ -303,6 +313,17 @@ def on_startup():
 
         # Load all roles (including custom ones) into ROLE_PERMISSIONS
         load_roles_from_db(db.query(RoleModel).all())
+
+        # Inline migration: make users.phone nullable (safe on MySQL & SQLite)
+        try:
+            from api.core.config import settings as _s
+            if _s.DB_TYPE != "sqlite":
+                db.execute(text(
+                    "ALTER TABLE users MODIFY COLUMN phone VARCHAR(255) NULL"
+                ))
+                db.commit()
+        except Exception:
+            pass  # already nullable or SQLite (no ALTER TABLE MODIFY)
     finally:
         db.close()
 

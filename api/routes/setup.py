@@ -462,7 +462,11 @@ def connect_tenant(data: ConnectTenantRequest):
         "billing_url":        cloud_url,
     })
 
+    can_manage = body.get("can_manage_tenants", False)
+
     # ── 3. Create local admin user in DB ─────────────────────────────────────
+    # Regular tenants (can_manage_tenants=False) only need their own admin account.
+    # They don't need a platform-level superadmin.
     if data.db_type == "mysql":
         pw = urllib.parse.quote_plus(data.db_password)
         db_url = f"mysql+pymysql://{data.user}:{pw}@{data.host}:{data.port}/{data.name}"
@@ -473,20 +477,44 @@ def connect_tenant(data: ConnectTenantRequest):
             connect_args={"check_same_thread": False},
         )
 
+    # Make phone nullable on the target DB (MySQL only, safe no-op if already nullable)
+    if data.db_type == "mysql":
+        try:
+            with target_eng.connect() as _conn:
+                _conn.execute(
+                    __import__("sqlalchemy").text(
+                        "ALTER TABLE users MODIFY COLUMN phone VARCHAR(255) NULL"
+                    )
+                )
+                _conn.commit()
+        except Exception:
+            pass
+
     Session = sessionmaker(bind=target_eng)
     db = Session()
     try:
-        if db.query(User).filter(User.email == data.email).first():
-            return {"ok": True, "message": "Compte déjà lié — configuration mise à jour."}
+        existing = db.query(User).filter(User.email == data.email).first()
+        if existing:
+            # Update password in case it changed
+            existing.password = get_password_hash(data.password)
+            existing.must_change_password = False
+            db.commit()
+            return {"ok": True, "message": "Compte déjà lié — mot de passe mis à jour."}
 
-        username = data.email.split("@")[0]
+        # Use business_name from cloud response for the user's display name
+        business_name = body.get("business_name", "") or data.email.split("@")[0]
+        parts = business_name.split(" ", 1)
+        fname = parts[0]
+        lname = parts[1] if len(parts) > 1 else ""
+
+        username = body.get("tenant_slug") or data.email.split("@")[0]
         # Ensure username uniqueness
         if db.query(User).filter(User.username == username).first():
             username = f"{username}_{secrets.token_hex(3)}"
 
         admin = User(
-            fname="Admin",
-            lname="",
+            fname=fname,
+            lname=lname,
             username=username,
             email=data.email,
             phone=None,
@@ -498,10 +526,11 @@ def connect_tenant(data: ConnectTenantRequest):
         db.add(admin)
         db.commit()
         return {
-            "ok":             True,
-            "message":        f"Installation liée au compte {data.email}",
-            "tenant_type":    tenant_type,
-            "self_hosted_url": self_hosted_url,
+            "ok":               True,
+            "message":          f"Installation liée au compte {data.email}",
+            "tenant_type":      tenant_type,
+            "can_manage_tenants": can_manage,
+            "self_hosted_url":  self_hosted_url,
         }
     except Exception as exc:
         db.rollback()
