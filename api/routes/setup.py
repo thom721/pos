@@ -19,6 +19,7 @@ from sqlalchemy import text
 
 from api.database import get_db, engine, Base
 from api.models.User import User
+from api.models.Tenant import Tenant
 from api.services.auth import get_password_hash
 from api.core.config import settings, write_ini_config
 
@@ -493,16 +494,32 @@ def connect_tenant(data: ConnectTenantRequest):
     Session = sessionmaker(bind=target_eng)
     db = Session()
     try:
+        # ── Ensure __local__ tenant exists in target DB ───────────────────────
+        business_name = body.get("business_name", "") or data.email.split("@")[0]
+        local_tenant = db.query(Tenant).filter(Tenant.slug == "__local__").first()
+        if not local_tenant:
+            local_tenant = Tenant(
+                slug="__local__",
+                business_name=business_name,
+                owner_email=data.email,
+                status="local",
+                is_local=True,
+            )
+            db.add(local_tenant)
+            db.flush()
+        local_tid = local_tenant.id
+
         existing = db.query(User).filter(User.email == data.email).first()
         if existing:
-            # Update password in case it changed
+            # Update password + ensure tenant_id is set
             existing.password = get_password_hash(data.password)
             existing.must_change_password = False
+            if not existing.tenant_id:
+                existing.tenant_id = local_tid
             db.commit()
             return {"ok": True, "message": "Compte déjà lié — mot de passe mis à jour."}
 
         # Use business_name from cloud response for the user's display name
-        business_name = body.get("business_name", "") or data.email.split("@")[0]
         parts = business_name.split(" ", 1)
         fname = parts[0]
         lname = parts[1] if len(parts) > 1 else ""
@@ -513,6 +530,7 @@ def connect_tenant(data: ConnectTenantRequest):
             username = f"{username}_{secrets.token_hex(3)}"
 
         admin = User(
+            tenant_id=local_tid,
             fname=fname,
             lname=lname,
             username=username,
