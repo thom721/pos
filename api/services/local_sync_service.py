@@ -96,6 +96,42 @@ def _headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
+def _http_post(url: str, json: dict, headers: dict, timeout: int = 30) -> httpx.Response:
+    """POST with 3 retries on transient network errors (1s, 2s, 4s backoff)."""
+    import time
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            resp = httpx.post(url, json=json, headers=headers, timeout=timeout)
+            resp.raise_for_status()
+            return resp
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError) as exc:
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+        except httpx.HTTPStatusError:
+            raise  # server errors (4xx/5xx) are not retried
+    raise last_exc  # type: ignore[misc]
+
+
+def _http_get(url: str, params: dict, headers: dict, timeout: int = 30) -> httpx.Response:
+    """GET with 3 retries on transient network errors."""
+    import time
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            resp = httpx.get(url, params=params, headers=headers, timeout=timeout)
+            resp.raise_for_status()
+            return resp
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError) as exc:
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+        except httpx.HTTPStatusError:
+            raise
+    raise last_exc  # type: ignore[misc]
+
+
 # ── Main sync entry point ────────────────────────────────────────────────────
 
 def _load_sync_credentials() -> tuple[str, str, bool]:
@@ -155,13 +191,11 @@ def run_sync(db: Session) -> dict:
 
             if rows:
                 payload = _serialize(rows, _EXCLUDE_PUSH)
-                resp = httpx.post(
+                resp = _http_post(
                     f"{url}/api/sync/push",
                     json={"entity_type": etype, "records": payload},
                     headers=_headers(token),
-                    timeout=30,
                 )
-                resp.raise_for_status()
                 result = resp.json()
                 pushed = result.get("inserted", 0) + result.get("updated", 0)
                 summary["pushed"][etype] = pushed
@@ -181,13 +215,11 @@ def run_sync(db: Session) -> dict:
         if direction == "both":
             try:
                 since = state.last_pull_at.isoformat() if state.last_pull_at else "1970-01-01T00:00:00+00:00"
-                resp = httpx.get(
+                resp = _http_get(
                     f"{url}/api/sync/pull",
                     params={"entity_type": etype, "since": since},
                     headers=_headers(token),
-                    timeout=30,
                 )
-                resp.raise_for_status()
                 records = resp.json().get("records", [])
 
                 col_names = {c.key for c in sa_inspect(model).columns}
@@ -239,12 +271,15 @@ def _parse_dt(value: str | None) -> datetime | None:
 # ── Sync status ──────────────────────────────────────────────────────────────
 
 def get_sync_status(db: Session) -> dict:
+    from api.core.config import load_ini_config
     url, token, enabled = _load_sync_credentials()
+    ini = load_ini_config()
     states = db.query(SyncState).all()
     return {
-        "cloud_url":      url,
-        "configured":     bool(url and token),
-        "enabled":        enabled,
+        "cloud_url":         url,
+        "cloud_owner_email": ini.get("cloud_owner_email", ""),
+        "configured":        bool(url and token),
+        "enabled":           enabled,
         "entities": [
             {
                 "entity_type":    s.entity_type,

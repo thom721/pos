@@ -214,12 +214,13 @@ def sync_push(
         existing = db.get(model, rid)
         if existing is None:
             try:
-                db.add(model(**clean))
-                db.flush()
+                # Savepoint so a failed INSERT only rolls back this one record,
+                # not all previously inserted records in the same request.
+                with db.begin_nested():
+                    db.add(model(**clean))
                 inserted += 1
             except Exception as exc:
                 _log.warning("push insert %s %s: %s", body.entity_type, rid, exc)
-                db.rollback()
                 skipped += 1
         else:
             remote_ts = _parse_dt(clean.get("updated_at"))
@@ -341,6 +342,7 @@ def sync_configure(body: SyncConfigRequest, background_tasks: BackgroundTasks, d
         "cloud_sync_url":     cloud_url,
         "cloud_sync_token":   data["sync_token"],
         "cloud_sync_enabled": "true",
+        "cloud_owner_email":  body.owner_email,
     })
     settings.CLOUD_SYNC_URL     = cloud_url
     settings.CLOUD_SYNC_TOKEN   = data["sync_token"]

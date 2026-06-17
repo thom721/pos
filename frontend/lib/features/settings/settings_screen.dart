@@ -984,6 +984,16 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
   @override
   void initState() {
     super.initState();
+    // Pre-fill URL and email from current status (survives app updates)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final status = ref.read(syncStatusProvider);
+      status.whenData((s) {
+        final url   = s['cloud_url']         as String? ?? '';
+        final email = s['cloud_owner_email'] as String? ?? '';
+        if (url.isNotEmpty   && _cloudUrlCtrl.text.isEmpty) _cloudUrlCtrl.text = url;
+        if (email.isNotEmpty && _emailCtrl.text.isEmpty)    _emailCtrl.text    = email;
+      });
+    });
     // Refresh sync status every 30 s so the user sees live timestamps
     _refreshTimer = Timer.periodic(
       const Duration(seconds: 30),
@@ -1198,9 +1208,7 @@ class _EntityRow extends StatelessWidget {
         const SizedBox(width: 6),
         Expanded(
           child: Text(
-            error != null
-                ? error
-                : '↑$pushed  ↓$pulled${fmtPush != null ? '  $fmtPush' : ''}',
+            error ?? '↑$pushed  ↓$pulled${fmtPush != null ? '  $fmtPush' : ''}',
             style: TextStyle(
               fontSize: 11,
               color: error != null ? AppColors.error : AppColors.textSecondary,

@@ -464,6 +464,7 @@ def connect_tenant(data: ConnectTenantRequest):
         "cloud_sync_enabled": "true",
         "billing_url":        cloud_url,
         "cloud_tenant_id":    cloud_tenant_id,
+        "cloud_owner_email":  data.email,
     })
 
     can_manage = body.get("can_manage_tenants", False)
