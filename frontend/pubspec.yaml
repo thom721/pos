@@ -63,6 +63,11 @@ dependencies:
   # Fallback automatique vers le package printing sur les autres appareils.
   sunmi_printer_plus: ^4.1.1
 
+  # Cache offline SQLite — produits, clients, catégories disponibles sans réseau
+  sqflite: ^2.4.1
+  sqflite_common_ffi: ^2.3.4  # requis pour Windows / macOS / Linux
+  path: ^1.9.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

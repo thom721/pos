@@ -7,11 +7,13 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:pos_connect/app.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/services/local_db_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('fr');
   await initServerUrl();
+  await LocalDbService.instance.init(); // ouvre / crée pos_cache.db
 
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
     launchAtStartup.setup(

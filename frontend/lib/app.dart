@@ -6,6 +6,7 @@ import 'package:pos_connect/core/router.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
+import 'package:pos_connect/services/offline_cache_service.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
 
 const _kSyncInterval = Duration(minutes: 5);
@@ -32,6 +33,8 @@ class _PosAppState extends ConsumerState<PosApp> {
 
   void _startAutoSync() {
     _syncTimer?.cancel();
+    // Warm-up immédiat du cache au login
+    _triggerSync();
     _syncTimer = Timer.periodic(_kSyncInterval, (_) => _triggerSync());
   }
 
@@ -42,15 +45,18 @@ class _PosAppState extends ConsumerState<PosApp> {
 
   Future<void> _triggerSync() async {
     try {
-      // Replay any operations queued while offline before running server sync
+      // 1. Rejouer les mutations en attente
       final replayed = await OfflineQueueService.instance.drain(dio);
       if (replayed > 0) {
         debugPrint('[AutoSync] offline queue drained: $replayed opération(s) rejouée(s)');
       }
+      // 2. Sync bidirectionnelle avec le cloud
       await dio.post('/api/sync/run');
     } catch (_) {
-      // Sync errors are non-fatal — server logs details
+      // Erreurs de sync serveur non fatales
     }
+    // 3. Rafraîchir le cache SQLite local (indépendant de la sync cloud)
+    OfflineCacheService.instance.syncAll().ignore();
   }
 
   @override

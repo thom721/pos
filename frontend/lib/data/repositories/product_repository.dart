@@ -3,6 +3,15 @@ import 'package:dio/dio.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/product_model.dart';
+import 'package:pos_connect/services/local_db_service.dart';
+
+bool _isOffline(Object e) =>
+    e is DioException &&
+    (e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.unknown);
 
 class ProductRepository {
   Future<PaginatedResponse<ProductModel>> getProducts({
@@ -17,18 +26,37 @@ class ProductRepository {
       if (search != null && search.isNotEmpty) 'search': search,
       if (categoryId != null) 'category_id': categoryId,
     };
-    final res = await dio.get('/api/products/', queryParameters: params);
-    return PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
+    try {
+      final res = await dio.get('/api/products/', queryParameters: params);
+      final result = PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
+      // Met à jour le cache en arrière-plan
+      LocalDbService.instance.upsertProducts(result.data).ignore();
+      return result;
+    } catch (e) {
+      if (_isOffline(e)) {
+        return LocalDbService.instance.getProducts(
+          search: search, page: page, limit: limit, categoryId: categoryId,
+        );
+      }
+      rethrow;
+    }
   }
 
   Future<List<CategoryModel>> getCategories() async {
-    final res = await dio.get('/api/categories/');
-    final raw = res.data is Map
-        ? (res.data['data'] as List? ?? [])
-        : (res.data as List? ?? []);
-    return raw
-        .map((e) => CategoryModel.fromJson(e as Map<String, dynamic>))
-        .toList();
+    try {
+      final res = await dio.get('/api/categories/');
+      final raw = res.data is Map
+          ? (res.data['data'] as List? ?? [])
+          : (res.data as List? ?? []);
+      final cats = raw
+          .map((e) => CategoryModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      LocalDbService.instance.upsertCategories(cats).ignore();
+      return cats;
+    } catch (e) {
+      if (_isOffline(e)) return LocalDbService.instance.getCategories();
+      rethrow;
+    }
   }
 
   Future<CategoryModel> createCategory(Map<String, dynamic> data) async {
@@ -60,8 +88,6 @@ class ProductRepository {
     await dio.delete('/api/products/$id');
   }
 
-  /// Upload d'image cross-platform (Web + Android + iOS).
-  /// Le token JWT est injecté automatiquement par l'AuthInterceptor de dio.
   Future<String?> uploadProductImage(
     String productId,
     Uint8List bytes,
@@ -74,7 +100,6 @@ class ProductRepository {
         contentType: _mimeType(filename),
       ),
     });
-
     final res = await dio.post(
       '/api/products/$productId/image',
       data: formData,
@@ -91,7 +116,6 @@ class ProductRepository {
     };
   }
 
-  // Used by POS cashier screen
   Future<PaginatedResponse<ProductModel>> searchForSale({
     String? search,
     int page = 1,
@@ -102,8 +126,19 @@ class ProductRepository {
       'per_page': perPage,
       if (search != null && search.isNotEmpty) 'search': search,
     };
-    final res =
-        await dio.get('/api/sales/products/search', queryParameters: params);
-    return PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
+    try {
+      final res =
+          await dio.get('/api/sales/products/search', queryParameters: params);
+      final result = PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
+      LocalDbService.instance.upsertProducts(result.data).ignore();
+      return result;
+    } catch (e) {
+      if (_isOffline(e)) {
+        return LocalDbService.instance.searchForSale(
+          search: search, page: page, perPage: perPage,
+        );
+      }
+      rethrow;
+    }
   }
 }
