@@ -251,7 +251,7 @@ def _ensure_cloud_admin(db, local_tid: str) -> None:
             fname="Super",
             lname="Admin",
             username="admin",
-            phone="0000000000",
+            phone=None,
             email=admin_email,
             password=admin_hash,
             roles=["admin"],

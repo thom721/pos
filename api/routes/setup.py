@@ -489,7 +489,7 @@ def connect_tenant(data: ConnectTenantRequest):
             lname="",
             username=username,
             email=data.email,
-            phone="0000000000",
+            phone=None,
             password=get_password_hash(data.password),
             roles=["admin"],
             permissions=["all"],
