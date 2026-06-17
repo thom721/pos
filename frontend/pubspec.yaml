@@ -59,6 +59,10 @@ dependencies:
   # Cryptography — Ed25519 server identity verification
   cryptography: ^2.7.0
 
+  # Imprimante thermique intégrée Sunmi (H10, V2 Pro, etc.)
+  # Fallback automatique vers le package printing sur les autres appareils.
+  sunmi_printer_plus: ^4.1.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

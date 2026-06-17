@@ -3,8 +3,6 @@ import 'package:dio/dio.dart' show FormData, Options, DioException;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:printing/printing.dart';
-
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/core/responsive.dart';
@@ -19,7 +17,7 @@ import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/pos_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
-import 'package:pos_connect/shared/utils/receipt_pdf.dart';
+import 'package:pos_connect/services/thermal_printer_service.dart';
 
 final _fmt =
     NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
@@ -69,27 +67,10 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
     setState(() => _printing = true);
     final settings = ref.read(settingsProvider);
     try {
-      final bytes = await buildReceiptPdf(_sale!, settings);
-      // If a specific printer is configured, print directly to it.
-      if (settings.posPrinterName.isNotEmpty) {
-        final printers = await Printing.listPrinters();
-        final printer = printers.cast<Printer?>().firstWhere(
-          (p) => p?.url == settings.posPrinterName,
-          orElse: () => null,
-        );
-        if (printer != null) {
-          await Printing.directPrintPdf(
-            printer: printer,
-            onLayout: (_) => bytes,
-            name: 'Recu_${_sale!.reference}',
-          );
-          return;
-        }
-      }
-      // Fallback: OS print dialog
-      await Printing.layoutPdf(
-        onLayout: (_) => bytes,
-        name: 'Recu_${_sale!.reference}',
+      await ThermalPrinterService.instance.printReceipt(
+        _sale!,
+        settings,
+        printerUrl: settings.posPrinterName.isNotEmpty ? settings.posPrinterName : null,
       );
     } finally {
       if (mounted) setState(() => _printing = false);
@@ -98,10 +79,20 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isTiny = context.isTinyPhone;
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      insetPadding: isTiny
+          ? const EdgeInsets.symmetric(horizontal: 8, vertical: 8)
+          : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(isTiny ? 8 : 12)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 580, maxHeight: 680),
+        constraints: BoxConstraints(
+          maxWidth: isTiny ? double.infinity : 580,
+          maxHeight: isTiny
+              ? MediaQuery.sizeOf(context).height - 16
+              : 680,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
