@@ -31,6 +31,7 @@ from api.models.Product import Product
 from api.models.Purchase import Purchase
 from api.models.PurchaseItem import PurchaseItem
 from api.models.ReturnRecord import ReturnRecord
+from api.models.PosRegister import PosRegister
 from api.models.Sale import Sale
 from api.models.SaleItem import SaleItem
 from api.models.Supplier import Supplier
@@ -46,6 +47,7 @@ _MODEL_MAP: dict[str, Any] = {
     "supplier":      Supplier,
     "product":       Product,
     "customer":      Customer,
+    "pos_register":  PosRegister,
     "sale":          Sale,
     "sale_item":     SaleItem,
     "payment":       Payment,

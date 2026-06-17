@@ -28,6 +28,7 @@ from api.models.Payment import Payment
 from api.models.Purchase import Purchase
 from api.models.PurchaseItem import PurchaseItem
 from api.models.ReturnRecord import ReturnRecord
+from api.models.PosRegister import PosRegister
 
 _log = logging.getLogger("pos.sync")
 
@@ -39,6 +40,7 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "supplier",      "model": Supplier,      "direction": "both"},
     {"type": "product",       "model": Product,       "direction": "both"},
     {"type": "customer",      "model": Customer,      "direction": "both"},
+    {"type": "pos_register",  "model": PosRegister,   "direction": "both"},
     {"type": "sale",          "model": Sale,          "direction": "push"},
     {"type": "sale_item",     "model": SaleItem,      "direction": "push"},
     {"type": "payment",       "model": Payment,       "direction": "push"},
