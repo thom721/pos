@@ -8,7 +8,7 @@ import 'package:pos_connect/data/api/api_client.dart';
 
 final _usersListProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final res = await dio.get('/users/');
+  final res = await dio.get('/api/users/');
   return (res.data as List).cast<Map<String, dynamic>>();
 });
 
@@ -312,7 +312,7 @@ class _UsersTab extends ConsumerWidget {
       ),
     );
     if (ok == true) {
-      await dio.delete('/users/$id');
+      await dio.delete('/api/users/$id');
       ref.invalidate(_usersListProvider);
     }
   }
@@ -320,7 +320,7 @@ class _UsersTab extends ConsumerWidget {
   Future<void> _changeRole(BuildContext ctx, WidgetRef ref,
       Map<String, dynamic> user, String newRole) async {
     try {
-      await dio.put('/users/${user['id']}', data: {
+      await dio.put('/api/users/${user['id']}', data: {
         'id':          user['id'],
         'fname':       user['fname'],
         'lname':       user['lname'],
@@ -1342,10 +1342,10 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
         'permissions': _selectedRole == 'admin' ? ['all'] : [_selectedRole],
       };
       if (_isEdit) {
-        await dio.put('/users/${widget.existing!['id']}',
+        await dio.put('/api/users/${widget.existing!['id']}',
             data: {'id': widget.existing!['id'], ...body});
       } else {
-        await dio.post('/users', data: body);
+        await dio.post('/api/users', data: body);
       }
       widget.onSaved();
       if (mounted) Navigator.pop(context);

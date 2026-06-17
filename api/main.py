@@ -56,7 +56,7 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="api/static"), name="static")
 
-app.include_router(user.router)
+app.include_router(user.router, prefix="/api")
 app.include_router(login.router)
 app.include_router(auth.router)
 app.include_router(category.router)

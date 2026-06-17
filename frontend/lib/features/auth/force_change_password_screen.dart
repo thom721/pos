@@ -33,7 +33,7 @@ class _ForceChangePasswordScreenState
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
-      await dio.post('/users/me/change-password', data: {
+      await dio.post('/api/users/me/change-password', data: {
         'new_password': _newPwdCtrl.text,
         'confirm_password': _confirmCtrl.text,
       });

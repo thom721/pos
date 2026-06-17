@@ -91,7 +91,7 @@ class _EmployeesTabState extends ConsumerState<_EmployeesTab> {
     try {
       final res = await Future.wait([
         dio.get('/api/hr/employees/'),
-        dio.get('/users/'),
+        dio.get('/api/users/'),
       ]);
       setState(() {
         _employees = res[0].data is List ? res[0].data : [];

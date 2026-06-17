@@ -21,7 +21,7 @@ class _UserInfo {
 }
 
 final _allUsersProvider = FutureProvider.autoDispose<List<_UserInfo>>((ref) async {
-  final res = await dio.get('/users/');
+  final res = await dio.get('/api/users/');
   final data = res.data as List? ?? [];
   final list = data.map((e) {
     final fname = e['fname']?.toString() ?? '';
