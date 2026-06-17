@@ -130,6 +130,11 @@ def run_sync(db: Session) -> dict:
     # permanently missing records created during the sync window.
     cycle_start = datetime.now(timezone.utc)
 
+    # Resolve the local __local__ tenant id for records that require tenant_id NOT NULL.
+    from api.models.Tenant import Tenant as _Tenant
+    _local_tenant = db.query(_Tenant).filter(_Tenant.slug == "__local__").first()
+    _local_tid = _local_tenant.id if _local_tenant else None
+
     summary = {"pushed": {}, "pulled": {}, "errors": []}
 
     for entity in SYNC_ENTITIES:
@@ -187,12 +192,18 @@ def run_sync(db: Session) -> dict:
                 resp.raise_for_status()
                 records = resp.json().get("records", [])
 
+                col_names = {c.key for c in sa_inspect(model).columns}
+                needs_tid = "tenant_id" in col_names
+
                 applied = 0
                 for rec in records:
                     rec.pop("tenant_id", None)
                     existing = db.get(model, rec["id"])
                     if existing is None:
-                        obj = model(**{k: v for k, v in rec.items() if k not in _EXCLUDE_PULL})
+                        fields = {k: v for k, v in rec.items() if k not in _EXCLUDE_PULL}
+                        if needs_tid and _local_tid:
+                            fields["tenant_id"] = _local_tid
+                        obj = model(**fields)
                         db.add(obj)
                         applied += 1
                     else:
