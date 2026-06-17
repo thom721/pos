@@ -36,6 +36,7 @@ from api.models.Sale import Sale
 from api.models.SaleItem import SaleItem
 from api.models.Supplier import Supplier
 from api.models.Tenant import Tenant
+from api.models.User import User
 
 router = APIRouter(prefix="/api/sync", tags=["Sync"])
 _log = logging.getLogger("pos.sync")
@@ -47,6 +48,7 @@ _MODEL_MAP: dict[str, Any] = {
     "supplier":      Supplier,
     "product":       Product,
     "customer":      Customer,
+    "user":          User,
     "pos_register":  PosRegister,
     "sale":          Sale,
     "sale_item":     SaleItem,

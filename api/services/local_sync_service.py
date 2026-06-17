@@ -22,6 +22,7 @@ from api.models.Category import Category
 from api.models.Product import Product
 from api.models.Customer import Customer
 from api.models.Supplier import Supplier
+from api.models.User import User
 from api.models.Sale import Sale
 from api.models.SaleItem import SaleItem
 from api.models.Payment import Payment
@@ -40,6 +41,7 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "supplier",      "model": Supplier,      "direction": "both"},
     {"type": "product",       "model": Product,       "direction": "both"},
     {"type": "customer",      "model": Customer,      "direction": "both"},
+    {"type": "user",          "model": User,          "direction": "both"},
     {"type": "pos_register",  "model": PosRegister,   "direction": "both"},
     {"type": "sale",          "model": Sale,          "direction": "push"},
     {"type": "sale_item",     "model": SaleItem,      "direction": "push"},
