@@ -49,10 +49,11 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "return_record", "model": ReturnRecord,  "direction": "push"},
 ]
 
-# Columns excluded when sending to cloud (cloud assigns its own tenant_id)
+# Columns excluded when sending to cloud (cloud assigns its own tenant_id via sync token)
 _EXCLUDE_PUSH = {"tenant_id"}
-# Columns excluded when applying to local (local has no tenant concept)
-_EXCLUDE_PULL = {"tenant_id"}
+# Pulled records keep their tenant_id — it matches the local __local__ tenant UUID
+# (aligned at install time via connect_tenant using the cloud's tenant UUID).
+_EXCLUDE_PULL: set[str] = set()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -130,11 +131,6 @@ def run_sync(db: Session) -> dict:
     # permanently missing records created during the sync window.
     cycle_start = datetime.now(timezone.utc)
 
-    # Resolve the local __local__ tenant id for records that require tenant_id NOT NULL.
-    from api.models.Tenant import Tenant as _Tenant
-    _local_tenant = db.query(_Tenant).filter(_Tenant.slug == "__local__").first()
-    _local_tid = _local_tenant.id if _local_tenant else None
-
     summary = {"pushed": {}, "pulled": {}, "errors": []}
 
     for entity in SYNC_ENTITIES:
@@ -193,16 +189,12 @@ def run_sync(db: Session) -> dict:
                 records = resp.json().get("records", [])
 
                 col_names = {c.key for c in sa_inspect(model).columns}
-                needs_tid = "tenant_id" in col_names
 
                 applied = 0
                 for rec in records:
-                    rec.pop("tenant_id", None)
                     existing = db.get(model, rec["id"])
                     if existing is None:
-                        fields = {k: v for k, v in rec.items() if k not in _EXCLUDE_PULL}
-                        if needs_tid and _local_tid:
-                            fields["tenant_id"] = _local_tid
+                        fields = {k: v for k, v in rec.items() if k in col_names}
                         obj = model(**fields)
                         db.add(obj)
                         applied += 1
@@ -213,7 +205,7 @@ def run_sync(db: Session) -> dict:
                             local_ts = local_ts.replace(tzinfo=timezone.utc)
                         if remote_ts and (not local_ts or remote_ts > local_ts):
                             for k, v in rec.items():
-                                if k not in _EXCLUDE_PULL and k != "id":
+                                if k in col_names and k != "id":
                                     setattr(existing, k, v)
                             applied += 1
 

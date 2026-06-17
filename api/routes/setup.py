@@ -445,6 +445,8 @@ def connect_tenant(data: ConnectTenantRequest):
     data_sync_url = (self_hosted_url.rstrip("/") if self_hosted_url else cloud_url) \
         if tenant_type == "selfhosted" else cloud_url
 
+    cloud_tenant_id = body.get("tenant_id") or ""
+
     secret = secrets.token_hex(32)
     write_ini_config({
         "type":               data.db_type,
@@ -461,6 +463,7 @@ def connect_tenant(data: ConnectTenantRequest):
         "cloud_sync_token":   sync_token,
         "cloud_sync_enabled": "true",
         "billing_url":        cloud_url,
+        "cloud_tenant_id":    cloud_tenant_id,
     })
 
     can_manage = body.get("can_manage_tenants", False)
@@ -494,20 +497,65 @@ def connect_tenant(data: ConnectTenantRequest):
     Session = sessionmaker(bind=target_eng)
     db = Session()
     try:
-        # ── Ensure __local__ tenant exists in target DB ───────────────────────
+        # ── Ensure __local__ tenant exists in target DB with the cloud UUID ─────
+        # Using the cloud UUID avoids FK conflicts when pulling cloud records:
+        # pulled records already carry the correct tenant_id and need no substitution.
         business_name = body.get("business_name", "") or data.email.split("@")[0]
-        local_tenant = db.query(Tenant).filter(Tenant.slug == "__local__").first()
+
+        # Try to find an existing tenant that already has the cloud UUID
+        local_tenant = (
+            db.query(Tenant).filter(Tenant.id == cloud_tenant_id).first()
+            if cloud_tenant_id else None
+        )
         if not local_tenant:
-            local_tenant = Tenant(
+            local_tenant = db.query(Tenant).filter(Tenant.slug == "__local__").first()
+
+        if not local_tenant:
+            # Fresh DB — create with the cloud UUID directly
+            kwargs = dict(
                 slug="__local__",
                 business_name=business_name,
                 owner_email=data.email,
                 status="local",
                 is_local=True,
             )
+            if cloud_tenant_id:
+                kwargs["id"] = cloud_tenant_id
+            local_tenant = Tenant(**kwargs)
             db.add(local_tenant)
             db.flush()
-        local_tid = local_tenant.id
+        elif cloud_tenant_id and local_tenant.id != cloud_tenant_id:
+            # Tenant exists with wrong UUID — realign to cloud UUID.
+            # Disable FK checks, update primary key, update all child rows, re-enable.
+            old_tid = local_tenant.id
+            _sa_text = __import__("sqlalchemy").text
+            if data.db_type == "mysql":
+                db.execute(_sa_text("SET FOREIGN_KEY_CHECKS=0"))
+            db.execute(
+                _sa_text("UPDATE tenants SET id = :new WHERE id = :old"),
+                {"new": cloud_tenant_id, "old": old_tid},
+            )
+            for _tbl in [
+                "users", "categories", "suppliers", "products", "customers",
+                "sales", "sale_items", "purchases", "purchase_items",
+                "purchase_receipts", "purchase_receipt_items",
+                "payments", "stock_movements", "debts", "return_records",
+                "inventory_records", "app_config", "proformas", "proforma_items",
+                "invoices", "invoice_items", "employee_profiles",
+                "payroll_periods", "payroll_entries", "roles", "pos_registers",
+            ]:
+                try:
+                    db.execute(
+                        _sa_text(f"UPDATE `{_tbl}` SET tenant_id = :new WHERE tenant_id = :old"),
+                        {"new": cloud_tenant_id, "old": old_tid},
+                    )
+                except Exception:
+                    pass
+            if data.db_type == "mysql":
+                db.execute(_sa_text("SET FOREIGN_KEY_CHECKS=1"))
+            db.flush()
+
+        local_tid = cloud_tenant_id or local_tenant.id
 
         existing = db.query(User).filter(User.email == data.email).first()
         if existing:

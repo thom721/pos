@@ -129,18 +129,35 @@ def _ensure_local_tenant(db) -> str:
     In local-mode deployments, create a sentinel LOCAL tenant (once)
     and backfill all existing rows that have tenant_id = NULL.
     Returns the LOCAL tenant id.
+
+    If the server was linked to a cloud tenant via connect_tenant, the INI
+    contains cloud_tenant_id — the local tenant will have that same UUID so
+    that pulled records (which carry the cloud tenant_id) are always valid
+    without any substitution.
     """
     from api.models.Tenant import Tenant as TenantModel
+    from api.core.config import load_ini_config
 
-    local = db.query(TenantModel).filter(TenantModel.slug == "__local__").first()
+    ini = load_ini_config()
+    cloud_tid = (ini.get("CLOUD_TENANT_ID") or ini.get("cloud_tenant_id") or "").strip()
+
+    local = None
+    if cloud_tid:
+        local = db.query(TenantModel).filter(TenantModel.id == cloud_tid).first()
     if not local:
-        local = TenantModel(
+        local = db.query(TenantModel).filter(TenantModel.slug == "__local__").first()
+
+    if not local:
+        kwargs = dict(
             slug="__local__",
             business_name="Local",
             owner_email="local@localhost",
             status="local",
             is_local=True,
         )
+        if cloud_tid:
+            kwargs["id"] = cloud_tid
+        local = TenantModel(**kwargs)
         db.add(local)
         db.flush()
         _log.info("Tenant LOCAL créé : %s", local.id)
