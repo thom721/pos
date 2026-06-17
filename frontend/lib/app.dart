@@ -7,6 +7,8 @@ import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 
+const _kSyncInterval = Duration(minutes: 5);
+
 class PosApp extends ConsumerStatefulWidget {
   const PosApp({super.key});
 
@@ -16,24 +18,53 @@ class PosApp extends ConsumerStatefulWidget {
 
 class _PosAppState extends ConsumerState<PosApp> {
   late final StreamSubscription<void> _authSub;
+  Timer? _syncTimer;
 
   @override
   void initState() {
     super.initState();
     _authSub = onUnauthorized.listen((_) {
       ref.read(authProvider.notifier).logout();
+      _stopAutoSync();
     });
+  }
+
+  void _startAutoSync() {
+    _syncTimer?.cancel();
+    _syncTimer = Timer.periodic(_kSyncInterval, (_) => _triggerSync());
+  }
+
+  void _stopAutoSync() {
+    _syncTimer?.cancel();
+    _syncTimer = null;
+  }
+
+  Future<void> _triggerSync() async {
+    try {
+      await dio.post('/api/sync/run');
+    } catch (_) {
+      // Sync errors are non-fatal — server logs details
+    }
   }
 
   @override
   void dispose() {
     _authSub.cancel();
+    _stopAutoSync();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
+
+    // Start/stop auto-sync based on auth state
+    final isLoggedIn = ref.watch(authProvider).isAuthenticated;
+    if (isLoggedIn && _syncTimer == null) {
+      _startAutoSync();
+    } else if (!isLoggedIn && _syncTimer != null) {
+      _stopAutoSync();
+    }
 
     return MaterialApp.router(
       title: 'POS Connect',

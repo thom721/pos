@@ -49,6 +49,7 @@ def load_ini_config() -> dict:
         "CLOUD_SYNC_URL":      srv.get("cloud_sync_url",      os.getenv("CLOUD_SYNC_URL",      "")),
         "CLOUD_SYNC_TOKEN":    srv.get("cloud_sync_token",    os.getenv("CLOUD_SYNC_TOKEN",    "")),
         "CLOUD_SYNC_ENABLED":  srv.get("cloud_sync_enabled",  os.getenv("CLOUD_SYNC_ENABLED",  "false")).lower() == "true",
+        "cloud_tenant_id":     srv.get("cloud_tenant_id",     os.getenv("CLOUD_TENANT_ID",     "")),
         "IDENTITY_PRIVATE_KEY": srv.get("identity_private_key", os.getenv("IDENTITY_PRIVATE_KEY", "")),
         "BILLING_URL":   srv.get("billing_url",   os.getenv("BILLING_URL",   "")),
         "CORS_ORIGINS":  srv.get("cors_origins",  os.getenv("CORS_ORIGINS",  "*")),
@@ -148,6 +149,7 @@ def write_ini_config(cfg_data: dict, path: Path = None) -> Path:
         elif k in ("secret_key", "token_expire_minutes", "admin_secret",
                    "admin_email", "admin_password_hash",
                    "cloud_sync_url", "cloud_sync_token", "cloud_sync_enabled",
+                   "cloud_tenant_id",
                    "identity_private_key", "billing_url",
                    "cors_origins", "web_dir"):
             cfg["server"][k] = str(val)

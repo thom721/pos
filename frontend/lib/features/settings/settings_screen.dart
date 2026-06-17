@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -978,9 +979,21 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
   final _passwordCtrl = TextEditingController();
   bool _obscure  = true;
   bool _showForm = false;
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Refresh sync status every 30 s so the user sees live timestamps
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) { if (mounted) ref.invalidate(syncStatusProvider); },
+    );
+  }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _cloudUrlCtrl.dispose();
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
