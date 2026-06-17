@@ -280,6 +280,8 @@ class _TenantCard extends ConsumerWidget {
     final paymentCount = tenant['payment_count'] as int? ?? 0;
     final createdAt = tenant['created_at'] as String?;
     final isActive = status == 'active';
+    final maxCaisses = tenant['max_caisses'] as int? ?? 1;
+    final canManageTenants = tenant['can_manage_tenants'] as bool? ?? false;
 
     String? formattedDate;
     if (createdAt != null) {
@@ -350,6 +352,34 @@ class _TenantCard extends ConsumerWidget {
                   ),
               ],
             ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.point_of_sale_rounded,
+                    size: 13, color: AppColors.textSecondary),
+                const SizedBox(width: 4),
+                Text(
+                  '$maxCaisses caisse${maxCaisses > 1 ? 's' : ''}',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: AppColors.textSecondary),
+                ),
+                const SizedBox(width: 12),
+                if (canManageTenants) ...[
+                  Icon(Icons.supervisor_account_rounded,
+                      size: 13, color: AppColors.primary),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Peut gérer des tenants',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppColors.primary),
+                  ),
+                ],
+              ],
+            ),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -361,6 +391,14 @@ class _TenantCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () => _showEditDialog(context, ref, tenant),
+                  icon: const Icon(Icons.tune_rounded, size: 18),
+                  tooltip: 'Modifier caisses / permissions',
+                  style: IconButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                  ),
+                ),
                 if (!isActive)
                   OutlinedButton.icon(
                     onPressed: () => _showActivateDialog(context, ref, tenant),
@@ -456,6 +494,94 @@ class _TenantCard extends ConsumerWidget {
                 }
               },
               child: const Text('Confirmer'),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  Future<void> _showEditDialog(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> tenant) async {
+    final maxCaisseCtrl = TextEditingController(
+        text: (tenant['max_caisses'] as int? ?? 1).toString());
+    bool canManage = tenant['can_manage_tenants'] as bool? ?? false;
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setState) {
+        return AlertDialog(
+          title: Text('Modifier ${tenant['business_name']}'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: maxCaisseCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre de caisses max',
+                    prefixIcon: Icon(Icons.point_of_sale_rounded),
+                  ),
+                  validator: (v) {
+                    final n = int.tryParse(v ?? '');
+                    return (n == null || n < 1) ? 'Minimum 1' : null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Peut gérer des tenants',
+                      style: TextStyle(fontSize: 14)),
+                  subtitle: const Text('Accès multi-tenant',
+                      style: TextStyle(fontSize: 12)),
+                  value: canManage,
+                  onChanged: (v) => setState(() => canManage = v),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+                Navigator.pop(ctx);
+                try {
+                  final d = await ref.read(adminDioProvider.future);
+                  await d.patch(
+                    '/api/admin/tenants/${tenant['id']}',
+                    data: {
+                      'max_caisses': int.parse(maxCaisseCtrl.text),
+                      'can_manage_tenants': canManage,
+                    },
+                  );
+                  ref.invalidate(_tenantsProvider);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Modifié avec succès'),
+                        backgroundColor: AppColors.success,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Erreur: $e'),
+                        backgroundColor: AppColors.error,
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text('Sauvegarder'),
             ),
           ],
         );
@@ -711,14 +837,16 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   final _formKey = GlobalKey<FormState>();
   bool _saving = false;
 
-  final _moncashCtrl      = TextEditingController();
-  final _natcashCtrl      = TextEditingController();
-  final _priceHtgCtrl     = TextEditingController();
-  final _priceUsdCtrl     = TextEditingController();
-  final _stripePriceCtrl  = TextEditingController();
-  final _trialDaysCtrl    = TextEditingController();
-  final _supportEmailCtrl = TextEditingController();
-  final _supportWaCtrl    = TextEditingController();
+  final _moncashCtrl           = TextEditingController();
+  final _natcashCtrl           = TextEditingController();
+  final _priceHtgCtrl          = TextEditingController();
+  final _priceUsdCtrl          = TextEditingController();
+  final _extraCaisseHtgCtrl    = TextEditingController();
+  final _extraCaisseUsdCtrl    = TextEditingController();
+  final _stripePriceCtrl       = TextEditingController();
+  final _trialDaysCtrl         = TextEditingController();
+  final _supportEmailCtrl      = TextEditingController();
+  final _supportWaCtrl         = TextEditingController();
 
   String _moncashMode = 'manual';
   String _natcashMode = 'manual';
@@ -726,14 +854,16 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
 
   void _populateFrom(Map<String, dynamic> cfg) {
     if (_loaded) return;
-    _moncashCtrl.text      = cfg['moncash_number']?.toString()    ?? '';
-    _natcashCtrl.text      = cfg['natcash_number']?.toString()    ?? '';
-    _priceHtgCtrl.text     = cfg['monthly_price_htg']?.toString() ?? '1500';
-    _priceUsdCtrl.text     = cfg['monthly_price_usd']?.toString() ?? '12';
-    _stripePriceCtrl.text  = cfg['stripe_price_id']?.toString()   ?? '';
-    _trialDaysCtrl.text    = cfg['trial_days']?.toString()        ?? '30';
-    _supportEmailCtrl.text = cfg['support_email']?.toString()     ?? '';
-    _supportWaCtrl.text    = cfg['support_whatsapp']?.toString()  ?? '';
+    _moncashCtrl.text        = cfg['moncash_number']?.toString()              ?? '';
+    _natcashCtrl.text        = cfg['natcash_number']?.toString()              ?? '';
+    _priceHtgCtrl.text       = cfg['monthly_price_htg']?.toString()          ?? '1500';
+    _priceUsdCtrl.text       = cfg['monthly_price_usd']?.toString()          ?? '12';
+    _extraCaisseHtgCtrl.text = cfg['price_per_extra_caisse_htg']?.toString() ?? '500';
+    _extraCaisseUsdCtrl.text = cfg['price_per_extra_caisse_usd']?.toString() ?? '4';
+    _stripePriceCtrl.text    = cfg['stripe_price_id']?.toString()            ?? '';
+    _trialDaysCtrl.text      = cfg['trial_days']?.toString()                 ?? '30';
+    _supportEmailCtrl.text   = cfg['support_email']?.toString()              ?? '';
+    _supportWaCtrl.text      = cfg['support_whatsapp']?.toString()           ?? '';
     _moncashMode = cfg['moncash_mode']?.toString() == 'api' ? 'api' : 'manual';
     _natcashMode = cfg['natcash_mode']?.toString() == 'api' ? 'api' : 'manual';
     _loaded = true;
@@ -745,6 +875,8 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _natcashCtrl.dispose();
     _priceHtgCtrl.dispose();
     _priceUsdCtrl.dispose();
+    _extraCaisseHtgCtrl.dispose();
+    _extraCaisseUsdCtrl.dispose();
     _stripePriceCtrl.dispose();
     _trialDaysCtrl.dispose();
     _supportEmailCtrl.dispose();
@@ -758,16 +890,18 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     try {
       final d = await ref.read(adminDioProvider.future);
       await d.put('/api/admin/platform-config', data: {
-        'moncash_number':    _moncashCtrl.text.trim(),
-        'natcash_number':    _natcashCtrl.text.trim(),
-        'monthly_price_htg': double.tryParse(_priceHtgCtrl.text) ?? 1500,
-        'monthly_price_usd': double.tryParse(_priceUsdCtrl.text) ?? 12,
-        'stripe_price_id':   _stripePriceCtrl.text.trim(),
-        'trial_days':        int.tryParse(_trialDaysCtrl.text) ?? 30,
-        'support_email':     _supportEmailCtrl.text.trim(),
-        'support_whatsapp':  _supportWaCtrl.text.trim(),
-        'moncash_mode':      _moncashMode,
-        'natcash_mode':      _natcashMode,
+        'moncash_number':              _moncashCtrl.text.trim(),
+        'natcash_number':              _natcashCtrl.text.trim(),
+        'monthly_price_htg':           double.tryParse(_priceHtgCtrl.text) ?? 1500,
+        'monthly_price_usd':           double.tryParse(_priceUsdCtrl.text) ?? 12,
+        'price_per_extra_caisse_htg':  double.tryParse(_extraCaisseHtgCtrl.text) ?? 500,
+        'price_per_extra_caisse_usd':  double.tryParse(_extraCaisseUsdCtrl.text) ?? 4,
+        'stripe_price_id':             _stripePriceCtrl.text.trim(),
+        'trial_days':                  int.tryParse(_trialDaysCtrl.text) ?? 30,
+        'support_email':               _supportEmailCtrl.text.trim(),
+        'support_whatsapp':            _supportWaCtrl.text.trim(),
+        'moncash_mode':                _moncashMode,
+        'natcash_mode':                _natcashMode,
       });
       setState(() => _loaded = false); // reset so controllers repopulate on next rebuild
       ref.invalidate(_platformConfigProvider);
@@ -872,6 +1006,32 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                               double.tryParse(v ?? '') == null
                                   ? 'Invalide'
                                   : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _extraCaisseHtgCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Prix / caisse supp. (HTG)'),
+                          validator: (v) =>
+                              double.tryParse(v ?? '') == null ? 'Invalide' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _extraCaisseUsdCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Prix / caisse supp. (USD)'),
+                          validator: (v) =>
+                              double.tryParse(v ?? '') == null ? 'Invalide' : null,
                         ),
                       ),
                     ],

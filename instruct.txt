@@ -134,3 +134,123 @@ sudo systemctl enable posconnect
 sudo systemctl start posconnect
 Le serveur démarre alors automatiquement au boot sans besoin de login.
 
+
+
+
+
+
+Build local (test)
+
+cd frontend
+flutter build web --release
+Le résultat est dans frontend/build/web/ — un dossier de fichiers statiques (HTML + JS + assets) qu'on sert avec n'importe quel serveur HTTP.
+
+Problème à régler avant : l'URL serveur
+En mode web, le wizard n'est jamais affiché (kIsWeb guard). L'app utilise directement AppConstants.baseUrl compilée en dur. Pour la production, il faut pointer vers l'API réelle.
+
+Option A — compiler avec la bonne URL (recommandé pour le web)
+
+
+flutter build web --release \
+  --dart-define=SERVER_IP=api.posconnect.ht \
+  --dart-define=SERVER_PORT=443 \
+  --dart-define=SERVER_SCHEME=https
+Ce qui nécessiterait de modifier constants.dart pour lire ces dart-define. Actuellement ce n'est pas câblé.
+
+Option B — hardcoder dans constants.dart avant build (ce que vous faites déjà)
+
+Changer _serverIp dans frontend/lib/core/constants.dart avant de builder pour le web.
+
+Option C — laisser l'utilisateur configurer l'URL dans l'app (page de settings web)
+C'est la meilleure UX mais requiert du dev supplémentaire (voir "prochaines étapes" dans le PPRD).
+
+CORS (obligatoire)
+Le navigateur bloque les requêtes cross-origin. Il faut ajouter le middleware CORS dans api/main.py :
+
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://app.posconnect.ht", "http://localhost:8080"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+Déploiement du build
+
+frontend/build/web/
+├── index.html
+├── main.dart.js
+├── flutter.js
+├── assets/
+└── ...
+Avec Nginx :
+
+
+server {
+    listen 80;
+    root /var/www/posconnect-web;
+    index index.html;
+    location / { try_files $uri $uri/ /index.html; }
+}
+Servi par FastAPI lui-même (pratique pour tout-en-un) :
+
+
+from fastapi.staticfiles import StaticFiles
+app.mount("/", StaticFiles(directory="web", html=True), name="web")
+Ajouter au workflow GitHub Actions
+Voulez-vous que j'ajoute le job frontend-web dans le workflow CI/CD ? Il produirait un artefact pos_connect-web.zip à déployer sur le VPS.
+
+
+
+Votre .env contient déjà un commentaire avec l'ancien mot de passe : 1yqEtzTchOW0yE. Générez son hash et mettez-le dans .env :
+
+
+docker compose run --rm fastapi python -c "
+from api.services.auth import get_password_hash
+print(get_password_hash('1yqEtzTchOW0yE'))
+"
+
+
+cd /Users/kikipllc/development/pos_api/frontend
+flutter build web --release \
+  --dart-define=SERVER_SCHEME=https \
+  --dart-define=SERVER_IP=post.institutionlemignon.com \
+  --dart-define=SERVER_PORT=443 \
+  --dart-define=CLOUD_URL=https://post.institutionlemignon.com
+
+rm -rf ~/posconnect/  
+rm -rf ~/.local/share/pos_connect/
+rm -rf ~/.config/pos_connect/
+
+# Listez les entrées de l'app
+secret-tool search service pos_connect 2>/dev/null
+
+# Effacez licence et token
+secret-tool clear service pos_connect account license_data 2>/dev/null
+secret-tool clear service pos_connect account license_sig 2>/dev/null
+secret-tool clear service pos_connect account access_token 2>/dev/null
+
+mkdir -p ~/.local/share/pos_connect
+cat > ~/.local/share/pos_connect/shared_preferences.json << 'EOF'
+{"flutter.server_url":"https://post.institutionlemignon.com"}
+EOF
+
+sudo apt install libsecret-tools -y
+secret-tool clear service pos_connect account license_data
+secret-tool clear service pos_connect account license_sig
+secret-tool clear service pos_connect account access_token
+
+./pos_connect
+
+mkdir -p ~/.local/share/com.kikipllc.posconnect
+cp ~/.local/share/pos_connect/shared_preferences.json ~/.local/share/com.kikipllc.posconnect/ 2>/dev/null || cat > ~/.local/share/com.kikipllc.posconnect/shared_preferences.json << 'EOF'
+{"flutter.server_url":"https://post.institutionlemignon.com"}
+EOF
+
+# Aussi dans pos_connect au cas où
+cat > ~/.local/share/pos_connect/shared_preferences.json << 'EOF'
+{"flutter.server_url":"https://post.institutionlemignon.com"}
+EOF
+

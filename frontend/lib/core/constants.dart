@@ -31,6 +31,7 @@ class AppConstants {
   static const connectionModeKey = 'connection_mode'; // 'cloud' | 'local'
   static const deviceIdKey = 'device_id';
   static const tenantKey = 'tenant_data';
+  static const clientSetupDoneKey = 'client_setup_done';
 
   static const appName = 'POS Connect';
 }

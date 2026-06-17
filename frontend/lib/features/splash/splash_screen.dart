@@ -2,7 +2,9 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -77,17 +79,28 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     await Future.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
 
-    try {
-      final res = await dio.get('/api/setup/health');
-      final setupDone = res.data['setup_done'] as bool? ?? true;
+    if (!kIsWeb) {
+      // Desktop/mobile: setup completion is tracked locally so that each
+      // device must run the wizard independently (not based on server state).
+      final prefs = await SharedPreferences.getInstance();
+      final localSetupDone =
+          prefs.getBool(AppConstants.clientSetupDoneKey) ?? false;
       if (!mounted) return;
-      // Sur web, l'installer n'existe pas — on va toujours vers login
-      if (!setupDone && !kIsWeb) {
+      if (!localSetupDone) {
         context.go('/install');
         return;
       }
-    } catch (_) {
-      // Server unreachable — let normal auth flow handle it
+    } else {
+      // Web: no wizard — check server health for legacy compat, ignore errors.
+      try {
+        final res = await dio.get('/api/setup/health');
+        final setupDone = res.data['setup_done'] as bool? ?? true;
+        if (!mounted) return;
+        if (!setupDone) {
+          context.go('/install');
+          return;
+        }
+      } catch (_) {}
     }
 
     if (!mounted) return;
