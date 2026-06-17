@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/core/constants.dart';
+import 'package:pos_connect/services/offline_queue_service.dart';
 
 final _unauthorizedCtrl = StreamController<void>.broadcast();
 Stream<void> get onUnauthorized => _unauthorizedCtrl.stream;
@@ -48,6 +49,7 @@ Dio createDio() {
   ));
 
   dio.interceptors.add(AuthInterceptor(dio));
+  dio.interceptors.add(OfflineInterceptor());
   dio.interceptors.add(LogInterceptor(
     requestBody: true,
     responseBody: true,
@@ -82,7 +84,28 @@ class AuthInterceptor extends Interceptor {
   }
 }
 
-// Singleton Dio instance
+// ── Offline interceptor ───────────────────────────────────────────────────────
+
+class OfflineInterceptor extends Interceptor {
+  static bool _isMutation(String method) =>
+      const {'POST', 'PUT', 'PATCH', 'DELETE'}.contains(method.toUpperCase());
+
+  static bool _isConnectionError(DioException err) =>
+      err.type == DioExceptionType.connectionError ||
+      err.type == DioExceptionType.connectionTimeout ||
+      err.type == DioExceptionType.unknown;
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) async {
+    if (_isConnectionError(err) && _isMutation(err.requestOptions.method)) {
+      await OfflineQueueService.instance.enqueue(err.requestOptions);
+    }
+    handler.next(err);
+  }
+}
+
+// ── Singleton Dio instance ────────────────────────────────────────────────────
+
 final dio = createDio();
 
 // Helper to extract error message

@@ -6,6 +6,7 @@ import 'package:pos_connect/core/router.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
+import 'package:pos_connect/services/offline_queue_service.dart';
 
 const _kSyncInterval = Duration(minutes: 5);
 
@@ -41,6 +42,11 @@ class _PosAppState extends ConsumerState<PosApp> {
 
   Future<void> _triggerSync() async {
     try {
+      // Replay any operations queued while offline before running server sync
+      final replayed = await OfflineQueueService.instance.drain(dio);
+      if (replayed > 0) {
+        debugPrint('[AutoSync] offline queue drained: $replayed opération(s) rejouée(s)');
+      }
       await dio.post('/api/sync/run');
     } catch (_) {
       // Sync errors are non-fatal — server logs details

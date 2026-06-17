@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/services/offline_queue_service.dart';
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
@@ -100,3 +101,9 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
 final syncProvider =
     StateNotifierProvider<SyncNotifier, SyncState>((ref) => SyncNotifier(ref));
+
+/// Number of operations queued locally while offline.
+/// Refresh by invalidating this provider after each sync attempt.
+final pendingOfflineCountProvider = FutureProvider.autoDispose<int>(
+  (_) => OfflineQueueService.instance.pendingCount(),
+);

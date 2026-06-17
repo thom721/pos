@@ -1028,6 +1028,7 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
   Future<void> _runSync() async {
     await ref.read(syncProvider.notifier).runSync();
     if (!mounted) return;
+    ref.invalidate(pendingOfflineCountProvider);
     final s = ref.read(syncProvider);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(s.error ?? s.lastResult ?? 'Sync terminé'),
@@ -1037,8 +1038,9 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
 
   @override
   Widget build(BuildContext context) {
-    final syncState   = ref.watch(syncProvider);
-    final statusAsync = ref.watch(syncStatusProvider);
+    final syncState    = ref.watch(syncProvider);
+    final statusAsync  = ref.watch(syncStatusProvider);
+    final pendingAsync = ref.watch(pendingOfflineCountProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1092,6 +1094,32 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
                   );
                 },
               ),
+              // ── Offline pending badge ─────────────────────────────────────
+              if ((pendingAsync.value ?? 0) > 0) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: AppColors.warning.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.cloud_off_rounded,
+                        size: 14, color: AppColors.warning),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '${pendingAsync.value} opération${(pendingAsync.value ?? 0) > 1 ? 's' : ''} '
+                        'en attente (hors-ligne) — envoyées au retour du réseau',
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.warning),
+                      ),
+                    ),
+                  ]),
+                ),
+              ],
               const SizedBox(height: 16),
 
               // ── Actions ──────────────────────────────────────────────────
