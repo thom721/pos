@@ -108,10 +108,25 @@ def run_sync(db: Session) -> dict:
     Runs a full push+pull cycle. Returns a summary dict.
     Requires CLOUD_SYNC_URL and CLOUD_SYNC_TOKEN in pos_server.ini or settings.
     """
+    from sqlalchemy import text as _text
+
     url, token, _ = _load_sync_credentials()
 
     if not url or not token:
         return {"ok": False, "error": "CLOUD_SYNC_URL ou CLOUD_SYNC_TOKEN non configuré"}
+
+    # Use READ COMMITTED so each query sees the latest committed rows,
+    # avoiding stale snapshots from REPEATABLE READ (MySQL default).
+    try:
+        db.execute(_text("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED"))
+    except Exception:
+        pass  # SQLite or unsupported engine — safe to ignore
+
+    # Record cycle_start BEFORE any queries.
+    # Rows updated AFTER this point are caught in the NEXT cycle.
+    # Setting last_push_at = cycle_start (not "now after push") prevents
+    # permanently missing records created during the sync window.
+    cycle_start = datetime.now(timezone.utc)
 
     summary = {"pushed": {}, "pulled": {}, "errors": []}
 
@@ -126,7 +141,11 @@ def run_sync(db: Session) -> dict:
         try:
             query = db.query(model)
             if state.last_push_at:
-                query = query.filter(model.updated_at > state.last_push_at)
+                # Naive vs aware: strip tz for comparison if needed
+                lp = state.last_push_at
+                if lp.tzinfo is not None:
+                    lp = lp.replace(tzinfo=None)
+                query = query.filter(model.updated_at > lp)
             rows = query.all()
 
             if rows:
@@ -143,7 +162,9 @@ def run_sync(db: Session) -> dict:
                 summary["pushed"][etype] = pushed
                 state.records_pushed += pushed
 
-            state.last_push_at = datetime.now(timezone.utc)
+            # Advance watermark to cycle_start (before queries), not to
+            # datetime.now() (after push), to avoid the race window.
+            state.last_push_at = cycle_start
             state.last_error = None
         except Exception as exc:
             msg = f"push {etype}: {exc}"
