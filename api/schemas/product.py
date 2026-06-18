@@ -22,7 +22,7 @@ class ProductCreate(ProductBase):
 class ProductRead(ProductBase):
     id: str
     image_url: Optional[str] = None
-    category: CategoryRead
+    category: Optional[CategoryRead] = None
 
     class Config:
         from_attributes = True
@@ -44,7 +44,7 @@ class ProductSaleItem(BaseModel):
     barcode: str | None
     sale_price: float
     alert_stock: int
-    category: CategoryRead
+    category: Optional[CategoryRead] = None
 
 class CategoryResponse(BaseModel):
     # id: str
