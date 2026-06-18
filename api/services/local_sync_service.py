@@ -34,14 +34,14 @@ from api.models.PosRegister import PosRegister
 _log = logging.getLogger("pos.sync")
 
 # ── Entity registry ──────────────────────────────────────────────────────────
-# direction: "push" = local→cloud only | "both" = bidirectional
+# direction: "push" = local→cloud only | "pull" = cloud→local only | "both" = bidirectional
 
 SYNC_ENTITIES: list[dict] = [
     {"type": "category",      "model": Category,      "direction": "both"},
     {"type": "supplier",      "model": Supplier,      "direction": "both"},
     {"type": "product",       "model": Product,       "direction": "both"},
     {"type": "customer",      "model": Customer,      "direction": "both"},
-    {"type": "user",          "model": User,          "direction": "both"},
+    {"type": "user",          "model": User,          "direction": "pull"},
     {"type": "pos_register",  "model": PosRegister,   "direction": "both"},
     {"type": "sale",          "model": Sale,          "direction": "push"},
     {"type": "sale_item",     "model": SaleItem,      "direction": "push"},
@@ -52,7 +52,8 @@ SYNC_ENTITIES: list[dict] = [
 ]
 
 # Columns excluded when sending to cloud (cloud assigns its own tenant_id via sync token)
-_EXCLUDE_PUSH = {"tenant_id"}
+# password_hash excluded : ne jamais écraser les mots de passe côté cloud.
+_EXCLUDE_PUSH = {"tenant_id", "password_hash"}
 # Pulled records keep their tenant_id — it matches the local __local__ tenant UUID
 # (aligned at install time via connect_tenant using the cloud's tenant UUID).
 _EXCLUDE_PULL: set[str] = set()
@@ -178,41 +179,41 @@ def run_sync(db: Session) -> dict:
 
         state = _get_sync_state(db, etype)
 
-        # ── PUSH ──────────────────────────────────────────────────────────
-        try:
-            query = db.query(model)
-            if state.last_push_at:
-                # Naive vs aware: strip tz for comparison if needed
-                lp = state.last_push_at
-                if lp.tzinfo is not None:
-                    lp = lp.replace(tzinfo=None)
-                query = query.filter(model.updated_at > lp)
-            rows = query.all()
+        # ── PUSH (push / both) ────────────────────────────────────────────
+        if direction in ("push", "both"):
+            try:
+                query = db.query(model)
+                if state.last_push_at:
+                    lp = state.last_push_at
+                    if lp.tzinfo is not None:
+                        lp = lp.replace(tzinfo=None)
+                    query = query.filter(model.updated_at > lp)
+                rows = query.all()
 
-            if rows:
-                payload = _serialize(rows, _EXCLUDE_PUSH)
-                resp = _http_post(
-                    f"{url}/api/sync/push",
-                    json={"entity_type": etype, "records": payload},
-                    headers=_headers(token),
-                )
-                result = resp.json()
-                pushed = result.get("inserted", 0) + result.get("updated", 0)
-                summary["pushed"][etype] = pushed
-                state.records_pushed += pushed
+                if rows:
+                    payload = _serialize(rows, _EXCLUDE_PUSH)
+                    resp = _http_post(
+                        f"{url}/api/sync/push",
+                        json={"entity_type": etype, "records": payload},
+                        headers=_headers(token),
+                    )
+                    result = resp.json()
+                    pushed = result.get("inserted", 0) + result.get("updated", 0)
+                    summary["pushed"][etype] = pushed
+                    state.records_pushed += pushed
 
-            # Advance watermark to cycle_start (before queries), not to
-            # datetime.now() (after push), to avoid the race window.
-            state.last_push_at = cycle_start
-            state.last_error = None
-        except Exception as exc:
-            msg = f"push {etype}: {exc}"
-            _log.warning(msg)
-            state.last_error = msg
-            summary["errors"].append(msg)
+                # Advance watermark to cycle_start (before queries), not to
+                # datetime.now() (after push), to avoid the race window.
+                state.last_push_at = cycle_start
+                state.last_error = None
+            except Exception as exc:
+                msg = f"push {etype}: {exc}"
+                _log.warning(msg)
+                state.last_error = msg
+                summary["errors"].append(msg)
 
-        # ── PULL (bidirectional only) ──────────────────────────────────────
-        if direction == "both":
+        # ── PULL (pull / both) ────────────────────────────────────────────
+        if direction in ("pull", "both"):
             try:
                 since = state.last_pull_at.isoformat() if state.last_pull_at else "1970-01-01T00:00:00+00:00"
                 resp = _http_get(

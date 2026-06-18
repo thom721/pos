@@ -10,7 +10,7 @@ import 'package:pos_connect/providers/settings_provider.dart';
 
 final _usersProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>(
   (ref) async {
-    final res = await dio.get('/users/');
+    final res = await dio.get('/api/users/');
     return (res.data as List).cast<Map<String, dynamic>>();
   },
 );
@@ -153,7 +153,7 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
         'is_active': true,
         if (_pwdCtrl.text.isNotEmpty) 'password': _pwdCtrl.text,
       };
-      await dio.put('/users/$userId', data: body);
+      await dio.put('/api/users/$userId', data: body);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -639,7 +639,7 @@ class _UsersManagement extends ConsumerWidget {
       ),
     );
     if (confirmed == true) {
-      await dio.delete('/users/$id');
+      await dio.delete('/api/users/$id');
       ref.invalidate(_usersProvider);
     }
   }
@@ -807,10 +807,10 @@ class _UserDialogState extends State<_UserDialog> {
         'permissions': _selectedRole == 'admin' ? ['all'] : [_selectedRole],
       };
       if (_isEdit) {
-        await dio.put('/users/${widget.existing!['id']}',
+        await dio.put('/api/users/${widget.existing!['id']}',
             data: {'id': widget.existing!['id'], ...body});
       } else {
-        await dio.post('/users', data: body);
+        await dio.post('/api/users', data: body);
       }
       widget.onSaved();
       if (mounted) Navigator.pop(context);
