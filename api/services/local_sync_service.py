@@ -164,11 +164,11 @@ def run_sync(db: Session) -> dict:
     except Exception:
         pass  # SQLite or unsupported engine — safe to ignore
 
-    # Record cycle_start BEFORE any queries.
-    # Rows updated AFTER this point are caught in the NEXT cycle.
-    # Setting last_push_at = cycle_start (not "now after push") prevents
-    # permanently missing records created during the sync window.
-    cycle_start = datetime.now(timezone.utc)
+    # Record cycle_start BEFORE any queries, using naive local time to match
+    # the DB's updated_at timestamps (MySQL stores in server local time, no tz).
+    # Using UTC here causes push to miss local records because the filter
+    # updated_at > last_push_at compares local time vs UTC (off by tz offset).
+    cycle_start = datetime.now()
 
     summary = {"pushed": {}, "pulled": {}, "errors": []}
 
@@ -264,7 +264,8 @@ def run_sync(db: Session) -> dict:
 
                 summary["pulled"][etype] = applied
                 state.records_pulled += applied
-                state.last_pull_at = datetime.now(timezone.utc)
+                state.last_pull_at = datetime.now()
+                state.last_error = None
             except Exception as exc:
                 msg = f"pull {etype}: {exc}"
                 _log.warning(msg)
