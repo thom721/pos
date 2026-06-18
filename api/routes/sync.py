@@ -169,6 +169,7 @@ def issue_sync_token(payload: SyncTokenRequest, db: Session = Depends(get_db)):
         "can_manage_tenants": tenant.can_manage_tenants,
         "max_caisses":       tenant.max_caisses,
         "expires_in_days":   365,
+        "user_id":           user.id,
     }
 
 

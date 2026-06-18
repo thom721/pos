@@ -446,6 +446,7 @@ def connect_tenant(data: ConnectTenantRequest):
         if tenant_type == "selfhosted" else cloud_url
 
     cloud_tenant_id = body.get("tenant_id") or ""
+    cloud_user_id   = body.get("user_id")   or ""
 
     secret = secrets.token_hex(32)
     write_ini_config({
@@ -565,6 +566,46 @@ def connect_tenant(data: ConnectTenantRequest):
             existing.must_change_password = False
             if not existing.tenant_id:
                 existing.tenant_id = local_tid
+
+            # Align local user UUID with cloud UUID (avoids duplicate insert on first pull)
+            if cloud_user_id and existing.id != cloud_user_id:
+                _sa_text = __import__("sqlalchemy").text
+                old_uid = existing.id
+                _user_fk_cols = [
+                    ("sales",             "user_id"),
+                    ("purchases",         "user_id"),
+                    ("payments",          "user_id"),
+                    ("return_records",    "user_id"),
+                    ("stock_movements",   "user_id"),
+                    ("proformas",         "user_id"),
+                    ("inventory_records", "user_id"),
+                    ("invoices",          "user_id"),
+                    ("employee_profiles", "user_id"),
+                    ("payroll_periods",   "created_by"),
+                    ("payroll_entries",   "employee_id"),
+                    ("cashier_sessions",  "cashier_id"),
+                    ("employee_loans",    "employee_id"),
+                    ("employee_loans",    "approved_by"),
+                    ("employee_loans",    "created_by"),
+                ]
+                if data.db_type == "mysql":
+                    db.execute(_sa_text("SET FOREIGN_KEY_CHECKS=0"))
+                db.execute(
+                    _sa_text("UPDATE users SET id = :new WHERE id = :old"),
+                    {"new": cloud_user_id, "old": old_uid},
+                )
+                for _tbl, _col in _user_fk_cols:
+                    try:
+                        db.execute(
+                            _sa_text(f"UPDATE `{_tbl}` SET `{_col}` = :new WHERE `{_col}` = :old"),
+                            {"new": cloud_user_id, "old": old_uid},
+                        )
+                    except Exception:
+                        pass
+                if data.db_type == "mysql":
+                    db.execute(_sa_text("SET FOREIGN_KEY_CHECKS=1"))
+                db.flush()
+
             db.commit()
             return {"ok": True, "message": "Compte déjà lié — mot de passe mis à jour."}
 
@@ -578,7 +619,7 @@ def connect_tenant(data: ConnectTenantRequest):
         if db.query(User).filter(User.username == username).first():
             username = f"{username}_{secrets.token_hex(3)}"
 
-        admin = User(
+        user_kwargs: dict = dict(
             tenant_id=local_tid,
             fname=fname,
             lname=lname,
@@ -590,6 +631,10 @@ def connect_tenant(data: ConnectTenantRequest):
             permissions=["all"],
             must_change_password=False,
         )
+        if cloud_user_id:
+            user_kwargs["id"] = cloud_user_id
+
+        admin = User(**user_kwargs)
         db.add(admin)
         db.commit()
         return {
