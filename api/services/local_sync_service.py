@@ -226,13 +226,31 @@ def run_sync(db: Session) -> dict:
                 col_names = {c.key for c in sa_inspect(model).columns}
 
                 applied = 0
+                skipped = 0
                 for rec in records:
                     existing = db.get(model, rec["id"])
+
+                    # Secondary lookup for entities with a unique slug/username:
+                    # the local record may have been created with a different UUID
+                    # before sync was configured (e.g. the admin user 'my-store').
+                    if existing is None:
+                        for unique_col in ("username", "slug", "reference"):
+                            if unique_col in col_names and rec.get(unique_col):
+                                existing = db.query(model).filter(
+                                    getattr(model, unique_col) == rec[unique_col]
+                                ).first()
+                                if existing:
+                                    break
+
                     if existing is None:
                         fields = {k: v for k, v in rec.items() if k in col_names}
-                        obj = model(**fields)
-                        db.add(obj)
-                        applied += 1
+                        try:
+                            with db.begin_nested():
+                                db.add(model(**fields))
+                            applied += 1
+                        except Exception as ins_exc:
+                            _log.warning("pull insert %s %s: %s", etype, rec.get("id"), ins_exc)
+                            skipped += 1
                     else:
                         remote_ts = _parse_dt(rec.get("updated_at"))
                         local_ts  = existing.updated_at
