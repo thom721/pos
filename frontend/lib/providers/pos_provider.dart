@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart' show DioException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
@@ -167,6 +168,15 @@ class PosNotifier extends StateNotifier<PosState> {
       });
       state = state.copyWith(isProcessing: false, error: null);
       return data['sale_id']?.toString();
+    } on DioException catch (e) {
+      final msg = e.response?.data is Map
+          ? (e.response!.data['message'] ?? e.response!.data['detail'])?.toString()
+          : null;
+      state = state.copyWith(
+        isProcessing: false,
+        error: msg ?? 'Erreur lors de la vente. Réessayez.',
+      );
+      return null;
     } catch (e) {
       state = state.copyWith(
         isProcessing: false,
@@ -245,6 +255,15 @@ class PosNotifier extends StateNotifier<PosState> {
       });
       state = const PosState(); // clear cart + edit mode
       return data['sale_id']?.toString();
+    } on DioException catch (e) {
+      final msg = e.response?.data is Map
+          ? (e.response!.data['message'] ?? e.response!.data['detail'])?.toString()
+          : null;
+      state = state.copyWith(
+        isProcessing: false,
+        error: msg ?? 'Erreur lors de la modification. Réessayez.',
+      );
+      return null;
     } catch (e) {
       state = state.copyWith(
         isProcessing: false,
