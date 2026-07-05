@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:dio/dio.dart' show DioException;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 
@@ -48,7 +49,11 @@ class BillingScreen extends ConsumerWidget {
           const SizedBox(height: 28),
           status.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => _ErrorCard(message: e.toString()),
+            error: (e, _) => _ErrorCard(
+              message: e is DioException
+                  ? extractErrorMessage(e)
+                  : e.toString(),
+            ),
             data: (data) => _BillingContent(data: data),
           ),
         ],
@@ -334,7 +339,11 @@ class _BillingContent extends ConsumerWidget {
                 padding: EdgeInsets.all(24),
                 child: CircularProgressIndicator(),
               )),
-          error: (e, _) => _ErrorCard(message: e.toString()),
+          error: (e, _) => _ErrorCard(
+            message: e is DioException
+                ? extractErrorMessage(e)
+                : e.toString(),
+          ),
           data: (list) => list.isEmpty
               ? _Card(
                   child: const Center(
