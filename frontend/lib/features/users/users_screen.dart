@@ -558,16 +558,22 @@ class _PermissionsMatrixTab extends ConsumerWidget {
           const SizedBox(height: 10),
 
           // Role cards
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: roles
-                .map((r) => _RoleCard(
-                      role: r,
-                      onEdit: () => _showEdit(context, ref, r),
-                      onDelete: (r['is_builtin'] as bool? ?? true)
-                          ? null
-                          : () => _deleteRole(context, ref, r['name'] as String),
+                .map((r) => Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          right: r == roles.last ? 0 : 10,
+                        ),
+                        child: _RoleCard(
+                          role: r,
+                          onEdit: () => _showEdit(context, ref, r),
+                          onDelete: (r['is_builtin'] as bool? ?? true)
+                              ? null
+                              : () => _deleteRole(context, ref, r['name'] as String),
+                        ),
+                      ),
                     ))
                 .toList(),
           ),
@@ -634,10 +640,12 @@ class _PermissionsMatrixTab extends ConsumerWidget {
 
   Widget _buildMatrix(List<Map<String, dynamic>> roles) {
     final colCount = roles.length;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Table(
-        defaultColumnWidth: const IntrinsicColumnWidth(),
+    final columnWidths = <int, TableColumnWidth>{
+      0: const FlexColumnWidth(2.5),
+      for (int i = 1; i <= colCount; i++) i: const FlexColumnWidth(1),
+    };
+    return Table(
+        columnWidths: columnWidths,
         border: TableBorder.all(
             color: AppColors.divider,
             width: 0.5,
@@ -685,7 +693,6 @@ class _PermissionsMatrixTab extends ConsumerWidget {
               ]),
           ],
         ],
-      ),
     );
   }
 }
@@ -713,7 +720,6 @@ class _RoleCard extends StatelessWidget {
     final count   = isAdmin ? 'Toutes' : '${perms.length} permissions';
 
     return Container(
-      width: 190,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.06),
