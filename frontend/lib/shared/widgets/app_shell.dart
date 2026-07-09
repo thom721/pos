@@ -240,7 +240,7 @@ class _DesktopShell extends ConsumerWidget {
                               isActive: location.startsWith(item.route),
                               onTap: () => context.go(item.route),
                             )),
-                        if (isCloudMode)
+                        if (isCloudMode || kIsWeb || isAdmin)
                           _SidebarItem(
                             item: const _NavItem('Abonnement',
                                 Icons.workspace_premium_rounded, '/billing'),
