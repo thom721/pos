@@ -28,12 +28,21 @@ import 'package:pos_connect/features/users/users_screen.dart';
 import 'package:pos_connect/features/admin/admin_screen.dart';
 import 'package:pos_connect/shared/widgets/app_shell.dart';
 
+// Notifies GoRouter when auth state changes, without recreating the router.
+class _AuthRefreshNotifier extends ChangeNotifier {
+  _AuthRefreshNotifier(Ref ref) {
+    ref.listen<AuthState>(authProvider, (_, __) => notifyListeners());
+  }
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
+  final notifier = _AuthRefreshNotifier(ref);
 
   return GoRouter(
     initialLocation: '/splash',
+    refreshListenable: notifier,
     redirect: (context, state) {
+      final authState = ref.read(authProvider);
       final isLoggedIn = authState.isAuthenticated;
       final mustChange = authState.user?.mustChangePassword ?? false;
       final location = state.matchedLocation;
