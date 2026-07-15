@@ -387,10 +387,14 @@ def sync_configure(body: SyncConfigRequest, background_tasks: BackgroundTasks, d
         "cloud_sync_token":   data["sync_token"],
         "cloud_sync_enabled": "true",
         "cloud_owner_email":  body.owner_email,
+        # billing_url defaults to cloud_url if not already set
+        "billing_url":        cloud_url,
     })
     settings.CLOUD_SYNC_URL     = cloud_url
     settings.CLOUD_SYNC_TOKEN   = data["sync_token"]
     settings.CLOUD_SYNC_ENABLED = True
+    if not settings.BILLING_URL:
+        settings.BILLING_URL = cloud_url
 
     # Trigger immediate sync + restart periodic loop
     background_tasks.add_task(_bg_run_sync)

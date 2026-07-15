@@ -389,6 +389,17 @@ async def _auto_sync_loop():
 @app.on_event("startup")
 async def start_auto_sync():
     global _auto_sync_task
+    # Auto-heal: if cloud_sync_url is set but billing_url is missing, fill it in.
+    # Happens when the server was configured with an older installer that didn't write billing_url.
+    from api.core.config import load_ini_config, write_ini_config, settings as _s
+    _ini = load_ini_config()
+    _sync_url = _ini.get("CLOUD_SYNC_URL") or _ini.get("cloud_sync_url") or ""
+    _bill_url = _ini.get("BILLING_URL") or _ini.get("billing_url") or ""
+    if _sync_url and not _bill_url:
+        write_ini_config({"billing_url": _sync_url})
+        _s.BILLING_URL = _sync_url
+        _log.info("Auto-heal: billing_url set to %s (from cloud_sync_url)", _sync_url)
+
     _auto_sync_task = asyncio.create_task(_auto_sync_loop())
 
 

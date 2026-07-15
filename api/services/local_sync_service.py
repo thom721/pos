@@ -91,11 +91,12 @@ SYNC_ENTITIES: list[dict] = [
 ]
 
 # Columns excluded when sending to cloud (cloud assigns its own tenant_id via sync token)
-# password_hash excluded : ne jamais écraser les mots de passe côté cloud.
-_EXCLUDE_PUSH = {"tenant_id", "password_hash"}
-# Pulled records keep their tenant_id — it matches the local __local__ tenant UUID
-# (aligned at install time via connect_tenant using the cloud's tenant UUID).
+_EXCLUDE_PUSH = {"tenant_id", "password", "password_hash"}  # never push credentials to cloud
 _EXCLUDE_PULL: set[str] = set()
+
+# Prevents concurrent run_sync calls (auto-loop + manual button)
+import threading as _threading
+_sync_lock = _threading.Lock()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -188,7 +189,18 @@ def run_sync(db: Session) -> dict:
     """
     Runs a full push+pull cycle. Returns a summary dict.
     Requires CLOUD_SYNC_URL and CLOUD_SYNC_TOKEN in pos_server.ini or settings.
+    Thread-safe: concurrent calls return immediately with a busy indicator.
     """
+    if not _sync_lock.acquire(blocking=False):
+        return {"ok": False, "error": "Sync déjà en cours — réessayez dans un instant"}
+
+    try:
+        return _run_sync_inner(db)
+    finally:
+        _sync_lock.release()
+
+
+def _run_sync_inner(db: Session) -> dict:
     from sqlalchemy import text as _text
 
     url, token, _ = _load_sync_credentials()
@@ -333,12 +345,20 @@ def get_sync_status(db: Session) -> dict:
     from api.core.config import load_ini_config
     url, token, enabled = _load_sync_credentials()
     ini = load_ini_config()
+    billing_url = ini.get("BILLING_URL") or ini.get("billing_url") or ""
+    # Check lock without blocking: True = sync cycle currently running
+    _acquired = _sync_lock.acquire(blocking=False)
+    sync_busy = not _acquired
+    if _acquired:
+        _sync_lock.release()
     states = db.query(SyncState).all()
     return {
         "cloud_url":         url,
         "cloud_owner_email": ini.get("cloud_owner_email", ""),
+        "billing_url":       billing_url,
         "configured":        bool(url and token),
         "enabled":           enabled,
+        "sync_busy":         sync_busy,
         "entities": [
             {
                 "entity_type":    s.entity_type,

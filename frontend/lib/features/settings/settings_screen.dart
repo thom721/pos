@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
+import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart' show dio, extractErrorMessage;
 import 'package:pos_connect/providers/settings_provider.dart';
@@ -995,8 +996,11 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
       status.whenData((s) {
         final url   = s['cloud_url']         as String? ?? '';
         final email = s['cloud_owner_email'] as String? ?? '';
-        if (url.isNotEmpty   && _cloudUrlCtrl.text.isEmpty) _cloudUrlCtrl.text = url;
-        if (email.isNotEmpty && _emailCtrl.text.isEmpty)    _emailCtrl.text    = email;
+        // Pre-fill URL: prefer saved cloud_url, fall back to posconnect default
+        if (_cloudUrlCtrl.text.isEmpty) {
+          _cloudUrlCtrl.text = url.isNotEmpty ? url : AppConstants.cloudUrl;
+        }
+        if (email.isNotEmpty && _emailCtrl.text.isEmpty) _emailCtrl.text = email;
       });
     });
     // Refresh sync status every 30 s so the user sees live timestamps
@@ -1283,10 +1287,13 @@ class _BillingUrlSectionState extends State<_BillingUrlSection> {
 
   Future<void> _loadCurrent() async {
     try {
-      final res = await dio.get('/api/sync/status');
+      final res  = await dio.get('/api/sync/status');
       final data = res.data as Map<String, dynamic>? ?? {};
-      final url  = data['billing_url'] as String? ?? '';
-      if (url.isNotEmpty && mounted) setState(() => _urlCtrl.text = url);
+      final billingUrl = data['billing_url'] as String? ?? '';
+      final cloudUrl   = data['cloud_url']   as String? ?? '';
+      // Use billing_url if set; fall back to cloud_url (they're the same for POS Connect)
+      final effective  = billingUrl.isNotEmpty ? billingUrl : cloudUrl;
+      if (effective.isNotEmpty && mounted) setState(() => _urlCtrl.text = effective);
     } catch (_) {}
   }
 
