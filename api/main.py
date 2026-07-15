@@ -313,21 +313,69 @@ def _ensure_cloud_admin(db, local_tid: str) -> None:
         _log.warning("Impossible de créer l'utilisateur admin dans users : %s", exc)
 
 
+def _ensure_db_ready():
+    """
+    Teste la connexion DB au démarrage.
+    Si MySQL est configuré mais inaccessible, bascule automatiquement sur SQLite
+    et met à jour le moteur global — évite un crash non géré au premier démarrage.
+    """
+    import api.database as _db_module
+    from api.core.config import settings as _s
+
+    try:
+        with _db_module.engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return _db_module.engine  # connexion OK
+    except Exception as exc:
+        if _s.DB_TYPE != "sqlite":
+            _log.warning(
+                "⚠️  Impossible de joindre MySQL (%s). "
+                "Basculement automatique sur SQLite (pos_connect.db). "
+                "Configurez pos_server.ini [database] type=sqlite pour éviter ce message.",
+                exc,
+            )
+            # Recréer le moteur en mode SQLite
+            from sqlalchemy import create_engine
+            from sqlalchemy.orm import sessionmaker
+            sqlite_url = "sqlite:///./pos_connect.db"
+            new_engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+
+            from sqlalchemy import event as _sa_event
+            @_sa_event.listens_for(new_engine, "connect")
+            def _set_sqlite_pragma(dbapi_conn, _):
+                cursor = dbapi_conn.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.close()
+
+            _db_module.engine       = new_engine
+            _db_module.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=new_engine)
+            _s.DB_TYPE = "sqlite"
+            return new_engine
+        else:
+            _log.error("❌  Base de données SQLite inaccessible : %s", exc)
+            raise
+
+
 @app.on_event("startup")
 def on_startup():
     from api.database import SessionLocal
     from api.models.Role import Role as RoleModel
     from api.core.permissions import ROLE_PERMISSIONS, load_roles_from_db
 
+    # 0. Vérifie la connexion DB — bascule sur SQLite si MySQL absent
+    _active_engine = _ensure_db_ready()
+
     # 1. Crée les tables manquantes (nouveau déploiement ou nouvelle table ajoutée)
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=_active_engine)
     # 2. Applique les migrations Alembic (ou stamp si premier démarrage)
     try:
         _run_alembic_migrations()
     except Exception as exc:
         _log.warning("Alembic migration warning: %s", exc)
 
-    db = SessionLocal()
+    import api.database as _db_module
+    db = _db_module.SessionLocal()
     try:
         # 3. Tenant LOCAL — pour les déploiements en mode local (pas SaaS)
         local_tid = _ensure_local_tenant(db)
