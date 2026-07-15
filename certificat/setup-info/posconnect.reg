@@ -1,0 +1,38 @@
+Windows Registry Editor Version 5.00
+
+; ============================================================
+;  POS Connect — Clés de registre Windows
+;  Importé automatiquement par l'installeur Inno Setup
+; ============================================================
+
+; ── Informations de l'application ────────────────────────────────────────────
+[HKEY_LOCAL_MACHINE\SOFTWARE\POS Connect]
+"DisplayName"="POS Connect"
+"Version"="1.0.0"
+"Publisher"="POS Connect"
+"InstallPath"="C:\\Program Files\\POS_Connect"
+"ServerPort"=dword:000023eb
+"ApiPort"=dword:0000232b
+"Website"="https://posconnect.ht"
+"SupportEmail"="support@posconnect.ht"
+
+; ── Chemin de l'exécutable (accessible via Exécuter / ligne de commande) ─────
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\posconnect-server.exe]
+@="C:\\Program Files\\POS_Connect\\api\\posconnect-server.exe"
+"Path"="C:\\Program Files\\POS_Connect\\api\\"
+
+; ── Journalisation Windows Event Log ─────────────────────────────────────────
+[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\EventLog\Application\POS Connect]
+"EventMessageFile"="C:\\Windows\\System32\\mscoree.dll"
+"TypesSupported"=dword:00000007
+
+; ── Désinstallation (complété par Inno Setup automatiquement) ─────────────────
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\POS Connect]
+"DisplayName"="POS Connect"
+"DisplayVersion"="1.0.0"
+"Publisher"="POS Connect"
+"URLInfoAbout"="https://posconnect.ht"
+"URLUpdateInfo"="https://posconnect.ht/updates"
+"HelpLink"="https://posconnect.ht/docs"
+"NoModify"=dword:00000001
+"NoRepair"=dword:00000000
