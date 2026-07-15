@@ -49,10 +49,50 @@ $ApiExe       = Join-Path $ApiDir "posconnect-server.exe"
 $HttpPort     = 80
 $HttpsPort    = 443
 
+# MySQL — utilisé si MySQL absent du système
+$MysqlVer     = "8.0.39"
+$MysqlInstDir = Join-Path $env:ProgramFiles "MySQL\MySQL Server 8.0"
+$MysqlUrl     = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-$MysqlVer-winx64.zip"
+$DbHost       = "localhost"
+$DbPort       = 3306
+$DbName       = "pos_connect"
+
 function Write-Step($msg) { Write-Host "`n→ $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "  ✓ $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "  ! $msg" -ForegroundColor Yellow }
 function Fail($msg)       { Write-Host "`n  X $msg" -ForegroundColor Red; exit 1 }
+
+function New-RandPass([int]$n = 20) {
+    $c = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
+    -join ((1..$n) | ForEach-Object { $c[(Get-Random -Maximum $c.Length)] })
+}
+function New-HexKey([int]$bytes = 32) {
+    -join ((1..$bytes) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
+}
+
+# Trouve mysql.exe : PATH d'abord, puis emplacements courants
+function Find-MysqlExe {
+    $fromPath = Get-Command "mysql" -ErrorAction SilentlyContinue
+    if ($fromPath) { return $fromPath.Source }
+    $candidates = Get-ChildItem "$env:ProgramFiles\MySQL" -Recurse -Filter "mysql.exe" -ErrorAction SilentlyContinue
+    if ($candidates) { return $candidates[0].FullName }
+    return $null
+}
+
+# Exécute une liste d'instructions SQL via mysql.exe
+function Invoke-Sql {
+    param($Exe, $Host, $Port, $User, $Pass, [string[]]$Statements)
+    $env:MYSQL_PWD = $Pass
+    foreach ($sql in $Statements) {
+        & $Exe -h$Host -P$Port -u$User --execute=$sql 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Remove-Item Env:\MYSQL_PWD -ErrorAction SilentlyContinue
+            return $false
+        }
+    }
+    Remove-Item Env:\MYSQL_PWD -ErrorAction SilentlyContinue
+    return $true
+}
 
 Write-Host ""
 Write-Host "=================================================" -ForegroundColor Cyan
@@ -177,26 +217,155 @@ if (Test-Path $srcApi) {
     Write-Warn "Copie le build Nuitka (GitHub Actions > backend-windows) dans : $ApiDir"
 }
 
-# ── 6. Copier pos_server.ini ─────────────────────────────────────────────────
-# .env est réservé à Docker — sur Windows on utilise pos_server.ini
-Write-Step "Configuration serveur (pos_server.ini)..."
-$iniDst     = Join-Path $InstallRoot "pos_server.ini"
-$iniSrc     = Join-Path $PackageDir  "pos_server.ini"
-$iniExample = Join-Path $PackageDir  "pos_server.ini.example"
+# ── 6. Base de données MySQL ──────────────────────────────────────────────────
+# .env est réservé à Docker. Sur Windows la config va dans pos_server.ini.
+# Si pos_server.ini existe avec une config DB valide → on ne touche pas.
+$IniPath = Join-Path $InstallRoot "pos_server.ini"
+$iniExists = (Test-Path $IniPath) -and
+             ((Get-Content $IniPath -Raw) -match 'type\s*=\s*mysql') -and
+             ((Get-Content $IniPath -Raw) -match 'password\s*=\s*\S')
 
-if (Test-Path $iniDst) {
-    Write-Host "  pos_server.ini déjà présent — conservé tel quel." -ForegroundColor DarkGray
-} elseif (Test-Path $iniSrc) {
-    Copy-Item $iniSrc $iniDst -Force
-    Write-OK "pos_server.ini copié."
-} elseif (Test-Path $iniExample) {
-    Copy-Item $iniExample $iniDst -Force
-    Write-Warn "pos_server.ini créé depuis le modèle — édite $iniDst pour configurer"
-    Write-Warn "la base de données, le secret_key et les autres paramètres."
+if ($iniExists) {
+    Write-Host "`n→ pos_server.ini déjà configuré — étape DB ignorée." -ForegroundColor DarkGray
 } else {
-    Write-Warn "pos_server.ini introuvable — à créer manuellement dans $InstallRoot"
-    Write-Warn "(voir pos_server.ini.example dans le package)"
-}
+
+  Write-Step "Base de données MySQL..."
+
+  # ── Détecter MySQL ────────────────────────────────────────────────────────
+  $mysqlSvc = Get-Service -Name "MySQL*" -ErrorAction SilentlyContinue |
+              Where-Object { $_.Status -eq "Running" } | Select-Object -First 1
+  $mysqlExe = Find-MysqlExe
+
+  if ($mysqlSvc -and $mysqlExe) {
+    # ── MySQL déjà installé : demander les identifiants admin ──────────────
+    Write-Host "  MySQL détecté : service '$($mysqlSvc.Name)'." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  Identifiants d'un compte admin MySQL (pour créer la base POS) :" -ForegroundColor White
+    $adminUser = Read-Host "    Utilisateur (ex: root)"
+    $adminPass = Read-Host "    Mot de passe" -AsSecureString
+    $adminPassPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+                        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminPass))
+
+    # Test de connexion
+    $env:MYSQL_PWD = $adminPassPlain
+    & $mysqlExe -h$DbHost -P$DbPort -u$adminUser --execute="SELECT 1;" 2>&1 | Out-Null
+    Remove-Item Env:\MYSQL_PWD -ErrorAction SilentlyContinue
+    if ($LASTEXITCODE -ne 0) { Fail "Connexion MySQL échouée. Vérifiez les identifiants." }
+    Write-OK "Connexion MySQL réussie."
+
+    # Créer base + utilisateur dédié POS
+    $PosUser = "pos_user"
+    $PosPass = New-RandPass
+    $ok = Invoke-Sql -Exe $mysqlExe -Host $DbHost -Port $DbPort -User $adminUser -Pass $adminPassPlain -Statements @(
+        "CREATE DATABASE IF NOT EXISTS ${DbName} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "CREATE USER IF NOT EXISTS '${PosUser}'@'localhost' IDENTIFIED BY '${PosPass}'",
+        "GRANT ALL PRIVILEGES ON ${DbName}.* TO '${PosUser}'@'localhost'",
+        "FLUSH PRIVILEGES"
+    )
+    if (-not $ok) { Fail "Impossible de créer la base '$DbName' ou l'utilisateur '$PosUser'." }
+    Write-OK "Base '$DbName' et utilisateur '$PosUser' créés."
+    $DbUser = $PosUser ; $DbPass = $PosPass
+
+  } else {
+    # ── MySQL absent : installation silencieuse depuis le ZIP officiel ─────
+    Write-Host "  MySQL non détecté — installation en cours..." -ForegroundColor DarkGray
+
+    if (-not (Test-Path "$MysqlInstDir\bin\mysqld.exe")) {
+        $zipTmp = "$env:TEMP\mysql-$MysqlVer.zip"
+        Invoke-WebRequest -Uri $MysqlUrl -OutFile $zipTmp -UseBasicParsing
+        New-Item -Path (Split-Path $MysqlInstDir -Parent) -ItemType Directory -Force | Out-Null
+        Expand-Archive $zipTmp "$env:TEMP\mysql_tmp" -Force
+        Move-Item "$env:TEMP\mysql_tmp\mysql-$MysqlVer-winx64" $MysqlInstDir
+        Remove-Item "$env:TEMP\mysql_tmp" -Recurse -Force
+        Remove-Item $zipTmp -Force
+        Write-OK "MySQL extrait dans $MysqlInstDir"
+    }
+
+    $mysqldExe = "$MysqlInstDir\bin\mysqld.exe"
+    $mysqlExe  = "$MysqlInstDir\bin\mysql.exe"
+    $dataDir   = "$MysqlInstDir\data"
+
+    # my.ini
+    $baseDirEsc = $MysqlInstDir.Replace('\','\\')
+    $dataDirEsc = $dataDir.Replace('\','\\')
+    Set-Content "$MysqlInstDir\my.ini" @"
+[mysqld]
+basedir=$baseDirEsc
+datadir=$dataDirEsc
+port=$DbPort
+character-set-server=utf8mb4
+collation-server=utf8mb4_unicode_ci
+[client]
+default-character-set=utf8mb4
+"@ -Encoding UTF8
+
+    # Initialiser (sans mot de passe root pour que le setup puisse se connecter)
+    if (-not (Test-Path $dataDir)) {
+        & $mysqldExe --initialize-insecure --console 2>&1 | Out-Null
+        Write-OK "Répertoire de données initialisé."
+    }
+
+    # Installer et démarrer le service Windows
+    $svcName = "MySQL80"
+    if (-not (Get-Service $svcName -ErrorAction SilentlyContinue)) {
+        & $mysqldExe --install $svcName 2>&1 | Out-Null
+    }
+    Start-Service $svcName
+    Start-Sleep -Seconds 4   # laisser MySQL démarrer
+
+    # Mot de passe root + base + utilisateur POS
+    $RootPass = New-RandPass 24
+    $PosUser  = "pos_user"
+    $PosPass  = New-RandPass 24
+
+    $ok = Invoke-Sql -Exe $mysqlExe -Host $DbHost -Port $DbPort -User "root" -Pass "" -Statements @(
+        "ALTER USER 'root'@'localhost' IDENTIFIED BY '${RootPass}'",
+        "CREATE DATABASE IF NOT EXISTS ${DbName} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "CREATE USER IF NOT EXISTS '${PosUser}'@'localhost' IDENTIFIED BY '${PosPass}'",
+        "GRANT ALL PRIVILEGES ON ${DbName}.* TO '${PosUser}'@'localhost'",
+        "FLUSH PRIVILEGES"
+    )
+    if (-not $ok) { Fail "Impossible de configurer MySQL." }
+
+    Write-OK "MySQL installé, base '$DbName' et utilisateur '$PosUser' créés."
+    Write-Host ""
+    Write-Host "  ┌─────────────────────────────────────────────────┐" -ForegroundColor Yellow
+    Write-Host "  │  Mot de passe root MySQL : $RootPass" -ForegroundColor Yellow
+    Write-Host "  │  Notez-le maintenant — il ne sera plus affiché.  │" -ForegroundColor Yellow
+    Write-Host "  └─────────────────────────────────────────────────┘" -ForegroundColor Yellow
+    $DbUser = $PosUser ; $DbPass = $PosPass
+  }
+
+  # ── Écrire pos_server.ini ─────────────────────────────────────────────────
+  $SecretKey = New-HexKey 32
+  Set-Content $IniPath @"
+[database]
+type     = mysql
+host     = $DbHost
+port     = $DbPort
+name     = $DbName
+user     = $DbUser
+password = $DbPass
+
+[server]
+host                 = 0.0.0.0
+port                 = 9003
+secret_key           = $SecretKey
+token_expire_minutes = 480
+admin_email          =
+admin_password_hash  =
+
+cloud_sync_url        =
+cloud_sync_token      =
+cloud_sync_enabled    = false
+identity_private_key  =
+billing_url           =
+cors_origins          = *
+web_dir               = web
+"@ -Encoding UTF8
+  Write-OK "pos_server.ini généré dans $IniPath"
+
+} # fin bloc DB
 
 # ── 7. Télécharger NSSM si le dossier est absent ─────────────────────────────
 Write-Step "NSSM (gestionnaire de services Windows)..."
