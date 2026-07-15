@@ -56,7 +56,7 @@ class InitRequest(BaseModel):
     admin_password: str
     # Server config
     server_host: str = "0.0.0.0"
-    server_port: int = 8002
+    server_port: int = 9003
     secret_key: str = ""
 
 
@@ -74,7 +74,7 @@ class ConnectTenantRequest(BaseModel):
     db_password: str = ""
     path: str = "./pos_data.db"
     server_host: str = "0.0.0.0"
-    server_port: int = 8002
+    server_port: int = 9003
 
 
 class MigrateRequest(BaseModel):

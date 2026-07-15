@@ -72,12 +72,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   /// Builds a plain-HTTP URL from the user's input.
-  /// Accepts: "192.168.0.103", "192.168.0.103:9003", "http://192.168.0.103:8002"
+  /// Accepts: "192.168.0.103", "192.168.0.103:9003", "http://192.168.0.103:9003"
   String _buildLocalUrl(String raw) {
     if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
     // "ip" or "ip:port"
     final hasPort = raw.contains(':');
-    return hasPort ? 'http://$raw' : 'http://$raw:8002';
+    return hasPort ? 'http://$raw' : 'http://$raw:9003';
   }
 
   Future<void> _submitLocal() async {
@@ -450,9 +450,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               keyboardType: TextInputType.url,
               decoration: const InputDecoration(
                 labelText: 'Adresse du serveur',
-                hintText: '192.168.0.104 ou 192.168.0.104:8002',
+                hintText: '192.168.0.104 ou 192.168.0.104:9003',
                 prefixIcon: Icon(Icons.router_outlined),
-                helperText: 'IP seule → port 8002 par défaut',
+                helperText: 'IP seule → port 9003 par défaut',
               ),
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[\d.:]')),

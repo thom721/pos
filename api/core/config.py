@@ -41,7 +41,7 @@ def load_ini_config() -> dict:
         "DB_PATH":     db.get("path",     os.getenv("DB_PATH",     "./pos_data.db")),
         "SECRET_KEY":  srv.get("secret_key",  os.getenv("SECRET_KEY",  "change_me_use_openssl_rand_hex_32")),
         "SERVER_HOST": srv.get("host",    os.getenv("SERVER_HOST", "0.0.0.0")),
-        "SERVER_PORT": int(srv.get("port", os.getenv("SERVER_PORT", "8002"))),
+        "SERVER_PORT": int(srv.get("port", os.getenv("SERVER_PORT", "9003"))),
         "ACCESS_TOKEN_EXPIRE_MINUTES": int(srv.get("token_expire_minutes", "480")),
         "ADMIN_SECRET":        srv.get("admin_secret",        os.getenv("ADMIN_SECRET",        "")),
         "ADMIN_EMAIL":         srv.get("admin_email",         os.getenv("ADMIN_EMAIL",         "")),
@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     DB_PATH: str = "./pos_data.db"
 
     SERVER_HOST: str = "0.0.0.0"
-    SERVER_PORT: int = 8002
+    SERVER_PORT: int = 9003
 
     # SaaS / multi-tenant
     STRIPE_WEBHOOK_SECRET: str = ""

@@ -50,7 +50,7 @@ class InstallConfig {
     this.dbPassword = '',
     this.dbPath = './pos_data.db',
     this.serverHost = '0.0.0.0',
-    this.serverPort = 8002,
+    this.serverPort = 9003,
     this.cloudUrl = '',
     this.tenantEmail = '',
     this.tenantPassword = '',
@@ -327,7 +327,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
           ? cfg.serverUrl
           : isClient
               ? dio.options.baseUrl
-              : 'http://localhost:8002',
+              : 'http://localhost:9003',
     );
     _detectLocalIps();
   }
@@ -352,7 +352,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
       // En mode serveur, on utilise automatiquement la première IP locale détectée
       final cfg = ref.read(_configProvider);
       if (cfg.mode != InstallMode.client && ips.isNotEmpty && cfg.serverUrl.isEmpty) {
-        final detected = 'http://${ips.first}:8002';
+        final detected = 'http://${ips.first}:9003';
         _urlCtrl.text = detected;
         ref.read(_configProvider.notifier).state = cfg..serverUrl = detected;
       }
@@ -418,7 +418,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
                   child: Row(children: [
                     const Icon(Icons.lan_rounded, color: AppColors.primary, size: 18),
                     const SizedBox(width: 10),
-                    Text('http://$ip:8002',
+                    Text('http://$ip:9003',
                         style: const TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 14,
@@ -441,7 +441,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
             _Field(
               ctrl: _urlCtrl,
               label: 'URL du serveur',
-              hint: 'http://192.168.1.100:8002',
+              hint: 'http://192.168.1.100:9003',
               keyboardType: TextInputType.url,
             ),
             const SizedBox(height: 16),
