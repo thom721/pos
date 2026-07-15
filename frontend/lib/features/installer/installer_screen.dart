@@ -1214,14 +1214,14 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
   void initState() {
     super.initState();
     final cfg = ref.read(_configProvider);
-    // If a custom URL was saved (different from our SaaS), switch to "own server" mode
     final saved = cfg.cloudUrl;
     if (saved.isNotEmpty && saved != AppConstants.cloudUrl) {
       _usePosConnectCloud = false;
       _customUrl = TextEditingController(text: saved);
     } else {
       _usePosConnectCloud = true;
-      _customUrl = TextEditingController(text: '');
+      // Pre-fill with the cloud URL so it's editable if the user needs to override it
+      _customUrl = TextEditingController(text: AppConstants.cloudUrl);
     }
     _email = TextEditingController(text: cfg.tenantEmail);
     _pwd   = TextEditingController(text: cfg.tenantPassword);
@@ -1235,9 +1235,7 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
     super.dispose();
   }
 
-  String get _effectiveUrl => _usePosConnectCloud
-      ? AppConstants.cloudUrl
-      : _customUrl.text.trim().replaceAll(RegExp(r'/+$'), '');
+  String get _effectiveUrl => _customUrl.text.trim().replaceAll(RegExp(r'/+$'), '');
 
   Future<void> _verify() async {
     final url   = _effectiveUrl;
@@ -1302,6 +1300,12 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
   void _switchMode(bool usePosConnect) {
     setState(() {
       _usePosConnectCloud = usePosConnect;
+      // Reset URL to the appropriate default when switching modes
+      if (usePosConnect) {
+        _customUrl.text = AppConstants.cloudUrl;
+      } else {
+        _customUrl.text = '';
+      }
       _verified = false;
       _error = null;
     });
@@ -1365,8 +1369,8 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
           const SizedBox(height: 24),
 
           // ── URL row ───────────────────────────────────────────────────
-          if (_usePosConnectCloud) ...[
-            // Auto-filled — non-editable
+          if (_usePosConnectCloud && _error == null) ...[
+            // Auto-filled — non-editable until a connection error unlocks it
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
               decoration: BoxDecoration(
@@ -1379,7 +1383,7 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    AppConstants.cloudUrl,
+                    _customUrl.text,
                     style: const TextStyle(
                       fontFamily: 'monospace', fontSize: 13,
                       color: AppColors.primary, fontWeight: FontWeight.w600,
@@ -1392,10 +1396,19 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
           ] else ...[
             _Field(
               ctrl: _customUrl,
-              label: 'URL du serveur cloud',
-              hint: 'https://monserveur.com',
+              label: _usePosConnectCloud
+                  ? 'URL du serveur POS Connect'
+                  : 'URL du serveur cloud',
+              hint: 'https://posconnect.ht',
               keyboardType: TextInputType.url,
             ),
+            if (_usePosConnectCloud) ...[
+              const SizedBox(height: 4),
+              const Text(
+                'URL déverrouillée après échec de connexion — corrigez si le domaine a changé.',
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              ),
+            ],
           ],
           const SizedBox(height: 14),
 
