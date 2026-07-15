@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show FilteringTextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/constants.dart';
@@ -56,9 +57,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Future<void> _loadSavedServer() async {
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString(AppConstants.serverUrlKey);
-    if (saved != null && saved.isNotEmpty) {
-      setState(() => _serverCtrl.text = saved);
+    final ip = prefs.getString(AppConstants.serverIpKey);
+    if (ip != null && ip.isNotEmpty) {
+      setState(() => _serverCtrl.text = ip);
     }
   }
 
@@ -71,7 +72,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Future<void> _submitLocal() async {
     if (!_localFormKey.currentState!.validate()) return;
-    await saveServerUrl(_serverCtrl.text.trim());
+    await saveLocalServer(_serverCtrl.text.trim());
     await ref
         .read(authProvider.notifier)
         .login(_usernameCtrl.text.trim(), _localPassCtrl.text);
@@ -420,7 +421,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               const Icon(Icons.dns_outlined,
                   size: 14, color: AppColors.textSecondary),
               const SizedBox(width: 6),
-              const Text('Adresse du serveur',
+              const Text('Adresse IP du serveur',
                   style: TextStyle(
                       fontSize: 12, color: AppColors.textSecondary)),
               const SizedBox(width: 4),
@@ -436,12 +437,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             const SizedBox(height: 10),
             TextFormField(
               controller: _serverCtrl,
-              decoration: InputDecoration(
-                labelText: 'Adresse du serveur',
-                hintText: AppConstants.baseUrl,
-                prefixIcon: const Icon(Icons.cloud_outlined),
-                helperText: 'Laisser vide pour utiliser la valeur par défaut',
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Adresse IP du serveur',
+                hintText: '192.168.0.104',
+                prefixIcon: Icon(Icons.router_outlined),
+                helperText: 'Ex: 192.168.0.104 — se connecte via https://infini-post.local',
               ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+              ],
             ),
           ],
           const SizedBox(height: 24),

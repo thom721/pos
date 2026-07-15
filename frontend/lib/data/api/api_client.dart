@@ -3,7 +3,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/core/constants.dart';
+import 'package:pos_connect/data/api/local_https.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
+
+const _localBaseUrl = 'https://infini-post.local';
 
 final _unauthorizedCtrl = StreamController<void>.broadcast();
 Stream<void> get onUnauthorized => _unauthorizedCtrl.stream;
@@ -25,7 +28,38 @@ Future<String> getEffectiveBaseUrl() async {
 }
 
 Future<void> initServerUrl() async {
-  dio.options.baseUrl = await getEffectiveBaseUrl();
+  final prefs = await SharedPreferences.getInstance();
+  final url = prefs.getString(AppConstants.serverUrlKey);
+  if (url == _localBaseUrl) {
+    final ip = prefs.getString(AppConstants.serverIpKey) ?? '';
+    if (ip.isNotEmpty) {
+      dio.options.baseUrl = _localBaseUrl;
+      configureLocalHttps(dio, ip);
+      return;
+    }
+  }
+  dio.options.baseUrl =
+      (url != null && url.isNotEmpty) ? url : AppConstants.baseUrl;
+}
+
+/// Sauvegarde l'IP du serveur local et configure l'adaptateur HTTPS interne.
+/// L'URL effective est toujours https://infini-post.local —
+/// la résolution DNS vers l'IP se fait au niveau socket dans Dart,
+/// aucune modification du fichier hosts requise sur les postes clients.
+Future<void> saveLocalServer(String ip) async {
+  final prefs = await SharedPreferences.getInstance();
+  final trimmed = ip.trim();
+  if (trimmed.isEmpty) {
+    await prefs.remove(AppConstants.serverIpKey);
+    await prefs.remove(AppConstants.serverUrlKey);
+    dio.options.baseUrl = AppConstants.baseUrl;
+    resetLocalHttps(dio);
+  } else {
+    await prefs.setString(AppConstants.serverIpKey, trimmed);
+    await prefs.setString(AppConstants.serverUrlKey, _localBaseUrl);
+    dio.options.baseUrl = _localBaseUrl;
+    configureLocalHttps(dio, trimmed);
+  }
 }
 
 Future<void> saveServerUrl(String url) async {

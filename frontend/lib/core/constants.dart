@@ -28,6 +28,7 @@ class AppConstants {
   static const tokenKey = 'access_token';
   static const userKey = 'user_data';
   static const serverUrlKey = 'server_url';
+  static const serverIpKey  = 'server_local_ip';
   static const connectionModeKey = 'connection_mode'; // 'cloud' | 'local'
   static const deviceIdKey = 'device_id';
   static const tenantKey = 'tenant_data';
