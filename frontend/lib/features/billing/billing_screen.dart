@@ -250,14 +250,15 @@ class _BillingContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final status        = data['status'] as String? ?? 'trial';
-    final daysLeft      = data['days_left'] as int?;
-    final isGrace       = data['is_grace'] as bool? ?? false;
-    final graceDaysLeft = data['grace_days_left'] as int?;
-    final business      = data['business_name'] as String? ?? '';
-    final email         = data['owner_email'] as String? ?? '';
-    final hasStripe     = data['has_stripe'] as bool? ?? false;
-    final payments      = ref.watch(_billingPaymentsProvider);
+    final status           = data['status'] as String? ?? 'trial';
+    final daysLeft         = data['days_left'] as int?;
+    final isGrace          = data['is_grace'] as bool? ?? false;
+    final graceDaysLeft    = data['grace_days_left'] as int?;
+    final business         = data['business_name'] as String? ?? '';
+    final email            = data['owner_email'] as String? ?? '';
+    final hasStripe        = data['has_stripe'] as bool? ?? false;
+    final subscriptionEndsAt = data['subscription_ends_at'] as String?;
+    final payments         = ref.watch(_billingPaymentsProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -270,7 +271,8 @@ class _BillingContent extends ConsumerWidget {
 
         // ── Status card ────────────────────────────────────────────────────
         _StatusCard(status: status, daysLeft: daysLeft,
-            business: business, email: email, hasStripe: hasStripe),
+            business: business, email: email, hasStripe: hasStripe,
+            subscriptionEndsAt: subscriptionEndsAt),
         const SizedBox(height: 24),
 
         // ── Payment options (only if not active) ───────────────────────────
@@ -410,6 +412,7 @@ class _StatusCard extends StatelessWidget {
   final String business;
   final String email;
   final bool hasStripe;
+  final String? subscriptionEndsAt;
 
   const _StatusCard({
     required this.status,
@@ -417,6 +420,7 @@ class _StatusCard extends StatelessWidget {
     required this.business,
     required this.email,
     required this.hasStripe,
+    this.subscriptionEndsAt,
   });
 
   @override
@@ -466,7 +470,7 @@ class _StatusCard extends StatelessWidget {
               ),
             ),
           ]),
-          if (business.isNotEmpty || email.isNotEmpty) ...[
+          if (business.isNotEmpty || email.isNotEmpty || subscriptionEndsAt != null) ...[
             const SizedBox(height: 16),
             const Divider(height: 1),
             const SizedBox(height: 12),
@@ -474,6 +478,14 @@ class _StatusCard extends StatelessWidget {
               _InfoRow(icon: Icons.store_rounded, label: 'Boutique', value: business),
             if (email.isNotEmpty)
               _InfoRow(icon: Icons.email_outlined, label: 'Email', value: email),
+            if (subscriptionEndsAt != null) ...[
+              _InfoRow(
+                icon: Icons.event_rounded,
+                label: 'Abonnement jusqu\'au',
+                value: DateFormat('dd MMM yyyy', 'fr_FR').format(
+                    DateTime.parse(subscriptionEndsAt!).toLocal()),
+              ),
+            ],
           ],
         ],
       ),
@@ -564,14 +576,11 @@ class _MoncashCard extends StatelessWidget {
               buttonLabel: 'Payer avec MonCash',
               color: const Color(0xFFE53935),
             )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _PaymentStep(number: '1', text: 'Ouvrez MonCash et sélectionnez "Transfert"'),
-                _PaymentStep(number: '2', text: 'Envoyez $priceHtg HTG / mois au numéro :'),
-                _CopyRow(value: number.isEmpty ? '+509 XXXX XXXX' : number),
-                _PaymentStep(number: '3', text: 'Envoyez le reçu par WhatsApp ou email à votre agent'),
-              ],
+          : _ManualPaymentForm(
+              method: 'moncash',
+              number: number.isEmpty ? '+509 XXXX XXXX' : number,
+              priceHtg: priceHtg,
+              stepVerb: 'Transfert',
             ),
     );
   }
@@ -603,14 +612,11 @@ class _NatcashCard extends StatelessWidget {
               buttonLabel: 'Payer avec NatCash',
               color: const Color(0xFF1565C0),
             )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _PaymentStep(number: '1', text: 'Ouvrez NatCash et sélectionnez "Payer"'),
-                _PaymentStep(number: '2', text: 'Envoyez $priceHtg HTG / mois au numéro :'),
-                _CopyRow(value: number.isEmpty ? '+509 XXXX XXXX' : number),
-                _PaymentStep(number: '3', text: 'Envoyez le reçu par WhatsApp ou email à votre agent'),
-              ],
+          : _ManualPaymentForm(
+              method: 'natcash',
+              number: number.isEmpty ? '+509 XXXX XXXX' : number,
+              priceHtg: priceHtg,
+              stepVerb: 'Payer',
             ),
     );
   }
@@ -835,6 +841,130 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
+// ── Manual payment submission form ────────────────────────────────────────────
+
+class _ManualPaymentForm extends StatefulWidget {
+  final String method;
+  final String number;
+  final String priceHtg;
+  final String stepVerb;
+
+  const _ManualPaymentForm({
+    required this.method,
+    required this.number,
+    required this.priceHtg,
+    required this.stepVerb,
+  });
+
+  @override
+  State<_ManualPaymentForm> createState() => _ManualPaymentFormState();
+}
+
+class _ManualPaymentFormState extends State<_ManualPaymentForm> {
+  final _refCtrl = TextEditingController();
+  bool _submitting = false;
+  bool _submitted  = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _refCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final ref = _refCtrl.text.trim();
+    if (ref.isEmpty) return;
+    setState(() { _submitting = true; _error = null; _submitted = false; });
+    try {
+      await dio.post('/api/billing/submit-payment', data: {
+        'method':    widget.method,
+        'amount':    double.tryParse(widget.priceHtg) ?? 0,
+        'currency':  'HTG',
+        'reference': ref,
+      });
+      setState(() { _submitted = true; });
+    } catch (e) {
+      final msg = e is DioException
+          ? extractErrorMessage(e)
+          : e.toString();
+      setState(() { _error = msg; });
+    } finally {
+      setState(() { _submitting = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_submitted) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.success.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Row(children: [
+          Icon(Icons.check_circle_outline, color: AppColors.success, size: 18),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Paiement soumis — un administrateur le validera sous peu '
+              'et votre abonnement sera activé.',
+              style: TextStyle(color: AppColors.success, fontSize: 13),
+            ),
+          ),
+        ]),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _PaymentStep(number: '1',
+            text: 'Ouvrez ${widget.method == 'moncash' ? 'MonCash' : 'NatCash'} '
+                  'et sélectionnez "${widget.stepVerb}"'),
+        _PaymentStep(number: '2',
+            text: 'Envoyez ${widget.priceHtg} HTG / mois au numéro :'),
+        _CopyRow(value: widget.number),
+        _PaymentStep(number: '3',
+            text: 'Entrez le numéro de transaction ci-dessous et cliquez Soumettre :'),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _refCtrl,
+          decoration: const InputDecoration(
+            labelText: 'Numéro de transaction / reçu',
+            hintText: 'Ex: MC-20260715-XXXX',
+            prefixIcon: Icon(Icons.tag_rounded),
+            isDense: true,
+          ),
+          onSubmitted: (_) { if (!_submitting) _submit(); },
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _submitting ? null : _submit,
+            icon: _submitting
+                ? const SizedBox(width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.send_rounded, size: 16),
+            label: Text(_submitting ? 'Envoi...' : 'Soumettre le paiement'),
+          ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            const Icon(Icons.error_outline, color: AppColors.error, size: 16),
+            const SizedBox(width: 6),
+            Expanded(child: Text(_error!,
+                style: const TextStyle(color: AppColors.error, fontSize: 12))),
+          ]),
+        ],
+      ],
+    );
+  }
+}
+
 class _PaymentStep extends StatelessWidget {
   final String number;
   final String text;
@@ -932,6 +1062,9 @@ class _PaymentRow extends StatelessWidget {
         ? DateTime.tryParse(payment['paid_at'] as String)
         : null;
 
+    final paymentStatus = payment['status'] as String? ?? 'paid';
+    final isPending     = paymentStatus == 'pending';
+
     final methodLabel = switch (method) {
       'stripe'   => 'Stripe',
       'moncash'  => 'MonCash',
@@ -952,16 +1085,20 @@ class _PaymentRow extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Row(children: [
+            // Invoice number — dim if pending
             Expanded(flex: 2,
                 child: Text(invoiceNum,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12, fontWeight: FontWeight.w600,
-                        color: AppColors.primary))),
+                        color: isPending
+                            ? AppColors.textSecondary
+                            : AppColors.primary))),
             Expanded(flex: 3,
                 child: Text(description,
                     style: const TextStyle(fontSize: 12),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis)),
+            // Method badge
             Expanded(
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -974,25 +1111,47 @@ class _PaymentRow extends StatelessWidget {
                           fontWeight: FontWeight.w600, color: methodColor),
                       textAlign: TextAlign.center),
                 )),
+            // Amount
             Expanded(
                 child: Text('$currency ${amount.toStringAsFixed(2)}',
                     style: const TextStyle(
                         fontSize: 12, fontWeight: FontWeight.w600))),
+            // Date or pending badge
             Expanded(
-                child: Text(
-                    paidAt != null
-                        ? DateFormat('dd/MM/yyyy').format(paidAt.toLocal())
-                        : '—',
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.textSecondary))),
+                child: isPending
+                    ? Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                        ),
+                        child: const Text('En attente',
+                            style: TextStyle(fontSize: 10,
+                                fontWeight: FontWeight.w600, color: Colors.orange),
+                            textAlign: TextAlign.center),
+                      )
+                    : Text(
+                        paidAt != null
+                            ? DateFormat('dd/MM/yyyy').format(paidAt.toLocal())
+                            : '—',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary))),
+            // Download (hidden for pending)
             SizedBox(
               width: 40,
-              child: IconButton(
-                icon: const Icon(Icons.download_rounded, size: 18),
-                tooltip: 'Télécharger le reçu',
-                color: AppColors.textSecondary,
-                onPressed: () => _printBillingInvoice(payment, statusData),
-              ),
+              child: isPending
+                  ? const Tooltip(
+                      message: 'En attente de confirmation admin',
+                      child: Icon(Icons.hourglass_top_rounded,
+                          size: 16, color: Colors.orange),
+                    )
+                  : IconButton(
+                      icon: const Icon(Icons.download_rounded, size: 18),
+                      tooltip: 'Télécharger le reçu',
+                      color: AppColors.textSecondary,
+                      onPressed: () => _printBillingInvoice(payment, statusData),
+                    ),
             ),
           ]),
         ),

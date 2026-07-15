@@ -54,8 +54,14 @@ class TenantPatch(BaseModel):
 class ManualActivatePayload(BaseModel):
     amount: float
     currency: str = "HTG"
+    months: int = 1                # durée en mois
+    method: str = "manual"         # manual | moncash | natcash
     reference: str | None = None
     description: str | None = None
+
+
+class ConfirmPaymentPayload(BaseModel):
+    months: int = 1
 
 
 class PlatformConfigUpdate(BaseModel):
@@ -85,11 +91,22 @@ def _next_invoice_number(db: Session, tenant_id: str) -> str:
     return f"{prefix}{count + 1:04d}"
 
 
-def _activate_tenant(db: Session, tenant: Tenant) -> None:
+def _activate_tenant(db: Session, tenant: Tenant, months: int = 1) -> None:
+    now = datetime.now(timezone.utc)
+    # Si déjà actif et pas encore expiré, prolonger depuis la fin actuelle
+    current_end = getattr(tenant, "subscription_ends_at", None)
+    if current_end:
+        if current_end.tzinfo is None:
+            current_end = current_end.replace(tzinfo=timezone.utc)
+        base = current_end if current_end > now else now
+    else:
+        base = now
     tenant.status = "active"
-    tenant.subscription_started_at = datetime.now(timezone.utc)
+    tenant.subscription_started_at = tenant.subscription_started_at or now
+    tenant.subscription_ends_at    = base + timedelta(days=30 * months)
     db.commit()
-    _log.info("Tenant activé manuellement : %s (%s)", tenant.slug, tenant.id)
+    _log.info("Tenant activé : %s (%s) — %d mois → fin %s",
+              tenant.slug, tenant.id, months, tenant.subscription_ends_at.date())
 
 
 def _days_left(tenant: Tenant) -> int | None:
@@ -446,15 +463,18 @@ def manual_activate_tenant(
     period_start = now
     period_end   = now + timedelta(days=30)
 
+    months       = max(1, body.months)
+    period_end   = now + timedelta(days=30 * months)
+
     payment = BillingPayment(
         tenant_id=tenant_id,
         invoice_number=_next_invoice_number(db, tenant_id),
-        method="manual",
+        method=body.method,
         amount=body.amount,
         currency=body.currency,
         status="paid",
         reference=body.reference,
-        description=body.description or "Activation manuelle — Admin POS Connect",
+        description=body.description or f"Activation manuelle ({months} mois) — Admin POS Connect",
         paid_at=now,
         period_start=encrypt_date(period_start, tenant_id),
         period_end=encrypt_date(period_end, tenant_id),
@@ -462,13 +482,58 @@ def manual_activate_tenant(
     db.add(payment)
     db.flush()
 
-    _activate_tenant(db, t)
+    _activate_tenant(db, t, months=months)
 
     return {
-        "status":         "ok",
-        "tenant":         t.slug,
-        "new_status":     t.status,
-        "invoice_number": payment.invoice_number,
+        "status":               "ok",
+        "tenant":               t.slug,
+        "new_status":           t.status,
+        "invoice_number":       payment.invoice_number,
+        "subscription_ends_at": t.subscription_ends_at.isoformat(),
+    }
+
+
+# ── Confirm pending payment ──────────────────────────────────────────────────
+
+@router.patch("/payments/{payment_id}/confirm")
+def confirm_payment(
+    payment_id: str,
+    body: ConfirmPaymentPayload,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """
+    Confirms a pending BillingPayment (MonCash/NatCash submitted by the tenant).
+    Sets status='paid', activates the tenant, and sets subscription_ends_at.
+    """
+    payment = db.query(BillingPayment).filter(BillingPayment.id == payment_id).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Paiement introuvable")
+    if payment.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Paiement déjà en statut '{payment.status}'")
+
+    tenant = db.query(Tenant).filter(Tenant.id == payment.tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant introuvable")
+
+    now      = datetime.now(timezone.utc)
+    months   = max(1, body.months)
+    period_end = now + timedelta(days=30 * months)
+
+    payment.status     = "paid"
+    payment.paid_at    = now
+    payment.period_end = encrypt_date(period_end, payment.tenant_id)
+    db.flush()
+
+    _activate_tenant(db, tenant, months=months)
+
+    return {
+        "status":               "ok",
+        "payment_id":           payment.id,
+        "invoice_number":       payment.invoice_number,
+        "tenant":               tenant.slug,
+        "new_tenant_status":    tenant.status,
+        "subscription_ends_at": tenant.subscription_ends_at.isoformat(),
     }
 
 

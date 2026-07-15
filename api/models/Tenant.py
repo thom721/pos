@@ -22,6 +22,7 @@ class Tenant(UUIDBase):
     # Stripe / payment
     stripe_customer_id     = Column(String(100), nullable=True)
     stripe_subscription_id = Column(String(100), nullable=True)
+    subscription_ends_at   = Column(DateTime(timezone=True), nullable=True)
 
     # 'shared' = data hébergée sur posconnect.ht
     # 'selfhosted' = data sur le propre serveur du tenant, seul billing sync posconnect.ht

@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart' show DioException;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:pos_connect/core/theme.dart';
+import 'package:pos_connect/data/api/api_client.dart' show dio, extractErrorMessage;
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:printing/printing.dart';
@@ -359,6 +361,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
             // ── Synchronisation cloud ─────────────────────────────────────
             const _SyncSection(),
+
+            // ── Serveur de facturation (local uniquement) ─────────────────
+            const _BillingUrlSection(),
           ],
         ),
       ),
@@ -1245,6 +1250,129 @@ class _EntityRow extends StatelessWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+// ── Billing URL section (local server only) ───────────────────────────────────
+
+class _BillingUrlSection extends StatefulWidget {
+  const _BillingUrlSection();
+
+  @override
+  State<_BillingUrlSection> createState() => _BillingUrlSectionState();
+}
+
+class _BillingUrlSectionState extends State<_BillingUrlSection> {
+  final _urlCtrl = TextEditingController();
+  bool _saving   = false;
+  bool _saved    = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrent();
+  }
+
+  @override
+  void dispose() {
+    _urlCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadCurrent() async {
+    try {
+      final res = await dio.get('/api/sync/status');
+      final data = res.data as Map<String, dynamic>? ?? {};
+      final url  = data['billing_url'] as String? ?? '';
+      if (url.isNotEmpty && mounted) setState(() => _urlCtrl.text = url);
+    } catch (_) {}
+  }
+
+  Future<void> _save() async {
+    final url = _urlCtrl.text.trim().replaceAll(RegExp(r'/+$'), '');
+    if (url.isEmpty) return;
+    setState(() { _saving = true; _error = null; _saved = false; });
+    try {
+      await dio.post('/api/sync/configure-billing', data: {'billing_url': url});
+      if (mounted) setState(() { _saved = true; _saving = false; });
+    } catch (e) {
+      final msg = e is DioException ? extractErrorMessage(e) : e.toString();
+      if (mounted) setState(() { _error = msg; _saving = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(
+          icon: Icons.receipt_long_rounded,
+          title: 'Serveur de facturation',
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'URL du serveur POS Connect SaaS utilisé pour vérifier les licences '
+          'et proxifier les abonnements. Laisser vide si ce poste est le serveur cloud.',
+          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        _Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _urlCtrl,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'URL du serveur de facturation',
+                    hintText: 'https://post.institutionlemignon.com',
+                    prefixIcon: Icon(Icons.cloud_outlined),
+                    isDense: true,
+                  ),
+                  onSubmitted: (_) => _save(),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _saving ? null : _save,
+                    icon: _saving
+                        ? const SizedBox(
+                            width: 14, height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.save_rounded, size: 16),
+                    label: Text(_saving ? 'Enregistrement...' : 'Enregistrer'),
+                  ),
+                ),
+                if (_saved) ...[
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    const Icon(Icons.check_circle_outline, color: AppColors.success, size: 16),
+                    const SizedBox(width: 6),
+                    const Text('URL enregistrée avec succès.',
+                        style: TextStyle(color: AppColors.success, fontSize: 12)),
+                  ]),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    const Icon(Icons.error_outline, color: AppColors.error, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(_error!,
+                        style: const TextStyle(color: AppColors.error, fontSize: 12))),
+                  ]),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
 }

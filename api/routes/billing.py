@@ -4,15 +4,25 @@ from datetime import datetime, timezone, timedelta
 from math import ceil
 from typing import List
 
+from pydantic import BaseModel
+
 from api.database import get_db
 from api.models.User import User
 from api.models.Tenant import Tenant
 from api.models.BillingPayment import BillingPayment
 from api.models.PlatformConfig import PlatformConfig
 from api.core.config import settings
-from api.core.billing_crypto import try_decrypt_date
+from api.core.billing_crypto import try_decrypt_date, encrypt_date
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
+
+
+class SubmitPaymentRequest(BaseModel):
+    method: str          # moncash | natcash
+    amount: float
+    currency: str = "HTG"
+    reference: str       # numéro de transaction / reçu
+    description: str | None = None
 
 router = APIRouter(prefix="/api/billing", tags=["Billing"])
 
@@ -83,6 +93,10 @@ def get_billing_status(
             grace_delta = grace_end - now
             grace_days_left = max(0, ceil(grace_delta.total_seconds() / 86400))
 
+    sub_end = getattr(tenant, "subscription_ends_at", None)
+    if sub_end and sub_end.tzinfo is None:
+        sub_end = sub_end.replace(tzinfo=timezone.utc)
+
     return {
         "status": tenant.status,
         "business_name": tenant.business_name,
@@ -93,6 +107,7 @@ def get_billing_status(
         "grace_days_left": grace_days_left,
         "subscription_started_at": tenant.subscription_started_at.isoformat()
             if tenant.subscription_started_at else None,
+        "subscription_ends_at": sub_end.isoformat() if sub_end else None,
         "has_stripe": bool(tenant.stripe_subscription_id),
     }
 
@@ -319,3 +334,65 @@ def create_stripe_checkout(
         raise HTTPException(status_code=503, detail="Module stripe non installé côté serveur")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur Stripe: {str(e)}")
+
+
+@router.post("/submit-payment", status_code=201)
+def submit_payment(
+    body: SubmitPaymentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.CONFIG_READ)),
+):
+    """
+    Tenant submits proof of a MonCash/NatCash payment.
+    Creates a BillingPayment with status='pending'.
+    A superadmin must confirm it via PATCH /api/admin/payments/{id}/confirm.
+    """
+    if body.method not in ("moncash", "natcash"):
+        raise HTTPException(status_code=400, detail="Méthode invalide : moncash ou natcash")
+
+    tenant = _get_tenant(db, current_user)
+
+    # Prevent duplicate submission of the same reference
+    existing = db.query(BillingPayment).filter(
+        BillingPayment.tenant_id == tenant.id,
+        BillingPayment.reference == body.reference,
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Une soumission avec la référence '{body.reference}' existe déjà (statut: {existing.status})",
+        )
+
+    now = datetime.now(timezone.utc)
+    # Generate invoice number (prefix differs to distinguish pending from paid)
+    year   = now.year
+    prefix = f"PEND-{year}-"
+    count  = db.query(BillingPayment).filter(
+        BillingPayment.tenant_id == tenant.id,
+        BillingPayment.invoice_number.like(f"{prefix}%"),
+    ).count()
+    invoice_number = f"{prefix}{count + 1:04d}"
+
+    payment = BillingPayment(
+        tenant_id=tenant.id,
+        invoice_number=invoice_number,
+        method=body.method,
+        amount=body.amount,
+        currency=body.currency,
+        status="pending",
+        reference=body.reference,
+        description=body.description or f"Paiement {body.method.capitalize()} — en attente de confirmation",
+        paid_at=None,
+        period_start=encrypt_date(now, tenant.id),
+        period_end=encrypt_date(now + timedelta(days=30), tenant.id),
+    )
+    db.add(payment)
+    db.commit()
+    db.refresh(payment)
+
+    return {
+        "status":         "pending",
+        "invoice_number": payment.invoice_number,
+        "payment_id":     payment.id,
+        "message":        "Votre paiement a été soumis. Un administrateur le validera sous peu.",
+    }

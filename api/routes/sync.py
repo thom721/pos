@@ -117,6 +117,10 @@ class SyncConfigRequest(BaseModel):
     device_id:   str = "default"
 
 
+class BillingConfigRequest(BaseModel):
+    billing_url: str   # URL du serveur posconnect.ht — utilisé pour le proxy licence
+
+
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
 _bearer = HTTPBearer(auto_error=False)
@@ -402,3 +406,20 @@ def sync_configure(body: SyncConfigRequest, background_tasks: BackgroundTasks, d
         "business_name": data.get("business_name"),
         "message":       "Synchronisation configurée avec succès — premier cycle lancé en arrière-plan",
     }
+
+
+@router.post("/configure-billing")
+def configure_billing(body: BillingConfigRequest):
+    """
+    Saves the billing_url (posconnect.ht) to pos_server.ini so this local
+    server can proxy /api/billing/license requests to the SaaS.
+    No authentication required — called by the settings screen.
+    """
+    billing_url = body.billing_url.rstrip("/")
+    if not billing_url.startswith("http"):
+        raise HTTPException(status_code=400, detail="URL invalide — doit commencer par http(s)://")
+
+    write_ini_config({"billing_url": billing_url})
+    settings.BILLING_URL = billing_url
+
+    return {"ok": True, "billing_url": billing_url}
