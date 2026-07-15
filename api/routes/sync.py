@@ -37,6 +37,20 @@ from api.models.SaleItem import SaleItem
 from api.models.Supplier import Supplier
 from api.models.Tenant import Tenant
 from api.models.User import User
+from api.models.Debt import Debt
+from api.models.Invoice import Invoice, InvoiceItem
+from api.models.Proforma import Proforma, ProformaItem
+from api.models.StockMovement import StockMovement
+from api.models.InventoryRecord import InventoryRecord
+from api.models.PurchaseReceipt import PurchaseReceipt
+from api.models.PurchaseReceiptItem import PurchaseReceiptItem
+from api.models.CashierSession import CashierSession
+from api.models.AuditLog import AuditLog
+from api.models.EmployeeProfile import EmployeeProfile
+from api.models.PayrollPeriod import PayrollPeriod
+from api.models.PayrollEntry import PayrollEntry
+from api.models.EmployeeLoan import EmployeeLoan
+from api.models.PayrollLoanDeduction import PayrollLoanDeduction
 
 router = APIRouter(prefix="/api/sync", tags=["Sync"])
 _log = logging.getLogger("pos.sync")
@@ -44,18 +58,43 @@ _log = logging.getLogger("pos.sync")
 # ── Model registry ────────────────────────────────────────────────────────────
 
 _MODEL_MAP: dict[str, Any] = {
-    "category":      Category,
-    "supplier":      Supplier,
-    "product":       Product,
-    "customer":      Customer,
-    "user":          User,
-    "pos_register":  PosRegister,
-    "sale":          Sale,
-    "sale_item":     SaleItem,
-    "payment":       Payment,
-    "purchase":      Purchase,
-    "purchase_item": PurchaseItem,
-    "return_record": ReturnRecord,
+    # Reference data
+    "category":               Category,
+    "supplier":               Supplier,
+    "product":                Product,
+    "customer":               Customer,
+    "user":                   User,
+    "pos_register":           PosRegister,
+    # Sales & payments
+    "sale":                   Sale,
+    "sale_item":              SaleItem,
+    "payment":                Payment,
+    "return_record":          ReturnRecord,
+    # Purchases
+    "purchase":               Purchase,
+    "purchase_item":          PurchaseItem,
+    "purchase_receipt":       PurchaseReceipt,
+    "purchase_receipt_item":  PurchaseReceiptItem,
+    # Stock & inventory
+    "stock_movement":         StockMovement,
+    "inventory_record":       InventoryRecord,
+    # Invoicing & proformas
+    "invoice":                Invoice,
+    "invoice_item":           InvoiceItem,
+    "proforma":               Proforma,
+    "proforma_item":          ProformaItem,
+    # Debts
+    "debt":                   Debt,
+    # Cashier sessions
+    "cashier_session":        CashierSession,
+    # Audit trail
+    "audit_log":              AuditLog,
+    # HR & payroll
+    "employee_profile":       EmployeeProfile,
+    "payroll_period":         PayrollPeriod,
+    "payroll_entry":          PayrollEntry,
+    "employee_loan":          EmployeeLoan,
+    "payroll_loan_deduction": PayrollLoanDeduction,
 }
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────

@@ -30,6 +30,20 @@ from api.models.Purchase import Purchase
 from api.models.PurchaseItem import PurchaseItem
 from api.models.ReturnRecord import ReturnRecord
 from api.models.PosRegister import PosRegister
+from api.models.Debt import Debt
+from api.models.Invoice import Invoice, InvoiceItem
+from api.models.Proforma import Proforma, ProformaItem
+from api.models.StockMovement import StockMovement
+from api.models.InventoryRecord import InventoryRecord
+from api.models.PurchaseReceipt import PurchaseReceipt
+from api.models.PurchaseReceiptItem import PurchaseReceiptItem
+from api.models.CashierSession import CashierSession
+from api.models.AuditLog import AuditLog
+from api.models.EmployeeProfile import EmployeeProfile
+from api.models.PayrollPeriod import PayrollPeriod
+from api.models.PayrollEntry import PayrollEntry
+from api.models.EmployeeLoan import EmployeeLoan
+from api.models.PayrollLoanDeduction import PayrollLoanDeduction
 
 _log = logging.getLogger("pos.sync")
 
@@ -37,18 +51,43 @@ _log = logging.getLogger("pos.sync")
 # direction: "push" = local→cloud only | "pull" = cloud→local only | "both" = bidirectional
 
 SYNC_ENTITIES: list[dict] = [
-    {"type": "category",      "model": Category,      "direction": "both"},
-    {"type": "supplier",      "model": Supplier,      "direction": "both"},
-    {"type": "product",       "model": Product,       "direction": "both"},
-    {"type": "customer",      "model": Customer,      "direction": "both"},
-    {"type": "user",          "model": User,          "direction": "pull"},
-    {"type": "pos_register",  "model": PosRegister,   "direction": "both"},
-    {"type": "sale",          "model": Sale,          "direction": "push"},
-    {"type": "sale_item",     "model": SaleItem,      "direction": "push"},
-    {"type": "payment",       "model": Payment,       "direction": "push"},
-    {"type": "purchase",      "model": Purchase,      "direction": "push"},
-    {"type": "purchase_item", "model": PurchaseItem,  "direction": "push"},
-    {"type": "return_record", "model": ReturnRecord,  "direction": "push"},
+    # ── Reference data ──────────────────────────────────────────────────────
+    {"type": "category",               "model": Category,             "direction": "both"},
+    {"type": "supplier",               "model": Supplier,             "direction": "both"},
+    {"type": "product",                "model": Product,              "direction": "both"},
+    {"type": "customer",               "model": Customer,             "direction": "both"},
+    {"type": "user",                   "model": User,                 "direction": "both"},
+    {"type": "pos_register",           "model": PosRegister,         "direction": "both"},
+    # ── Sales & payments ────────────────────────────────────────────────────
+    {"type": "sale",                   "model": Sale,                 "direction": "push"},
+    {"type": "sale_item",              "model": SaleItem,             "direction": "push"},
+    {"type": "payment",                "model": Payment,              "direction": "both"},
+    {"type": "return_record",          "model": ReturnRecord,         "direction": "both"},
+    # ── Purchases ───────────────────────────────────────────────────────────
+    {"type": "purchase",               "model": Purchase,             "direction": "both"},
+    {"type": "purchase_item",          "model": PurchaseItem,         "direction": "both"},
+    {"type": "purchase_receipt",       "model": PurchaseReceipt,      "direction": "both"},
+    {"type": "purchase_receipt_item",  "model": PurchaseReceiptItem,  "direction": "both"},
+    # ── Stock & inventory ───────────────────────────────────────────────────
+    {"type": "stock_movement",         "model": StockMovement,        "direction": "push"},
+    {"type": "inventory_record",       "model": InventoryRecord,      "direction": "push"},
+    # ── Invoicing & proformas ───────────────────────────────────────────────
+    {"type": "invoice",                "model": Invoice,              "direction": "both"},
+    {"type": "invoice_item",           "model": InvoiceItem,          "direction": "both"},
+    {"type": "proforma",               "model": Proforma,             "direction": "both"},
+    {"type": "proforma_item",          "model": ProformaItem,         "direction": "both"},
+    # ── Debts ───────────────────────────────────────────────────────────────
+    {"type": "debt",                   "model": Debt,                 "direction": "both"},
+    # ── Cashier sessions ────────────────────────────────────────────────────
+    {"type": "cashier_session",        "model": CashierSession,       "direction": "push"},
+    # ── Audit trail ─────────────────────────────────────────────────────────
+    {"type": "audit_log",              "model": AuditLog,             "direction": "push"},
+    # ── HR & payroll ────────────────────────────────────────────────────────
+    {"type": "employee_profile",       "model": EmployeeProfile,      "direction": "both"},
+    {"type": "payroll_period",         "model": PayrollPeriod,        "direction": "both"},
+    {"type": "payroll_entry",          "model": PayrollEntry,         "direction": "both"},
+    {"type": "employee_loan",          "model": EmployeeLoan,         "direction": "both"},
+    {"type": "payroll_loan_deduction", "model": PayrollLoanDeduction, "direction": "both"},
 ]
 
 # Columns excluded when sending to cloud (cloud assigns its own tenant_id via sync token)
