@@ -12,8 +12,7 @@
 #        posconnect-server.exe
 #        api\  (données statiques, migrations)
 #        *.dll / *.pyd
-#      pos_server.ini
-#      .env
+#      pos_server.ini        ← config BDD, secret_key, etc. (pas de .env sur Windows)
 #
 #  Ce script installe tout dans :
 #    C:\Program Files\POS_Connect\
@@ -71,7 +70,7 @@ Write-Step "Dossier d'installation : $InstallRoot"
 New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
 Write-OK "Dossier prêt."
 
-# ── 2. Vérifier les conflits de port — proposer des alternatives ─────────────
+# ── 2. Vérifier les conflits de port — basculement silencieux ────────────────
 Write-Step "Vérification des ports 80 et 443..."
 foreach ($port in @(80, 443)) {
     $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
@@ -82,21 +81,11 @@ foreach ($port in @(80, 443)) {
             Write-Host "  Port $port : nginx déjà en écoute (sera reconfiguré)." -ForegroundColor DarkGray
         } else {
             $alt = if ($port -eq 80) { 8080 } else { 8443 }
-            Write-Warn "Port $port utilisé par '$name' (PID $($conn.OwningProcess))."
-            $rep = Read-Host "  Utiliser le port $alt à la place ? (O/n)"
-            if ($rep -notmatch '^[nN]') {
-                if ($port -eq 80)  { $HttpPort  = $alt }
-                if ($port -eq 443) { $HttpsPort = $alt }
-                Write-OK "Port $alt sera utilisé à la place du port $port."
-            } else {
-                Fail "Port $port occupé et aucune alternative choisie. Libère-le puis relance."
-            }
+            if ($port -eq 80)  { $HttpPort  = $alt }
+            if ($port -eq 443) { $HttpsPort = $alt }
+            Write-Host "  Port $port utilisé par '$name' → basculement automatique sur $alt." -ForegroundColor DarkGray
         }
     }
-}
-if ($HttpsPort -ne 443) {
-    Write-Warn "Port HTTPS non standard ($HttpsPort). Les clients devront se connecter via :"
-    Write-Warn "  https://${Hostname}:${HttpsPort}"
 }
 
 # ── 3. Télécharger Nginx si nginx.exe absent ──────────────────────────────────
@@ -188,17 +177,25 @@ if (Test-Path $srcApi) {
     Write-Warn "Copie le build Nuitka (GitHub Actions > backend-windows) dans : $ApiDir"
 }
 
-# ── 6. Copier pos_server.ini et .env ─────────────────────────────────────────
-Write-Step "Fichiers de configuration..."
-foreach ($f in @("pos_server.ini", ".env")) {
-    $src = Join-Path $PackageDir $f
-    $dst = Join-Path $InstallRoot $f
-    if (Test-Path $src) {
-        Copy-Item $src $dst -Force
-        Write-OK "$f copié."
-    } else {
-        Write-Warn "$f introuvable dans le package — à configurer manuellement dans $InstallRoot"
-    }
+# ── 6. Copier pos_server.ini ─────────────────────────────────────────────────
+# .env est réservé à Docker — sur Windows on utilise pos_server.ini
+Write-Step "Configuration serveur (pos_server.ini)..."
+$iniDst     = Join-Path $InstallRoot "pos_server.ini"
+$iniSrc     = Join-Path $PackageDir  "pos_server.ini"
+$iniExample = Join-Path $PackageDir  "pos_server.ini.example"
+
+if (Test-Path $iniDst) {
+    Write-Host "  pos_server.ini déjà présent — conservé tel quel." -ForegroundColor DarkGray
+} elseif (Test-Path $iniSrc) {
+    Copy-Item $iniSrc $iniDst -Force
+    Write-OK "pos_server.ini copié."
+} elseif (Test-Path $iniExample) {
+    Copy-Item $iniExample $iniDst -Force
+    Write-Warn "pos_server.ini créé depuis le modèle — édite $iniDst pour configurer"
+    Write-Warn "la base de données, le secret_key et les autres paramètres."
+} else {
+    Write-Warn "pos_server.ini introuvable — à créer manuellement dans $InstallRoot"
+    Write-Warn "(voir pos_server.ini.example dans le package)"
 }
 
 # ── 7. Télécharger NSSM si le dossier est absent ─────────────────────────────
