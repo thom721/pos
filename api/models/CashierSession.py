@@ -3,10 +3,7 @@ from .base import UUIDBase
 
 
 class CashierSession(UUIDBase):
-    """
-    One session = one cashier opening / closing a specific register.
-    Tables created now; UI will come in a later phase.
-    """
+    """One session = one cashier opening / closing a specific register."""
     __tablename__ = "cashier_sessions"
 
     tenant_id   = Column(String(36), ForeignKey('tenants.id'),      nullable=False, index=True)
@@ -20,3 +17,12 @@ class CashierSession(UUIDBase):
 
     # 'open' | 'closed'
     status = Column(String(20), nullable=False, default='open')
+
+    # ── Reconciliation fields (filled at close) ────────────────────────────
+    total_cash_sales          = Column(Numeric(12, 2), nullable=True)
+    total_card_sales          = Column(Numeric(12, 2), nullable=True)
+    total_mobile_sales        = Column(Numeric(12, 2), nullable=True)
+    total_bank_sales          = Column(Numeric(12, 2), nullable=True)
+    total_refunds_cash        = Column(Numeric(12, 2), nullable=True)
+    expected_closing_balance  = Column(Numeric(12, 2), nullable=True)
+    cash_difference           = Column(Numeric(12, 2), nullable=True)  # closing - expected

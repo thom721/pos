@@ -2158,20 +2158,53 @@ class _CloseSessionDialog extends StatefulWidget {
 
 class _CloseSessionDialogState extends State<_CloseSessionDialog> {
   late final TextEditingController _balanceCtrl;
-  bool _loading = false;
+  bool _loading   = false;
+  bool _loadingSummary = true;
   String? _error;
+
+  // Reconciliation data from server
+  double _opening  = 0;
+  double _cash     = 0;
+  double _card     = 0;
+  double _mobile   = 0;
+  double _bank     = 0;
+  double _refunds  = 0;
+  double _expected = 0;
 
   @override
   void initState() {
     super.initState();
-    _balanceCtrl = TextEditingController(
-        text: (widget.session['opening_balance'] ?? 0).toString());
+    _opening = (widget.session['opening_balance'] as num?)?.toDouble() ?? 0;
+    _balanceCtrl = TextEditingController(text: _opening.toStringAsFixed(2));
+    _balanceCtrl.addListener(() => setState(() {}));
+    _fetchSummary();
   }
 
   @override
   void dispose() {
     _balanceCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchSummary() async {
+    try {
+      final sessionId = widget.session['id'] as String;
+      final res = await dio.get('/api/sessions/$sessionId/summary');
+      final d = res.data as Map<String, dynamic>;
+      setState(() {
+        _opening  = (d['opening_balance']          as num?)?.toDouble() ?? _opening;
+        _cash     = (d['total_cash_sales']          as num?)?.toDouble() ?? 0;
+        _card     = (d['total_card_sales']          as num?)?.toDouble() ?? 0;
+        _mobile   = (d['total_mobile_sales']        as num?)?.toDouble() ?? 0;
+        _bank     = (d['total_bank_sales']          as num?)?.toDouble() ?? 0;
+        _refunds  = (d['total_refunds_cash']        as num?)?.toDouble() ?? 0;
+        _expected = (d['expected_closing_balance']  as num?)?.toDouble() ?? _opening;
+        _balanceCtrl.text = _expected.toStringAsFixed(2);
+        _loadingSummary = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingSummary = false);
+    }
   }
 
   Future<void> _close() async {
@@ -2187,7 +2220,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
       setState(() {
         _loading = false;
         _error = e is DioException
-            ? (e.response?.data['message'] ?? 'Erreur réseau')
+            ? (e.response?.data['detail'] ?? e.response?.data['message'] ?? 'Erreur réseau')
             : e.toString();
       });
     }
@@ -2195,13 +2228,21 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final openingBalance =
-        (widget.session['opening_balance'] as num?)?.toDouble() ?? 0;
     final openedAt = widget.session['opened_at'] != null
         ? DateFormat('HH:mm').format(
-            DateTime.tryParse(widget.session['opened_at'].toString()) ??
-                DateTime.now())
+            DateTime.tryParse(widget.session['opened_at'].toString()) ?? DateTime.now())
         : '—';
+
+    final closing  = double.tryParse(_balanceCtrl.text) ?? 0;
+    final diff     = closing - _expected;
+    final diffColor = diff == 0
+        ? AppColors.success
+        : diff > 0 ? const Color(0xFF2196F3) : AppColors.error;
+    final diffLabel = diff > 0
+        ? '+${_fmt.format(diff)} (surplus)'
+        : diff < 0
+            ? '${_fmt.format(diff)} (manque)'
+            : 'Équilibré';
 
     return AlertDialog(
       title: Row(children: [
@@ -2217,27 +2258,76 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
         const Text('Fermer la caisse',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
       ]),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _InfoRow('Ouverte à', openedAt),
-          _InfoRow('Fond initial', _fmt.format(openingBalance)),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _balanceCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Solde final en caisse (HTG)',
-              prefixIcon: Icon(Icons.payments_outlined, size: 20),
-              isDense: true,
-            ),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 10),
-            Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
-          ],
-        ],
+      content: SizedBox(
+        width: 360,
+        child: _loadingSummary
+            ? const Center(child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator()))
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _InfoRow('Ouverte à', openedAt),
+                  const Divider(height: 20),
+
+                  // ── Ventilation des encaissements ───────────────────
+                  const Text('Encaissements de la session',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary)),
+                  const SizedBox(height: 8),
+                  _InfoRow('Fond initial',  _fmt.format(_opening)),
+                  if (_cash   > 0) _InfoRow('Ventes cash',   '+ ${_fmt.format(_cash)}',   color: AppColors.success),
+                  if (_card   > 0) _InfoRow('Ventes carte',  '+ ${_fmt.format(_card)}',   color: AppColors.success),
+                  if (_mobile > 0) _InfoRow('Ventes mobile', '+ ${_fmt.format(_mobile)}', color: AppColors.success),
+                  if (_bank   > 0) _InfoRow('Ventes banque', '+ ${_fmt.format(_bank)}',   color: AppColors.success),
+                  if (_refunds > 0) _InfoRow('Remboursements cash', '- ${_fmt.format(_refunds)}',
+                      color: AppColors.error),
+                  const Divider(height: 16),
+                  _InfoRow('Solde théorique', _fmt.format(_expected),
+                      bold: true),
+                  const SizedBox(height: 16),
+
+                  // ── Solde réel ──────────────────────────────────────
+                  TextField(
+                    controller: _balanceCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Solde réel en caisse (HTG)',
+                      prefixIcon: Icon(Icons.payments_outlined, size: 20),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Écart ───────────────────────────────────────────
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: diffColor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: diffColor.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(children: [
+                      Icon(diff == 0 ? Icons.check_circle_outline
+                          : diff > 0 ? Icons.arrow_upward_rounded
+                          : Icons.arrow_downward_rounded,
+                          color: diffColor, size: 16),
+                      const SizedBox(width: 8),
+                      Text('Écart : $diffLabel',
+                          style: TextStyle(color: diffColor,
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+
+                  if (_error != null) ...[
+                    const SizedBox(height: 10),
+                    Text(_error!, style: const TextStyle(
+                        color: AppColors.error, fontSize: 13)),
+                  ],
+                ],
+              ),
       ),
       actions: [
         TextButton(
@@ -2246,10 +2336,9 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-          onPressed: _loading ? null : _close,
+          onPressed: (_loading || _loadingSummary) ? null : _close,
           child: _loading
-              ? const SizedBox(
-                  width: 14, height: 14,
+              ? const SizedBox(width: 14, height: 14,
                   child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
               : const Text('Fermer la caisse'),
         ),
@@ -2261,18 +2350,27 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
 class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
-  const _InfoRow(this.label, this.value);
+  final Color? color;
+  final bool bold;
+  const _InfoRow(this.label, this.value, {this.color, this.bold = false});
 
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
-        child: Row(children: [
-          Text('$label : ',
-              style: const TextStyle(
-                  fontSize: 12, color: AppColors.textSecondary)),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w600)),
-        ]),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label,
+                style: TextStyle(
+                    fontSize: 12,
+                    color: color ?? AppColors.textSecondary,
+                    fontWeight: bold ? FontWeight.w700 : FontWeight.normal)),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 12,
+                    color: color,
+                    fontWeight: bold ? FontWeight.w700 : FontWeight.w600)),
+          ],
+        ),
       );
 }

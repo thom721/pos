@@ -1,11 +1,14 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from api.database import get_db
 from api.models.User import User
 from api.models.CashierSession import CashierSession
+from api.models.Payment import Payment
+from api.models.ReturnRecord import ReturnRecord
 from api.models.PosRegister import PosRegister
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
@@ -22,6 +25,50 @@ class OpenSessionBody(BaseModel):
 
 class CloseSessionBody(BaseModel):
     closing_balance: float
+
+
+def _compute_reconciliation(db: Session, session: CashierSession, closed_at: datetime) -> dict:
+    """Query payments and refunds within the session window to compute reconciliation."""
+    since = session.opened_at
+    until = closed_at
+    tid   = session.tenant_id
+    uid   = session.cashier_id
+
+    def _sales_by_method(method: str) -> float:
+        row = db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+            Payment.tenant_id     == tid,
+            Payment.user_id       == uid,
+            Payment.reference_type == "SALE",
+            Payment.method        == method,
+            Payment.created_at    >= since,
+            Payment.created_at    <= until,
+        ).scalar()
+        return float(row or 0)
+
+    cash   = _sales_by_method("cash")
+    card   = _sales_by_method("card")
+    mobile = _sales_by_method("mobile")
+    bank   = _sales_by_method("bank")
+
+    refunds = float(db.query(func.coalesce(func.sum(ReturnRecord.refund_amount), 0)).filter(
+        ReturnRecord.tenant_id   == tid,
+        ReturnRecord.user_id     == uid,
+        ReturnRecord.return_type == "sale",
+        ReturnRecord.created_at  >= since,
+        ReturnRecord.created_at  <= until,
+    ).scalar() or 0)
+
+    opening  = float(session.opening_balance or 0)
+    expected = opening + cash - refunds
+
+    return {
+        "total_cash_sales":         cash,
+        "total_card_sales":         card,
+        "total_mobile_sales":       mobile,
+        "total_bank_sales":         bank,
+        "total_refunds_cash":       refunds,
+        "expected_closing_balance": expected,
+    }
 
 
 def _get_or_create_register(db: Session, tenant_id: str, device_id: str, name: str) -> PosRegister:
@@ -125,6 +172,30 @@ def open_session(
     }
 
 
+@router.get("/{session_id}/summary")
+def session_summary(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.SESSIONS_READ)),
+):
+    """Return live reconciliation data for an open session (used by close dialog)."""
+    session = db.get(CashierSession, session_id)
+    if not session or session.tenant_id != current_user.tenant_id:
+        raise HTTPException(404, "Session introuvable")
+
+    now   = datetime.now(timezone.utc)
+    recon = _compute_reconciliation(db, session, now)
+    return {
+        "opening_balance":          float(session.opening_balance or 0),
+        "total_cash_sales":         recon["total_cash_sales"],
+        "total_card_sales":         recon["total_card_sales"],
+        "total_mobile_sales":       recon["total_mobile_sales"],
+        "total_bank_sales":         recon["total_bank_sales"],
+        "total_refunds_cash":       recon["total_refunds_cash"],
+        "expected_closing_balance": recon["expected_closing_balance"],
+    }
+
+
 @router.post("/{session_id}/close")
 def close_session(
     session_id: str,
@@ -142,9 +213,19 @@ def close_session(
         if not any(r in (current_user.roles or []) for r in ("admin", "manager")):
             raise HTTPException(403, "Vous ne pouvez pas fermer la session d'un autre caissier")
 
-    session.closed_at = datetime.now(timezone.utc)
-    session.closing_balance = body.closing_balance
-    session.status = "closed"
+    closed_at = datetime.now(timezone.utc)
+    recon     = _compute_reconciliation(db, session, closed_at)
+
+    session.closed_at                = closed_at
+    session.closing_balance          = body.closing_balance
+    session.status                   = "closed"
+    session.total_cash_sales         = recon["total_cash_sales"]
+    session.total_card_sales         = recon["total_card_sales"]
+    session.total_mobile_sales       = recon["total_mobile_sales"]
+    session.total_bank_sales         = recon["total_bank_sales"]
+    session.total_refunds_cash       = recon["total_refunds_cash"]
+    session.expected_closing_balance = recon["expected_closing_balance"]
+    session.cash_difference          = body.closing_balance - recon["expected_closing_balance"]
 
     audit_service.log(
         db,
@@ -157,7 +238,18 @@ def close_session(
     )
 
     db.commit()
-    return {"message": "Session fermée"}
+    return {
+        "message":                  "Session fermée",
+        "opening_balance":          float(session.opening_balance or 0),
+        "closing_balance":          float(session.closing_balance or 0),
+        "total_cash_sales":         float(session.total_cash_sales or 0),
+        "total_card_sales":         float(session.total_card_sales or 0),
+        "total_mobile_sales":       float(session.total_mobile_sales or 0),
+        "total_bank_sales":         float(session.total_bank_sales or 0),
+        "total_refunds_cash":       float(session.total_refunds_cash or 0),
+        "expected_closing_balance": float(session.expected_closing_balance or 0),
+        "cash_difference":          float(session.cash_difference or 0),
+    }
 
 
 @router.get("/")
