@@ -1203,7 +1203,8 @@ class _TenantConnectPage extends ConsumerStatefulWidget {
 }
 
 class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
-  late TextEditingController _cloudUrl, _email, _pwd;
+  late TextEditingController _customUrl, _email, _pwd;
+  bool _usePosConnectCloud = true;
   bool _obscure = true;
   bool _testing = false;
   bool _verified = false;
@@ -1213,21 +1214,33 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
   void initState() {
     super.initState();
     final cfg = ref.read(_configProvider);
-    _cloudUrl = TextEditingController(text: cfg.cloudUrl);
-    _email    = TextEditingController(text: cfg.tenantEmail);
-    _pwd      = TextEditingController(text: cfg.tenantPassword);
+    // If a custom URL was saved (different from our SaaS), switch to "own server" mode
+    final saved = cfg.cloudUrl;
+    if (saved.isNotEmpty && saved != AppConstants.cloudUrl) {
+      _usePosConnectCloud = false;
+      _customUrl = TextEditingController(text: saved);
+    } else {
+      _usePosConnectCloud = true;
+      _customUrl = TextEditingController(text: '');
+    }
+    _email = TextEditingController(text: cfg.tenantEmail);
+    _pwd   = TextEditingController(text: cfg.tenantPassword);
   }
 
   @override
   void dispose() {
-    _cloudUrl.dispose();
+    _customUrl.dispose();
     _email.dispose();
     _pwd.dispose();
     super.dispose();
   }
 
+  String get _effectiveUrl => _usePosConnectCloud
+      ? AppConstants.cloudUrl
+      : _customUrl.text.trim().replaceAll(RegExp(r'/+$'), '');
+
   Future<void> _verify() async {
-    final url   = _cloudUrl.text.trim().replaceAll(RegExp(r'/+$'), '');
+    final url   = _effectiveUrl;
     final email = _email.text.trim();
     final pwd   = _pwd.text;
     if (url.isEmpty || email.isEmpty || pwd.isEmpty) return;
@@ -1286,14 +1299,20 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
     }
   }
 
-  /// Generates a cryptographically random 24-char hex nonce.
+  void _switchMode(bool usePosConnect) {
+    setState(() {
+      _usePosConnectCloud = usePosConnect;
+      _verified = false;
+      _error = null;
+    });
+  }
+
   String _randomNonce() {
     final rng = Random.secure();
     final bytes = List<int>.generate(12, (_) => rng.nextInt(256));
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
-  /// Verifies the Ed25519 signature from the server against the hardcoded public key.
   Future<bool> _verifySignature(String nonce, String signatureB64) async {
     try {
       final pubKeyBytes = base64.decode(AppConstants.identityPublicKeyB64);
@@ -1321,24 +1340,66 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _InfoCard(
-            icon: Icons.cloud_outlined,
+
+          // ── Mode selector ─────────────────────────────────────────────
+          _CloudModeCard(
+            icon: Icons.cloud_rounded,
             color: AppColors.primary,
-            title: 'Pourquoi lier au cloud ?',
-            items: const [
-              'Vos données se synchronisent automatiquement avec le cloud.',
-              'Vos licences et abonnements sont gérés depuis le portail web.',
-              'Récupérez vos données sur un nouveau poste en cas de panne.',
-            ],
+            title: 'Cloud POS Connect',
+            badge: 'Recommandé',
+            desc: 'Utilisez notre infrastructure cloud. Synchronisation, licences '
+                'et sauvegardes gérés automatiquement.',
+            selected: _usePosConnectCloud,
+            onTap: () => _switchMode(true),
           ),
-          const SizedBox(height: 20),
-          _Field(
-            ctrl: _cloudUrl,
-            label: 'URL du serveur cloud',
-            hint: 'https://app.posconnect.ht',
-            keyboardType: TextInputType.url,
+          const SizedBox(height: 10),
+          _CloudModeCard(
+            icon: Icons.dns_rounded,
+            color: const Color(0xFF7C3AED),
+            title: 'Mon propre serveur',
+            desc: 'Vous hébergez votre propre instance POS Connect cloud. '
+                'Renseignez son adresse.',
+            selected: !_usePosConnectCloud,
+            onTap: () => _switchMode(false),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 24),
+
+          // ── URL row ───────────────────────────────────────────────────
+          if (_usePosConnectCloud) ...[
+            // Auto-filled — non-editable
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.cloud_done_rounded, size: 16, color: AppColors.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    AppConstants.cloudUrl,
+                    style: const TextStyle(
+                      fontFamily: 'monospace', fontSize: 13,
+                      color: AppColors.primary, fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.lock_outline_rounded, size: 14, color: AppColors.textSecondary),
+              ]),
+            ),
+          ] else ...[
+            _Field(
+              ctrl: _customUrl,
+              label: 'URL du serveur cloud',
+              hint: 'https://monserveur.com',
+              keyboardType: TextInputType.url,
+            ),
+          ],
+          const SizedBox(height: 14),
+
+          // ── Credentials ───────────────────────────────────────────────
           _Field(
             ctrl: _email,
             label: 'Email du compte',
@@ -1349,8 +1410,10 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
           TextFormField(
             controller: _pwd,
             obscureText: _obscure,
+            onFieldSubmitted: (_) { if (!_testing) _verify(); },
             decoration: InputDecoration(
               labelText: 'Mot de passe',
+              prefixIcon: const Icon(Icons.lock_outline_rounded),
               suffixIcon: IconButton(
                 icon: Icon(_obscure
                     ? Icons.visibility_outlined
@@ -1360,14 +1423,21 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
             ),
           ),
           const SizedBox(height: 20),
-          FilledButton.icon(
-            onPressed: _testing ? null : _verify,
-            icon: _testing
-                ? const SizedBox(width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.verified_user_outlined, size: 16),
-            label: Text(_testing ? 'Vérification...' : 'Vérifier la connexion'),
+
+          // ── Verify button ─────────────────────────────────────────────
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _testing ? null : _verify,
+              icon: _testing
+                  ? const SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.verified_user_outlined, size: 16),
+              label: Text(_testing ? 'Vérification...' : 'Vérifier la connexion'),
+            ),
           ),
+
+          // ── Feedback ──────────────────────────────────────────────────
           if (_error != null) ...[
             const SizedBox(height: 12),
             Container(
@@ -1396,9 +1466,13 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
               child: Row(children: [
                 const Icon(Icons.check_circle_outline, color: AppColors.success, size: 18),
                 const SizedBox(width: 8),
-                Text('Compte vérifié — ${_email.text}',
+                Expanded(
+                  child: Text(
+                    'Compte vérifié — ${_email.text}',
                     style: const TextStyle(
-                        color: AppColors.success, fontWeight: FontWeight.w600)),
+                        color: AppColors.success, fontWeight: FontWeight.w600),
+                  ),
+                ),
               ]),
             ),
           ],
@@ -1743,6 +1817,97 @@ class _PageShell extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CloudModeCard extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String? badge;
+  final String desc;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CloudModeCard({
+    required this.icon,
+    required this.color,
+    required this.title,
+    this.badge,
+    required this.desc,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.06) : AppColors.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? color : AppColors.divider,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Text(title,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: selected ? color : AppColors.textPrimary)),
+                  if (badge != null) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(badge!,
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: color)),
+                    ),
+                  ],
+                ]),
+                const SizedBox(height: 3),
+                Text(desc,
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textSecondary)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            selected
+                ? Icons.radio_button_checked_rounded
+                : Icons.radio_button_off_rounded,
+            color: selected ? color : AppColors.textSecondary,
+            size: 20,
+          ),
+        ]),
+      ),
     );
   }
 }
