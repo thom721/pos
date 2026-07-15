@@ -39,3 +39,7 @@ frontend/.packages
 
 # ── Outils Claude ──────────────────────────────────────────────────────────
 .claude/
+
+# ── Certificats SSL (générés localement, ne pas committer) ─────────────────
+certificat/server.crt
+certificat/server.key
