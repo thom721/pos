@@ -93,6 +93,7 @@ SYNC_ENTITIES: list[dict] = [
 # Columns excluded when sending to cloud (cloud assigns its own tenant_id via sync token)
 _EXCLUDE_PUSH = {"tenant_id", "password", "password_hash"}  # never push credentials to cloud
 _EXCLUDE_PULL: set[str] = set()
+_PUSH_CHUNK   = 500   # max records per HTTP push request
 
 # Prevents concurrent run_sync calls (auto-loop + manual button)
 import threading as _threading
@@ -215,11 +216,9 @@ def _run_sync_inner(db: Session) -> dict:
     except Exception:
         pass  # SQLite or unsupported engine — safe to ignore
 
-    # Record cycle_start BEFORE any queries, using naive local time to match
-    # the DB's updated_at timestamps (MySQL stores in server local time, no tz).
-    # Using UTC here causes push to miss local records because the filter
-    # updated_at > last_push_at compares local time vs UTC (off by tz offset).
-    cycle_start = datetime.now()
+    # Cycle start in UTC — MySQL connection is forced to UTC (SET time_zone='+00:00')
+    # so updated_at comparisons are consistent across all timezones.
+    cycle_start = datetime.now(timezone.utc)
 
     summary = {"pushed": {}, "pulled": {}, "errors": []}
 
@@ -236,25 +235,29 @@ def _run_sync_inner(db: Session) -> dict:
                 query = db.query(model)
                 if state.last_push_at:
                     lp = state.last_push_at
-                    if lp.tzinfo is not None:
-                        lp = lp.replace(tzinfo=None)
+                    if lp.tzinfo is None:
+                        lp = lp.replace(tzinfo=timezone.utc)
                     query = query.filter(model.updated_at > lp)
                 rows = query.all()
 
                 if rows:
                     payload = _serialize(rows, _EXCLUDE_PUSH)
-                    resp = _http_post(
-                        f"{url}/api/sync/push",
-                        json={"entity_type": etype, "records": payload},
-                        headers=_headers(token),
-                    )
-                    result = resp.json()
-                    pushed = result.get("inserted", 0) + result.get("updated", 0)
-                    summary["pushed"][etype] = pushed
-                    state.records_pushed += pushed
+                    total_pushed = 0
+                    # Chunk large payloads to avoid timeouts / OOM
+                    for i in range(0, len(payload), _PUSH_CHUNK):
+                        chunk = payload[i : i + _PUSH_CHUNK]
+                        resp = _http_post(
+                            f"{url}/api/sync/push",
+                            json={"entity_type": etype, "records": chunk},
+                            headers=_headers(token),
+                        )
+                        result = resp.json()
+                        total_pushed += result.get("inserted", 0) + result.get("updated", 0)
+                    summary["pushed"][etype] = total_pushed
+                    state.records_pushed += total_pushed
 
-                # Advance watermark to cycle_start (before queries), not to
-                # datetime.now() (after push), to avoid the race window.
+                # Advance watermark to cycle_start (recorded before queries)
+                # to close the race window between query and now().
                 state.last_push_at = cycle_start
                 state.last_error = None
             except Exception as exc:
@@ -315,7 +318,7 @@ def _run_sync_inner(db: Session) -> dict:
 
                 summary["pulled"][etype] = applied
                 state.records_pulled += applied
-                state.last_pull_at = datetime.now()
+                state.last_pull_at = datetime.now(timezone.utc)
                 state.last_error = None
             except Exception as exc:
                 msg = f"pull {etype}: {exc}"

@@ -11,7 +11,6 @@ if settings.DB_TYPE == "sqlite":
 
 _pool_kwargs = {}
 if settings.DB_TYPE == "mysql":
-    # Reconnect automatically when MySQL closes stale connections (wait_timeout)
     _pool_kwargs = {"pool_pre_ping": True, "pool_recycle": 3600}
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args=_connect_args, **_pool_kwargs)
@@ -22,6 +21,13 @@ if settings.DB_TYPE == "sqlite":
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+elif settings.DB_TYPE == "mysql":
+    @event.listens_for(engine, "connect")
+    def _set_mysql_utc(dbapi_conn, _):
+        # Force UTC so updated_at comparisons in sync are timezone-consistent
+        cursor = dbapi_conn.cursor()
+        cursor.execute("SET time_zone='+00:00'")
         cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

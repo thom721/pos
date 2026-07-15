@@ -57,6 +57,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Dirty-flag middleware ─────────────────────────────────────────────────────
+# Tout POST/PUT/PATCH/DELETE réussi (hors routes de sync elles-mêmes) réveille
+# le loop de sync pour une synchronisation quasi-immédiate.
+_NO_SIGNAL_PREFIXES = ("/api/sync/push", "/api/sync/pull")
+
+@app.middleware("http")
+async def _write_sync_trigger(request: Request, call_next):
+    response = await call_next(request)
+    if (
+        request.method in ("POST", "PUT", "PATCH", "DELETE")
+        and response.status_code < 400
+        and not any(request.url.path.startswith(p) for p in _NO_SIGNAL_PREFIXES)
+    ):
+        signal_pending_sync()
+    return response
+
 app.mount("/static", StaticFiles(directory="api/static"), name="static")
 
 app.include_router(user.router, prefix="/api")
@@ -348,8 +364,20 @@ def on_startup():
     finally:
         db.close()
 
-_AUTO_SYNC_INTERVAL = 300  # secondes entre chaque cycle (5 min)
+_AUTO_SYNC_INTERVAL = 300   # max secondes entre deux cycles (5 min)
+_SYNC_DEBOUNCE      = 5     # secondes d'attente après signal pour batcher les écritures rapides
 _auto_sync_task: asyncio.Task | None = None
+_sync_event = asyncio.Event()           # signalé après toute écriture locale
+
+
+def signal_pending_sync() -> None:
+    """Appeler après toute écriture locale — réveille le loop de sync immédiatement."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.call_soon_threadsafe(_sync_event.set)
+    except RuntimeError:
+        pass
 
 
 def _do_sync_cycle():
@@ -367,7 +395,11 @@ def _do_sync_cycle():
 
 
 async def _auto_sync_loop():
-    """Background loop: sync toutes les 5 min si cloud_sync_enabled=True."""
+    """
+    Background loop — tourne toutes les 5 min au maximum.
+    Se réveille IMMÉDIATEMENT (après un debounce de 5 s) dès qu'une écriture
+    locale signale _sync_event, pour une sync quasi-temps-réel.
+    """
     _slog = logging.getLogger("pos.autosync")
     await asyncio.sleep(30)  # attendre que le serveur soit prêt
     while True:
@@ -378,12 +410,21 @@ async def _auto_sync_loop():
             elif result.get("ok"):
                 pushed_total = sum(result.get("pushed", {}).values())
                 pulled_total = sum(result.get("pulled", {}).values())
-                _slog.info("Auto-sync OK — pushed=%d pulled=%d", pushed_total, pulled_total)
+                if pushed_total or pulled_total:
+                    _slog.info("Sync OK — pushed=%d pulled=%d", pushed_total, pulled_total)
             else:
-                _slog.warning("Auto-sync partial — errors: %s", result.get("errors"))
+                _slog.warning("Sync partiel — erreurs: %s", result.get("errors"))
         except Exception as exc:
-            logging.getLogger("pos.autosync").error("Auto-sync loop error: %s", exc)
-        await asyncio.sleep(_AUTO_SYNC_INTERVAL)
+            _slog.error("Sync loop error: %s", exc)
+
+        # Attendre le prochain déclencheur : écriture locale OU timeout 5 min
+        _sync_event.clear()
+        try:
+            await asyncio.wait_for(_sync_event.wait(), timeout=_AUTO_SYNC_INTERVAL)
+            # Écriture détectée — debounce pour regrouper les transactions rapides
+            await asyncio.sleep(_SYNC_DEBOUNCE)
+        except asyncio.TimeoutError:
+            pass  # cycle régulier 5 min
 
 
 @app.on_event("startup")
