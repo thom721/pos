@@ -57,10 +57,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Future<void> _loadSavedServer() async {
     final prefs = await SharedPreferences.getInstance();
-    final ip = prefs.getString(AppConstants.serverIpKey);
-    if (ip != null && ip.isNotEmpty) {
-      setState(() => _serverCtrl.text = ip);
-    }
+    // Prefer the full saved URL; fall back to legacy IP-only key.
+    final url = prefs.getString(AppConstants.serverUrlKey) ?? '';
+    final ip  = prefs.getString(AppConstants.serverIpKey)  ?? '';
+    final display = url.isNotEmpty ? url : ip;
+    if (display.isNotEmpty) setState(() => _serverCtrl.text = display);
   }
 
   Future<void> _submitCloud() async {
@@ -70,9 +71,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         .cloudLogin(_emailCtrl.text.trim(), _cloudPassCtrl.text);
   }
 
+  /// Builds a plain-HTTP URL from the user's input.
+  /// Accepts: "192.168.0.103", "192.168.0.103:9003", "http://192.168.0.103:8002"
+  String _buildLocalUrl(String raw) {
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+    // "ip" or "ip:port"
+    final hasPort = raw.contains(':');
+    return hasPort ? 'http://$raw' : 'http://$raw:8002';
+  }
+
   Future<void> _submitLocal() async {
     if (!_localFormKey.currentState!.validate()) return;
-    await saveLocalServer(_serverCtrl.text.trim());
+    await saveServerUrl(_buildLocalUrl(_serverCtrl.text.trim()));
     await ref
         .read(authProvider.notifier)
         .login(_usernameCtrl.text.trim(), _localPassCtrl.text);
@@ -437,15 +447,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             const SizedBox(height: 10),
             TextFormField(
               controller: _serverCtrl,
-              keyboardType: TextInputType.number,
+              keyboardType: TextInputType.url,
               decoration: const InputDecoration(
-                labelText: 'Adresse IP du serveur',
-                hintText: '192.168.0.104',
+                labelText: 'Adresse du serveur',
+                hintText: '192.168.0.104 ou 192.168.0.104:8002',
                 prefixIcon: Icon(Icons.router_outlined),
-                helperText: 'Ex: 192.168.0.104 — se connecte via https://infini-post.local',
+                helperText: 'IP seule → port 8002 par défaut',
               ),
               inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+                FilteringTextInputFormatter.allow(RegExp(r'[\d.:]')),
               ],
             ),
           ],
