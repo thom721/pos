@@ -12,16 +12,35 @@ except ImportError:
 
 
 def _find_config_file() -> Path:
-    """Search for pos_server.ini next to the executable, then CWD, then user home."""
-    candidates = [
-        Path(os.path.dirname(os.path.abspath(__file__))).parent.parent / "pos_server.ini",
-        Path.cwd() / "pos_server.ini",
-        Path.home() / ".pos_connect" / "pos_server.ini",
-    ]
+    """
+    Search for pos_server.ini in order of priority.
+    On Windows, ProgramData is writable without admin rights — preferred over
+    Program Files which requires elevation.
+    """
+    candidates = []
+
+    # Windows: C:\ProgramData\POS_Connect\ — lisible/modifiable sans admin
+    if os.name == "nt":
+        prog_data = Path(os.environ.get("PROGRAMDATA", "C:\\ProgramData"))
+        candidates.append(prog_data / "POS_Connect" / "pos_server.ini")
+
+    # Répertoire de l'exécutable (ou du projet en dev)
+    candidates.append(
+        Path(os.path.dirname(os.path.abspath(__file__))).parent.parent / "pos_server.ini"
+    )
+
+    # Répertoire courant
+    candidates.append(Path.cwd() / "pos_server.ini")
+
+    # Dossier utilisateur (~/.pos_connect/)
+    candidates.append(Path.home() / ".pos_connect" / "pos_server.ini")
+
     for p in candidates:
         if p.exists():
             return p
-    return candidates[0]  # default write path
+
+    # Chemin d'écriture par défaut : ProgramData sur Windows, sinon répertoire courant
+    return candidates[0]
 
 
 def load_ini_config() -> dict:
