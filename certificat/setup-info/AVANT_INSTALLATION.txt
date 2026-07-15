@@ -1,0 +1,48 @@
+AVANT D'INSTALLER POS CONNECT — INFORMATIONS IMPORTANTES
+=========================================================
+
+Bienvenue dans l'installation de POS Connect — Serveur Local.
+
+PRÉREQUIS SYSTÈME
+-----------------
+  Systeme d'exploitation : Windows 10 / 11 (64 bits)
+  Processeur             : Intel/AMD x64, minimum 2 cœurs
+  Mémoire RAM            : 4 Go minimum (8 Go recommandé)
+  Espace disque          : 2 Go libres minimum
+  Réseau                 : Connexion locale requise pour les postes clients
+
+CE QUI SERA INSTALLÉ
+--------------------
+  - POS Connect Serveur (API FastAPI compilée)
+  - Nginx (reverse proxy HTTPS)
+  - Certificat SSL auto-signé (pour les connexions sécurisées sur le réseau local)
+  - NSSM (gestionnaire de services Windows)
+  - Deux services Windows démarrés automatiquement :
+      · POS_Connect_Nginx  — proxy HTTPS (port 443)
+      · POS_Connect_API    — serveur API  (port 9003)
+
+DOSSIER D'INSTALLATION
+----------------------
+  C:\Program Files\POS_Connect\
+
+AVANT DE CONTINUER, VÉRIFIEZ QUE :
+-----------------------------------
+  [ ] Vous avez les droits Administrateur sur ce poste
+  [ ] Les ports 443 et 9003 ne sont pas bloqués par un autre logiciel
+      (désactivez temporairement l'antivirus si nécessaire)
+  [ ] Vous avez votre code d'abonnement POS Connect à portée de main
+  [ ] MySQL / MariaDB est installé et accessible si vous utilisez ce mode
+      (SQLite est disponible sans installation supplémentaire)
+
+POSTES CLIENTS (AUTRES ORDINATEURS)
+------------------------------------
+  Après l'installation du serveur, les autres postes du réseau local
+  pourront se connecter via l'adresse IP de ce serveur sur le port 9003.
+  Ex : http://192.168.1.10:9003
+
+SUPPORT
+-------
+  Site web : https://posconnect.ht
+  Email    : support@posconnect.ht
+
+Cliquez sur Suivant pour continuer l'installation.

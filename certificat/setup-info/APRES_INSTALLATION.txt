@@ -1,0 +1,57 @@
+INSTALLATION TERMINÉE — POS CONNECT SERVEUR LOCAL
+==================================================
+
+POS Connect a été installé avec succès sur votre ordinateur.
+
+SERVICES DÉMARRÉS
+-----------------
+  ✔ POS_Connect_Nginx  — Proxy HTTPS  (port 443)
+  ✔ POS_Connect_API    — Serveur API  (port 9003)
+
+  Ces deux services démarrent automatiquement avec Windows.
+  Pour les gérer : Panneau de configuration → Outils d'administration → Services
+
+PROCHAINES ÉTAPES
+-----------------
+
+  1. OUVRIR L'APPLICATION POS CONNECT
+     Lancez l'application POS Connect sur ce poste ou sur un poste client.
+
+  2. PREMIÈRE CONFIGURATION (WIZARD)
+     Au premier lancement, l'assistant d'installation vous guidera pour :
+       - Choisir le mode (Serveur / Client / Les deux)
+       - Configurer la base de données (SQLite ou MySQL)
+       - Créer le compte administrateur de votre boutique
+       - Connecter votre abonnement cloud (optionnel)
+
+  3. CONNEXION DEPUIS UN AUTRE POSTE
+     Adresse à utiliser sur les postes clients :
+       http://<IP_DE_CE_SERVEUR>:9003
+     Exemple : http://192.168.1.10:9003
+
+     Pour connaître l'adresse IP de ce serveur :
+       Ouvrez l'invite de commandes → tapez : ipconfig
+       Notez l'adresse IPv4 de la carte réseau locale.
+
+  4. CERTIFICAT SSL (CONNEXION SÉCURISÉE)
+     Un certificat auto-signé a été installé pour sécuriser les connexions
+     sur le réseau local. Si votre navigateur affiche un avertissement de
+     sécurité, c'est normal — cliquez sur "Continuer quand même".
+
+FICHIERS IMPORTANTS
+-------------------
+  Config serveur : C:\Program Files\POS_Connect\pos_server.ini
+  Logs API       : C:\Program Files\POS_Connect\logs\api.log
+  Logs Nginx     : C:\Program Files\POS_Connect\nginx\logs\
+
+DÉSINSTALLATION
+---------------
+  Panneau de configuration → Programmes → POS Connect → Désinstaller
+  Ou relancez ce setup et choisissez "Désinstaller".
+
+SUPPORT TECHNIQUE
+-----------------
+  Documentation : https://posconnect.ht/docs
+  Email         : support@posconnect.ht
+
+Merci d'utiliser POS Connect !
