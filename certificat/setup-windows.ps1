@@ -52,7 +52,9 @@ $HttpsPort    = 443
 # MySQL — utilisé si MySQL absent du système
 $MysqlVer     = "8.0.39"
 $MysqlInstDir = Join-Path $env:ProgramFiles "MySQL\MySQL Server 8.0"
-$MysqlUrl     = "https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-$MysqlVer-winx64.zip"
+$MysqlZipName = "mysql-$MysqlVer-winx64.zip"
+$MysqlZipLocal= Join-Path $InstallRoot $MysqlZipName   # cache local avant téléchargement
+$MysqlUrl     = "https://dev.mysql.com/get/Downloads/MySQL-8.0/$MysqlZipName"
 $DbHost       = "localhost"
 $DbPort       = 3306
 $DbName       = "pos_connect"
@@ -271,13 +273,18 @@ if ($iniExists) {
     Write-Host "  MySQL non détecté — installation en cours..." -ForegroundColor DarkGray
 
     if (-not (Test-Path "$MysqlInstDir\bin\mysqld.exe")) {
-        $zipTmp = "$env:TEMP\mysql-$MysqlVer.zip"
-        Invoke-WebRequest -Uri $MysqlUrl -OutFile $zipTmp -UseBasicParsing
+        # Vérifier le cache local avant de télécharger
+        if (Test-Path $MysqlZipLocal) {
+            Write-Host "  ZIP MySQL trouvé dans $InstallRoot — extraction..." -ForegroundColor DarkGray
+        } else {
+            Write-Host "  Téléchargement MySQL $MysqlVer..." -ForegroundColor DarkGray
+            Invoke-WebRequest -Uri $MysqlUrl -OutFile $MysqlZipLocal -UseBasicParsing
+            Write-OK "ZIP téléchargé et conservé dans $InstallRoot"
+        }
         New-Item -Path (Split-Path $MysqlInstDir -Parent) -ItemType Directory -Force | Out-Null
-        Expand-Archive $zipTmp "$env:TEMP\mysql_tmp" -Force
+        Expand-Archive $MysqlZipLocal "$env:TEMP\mysql_tmp" -Force
         Move-Item "$env:TEMP\mysql_tmp\mysql-$MysqlVer-winx64" $MysqlInstDir
         Remove-Item "$env:TEMP\mysql_tmp" -Recurse -Force
-        Remove-Item $zipTmp -Force
         Write-OK "MySQL extrait dans $MysqlInstDir"
     }
 
