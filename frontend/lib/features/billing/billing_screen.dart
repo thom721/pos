@@ -558,8 +558,7 @@ class _MoncashCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final number  = config['moncash_number'] as String? ?? '';
-    final priceHtg = (config['monthly_price_htg'] as num? ?? 1500).toStringAsFixed(0);
+    final priceHtg = (config['monthly_price_htg'] as num? ?? 1500).toDouble();
     final mode    = config['moncash_mode'] as String? ?? 'manual';
     final isApi   = mode == 'api';
 
@@ -572,16 +571,11 @@ class _MoncashCard extends StatelessWidget {
           : 'Paiement mobile MonCash (Digicel)',
       action: isApi
           ? _ApiModeAction(
-              priceLabel: '$priceHtg HTG / mois',
+              priceLabel: '${priceHtg.toStringAsFixed(0)} HTG / mois',
               buttonLabel: 'Payer avec MonCash',
               color: const Color(0xFFE53935),
             )
-          : _ManualPaymentForm(
-              method: 'moncash',
-              number: number.isEmpty ? '+509 XXXX XXXX' : number,
-              priceHtg: priceHtg,
-              stepVerb: 'Transfert',
-            ),
+          : _ManualPaymentForm(method: 'moncash', priceHtg: priceHtg),
     );
   }
 }
@@ -594,8 +588,7 @@ class _NatcashCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final number   = config['natcash_number'] as String? ?? '';
-    final priceHtg = (config['monthly_price_htg'] as num? ?? 1500).toStringAsFixed(0);
+    final priceHtg = (config['monthly_price_htg'] as num? ?? 1500).toDouble();
     final mode     = config['natcash_mode'] as String? ?? 'manual';
     final isApi    = mode == 'api';
 
@@ -608,16 +601,11 @@ class _NatcashCard extends StatelessWidget {
           : 'Paiement mobile NatCash (Natcom)',
       action: isApi
           ? _ApiModeAction(
-              priceLabel: '$priceHtg HTG / mois',
+              priceLabel: '${priceHtg.toStringAsFixed(0)} HTG / mois',
               buttonLabel: 'Payer avec NatCash',
               color: const Color(0xFF1565C0),
             )
-          : _ManualPaymentForm(
-              method: 'natcash',
-              number: number.isEmpty ? '+509 XXXX XXXX' : number,
-              priceHtg: priceHtg,
-              stepVerb: 'Payer',
-            ),
+          : _ManualPaymentForm(method: 'natcash', priceHtg: priceHtg),
     );
   }
 }
@@ -844,16 +832,16 @@ class _InfoRow extends StatelessWidget {
 // ── Manual payment submission form ────────────────────────────────────────────
 
 class _ManualPaymentForm extends StatefulWidget {
-  final String method;
-  final String number;
-  final String priceHtg;
-  final String stepVerb;
+  final String  method;
+  final double  priceHtg;
+  final String? number;    // null = cache étapes + champ référence
+  final String? stepVerb;
 
   const _ManualPaymentForm({
     required this.method,
-    required this.number,
     required this.priceHtg,
-    required this.stepVerb,
+    this.number,
+    this.stepVerb,
   });
 
   @override
@@ -875,19 +863,18 @@ class _ManualPaymentFormState extends State<_ManualPaymentForm> {
     super.dispose();
   }
 
-  double get _totalAmount => (_months * (double.tryParse(widget.priceHtg) ?? 0));
+  double get _totalAmount => widget.priceHtg * _months;
 
   Future<void> _submit() async {
     final ref = _refCtrl.text.trim();
-    if (ref.isEmpty) return;
+    // Référence obligatoire seulement si le numéro de paiement est affiché
+    if (widget.number != null && ref.isEmpty) return;
     setState(() { _submitting = true; _error = null; _submitted = false; });
     try {
       await dio.post('/api/billing/submit-payment', data: {
-        'method':    widget.method,
-        'amount':    _totalAmount,
-        'currency':  'HTG',
-        'months':    _months,
-        'reference': ref,
+        'method':  widget.method,
+        'months':  _months,
+        if (ref.isNotEmpty) 'reference': ref,
       });
       setState(() { _submitted = true; });
     } catch (e) {
@@ -954,29 +941,31 @@ class _ManualPaymentFormState extends State<_ManualPaymentForm> {
         ),
         const SizedBox(height: 12),
 
-        // ── Payment steps ─────────────────────────────────────────────────
-        _PaymentStep(number: '1',
-            text: 'Ouvrez ${widget.method == 'moncash' ? 'MonCash' : 'NatCash'} '
-                  'et sélectionnez "${widget.stepVerb}"'),
-        _PaymentStep(number: '2',
-            text: 'Envoyez $totalStr HTG'
-                  '${_months > 1 ? ' ($_months × ${widget.priceHtg} HTG)' : ''}'
-                  ' au numéro :'),
-        _CopyRow(value: widget.number),
-        _PaymentStep(number: '3',
-            text: 'Entrez le numéro de transaction ci-dessous et cliquez Soumettre :'),
-        const SizedBox(height: 6),
-        TextField(
-          controller: _refCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Numéro de transaction / reçu',
-            hintText: 'Ex: MC-20260715-XXXX',
-            prefixIcon: Icon(Icons.tag_rounded),
-            isDense: true,
+        // ── Étapes de paiement (visibles uniquement si un numéro est configuré) ──
+        if (widget.number != null) ...[
+          _PaymentStep(number: '1',
+              text: 'Ouvrez ${widget.method == 'moncash' ? 'MonCash' : 'NatCash'} '
+                    'et sélectionnez "${widget.stepVerb ?? ''}"'),
+          _PaymentStep(number: '2',
+              text: 'Envoyez $totalStr HTG'
+                    '${_months > 1 ? ' ($_months × ${widget.priceHtg.toStringAsFixed(0)} HTG)' : ''}'
+                    ' au numéro :'),
+          _CopyRow(value: widget.number!),
+          _PaymentStep(number: '3',
+              text: 'Entrez le numéro de transaction ci-dessous et cliquez Soumettre :'),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _refCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Numéro de transaction / reçu',
+              hintText: 'Ex: MC-20260715-XXXX',
+              prefixIcon: Icon(Icons.tag_rounded),
+              isDense: true,
+            ),
+            onSubmitted: (_) { if (!_submitting) _submit(); },
           ),
-          onSubmitted: (_) { if (!_submitting) _submit(); },
-        ),
-        const SizedBox(height: 12),
+          const SizedBox(height: 12),
+        ],
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(

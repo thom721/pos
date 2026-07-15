@@ -18,12 +18,9 @@ from api.core.permissions import P
 
 
 class SubmitPaymentRequest(BaseModel):
-    method: str          # moncash | natcash
-    amount: float
-    currency: str = "HTG"
-    months: int = 1      # 1–12
-    reference: str       # numéro de transaction / reçu
-    description: str | None = None
+    method: str = "manual"        # moncash | natcash | manual
+    months: int = 1               # 1–12
+    reference: str | None = None  # preuve de transaction optionnelle
 
 router = APIRouter(prefix="/api/billing", tags=["Billing"])
 
@@ -348,26 +345,17 @@ def submit_payment(
     Creates a BillingPayment with status='pending'.
     A superadmin must confirm it via PATCH /api/admin/payments/{id}/confirm.
     """
-    if body.method not in ("moncash", "natcash"):
-        raise HTTPException(status_code=400, detail="Méthode invalide : moncash ou natcash")
     if not 1 <= body.months <= 12:
         raise HTTPException(status_code=400, detail="Nombre de mois invalide (1–12)")
 
     tenant = _get_tenant(db, current_user)
 
-    # Prevent duplicate submission of the same reference
-    existing = db.query(BillingPayment).filter(
-        BillingPayment.tenant_id == tenant.id,
-        BillingPayment.reference == body.reference,
-    ).first()
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Une soumission avec la référence '{body.reference}' existe déjà (statut: {existing.status})",
-        )
+    # Compute amount from platform config
+    cfg = db.query(PlatformConfig).first()
+    price_htg = float(cfg.monthly_price_htg) if cfg else 1500.0
+    amount = price_htg * body.months
 
     now = datetime.now(timezone.utc)
-    # Generate invoice number (prefix differs to distinguish pending from paid)
     year   = now.year
     prefix = f"PEND-{year}-"
     count  = db.query(BillingPayment).filter(
@@ -377,16 +365,17 @@ def submit_payment(
     invoice_number = f"{prefix}{count + 1:04d}"
 
     months_label = f"{body.months} mois" if body.months > 1 else "1 mois"
+    method_label = {"moncash": "MonCash", "natcash": "NatCash"}.get(body.method, "Manuel")
     payment = BillingPayment(
         tenant_id=tenant.id,
         invoice_number=invoice_number,
         method=body.method,
-        amount=body.amount,
-        currency=body.currency,
+        amount=amount,
+        currency="HTG",
         months=body.months,
         status="pending",
         reference=body.reference,
-        description=body.description or f"Paiement {body.method.capitalize()} {months_label} — en attente de confirmation",
+        description=f"Demande {method_label} — {months_label} ({amount:.0f} HTG) — en attente de paiement",
         paid_at=None,
         period_start=encrypt_date(now, tenant.id),
         period_end=encrypt_date(now + timedelta(days=30 * body.months), tenant.id),
