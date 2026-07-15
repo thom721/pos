@@ -2,7 +2,8 @@
 #  POS Connect — Installation serveur local Windows
 #  - Installe Nginx comme service Windows (via NSSM)
 #  - Configure HTTPS avec le certificat fourni
-#  - Ouvre les ports 80 et 443 dans le pare-feu
+#  - Enregistre pos-server.exe (Nuitka) comme service POS-API
+#  - Ouvre les ports 80, 443 et 9003 dans le pare-feu
 #  - Approuve le certificat dans le magasin Windows
 #  - Ajoute infini-post.local dans le fichier hosts
 #
@@ -13,17 +14,20 @@
 #Requires -RunAsAdministrator
 $ErrorActionPreference = "Stop"
 
-$ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
-$InstallDir  = "C:\POS_Connect\nginx"
-$CertDir     = "$InstallDir\certs"
-$ConfDir     = "$InstallDir\conf"
-$NssmExe     = "C:\POS_Connect\nssm.exe"
-$NginxVer    = "1.27.4"
-$NginxUrl    = "https://nginx.org/download/nginx-$NginxVer.zip"
-$NssmUrl     = "https://nssm.cc/release/nssm-2.24.zip"
-$HostsFile   = "C:\Windows\System32\drivers\etc\hosts"
-$Hostname    = "infini-post.local"
-$ServiceName = "POS-Nginx"
+$ScriptDir      = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RootDir        = "C:\POS_Connect"
+$InstallDir     = "$RootDir\nginx"
+$CertDir        = "$InstallDir\certs"
+$ConfDir        = "$InstallDir\conf"
+$NssmExe        = "$RootDir\nssm.exe"
+$ApiExe         = "$RootDir\pos-server.exe"
+$NginxVer       = "1.27.4"
+$NginxUrl       = "https://nginx.org/download/nginx-$NginxVer.zip"
+$NssmUrl        = "https://nssm.cc/release/nssm-2.24.zip"
+$HostsFile      = "C:\Windows\System32\drivers\etc\hosts"
+$Hostname       = "infini-post.local"
+$NginxService   = "POS-Nginx"
+$ApiService     = "POS-API"
 
 function Write-Step($msg) { Write-Host "`n→ $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "  ✓ $msg" -ForegroundColor Green }
@@ -42,16 +46,16 @@ Write-OK "Certificats présents."
 
 # ── 1. Télécharger et extraire Nginx pour Windows ─────────────────────────────
 Write-Step "Nginx $NginxVer..."
-if (Test-Path "$InstallDir\nginx.exe") {
-    Write-Host "  Nginx déjà installé dans $InstallDir." -ForegroundColor DarkGray
+New-Item -ItemType Directory -Path $RootDir -Force | Out-Null
+if (Test-Path $InstallDir) {
+    Write-Host "  Dossier nginx déjà présent dans $InstallDir." -ForegroundColor DarkGray
 } else {
-    New-Item -ItemType Directory -Path "C:\POS_Connect" -Force | Out-Null
     $nginxZip = "$env:TEMP\nginx-$NginxVer.zip"
     Write-Host "  Téléchargement..." -ForegroundColor DarkGray
     Invoke-WebRequest -Uri $NginxUrl -OutFile $nginxZip -UseBasicParsing
-    Expand-Archive -Path $nginxZip -DestinationPath "C:\POS_Connect\nginx_tmp" -Force
-    Move-Item "C:\POS_Connect\nginx_tmp\nginx-$NginxVer" $InstallDir
-    Remove-Item "C:\POS_Connect\nginx_tmp" -Recurse -Force
+    Expand-Archive -Path $nginxZip -DestinationPath "$RootDir\nginx_tmp" -Force
+    Move-Item "$RootDir\nginx_tmp\nginx-$NginxVer" $InstallDir
+    Remove-Item "$RootDir\nginx_tmp" -Recurse -Force
     Remove-Item $nginxZip -Force
     Write-OK "Nginx extrait dans $InstallDir"
 }
@@ -94,25 +98,45 @@ if (Test-Path $NssmExe) {
     Write-OK "NSSM installé."
 }
 
-# ── 4. Enregistrer Nginx comme service Windows ────────────────────────────────
-Write-Step "Service Windows $ServiceName..."
-$existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if ($existingService) {
+# ── 4a. Enregistrer Nginx comme service Windows ───────────────────────────────
+Write-Step "Service Windows $NginxService..."
+$svc = Get-Service -Name $NginxService -ErrorAction SilentlyContinue
+if ($svc) {
     Write-Host "  Service existant — arrêt et reconfiguration..." -ForegroundColor DarkGray
-    & $NssmExe stop $ServiceName 2>$null
-    & $NssmExe remove $ServiceName confirm 2>$null
+    & $NssmExe stop    $NginxService 2>$null
+    & $NssmExe remove  $NginxService confirm 2>$null
 }
-& $NssmExe install $ServiceName "$InstallDir\nginx.exe"
-& $NssmExe set $ServiceName AppDirectory $InstallDir
-& $NssmExe set $ServiceName DisplayName "POS Connect - Nginx"
-& $NssmExe set $ServiceName Description "Reverse proxy HTTPS pour POS Connect local"
-& $NssmExe set $ServiceName Start SERVICE_AUTO_START
-& $NssmExe start $ServiceName
-Write-OK "Service $ServiceName démarré."
+& $NssmExe install $NginxService "$InstallDir\nginx.exe"
+& $NssmExe set     $NginxService AppDirectory $InstallDir
+& $NssmExe set     $NginxService DisplayName "POS Connect - Nginx"
+& $NssmExe set     $NginxService Description "Reverse proxy HTTPS pour POS Connect local"
+& $NssmExe set     $NginxService Start SERVICE_AUTO_START
+& $NssmExe start   $NginxService
+Write-OK "Service $NginxService démarré."
 
-# ── 5. Ouvrir les ports 80 et 443 dans le pare-feu Windows ───────────────────
-Write-Step "Pare-feu (ports 80 et 443)..."
-foreach ($port in @(80, 443)) {
+# ── 4b. Enregistrer pos-server.exe (FastAPI/Nuitka) comme service Windows ─────
+Write-Step "Service Windows $ApiService (FastAPI)..."
+if (-not (Test-Path $ApiExe)) {
+    Write-Host "  pos-server.exe introuvable dans $RootDir" -ForegroundColor Yellow
+    Write-Host "  Copie pos-server.exe puis relance setup-windows.ps1 pour l'activer." -ForegroundColor Yellow
+} else {
+    $svc = Get-Service -Name $ApiService -ErrorAction SilentlyContinue
+    if ($svc) {
+        & $NssmExe stop   $ApiService 2>$null
+        & $NssmExe remove $ApiService confirm 2>$null
+    }
+    & $NssmExe install $ApiService $ApiExe
+    & $NssmExe set     $ApiService AppDirectory $RootDir
+    & $NssmExe set     $ApiService DisplayName "POS Connect - API"
+    & $NssmExe set     $ApiService Description "Serveur FastAPI compilé (Nuitka)"
+    & $NssmExe set     $ApiService Start SERVICE_AUTO_START
+    & $NssmExe start   $ApiService
+    Write-OK "Service $ApiService démarré."
+}
+
+# ── 5. Ouvrir les ports 80, 443 et 9003 dans le pare-feu Windows ─────────────
+Write-Step "Pare-feu (ports 80, 443, 9003)..."
+foreach ($port in @(80, 443, 9003)) {
     $ruleName = "POS Connect Port $port"
     $existing = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
     if ($existing) {
@@ -156,9 +180,7 @@ Write-Host "=================================================" -ForegroundColor 
 Write-Host "  ✓ Installation terminée !" -ForegroundColor Green
 Write-Host "=================================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Nginx   : service '$ServiceName' (démarrage automatique)" -ForegroundColor White
-Write-Host "  URL     : https://infini-post.local" -ForegroundColor White
-Write-Host ""
-Write-Host "  Note : FastAPI doit tourner sur 127.0.0.1:9003" -ForegroundColor DarkGray
-Write-Host "  (python -m uvicorn api.main:app --host 127.0.0.1 --port 9003)" -ForegroundColor DarkGray
+Write-Host "  Nginx  : service '$NginxService' (ports 80/443, démarrage auto)" -ForegroundColor White
+Write-Host "  API    : service '$ApiService'  (port 9003)" -ForegroundColor White
+Write-Host "  URL    : https://infini-post.local" -ForegroundColor White
 Write-Host ""
