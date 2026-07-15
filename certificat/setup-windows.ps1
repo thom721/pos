@@ -33,7 +33,8 @@ $NginxDir     = Join-Path $InstallRoot "nginx"
 $NginxCerts   = Join-Path $NginxDir   "certs"
 $NginxConf    = Join-Path $NginxDir   "conf"
 $ApiDir       = Join-Path $InstallRoot "api"
-$NssmExe      = Join-Path $InstallRoot "nssm.exe"
+$NssmDir      = Join-Path $InstallRoot "nssm"
+$NssmExe      = Join-Path $NssmDir    "nssm.exe"
 
 $NginxVer     = "1.27.4"
 $NginxUrl     = "https://nginx.org/download/nginx-$NginxVer.zip"
@@ -44,6 +45,10 @@ $Hostname     = "infini-post.local"
 $NginxSvc     = "POS-Nginx"
 $ApiSvc       = "POS-API"
 $ApiExe       = Join-Path $ApiDir "posconnect-server.exe"
+
+# Ports par défaut — peuvent être remplacés si occupés (voir étape 2)
+$HttpPort     = 80
+$HttpsPort    = 443
 
 function Write-Step($msg) { Write-Host "`n→ $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "  ✓ $msg" -ForegroundColor Green }
@@ -66,27 +71,32 @@ Write-Step "Dossier d'installation : $InstallRoot"
 New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
 Write-OK "Dossier prêt."
 
-# ── 2. Vérifier les conflits de port avant de continuer ──────────────────────
+# ── 2. Vérifier les conflits de port — proposer des alternatives ─────────────
 Write-Step "Vérification des ports 80 et 443..."
-$portConflict = $false
 foreach ($port in @(80, 443)) {
     $conn = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
     if ($conn) {
         $proc = Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
         $name = if ($proc) { $proc.Name } else { "PID $($conn.OwningProcess)" }
-        # Conflit uniquement si ce n'est PAS notre propre service nginx
-        if ($name -ne "nginx") {
-            Write-Warn "Port $port déjà utilisé par '$name' (PID $($conn.OwningProcess))."
-            Write-Warn "Arrête ce processus avant de continuer, sinon nginx ne démarrera pas."
-            $portConflict = $true
-        } else {
+        if ($name -eq "nginx") {
             Write-Host "  Port $port : nginx déjà en écoute (sera reconfiguré)." -ForegroundColor DarkGray
+        } else {
+            $alt = if ($port -eq 80) { 8080 } else { 8443 }
+            Write-Warn "Port $port utilisé par '$name' (PID $($conn.OwningProcess))."
+            $rep = Read-Host "  Utiliser le port $alt à la place ? (O/n)"
+            if ($rep -notmatch '^[nN]') {
+                if ($port -eq 80)  { $HttpPort  = $alt }
+                if ($port -eq 443) { $HttpsPort = $alt }
+                Write-OK "Port $alt sera utilisé à la place du port $port."
+            } else {
+                Fail "Port $port occupé et aucune alternative choisie. Libère-le puis relance."
+            }
         }
     }
 }
-if ($portConflict) {
-    $rep = Read-Host "`n  Continuer quand même ? (o/N)"
-    if ($rep -notmatch '^[oOyY]') { exit 1 }
+if ($HttpsPort -ne 443) {
+    Write-Warn "Port HTTPS non standard ($HttpsPort). Les clients devront se connecter via :"
+    Write-Warn "  https://${Hostname}:${HttpsPort}"
 }
 
 # ── 3. Télécharger Nginx si nginx.exe absent ──────────────────────────────────
@@ -113,14 +123,13 @@ if (Test-Path "$NginxDir\nginx.exe") {
 }
 
 # ── 4. Appliquer la configuration (toujours, même si nginx existait déjà) ─────
-# Cette étape s'exécute à chaque lancement du script pour s'assurer
-# que les certificats et la config sont à jour.
-Write-Step "Configuration Nginx (certs + nginx.conf)..."
+# Généré dynamiquement pour intégrer les ports réels ($HttpPort / $HttpsPort).
+Write-Step "Configuration Nginx (ports HTTP=$HttpPort HTTPS=$HttpsPort)..."
 New-Item -ItemType Directory -Path $NginxCerts -Force | Out-Null
-Copy-Item "$ScriptDir\server.crt"         "$NginxCerts\server.crt" -Force
-Copy-Item "$ScriptDir\server.key"         "$NginxCerts\server.key" -Force
-Copy-Item "$ScriptDir\nginx-windows.conf" "$NginxConf\default.conf" -Force
+Copy-Item "$ScriptDir\server.crt" "$NginxCerts\server.crt" -Force
+Copy-Item "$ScriptDir\server.key" "$NginxCerts\server.key" -Force
 
+# nginx.conf principal
 Set-Content "$NginxConf\nginx.conf" @"
 worker_processes  1;
 events { worker_connections 1024; }
@@ -130,6 +139,39 @@ http {
     sendfile      on;
     keepalive_timeout 65;
     include conf/default.conf;
+}
+"@ -Encoding UTF8
+
+# Vhost généré avec les ports détectés (backtick = échappement PowerShell pour $)
+Set-Content "$NginxConf\default.conf" @"
+server {
+    listen      $HttpPort;
+    server_name $Hostname localhost;
+    return 301  https://`$host:$HttpsPort`$request_uri;
+}
+server {
+    listen      $HttpsPort ssl;
+    server_name $Hostname localhost;
+
+    ssl_certificate     certs/server.crt;
+    ssl_certificate_key certs/server.key;
+
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    client_max_body_size 20M;
+
+    location / {
+        proxy_pass         http://127.0.0.1:9003;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              `$host;
+        proxy_set_header   X-Real-IP         `$remote_addr;
+        proxy_set_header   X-Forwarded-For   `$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+        proxy_read_timeout 60s;
+    }
 }
 "@ -Encoding UTF8
 Write-OK "Certificats et configuration appliqués."
@@ -159,18 +201,20 @@ foreach ($f in @("pos_server.ini", ".env")) {
     }
 }
 
-# ── 7. Télécharger NSSM ───────────────────────────────────────────────────────
+# ── 7. Télécharger NSSM si le dossier est absent ─────────────────────────────
 Write-Step "NSSM (gestionnaire de services Windows)..."
-if (Test-Path $NssmExe) {
-    Write-Host "  NSSM déjà présent." -ForegroundColor DarkGray
+if (Test-Path $NssmDir) {
+    Write-Host "  Dossier NSSM déjà présent — téléchargement ignoré." -ForegroundColor DarkGray
 } else {
+    New-Item -ItemType Directory -Path $NssmDir -Force | Out-Null
     $nssmZip = "$env:TEMP\nssm.zip"
+    Write-Host "  Téléchargement..." -ForegroundColor DarkGray
     Invoke-WebRequest -Uri $NssmUrl -OutFile $nssmZip -UseBasicParsing
     Expand-Archive -Path $nssmZip -DestinationPath "$env:TEMP\nssm_tmp" -Force
     Copy-Item "$env:TEMP\nssm_tmp\nssm-2.24\win64\nssm.exe" $NssmExe -Force
     Remove-Item "$env:TEMP\nssm_tmp" -Recurse -Force
     Remove-Item $nssmZip -Force
-    Write-OK "NSSM installé."
+    Write-OK "NSSM installé dans $NssmDir"
 }
 
 # ── 8. Service Nginx ──────────────────────────────────────────────────────────
@@ -208,9 +252,9 @@ if (-not (Test-Path $ApiExe)) {
     Write-OK "Service $ApiSvc démarré."
 }
 
-# ── 10. Ports pare-feu : 80, 443, 9003 ───────────────────────────────────────
-Write-Step "Pare-feu (ports 80, 443, 9003)..."
-foreach ($port in @(80, 443, 9003)) {
+# ── 10. Ports pare-feu (avec les ports réels choisis) ────────────────────────
+Write-Step "Pare-feu (ports $HttpPort, $HttpsPort, 9003)..."
+foreach ($port in @($HttpPort, $HttpsPort, 9003)) {
     $rule = "POS Connect Port $port"
     if (Get-NetFirewallRule -DisplayName $rule -ErrorAction SilentlyContinue) {
         Write-Host "  Port $port déjà autorisé." -ForegroundColor DarkGray
@@ -253,8 +297,9 @@ Write-Host "=================================================" -ForegroundColor 
 Write-Host "  ✓ Installation terminée !" -ForegroundColor Green
 Write-Host "=================================================" -ForegroundColor Green
 Write-Host ""
+$FinalUrl = if ($HttpsPort -eq 443) { "https://$Hostname" } else { "https://${Hostname}:${HttpsPort}" }
 Write-Host "  Dossier  : $InstallRoot" -ForegroundColor White
-Write-Host "  Nginx    : service '$NginxSvc'  (ports 80/443)" -ForegroundColor White
+Write-Host "  Nginx    : service '$NginxSvc'  (HTTP=$HttpPort  HTTPS=$HttpsPort)" -ForegroundColor White
 Write-Host "  API      : service '$ApiSvc'    (port 9003)" -ForegroundColor White
-Write-Host "  URL      : https://infini-post.local" -ForegroundColor White
+Write-Host "  URL      : $FinalUrl" -ForegroundColor White
 Write-Host ""
