@@ -57,10 +57,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Future<void> _loadSavedServer() async {
     final prefs = await SharedPreferences.getInstance();
-    // Prefer the full saved URL; fall back to legacy IP-only key.
     final url = prefs.getString(AppConstants.serverUrlKey) ?? '';
     final ip  = prefs.getString(AppConstants.serverIpKey)  ?? '';
-    final display = url.isNotEmpty ? url : ip;
+    // Ignore legacy HTTPS infini-post.local value — it's no longer valid.
+    final display = (url.isNotEmpty && url != 'https://infini-post.local') ? url : ip;
     if (display.isNotEmpty) setState(() => _serverCtrl.text = display);
   }
 
