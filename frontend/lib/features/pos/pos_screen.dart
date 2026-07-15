@@ -3,6 +3,8 @@ import 'package:dio/dio.dart' show FormData, Options, DioException;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/core/responsive.dart';
@@ -791,6 +793,73 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   final _paidCtrl = TextEditingController(text: '0');
   bool _discountUnlocked = false;
 
+  // ── Session caisse ────────────────────────────────────────────────────────
+  Map<String, dynamic>? _session;   // null = pas encore chargé
+  bool _sessionChecked = false;
+  String? _deviceId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initSession());
+  }
+
+  Future<String> _getDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    var id = prefs.getString('pos_device_id');
+    if (id == null) {
+      id = const Uuid().v4();
+      await prefs.setString('pos_device_id', id);
+    }
+    return id;
+  }
+
+  Future<void> _initSession() async {
+    _deviceId = await _getDeviceId();
+    try {
+      final res = await dio.get('/api/sessions/current', queryParameters: {'device_id': _deviceId});
+      final session = res.data['session'];
+      if (mounted) {
+        setState(() {
+          _session = session as Map<String, dynamic>?;
+          _sessionChecked = true;
+        });
+        if (_session == null && mounted) {
+          _promptOpenSession();
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _sessionChecked = true);
+    }
+  }
+
+  void _promptOpenSession() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _OpenSessionDialog(
+        deviceId: _deviceId!,
+        onOpened: (session) {
+          if (mounted) setState(() => _session = session);
+        },
+      ),
+    );
+  }
+
+  void _showCloseSession() {
+    if (_session == null) return;
+    showDialog(
+      context: context,
+      builder: (_) => _CloseSessionDialog(
+        session: _session!,
+        onClosed: () {
+          if (mounted) setState(() => _session = null);
+          _promptOpenSession();
+        },
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _discountCtrl.dispose();
@@ -911,6 +980,45 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                         color: AppColors.info,
                         fontWeight: FontWeight.w600,
                         fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // ── Session banner ────────────────────────────────────────────
+        if (!_sessionChecked)
+          const LinearProgressIndicator(minHeight: 2)
+        else if (_session != null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            color: AppColors.accent.withValues(alpha: 0.10),
+            child: Row(
+              children: [
+                const Icon(Icons.point_of_sale_rounded,
+                    color: AppColors.accent, size: 14),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Session ouverte — Fond: ${_fmt.format((_session!['opening_balance'] as num?)?.toDouble() ?? 0)}',
+                    style: const TextStyle(
+                        color: AppColors.accent,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 11),
+                  ),
+                ),
+                InkWell(
+                  onTap: _showCloseSession,
+                  borderRadius: BorderRadius.circular(4),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    child: Text('Fermer caisse',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.accent,
+                            decoration: TextDecoration.underline,
+                            decorationColor: AppColors.accent)),
                   ),
                 ),
               ],
@@ -1938,4 +2046,233 @@ class _SupervisorAuthDialogState extends State<_SupervisorAuthDialog> {
       ],
     );
   }
+}
+
+// ─── Open session dialog ──────────────────────────────────────────────────────
+class _OpenSessionDialog extends StatefulWidget {
+  final String deviceId;
+  final void Function(Map<String, dynamic> session) onOpened;
+  const _OpenSessionDialog({required this.deviceId, required this.onOpened});
+
+  @override
+  State<_OpenSessionDialog> createState() => _OpenSessionDialogState();
+}
+
+class _OpenSessionDialogState extends State<_OpenSessionDialog> {
+  final _balanceCtrl = TextEditingController(text: '0');
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _balanceCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _open() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final res = await dio.post('/api/sessions/open', data: {
+        'device_id': widget.deviceId,
+        'register_name': 'Caisse',
+        'opening_balance': double.tryParse(_balanceCtrl.text) ?? 0,
+      });
+      final session = res.data['session'] as Map<String, dynamic>;
+      widget.onOpened(session);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _error = e is DioException
+            ? (e.response?.data['message'] ?? 'Erreur réseau')
+            : e.toString();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.point_of_sale_rounded,
+              color: AppColors.accent, size: 20),
+        ),
+        const SizedBox(width: 12),
+        const Text('Ouvrir la caisse',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+      ]),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Saisissez le fond de caisse (espèces disponibles au démarrage).',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _balanceCtrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Fond de caisse (HTG)',
+              prefixIcon: Icon(Icons.payments_outlined, size: 20),
+              isDense: true,
+            ),
+            onSubmitted: (_) => _open(),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
+          ],
+        ],
+      ),
+      actions: [
+        FilledButton(
+          onPressed: _loading ? null : _open,
+          child: _loading
+              ? const SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Ouvrir la caisse'),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Close session dialog ─────────────────────────────────────────────────────
+class _CloseSessionDialog extends StatefulWidget {
+  final Map<String, dynamic> session;
+  final VoidCallback onClosed;
+  const _CloseSessionDialog({required this.session, required this.onClosed});
+
+  @override
+  State<_CloseSessionDialog> createState() => _CloseSessionDialogState();
+}
+
+class _CloseSessionDialogState extends State<_CloseSessionDialog> {
+  late final TextEditingController _balanceCtrl;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _balanceCtrl = TextEditingController(
+        text: (widget.session['opening_balance'] ?? 0).toString());
+  }
+
+  @override
+  void dispose() {
+    _balanceCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _close() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final sessionId = widget.session['id'] as String;
+      await dio.post('/api/sessions/$sessionId/close', data: {
+        'closing_balance': double.tryParse(_balanceCtrl.text) ?? 0,
+      });
+      widget.onClosed();
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _error = e is DioException
+            ? (e.response?.data['message'] ?? 'Erreur réseau')
+            : e.toString();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final openingBalance =
+        (widget.session['opening_balance'] as num?)?.toDouble() ?? 0;
+    final openedAt = widget.session['opened_at'] != null
+        ? DateFormat('HH:mm').format(
+            DateTime.tryParse(widget.session['opened_at'].toString()) ??
+                DateTime.now())
+        : '—';
+
+    return AlertDialog(
+      title: Row(children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.error.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.lock_rounded, color: AppColors.error, size: 20),
+        ),
+        const SizedBox(width: 12),
+        const Text('Fermer la caisse',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+      ]),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _InfoRow('Ouverte à', openedAt),
+          _InfoRow('Fond initial', _fmt.format(openingBalance)),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _balanceCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Solde final en caisse (HTG)',
+              prefixIcon: Icon(Icons.payments_outlined, size: 20),
+              isDense: true,
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : () => Navigator.of(context).pop(),
+          child: const Text('Annuler'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+          onPressed: _loading ? null : _close,
+          child: _loading
+              ? const SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Fermer la caisse'),
+        ),
+      ],
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _InfoRow(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(children: [
+          Text('$label : ',
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textSecondary)),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600)),
+        ]),
+      );
 }

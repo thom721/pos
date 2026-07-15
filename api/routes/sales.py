@@ -12,6 +12,7 @@ from api.services.sale_service import create_sale, list_sales, get_sale, cancel_
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
 from api.core.PaginateHelper import PaginatedResponse as LegacyPaginatedResponse
+from api.services import audit_service
 
 router = APIRouter(prefix="/api/sales", tags=["Sales"])
 
@@ -23,6 +24,12 @@ def store_sale(
     current_user: User = Depends(require_permission(P.SALES_CREATE)),
 ):
     sale = create_sale(db, payload, current_user.id, tenant_id=current_user.tenant_id)
+    audit_service.log(
+        db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        action="CREATE", resource_type="sale", resource_id=sale.id,
+        detail={"total": float(sale.final_amount or 0)},
+    )
+    db.commit()
     return {"message": "Vente enregistrée avec succès", "sale_id": sale.id}
 
 
@@ -83,4 +90,9 @@ def cancel_sale_endpoint(
     current_user: User = Depends(require_permission(P.SALES_CANCEL)),
 ):
     cancel_sale(db, sale_id, current_user.id, tenant_id=current_user.tenant_id)
+    audit_service.log(
+        db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+        action="CANCEL", resource_type="sale", resource_id=sale_id,
+    )
+    db.commit()
     return {"message": "Vente annulée avec succès"}

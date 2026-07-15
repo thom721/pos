@@ -103,6 +103,14 @@ class P:
     PAYROLL_PROCESS = "payroll.process"
     PAYROLL_PAY     = "payroll.pay"
 
+    # Cashier sessions
+    SESSIONS_OPEN  = "sessions.open"
+    SESSIONS_CLOSE = "sessions.close"
+    SESSIONS_READ  = "sessions.read"
+
+    # Audit trail
+    AUDIT_READ = "audit.read"
+
 
 # ---------------------------------------------------------------------------
 # Role → permissions mapping
@@ -131,6 +139,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.EMPLOYEES_CREATE, P.EMPLOYEES_READ, P.EMPLOYEES_UPDATE,
         P.LOANS_CREATE, P.LOANS_READ, P.LOANS_APPROVE,
         P.PAYROLL_CREATE, P.PAYROLL_READ, P.PAYROLL_PROCESS, P.PAYROLL_PAY,
+        P.SESSIONS_OPEN, P.SESSIONS_CLOSE, P.SESSIONS_READ,
+        P.AUDIT_READ,
     },
 
     "cashier": {
@@ -144,6 +154,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.PROFORMAS_CREATE, P.PROFORMAS_READ, P.PROFORMAS_UPDATE,
         P.INVOICES_CREATE, P.INVOICES_READ, P.INVOICES_UPDATE,
         P.CONFIG_READ,
+        P.SESSIONS_OPEN, P.SESSIONS_CLOSE,
     },
 
     "stock_manager": {

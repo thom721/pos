@@ -1,8 +1,8 @@
 from pydantic import BaseModel
 from typing import List, Optional
-from uuid import UUID  
+from uuid import UUID
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, date
 from api.schemas.user import UserRead
 
 class ReceiptItemCreate(BaseModel):
@@ -10,6 +10,8 @@ class ReceiptItemCreate(BaseModel):
     purchase_receipt_id: str
     product_id: str
     received_qty: float
+    lot_number: str | None = None
+    expiry_date: date | None = None
 
 class PurchaseReceiptCreate(BaseModel):
     purchase_id: str

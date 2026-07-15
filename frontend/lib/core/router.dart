@@ -26,6 +26,7 @@ import 'package:pos_connect/features/installer/installer_screen.dart';
 import 'package:pos_connect/features/hr/hr_screen.dart';
 import 'package:pos_connect/features/users/users_screen.dart';
 import 'package:pos_connect/features/admin/admin_screen.dart';
+import 'package:pos_connect/features/audit/audit_screen.dart';
 import 'package:pos_connect/shared/widgets/app_shell.dart';
 
 // Notifies GoRouter when auth state changes, without recreating the router.
@@ -162,6 +163,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/billing',
             builder: (context, state) => const BillingScreen(),
+          ),
+          GoRoute(
+            path: '/audit',
+            builder: (context, state) => const AuditScreen(),
           ),
         ],
       ),

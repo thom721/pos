@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -788,6 +790,13 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
           onPressed: _loading ? null : () => Navigator.of(context).pop(),
           child: const Text('Annuler'),
         ),
+        OutlinedButton.icon(
+          onPressed: _loading ? null : _handleExportCsv,
+          style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 14)),
+          icon: const Icon(Icons.table_chart_outlined, size: 16),
+          label: const Text('CSV'),
+        ),
         ElevatedButton.icon(
           onPressed: _loading ? null : _handlePrint,
           style: ElevatedButton.styleFrom(
@@ -804,6 +813,95 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
         ),
       ],
     );
+  }
+
+  String _buildCsv(List<SaleModel> sales, String sym) {
+    final dateFmt = DateFormat('dd/MM/yyyy HH:mm', 'fr');
+    const sep = ';';
+    final buf = StringBuffer();
+    buf.writeln([
+      'Date', 'Référence', 'Caissier', 'Client', 'Statut',
+      'Total ($sym)', 'Encaissé ($sym)', 'Remise ($sym)',
+    ].map((h) => '"$h"').join(sep));
+
+    for (final s in sales) {
+      buf.writeln([
+        '"${dateFmt.format(s.createdAt)}"',
+        '"${s.reference}"',
+        '"${s.userFullName ?? ''}"',
+        '"${s.customerName ?? ''}"',
+        '"${_statusFr(s.status)}"',
+        s.finalAmount.toStringAsFixed(2),
+        s.paidAmount.toStringAsFixed(2),
+        s.discount.toStringAsFixed(2),
+      ].join(sep));
+    }
+    return buf.toString();
+  }
+
+  String _statusFr(String s) {
+    const m = {'PAID': 'Payé', 'PARTIAL': 'Partiel', 'UNPAID': 'Impayé', 'CANCELLED': 'Annulé'};
+    return m[s.toUpperCase()] ?? s;
+  }
+
+  Future<void> _handleExportCsv() async {
+    final currentUser = ref.read(authProvider);
+    final settings = ref.read(settingsProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final canViewAll = currentUser.user?.canViewAllReports ?? false;
+
+    setState(() => _loading = true);
+    try {
+      final toExclusive = _to.add(const Duration(days: 1));
+      final sales = await _fetchSalesForRange(_from, toExclusive);
+
+      final filtered = canViewAll
+          ? (_selectedUserName != null
+              ? sales.where((s) => s.userFullName == _selectedUserName).toList()
+              : sales)
+          : sales.where((s) => s.userFullName == currentUser.user?.fullName).toList();
+
+      final sym = settings.currencySymbol.trim();
+      final csv = _buildCsv(filtered, sym);
+      final bytes = utf8.encode(csv);
+      final filename =
+          'rapport_ventes_${DateFormat('yyyyMMdd').format(DateTime.now())}.csv';
+
+      if (kIsWeb) {
+        // Web: téléchargement direct via FilePicker
+        await FilePicker.platform.saveFile(
+          dialogTitle: 'Enregistrer le CSV',
+          fileName: filename,
+          bytes: bytes,
+        );
+      } else {
+        final path = await FilePicker.platform.saveFile(
+          dialogTitle: 'Enregistrer le CSV',
+          fileName: filename,
+          allowedExtensions: ['csv'],
+          type: FileType.custom,
+        );
+        if (path != null) {
+          await File(path).writeAsBytes(bytes);
+        }
+      }
+
+      if (mounted) {
+        messenger.showSnackBar(const SnackBar(
+          content: Text('Export CSV téléchargé'),
+          backgroundColor: Colors.green,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(
+          content: Text("Erreur export CSV : $e"),
+          backgroundColor: Colors.red,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _handlePrint() async {

@@ -42,17 +42,12 @@ class ReceiptService:
                 purchase_receipt_id=receipt.id,
                 purchase_item_id=pi.id,
                 product_id=item.product_id,
-                received_qty=item.received_qty
+                received_qty=item.received_qty,
+                lot_number=item.lot_number,
+                expiry_date=item.expiry_date,
             ))
-            
+
             # Stock movement
-            # self.db.add(StockMovement(
-            #     product_id=item.product_id,
-            #     quantity=item.received_qty,
-            #     type="IN",
-            #     source_type="purchase_receipt",
-            #     source_id=receipt.id
-            # ))
             self.db.add(StockMovement(
                 product_id=item.product_id,
                 user_id=user_id,
@@ -60,7 +55,9 @@ class ReceiptService:
                 quantity=item.received_qty,
                 source_type="purchase_receipt",
                 source_id=data.purchase_id,
-                note="Entrée stock (achat)"
+                note="Entrée stock (achat)",
+                lot_number=item.lot_number,
+                expiry_date=item.expiry_date,
             ))
 
         self._update_purchase_status(data.purchase_id)

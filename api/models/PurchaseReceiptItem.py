@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Numeric, ForeignKey,Float
+from sqlalchemy import Column, String, Integer, Numeric, ForeignKey, Float, Date
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
@@ -9,7 +9,9 @@ class PurchaseReceiptItem(UUIDBase):
     purchase_receipt_id = Column(ForeignKey("purchase_receipts.id"))
     purchase_item_id = Column(ForeignKey("purchase_items.id"))
 
-    product_id = Column(String(36), nullable=False)
-    received_qty = Column(Float, nullable=False)
+    product_id   = Column(String(36), nullable=False)
+    received_qty = Column(Float,      nullable=False)
+    lot_number   = Column(String(100), nullable=True)
+    expiry_date  = Column(Date,        nullable=True)
 
     receipt = relationship("PurchaseReceipt", back_populates="items")

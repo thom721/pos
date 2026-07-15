@@ -12,6 +12,7 @@ from api.core.permissions import P
 from api.core.PaginateHelper import PaginatedResponse
 from api.models.Product import Product
 from api.models.User import User
+from api.services import audit_service
 
 router = APIRouter(prefix="/api", tags=["Products"])
 
@@ -22,7 +23,13 @@ def create_product(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_CREATE)),
 ):
-    return ProductService(db, tenant_id=current_user.tenant_id).create(data)
+    result = ProductService(db, tenant_id=current_user.tenant_id).create(data)
+    ids = [r.id for r in result] if isinstance(result, list) else [result.id]
+    for pid in ids:
+        audit_service.log(db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+                          action="CREATE", resource_type="product", resource_id=pid)
+    db.commit()
+    return result
 
 
 @router.get("/products/", response_model=PaginatedResponse[ProductRead])
@@ -58,6 +65,10 @@ def update_product(
     product = ProductService(db, tenant_id=current_user.tenant_id).update(product_id, data)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
+    audit_service.log(db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+                      action="UPDATE", resource_type="product", resource_id=product_id,
+                      detail=data.model_dump(exclude_none=True))
+    db.commit()
     return product
 
 
@@ -70,6 +81,9 @@ def delete_product(
     success = ProductService(db, tenant_id=current_user.tenant_id).delete(product_id)
     if not success:
         raise HTTPException(status_code=404, detail="Product not found")
+    audit_service.log(db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+                      action="DELETE", resource_type="product", resource_id=product_id)
+    db.commit()
     return {"ok": True}
 
 

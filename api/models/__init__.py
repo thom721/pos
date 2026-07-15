@@ -30,3 +30,4 @@ from api.models.PayrollLoanDeduction import PayrollLoanDeduction
 from api.models.Role import Role
 from api.models.PlatformConfig import PlatformConfig
 from api.models.SyncState import SyncState
+from api.models.AuditLog import AuditLog

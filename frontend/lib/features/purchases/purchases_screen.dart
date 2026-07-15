@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
+import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/purchase_model.dart';
 import 'package:pos_connect/data/models/supplier_model.dart';
 import 'package:pos_connect/data/repositories/purchase_repository.dart';
@@ -241,18 +242,37 @@ class _PurchaseCard extends StatelessWidget {
           const Divider(height: 1),
           const SizedBox(height: 8),
           Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Total: ${_fmt.format(purchase.totalAmount)}  ',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 13)),
-              Text('Payé: ${_fmt.format(purchase.paidAmount)}',
-                  style: TextStyle(
-                      color: purchase.balance > 0
-                          ? AppColors.error
-                          : AppColors.accent,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13)),
+              if (purchase.status != 'received' && purchase.status != 'paid')
+                Builder(builder: (ctx) => TextButton.icon(
+                  onPressed: () => showDialog(
+                    context: ctx,
+                    builder: (_) => _ReceiveDialog(purchase: purchase),
+                  ),
+                  icon: const Icon(Icons.inventory_rounded, size: 16),
+                  label: const Text('Réceptionner'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.accent,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ))
+              else
+                const SizedBox.shrink(),
+              Row(
+                children: [
+                  Text('Total: ${_fmt.format(purchase.totalAmount)}  ',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text('Payé: ${_fmt.format(purchase.paidAmount)}',
+                      style: TextStyle(
+                          color: purchase.balance > 0
+                              ? AppColors.error
+                              : AppColors.accent,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13)),
+                ],
+              ),
             ],
           ),
         ],
@@ -525,6 +545,229 @@ class _ItemRowState extends State<_ItemRow> {
                 removeBtn,
               ],
             ),
+    );
+  }
+}
+
+// ─── Receive dialog (réception marchandises + lot/expiry) ────────────────────
+class _ReceiveDialog extends ConsumerStatefulWidget {
+  final PurchaseModel purchase;
+  const _ReceiveDialog({required this.purchase});
+
+  @override
+  ConsumerState<_ReceiveDialog> createState() => _ReceiveDialogState();
+}
+
+class _ReceiveDialogState extends ConsumerState<_ReceiveDialog> {
+  // items: {purchase_item_id, product_id, product_name, ordered_qty,
+  //          received_qty, lot_number, expiry_date}
+  late List<Map<String, dynamic>> _items;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = widget.purchase.items
+        .map((i) => {
+              'purchase_item_id': i.id,
+              'product_id':       i.productId,
+              'product_name':     i.productName ?? 'Produit',
+              'ordered_qty':      i.orderedQty,
+              'received_qty':     i.orderedQty,
+              'lot_number':       '',
+              'expiry_date':      null as DateTime?,
+            })
+        .toList();
+  }
+
+  Future<void> _submit() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      await dio.post('/receive/', data: {
+        'purchase_id': widget.purchase.id,
+        'items': _items.map((i) => {
+          'purchase_item_id':    i['purchase_item_id'],
+          'purchase_receipt_id': '',
+          'product_id':          i['product_id'],
+          'received_qty':        i['received_qty'],
+          'lot_number':  (i['lot_number'] as String).isNotEmpty ? i['lot_number'] : null,
+          'expiry_date': (i['expiry_date'] as DateTime?) != null
+              ? DateFormat('yyyy-MM-dd').format(i['expiry_date'] as DateTime)
+              : null,
+        }).toList(),
+      });
+      ref.invalidate(purchasesProvider);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _error = 'Erreur lors de la réception. Réessayez.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Réceptionner — ${widget.purchase.reference}'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Saisissez les quantités reçues, numéros de lot et dates d\'expiration.',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              ..._items.asMap().entries.map((e) =>
+                  _ReceiveItemRow(
+                    item: e.value,
+                    onUpdate: (updated) =>
+                        setState(() => _items[e.key] = updated),
+                  )),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!,
+                    style: const TextStyle(color: AppColors.error, fontSize: 13)),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Annuler'),
+        ),
+        ElevatedButton(
+          onPressed: _loading ? null : _submit,
+          child: _loading
+              ? const SizedBox(
+                  width: 16, height: 16,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Confirmer réception'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReceiveItemRow extends StatefulWidget {
+  final Map<String, dynamic> item;
+  final void Function(Map<String, dynamic>) onUpdate;
+  const _ReceiveItemRow({required this.item, required this.onUpdate});
+
+  @override
+  State<_ReceiveItemRow> createState() => _ReceiveItemRowState();
+}
+
+class _ReceiveItemRowState extends State<_ReceiveItemRow> {
+  late final TextEditingController _qtyCtrl;
+  late final TextEditingController _lotCtrl;
+  DateTime? _expiry;
+
+  @override
+  void initState() {
+    super.initState();
+    _qtyCtrl = TextEditingController(
+        text: (widget.item['received_qty'] as num).toStringAsFixed(0));
+    _lotCtrl = TextEditingController(
+        text: widget.item['lot_number'] as String? ?? '');
+    _expiry = widget.item['expiry_date'] as DateTime?;
+  }
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    _lotCtrl.dispose();
+    super.dispose();
+  }
+
+  void _emit() {
+    widget.onUpdate({
+      ...widget.item,
+      'received_qty': double.tryParse(_qtyCtrl.text) ?? widget.item['received_qty'],
+      'lot_number':   _lotCtrl.text,
+      'expiry_date':  _expiry,
+    });
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _expiry ?? DateTime.now().add(const Duration(days: 180)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
+      helpText: 'Date d\'expiration',
+    );
+    if (picked != null) {
+      setState(() => _expiry = picked);
+      _emit();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final expiryLabel = _expiry != null
+        ? DateFormat('dd/MM/yyyy').format(_expiry!)
+        : 'Date expiration';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.item['product_name'] as String,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600, fontSize: 13)),
+            Text(
+              'Commandé : ${(widget.item['ordered_qty'] as num).toStringAsFixed(0)}',
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                SizedBox(
+                  width: 80,
+                  child: TextField(
+                    controller: _qtyCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'Reçu', isDense: true),
+                    onChanged: (_) => _emit(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _lotCtrl,
+                    decoration: const InputDecoration(
+                        labelText: 'N° lot (opt.)', isDense: true),
+                    onChanged: (_) => _emit(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _pickDate,
+                  icon: const Icon(Icons.calendar_today_rounded, size: 14),
+                  label: Text(expiryLabel, style: const TextStyle(fontSize: 11)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 6),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

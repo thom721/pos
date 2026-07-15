@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Enum, ForeignKey, Text, Numeric, Index
+from sqlalchemy import Column, String, Enum, ForeignKey, Text, Numeric, Index, Date
 from sqlalchemy.orm import relationship
 import enum
 from .base import UUIDBase
@@ -21,6 +21,8 @@ class StockMovement(UUIDBase):
     source_type = Column(String(50))
     source_id   = Column(String(36))
     note        = Column(Text)
+    lot_number  = Column(String(100), nullable=True)
+    expiry_date = Column(Date,        nullable=True)
 
     product = relationship("Product", back_populates="stock_movements")
     user    = relationship("User")
