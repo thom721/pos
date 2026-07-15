@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Text
 from .base import UUIDBase
 
 
@@ -12,6 +12,7 @@ class BillingPayment(UUIDBase):
     amount         = Column(Numeric(10, 2), nullable=False)
     currency       = Column(String(10), nullable=False, default='USD')
     status         = Column(String(20), nullable=False, default='paid')  # paid | refunded
+    months         = Column(Integer, nullable=False, default=1)
     reference      = Column(String(200), nullable=True)   # Stripe payment_intent / MonCash txn
     description    = Column(String(300), nullable=True)
     paid_at        = Column(DateTime(timezone=True), nullable=True)

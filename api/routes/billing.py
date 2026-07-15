@@ -21,6 +21,7 @@ class SubmitPaymentRequest(BaseModel):
     method: str          # moncash | natcash
     amount: float
     currency: str = "HTG"
+    months: int = 1      # 1–12
     reference: str       # numéro de transaction / reçu
     description: str | None = None
 
@@ -349,6 +350,8 @@ def submit_payment(
     """
     if body.method not in ("moncash", "natcash"):
         raise HTTPException(status_code=400, detail="Méthode invalide : moncash ou natcash")
+    if not 1 <= body.months <= 12:
+        raise HTTPException(status_code=400, detail="Nombre de mois invalide (1–12)")
 
     tenant = _get_tenant(db, current_user)
 
@@ -373,18 +376,20 @@ def submit_payment(
     ).count()
     invoice_number = f"{prefix}{count + 1:04d}"
 
+    months_label = f"{body.months} mois" if body.months > 1 else "1 mois"
     payment = BillingPayment(
         tenant_id=tenant.id,
         invoice_number=invoice_number,
         method=body.method,
         amount=body.amount,
         currency=body.currency,
+        months=body.months,
         status="pending",
         reference=body.reference,
-        description=body.description or f"Paiement {body.method.capitalize()} — en attente de confirmation",
+        description=body.description or f"Paiement {body.method.capitalize()} {months_label} — en attente de confirmation",
         paid_at=None,
         period_start=encrypt_date(now, tenant.id),
-        period_end=encrypt_date(now + timedelta(days=30), tenant.id),
+        period_end=encrypt_date(now + timedelta(days=30 * body.months), tenant.id),
     )
     db.add(payment)
     db.commit()

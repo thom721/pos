@@ -61,7 +61,7 @@ class ManualActivatePayload(BaseModel):
 
 
 class ConfirmPaymentPayload(BaseModel):
-    months: int = 1
+    months: int | None = None  # None = use months stored on the payment
 
 
 class PlatformConfigUpdate(BaseModel):
@@ -517,11 +517,13 @@ def confirm_payment(
         raise HTTPException(status_code=404, detail="Tenant introuvable")
 
     now      = datetime.now(timezone.utc)
-    months   = max(1, body.months)
+    stored_months = getattr(payment, "months", 1) or 1
+    months   = max(1, body.months if body.months is not None else stored_months)
     period_end = now + timedelta(days=30 * months)
 
     payment.status     = "paid"
     payment.paid_at    = now
+    payment.months     = months
     payment.period_end = encrypt_date(period_end, payment.tenant_id)
     db.flush()
 

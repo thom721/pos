@@ -862,15 +862,20 @@ class _ManualPaymentForm extends StatefulWidget {
 
 class _ManualPaymentFormState extends State<_ManualPaymentForm> {
   final _refCtrl = TextEditingController();
-  bool _submitting = false;
-  bool _submitted  = false;
+  int    _months    = 1;
+  bool   _submitting = false;
+  bool   _submitted  = false;
   String? _error;
+
+  static const _monthOptions = [1, 2, 3, 6, 12];
 
   @override
   void dispose() {
     _refCtrl.dispose();
     super.dispose();
   }
+
+  double get _totalAmount => (_months * (double.tryParse(widget.priceHtg) ?? 0));
 
   Future<void> _submit() async {
     final ref = _refCtrl.text.trim();
@@ -879,16 +884,14 @@ class _ManualPaymentFormState extends State<_ManualPaymentForm> {
     try {
       await dio.post('/api/billing/submit-payment', data: {
         'method':    widget.method,
-        'amount':    double.tryParse(widget.priceHtg) ?? 0,
+        'amount':    _totalAmount,
         'currency':  'HTG',
+        'months':    _months,
         'reference': ref,
       });
       setState(() { _submitted = true; });
     } catch (e) {
-      final msg = e is DioException
-          ? extractErrorMessage(e)
-          : e.toString();
-      setState(() { _error = msg; });
+      setState(() { _error = e is DioException ? extractErrorMessage(e) : e.toString(); });
     } finally {
       setState(() { _submitting = false; });
     }
@@ -903,28 +906,62 @@ class _ManualPaymentFormState extends State<_ManualPaymentForm> {
           color: AppColors.success.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Row(children: [
-          Icon(Icons.check_circle_outline, color: AppColors.success, size: 18),
-          SizedBox(width: 10),
+        child: Row(children: [
+          const Icon(Icons.check_circle_outline, color: AppColors.success, size: 18),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Paiement soumis — un administrateur le validera sous peu '
+              'Paiement de $_months mois soumis — un administrateur le validera sous peu '
               'et votre abonnement sera activé.',
-              style: TextStyle(color: AppColors.success, fontSize: 13),
+              style: const TextStyle(color: AppColors.success, fontSize: 13),
             ),
           ),
         ]),
       );
     }
 
+    final totalStr = _totalAmount.toStringAsFixed(0);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ── Month selector ────────────────────────────────────────────────
+        const Text('Nombre de mois',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          children: _monthOptions.map((m) {
+            final selected = m == _months;
+            return ChoiceChip(
+              label: Text('$m mois'),
+              selected: selected,
+              onSelected: (_) => setState(() { _months = m; }),
+              labelStyle: TextStyle(
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+                color: selected ? Colors.white : AppColors.textSecondary,
+              ),
+              selectedColor: AppColors.primary,
+              backgroundColor: AppColors.background,
+              side: BorderSide(
+                color: selected ? AppColors.primary : AppColors.divider,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 12),
+
+        // ── Payment steps ─────────────────────────────────────────────────
         _PaymentStep(number: '1',
             text: 'Ouvrez ${widget.method == 'moncash' ? 'MonCash' : 'NatCash'} '
                   'et sélectionnez "${widget.stepVerb}"'),
         _PaymentStep(number: '2',
-            text: 'Envoyez ${widget.priceHtg} HTG / mois au numéro :'),
+            text: 'Envoyez $totalStr HTG'
+                  '${_months > 1 ? ' ($_months × ${widget.priceHtg} HTG)' : ''}'
+                  ' au numéro :'),
         _CopyRow(value: widget.number),
         _PaymentStep(number: '3',
             text: 'Entrez le numéro de transaction ci-dessous et cliquez Soumettre :'),
@@ -948,7 +985,7 @@ class _ManualPaymentFormState extends State<_ManualPaymentForm> {
                 ? const SizedBox(width: 14, height: 14,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.send_rounded, size: 16),
-            label: Text(_submitting ? 'Envoi...' : 'Soumettre le paiement'),
+            label: Text(_submitting ? 'Envoi...' : 'Soumettre — $totalStr HTG / $_months mois'),
           ),
         ),
         if (_error != null) ...[
