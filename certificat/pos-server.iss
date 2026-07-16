@@ -78,9 +78,9 @@ Source: "nssm\*"; DestDir: "{app}\nssm"; \
 ; MySQL zip (extrait par le script PowerShell)
 Source: "mysql-8.0.41-winx64.zip"; DestDir: "{app}"; Flags: ignoreversion
 
-; Certificat SSL
-Source: "setup-info\server.crt"; DestDir: "{app}\certificat"; Flags: ignoreversion
-Source: "setup-info\server.key"; DestDir: "{app}\certificat"; Flags: ignoreversion
+; Certificat SSL (à la racine de certificat/, commités dans git)
+Source: "server.crt"; DestDir: "{app}\certificat"; Flags: ignoreversion
+Source: "server.key"; DestDir: "{app}\certificat"; Flags: ignoreversion
 
 ; Icône de l'application
 Source: "setup-info\pos.ico"; DestDir: "{app}"; Flags: ignoreversion

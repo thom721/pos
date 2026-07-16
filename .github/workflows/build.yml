@@ -344,8 +344,7 @@ jobs:
 #    - nssm  2.24     (nssm.cc)
 #    - MySQL 8.0.41   (downloads.mysql.com, ~300 Mo — mis en cache)
 #  Certificats SSL :
-#    - Secrets GitHub SSL_CERT_B64 + SSL_KEY_B64 (base64 PEM)
-#    - Si absents, un cert auto-signé ephémère est généré (pour test)
+#    - certificat/server.crt + server.key commités dans le repo (auto-signés)
 # ══════════════════════════════════════════════════════════════════════════════
 
   inno-setup:
@@ -393,31 +392,15 @@ jobs:
           New-Item -ItemType Directory -Force -Path "certificat\nssm" | Out-Null
           Copy-Item "nssm-tmp\nssm-2.24\win64\*" "certificat\nssm\" -Recurse -Force
 
-      - name: Décoder les certificats SSL (depuis secrets)
+      - name: Vérifier les certificats SSL
         shell: pwsh
-        env:
-          SSL_CERT_B64: ${{ secrets.SSL_CERT_B64 }}
-          SSL_KEY_B64: ${{ secrets.SSL_KEY_B64 }}
         run: |
-          if ($env:SSL_CERT_B64 -and $env:SSL_KEY_B64) {
-            Write-Host "Restauration des certificats SSL depuis les secrets GitHub"
-            [System.Convert]::FromBase64String($env:SSL_CERT_B64) |
-              Set-Content "certificat\setup-info\server.crt" -AsByteStream
-            [System.Convert]::FromBase64String($env:SSL_KEY_B64)  |
-              Set-Content "certificat\setup-info\server.key"  -AsByteStream
-          } else {
-            Write-Host "Secrets SSL absents — génération d'un certificat auto-signé (test uniquement)"
-            $gitOpenssl = "C:\Program Files\Git\usr\bin\openssl.exe"
-            if (Test-Path $gitOpenssl) {
-              & $gitOpenssl req -x509 -newkey rsa:2048 -days 3650 -nodes `
-                -subj "/CN=posconnect.local/O=POS Connect/C=HT" `
-                -keyout "certificat\setup-info\server.key" `
-                -out    "certificat\setup-info\server.crt"
-            } else {
-              "SELF_SIGNED_PLACEHOLDER" | Out-File "certificat\setup-info\server.key" -Encoding utf8
-              "SELF_SIGNED_PLACEHOLDER" | Out-File "certificat\setup-info\server.crt" -Encoding utf8
-            }
+          # server.crt et server.key sont commités dans certificat/ (auto-signés, usage local)
+          # ISCC les lira directement depuis certificat\ (chemin relatif au .iss)
+          if (-not (Test-Path "certificat\server.crt") -or -not (Test-Path "certificat\server.key")) {
+            throw "certificat\server.crt ou server.key introuvable — relancer 'certificat/generate.sh' et commiter les fichiers"
           }
+          Write-Host "Certificats SSL présents ($(Get-Item 'certificat\server.crt' | Select-Object -ExpandProperty Length) octets)"
 
       - name: Déterminer la version
         id: version

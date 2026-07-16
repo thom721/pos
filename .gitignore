@@ -40,6 +40,7 @@ frontend/.packages
 # ── Outils Claude ──────────────────────────────────────────────────────────
 .claude/
 
-# ── Certificats SSL (générés localement, ne pas committer) ─────────────────
-certificat/server.crt
-certificat/server.key
+# ── Certificats SSL — commités (auto-signés pour usage local uniquement)
+# server.crt et server.key sont intentionnellement suivis par git :
+# ils sont auto-signés pour infini-post.local, pas émis par une CA publique.
+# Ne jamais y substituer un certificat signé par une CA réelle.
