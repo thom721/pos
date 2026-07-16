@@ -41,6 +41,7 @@ class InventoryRepository {
     required String inventoryType,
     List<String>? categoryIds,
     String? notes,
+    String? warehouseId,
     required List<Map<String, dynamic>> items,
   }) async {
     final res = await dio.post('/api/inventory/', data: {
@@ -48,6 +49,7 @@ class InventoryRepository {
       if (categoryIds != null && categoryIds.isNotEmpty)
         'category_ids': categoryIds,
       if (notes != null && notes.isNotEmpty) 'notes': notes,
+      if (warehouseId != null) 'warehouse_id': warehouseId,
       'items': items,
     });
     return res.data;

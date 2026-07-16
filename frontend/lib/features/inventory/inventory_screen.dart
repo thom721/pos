@@ -5,6 +5,7 @@ import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/inventory_model.dart';
 import 'package:pos_connect/data/repositories/inventory_repository.dart';
 import 'package:pos_connect/providers/inventory_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 
 final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
 final _qtyFmt = NumberFormat('#,##0.##', 'fr');
@@ -150,11 +151,13 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               })
           .toList();
 
+      final warehouseId = ref.read(activeWarehouseProvider)?.id;
       final result = await InventoryRepository().createInventory(
         inventoryType: _inventoryType,
         categoryIds:
             _inventoryType == 'partial' ? _selectedCategoryIds : null,
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+        warehouseId: warehouseId,
         items: items,
       );
 

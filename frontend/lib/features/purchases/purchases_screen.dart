@@ -10,6 +10,7 @@ import 'package:pos_connect/data/repositories/purchase_repository.dart';
 import 'package:pos_connect/providers/purchase_provider.dart';
 import 'package:pos_connect/providers/supplier_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/shared/widgets/status_badge.dart';
 
 final _fmt =
@@ -413,10 +414,12 @@ class _CreatePurchaseDialogState
     });
 
     try {
+      final warehouseId = ref.read(activeWarehouseProvider)?.id;
       await PurchaseRepository().createPurchase({
         'supplier_id': _supplier!.id,
         'paid_amount': double.tryParse(_paidCtrl.text) ?? 0,
         'items': _items,
+        if (warehouseId != null) 'warehouse_id': warehouseId,
       });
       ref.invalidate(purchasesProvider);
       if (mounted) Navigator.pop(context);

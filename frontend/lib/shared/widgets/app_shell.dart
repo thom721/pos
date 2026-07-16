@@ -6,9 +6,11 @@ import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/user_model.dart';
+import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/license_provider.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/license_service.dart';
 
 class _NavItem {
@@ -462,6 +464,8 @@ class _TopBar extends ConsumerWidget {
             ),
           ),
           const Spacer(),
+          const _WarehouseSelector(),
+          const SizedBox(width: 12),
           Container(
             padding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -486,6 +490,84 @@ class _TopBar extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Warehouse selector dropdown ───────────────────────────────────────────
+
+class _WarehouseSelector extends ConsumerWidget {
+  const _WarehouseSelector();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final warehouses = ref.watch(warehouseListProvider).valueOrNull ?? [];
+    final active = ref.watch(activeWarehouseProvider);
+
+    // Init default selection when list loads
+    if (warehouses.isNotEmpty) {
+      Future.microtask(() =>
+          ref.read(activeWarehouseProvider.notifier).initFromList(warehouses));
+    }
+
+    // Only show selector when there are multiple depots
+    if (warehouses.length <= 1) return const SizedBox.shrink();
+
+    final current = active ?? warehouses.firstWhere(
+      (w) => w.isDefault,
+      orElse: () => warehouses.first,
+    );
+
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.divider),
+        borderRadius: BorderRadius.circular(8),
+        color: AppColors.background,
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<WarehouseModel>(
+          value: warehouses.any((w) => w.id == current.id) ? current : warehouses.first,
+          isDense: true,
+          icon: const Icon(Icons.expand_more, size: 16, color: AppColors.textSecondary),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: AppColors.textPrimary,
+          ),
+          items: warehouses.map((w) => DropdownMenuItem(
+            value: w,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.warehouse_outlined, size: 14, color: AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Text(w.name),
+                if (w.isDefault) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'défaut',
+                      style: TextStyle(fontSize: 10, color: AppColors.primary),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          )).toList(),
+          onChanged: (w) {
+            if (w != null) {
+              ref.read(activeWarehouseProvider.notifier).setWarehouse(w);
+            }
+          },
+        ),
       ),
     );
   }
