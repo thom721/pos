@@ -2,14 +2,15 @@
 <#
 .SYNOPSIS
     Configure POS Connect après installation Inno Setup.
-    - Extrait MySQL si nécessaire
-    - Initialise la base de données MySQL
-    - Installe les services Windows via NSSM (Nginx + API)
-    - Crée pos_server.ini dans ProgramData
+    - Télécharge MySQL si le ZIP est absent
+    - Extrait et installe MySQL localement dans {app}\mysql\ (port 3307)
+    - Crée pos_db + pos_user avec mot de passe
+    - Installe les services Windows via NSSM
+    - Écrit pos_server.ini dans ProgramData
 #>
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 # ── Chemins ────────────────────────────────────────────────────────────────────
 $InstallDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -17,9 +18,15 @@ $DataDir     = "$env:ProgramData\POS_Connect"
 $NssmExe     = "$InstallDir\nssm\nssm.exe"
 $NginxExe    = "$InstallDir\nginx\nginx.exe"
 $ApiExe      = "$InstallDir\posconnect-server.exe"
-$MySqlZip    = "$InstallDir\mysql-8.0.41-winx64.zip"
+$MySqlVersion = "8.0.41"
+$MySqlZip    = "$InstallDir\mysql-$MySqlVersion-winx64.zip"
+$MySqlZipUrl = "https://downloads.mysql.com/archives/get/p/23/file/mysql-$MySqlVersion-winx64.zip"
 $MySqlDir    = "$InstallDir\mysql"
-$MySqlBin    = "$MySqlDir\bin\mysqld.exe"
+$MySqlData   = "$DataDir\mysql-data"
+$MyIni       = "$MySqlDir\my.ini"
+$MySqlBinDir = "$MySqlDir\bin"
+$MySqlPort   = 3307
+$IniTarget   = "$DataDir\pos_server.ini"
 $LogFile     = "$DataDir\install.log"
 
 # ── Journalisation ─────────────────────────────────────────────────────────────
@@ -34,7 +41,7 @@ Write-Log "=== Début de la configuration POS Connect ==="
 Write-Log "InstallDir : $InstallDir"
 Write-Log "DataDir    : $DataDir"
 
-# ── 1. Installer le certificat SSL dans les autorités de confiance ─────────────
+# ── 1. Certificat SSL ──────────────────────────────────────────────────────────
 $CertFile = "$InstallDir\certificat\server.crt"
 if (Test-Path $CertFile) {
     try {
@@ -43,28 +50,201 @@ if (Test-Path $CertFile) {
         $store.Open("ReadWrite")
         $store.Add($cert)
         $store.Close()
-        Write-Log "Certificat SSL installé dans les autorités de confiance"
+        Write-Log "Certificat SSL installé"
     } catch {
-        Write-Log "Impossible d'installer le certificat : $_" "WARN"
+        Write-Log "Certificat SSL : $_" "WARN"
     }
 } else {
-    Write-Log "Pas de certificat trouvé à $CertFile — étape ignorée" "WARN"
+    Write-Log "Certificat absent ($CertFile) — ignoré" "WARN"
 }
 
-# ── 2. Créer pos_server.ini dans ProgramData si absent ────────────────────────
-$IniSource = "$InstallDir\pos_server.ini"
-$IniTarget = "$DataDir\pos_server.ini"
+# ── 2. MySQL : télécharger si ZIP absent ──────────────────────────────────────
+if (-not (Test-Path "$MySqlBinDir\mysqld.exe")) {
+    if (-not (Test-Path $MySqlZip)) {
+        Write-Log "MySQL ZIP absent — téléchargement depuis MySQL officiel..."
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            $wc = New-Object System.Net.WebClient
+            $wc.DownloadFile($MySqlZipUrl, $MySqlZip)
+            $sizeMb = [math]::Round((Get-Item $MySqlZip).Length / 1MB, 1)
+            Write-Log "MySQL $MySqlVersion téléchargé ($sizeMb Mo)"
+        } catch {
+            Write-Log "Impossible de télécharger MySQL : $_" "WARN"
+        }
+    }
 
-if (-not (Test-Path $IniTarget)) {
-    if (Test-Path $IniSource) {
-        Copy-Item $IniSource $IniTarget -Force
-        Write-Log "pos_server.ini copié dans ProgramData"
+    # Extraire
+    if (Test-Path $MySqlZip) {
+        Write-Log "Extraction de MySQL dans $InstallDir ..."
+        try {
+            Expand-Archive -Path $MySqlZip -DestinationPath $InstallDir -Force
+            $Extracted = Get-ChildItem -Path $InstallDir -Directory -Filter "mysql-*" |
+                         Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($Extracted -and $Extracted.FullName -ne $MySqlDir) {
+                if (Test-Path $MySqlDir) { Remove-Item $MySqlDir -Recurse -Force }
+                Rename-Item -Path $Extracted.FullName -NewName "mysql" -Force
+            }
+            Write-Log "MySQL extrait dans $MySqlDir"
+        } catch {
+            Write-Log "Extraction MySQL : $_" "WARN"
+        }
+    }
+}
+
+# ── 3. Initialiser MySQL ───────────────────────────────────────────────────────
+if (Test-Path "$MySqlBinDir\mysqld.exe") {
+    New-Item -ItemType Directory -Force -Path $MySqlData | Out-Null
+
+    if (-not (Test-Path "$MySqlData\ibdata1")) {
+        Write-Log "Initialisation du datadir MySQL ($MySqlData)..."
+
+        # my.ini : port 3307, datadir dans ProgramData
+        $basedirFwd = $MySqlDir   -replace '\\', '/'
+        $datadirFwd = $MySqlData  -replace '\\', '/'
+        @"
+[mysqld]
+basedir  = $basedirFwd
+datadir  = $datadirFwd
+port     = $MySqlPort
+max_allowed_packet = 64M
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+default-authentication-plugin = mysql_native_password
+sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+innodb_buffer_pool_size = 64M
+max_connections = 50
+
+[mysql]
+default-character-set = utf8mb4
+port = $MySqlPort
+
+[client]
+port = $MySqlPort
+"@ | Out-File $MyIni -Encoding UTF8
+
+        & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure 2>&1 |
+            ForEach-Object { Write-Log "  [mysqld-init] $_" }
+        Write-Log "MySQL initialisé (root sans mot de passe)"
     } else {
-        # Créer un ini minimal avec SQLite comme fallback
+        Write-Log "MySQL déjà initialisé"
+        if (-not (Test-Path $MyIni)) {
+            $basedirFwd = $MySqlDir  -replace '\\', '/'
+            $datadirFwd = $MySqlData -replace '\\', '/'
+            @"
+[mysqld]
+basedir  = $basedirFwd
+datadir  = $datadirFwd
+port     = $MySqlPort
+max_allowed_packet = 64M
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+default-authentication-plugin = mysql_native_password
+
+[client]
+port = $MySqlPort
+"@ | Out-File $MyIni -Encoding UTF8
+        }
+    }
+
+    # ── Service MySQL ──────────────────────────────────────────────────────────
+    $SvcMySQL = "POS_Connect_MySQL"
+    $svcStatus = & $NssmExe status $SvcMySQL 2>&1
+    if ($LASTEXITCODE -ne 0 -or "$svcStatus" -match "can't open service|No such service") {
+        Write-Log "Installation service $SvcMySQL..."
+        & $NssmExe install $SvcMySQL "$MySqlBinDir\mysqld.exe"
+        & $NssmExe set    $SvcMySQL AppParameters "--defaults-file=`"$MyIni`""
+        & $NssmExe set    $SvcMySQL DisplayName   "POS Connect — MySQL"
+        & $NssmExe set    $SvcMySQL Description   "Base de données MySQL locale pour POS Connect"
+        & $NssmExe set    $SvcMySQL Start         SERVICE_AUTO_START
+        & $NssmExe set    $SvcMySQL AppStdout     "$DataDir\mysql-stdout.log"
+        & $NssmExe set    $SvcMySQL AppStderr     "$DataDir\mysql-stderr.log"
+        Write-Log "Service $SvcMySQL installé"
+    } else {
+        Write-Log "Service $SvcMySQL existe déjà ($svcStatus)"
+    }
+
+    # Démarrer MySQL et attendre qu'il soit prêt
+    Start-Service -Name $SvcMySQL -ErrorAction SilentlyContinue
+    Write-Log "Attente démarrage MySQL..."
+    $MySqlReady = $false
+    for ($i = 0; $i -lt 20; $i++) {
+        Start-Sleep -Seconds 2
+        $ping = & "$MySqlBinDir\mysqladmin.exe" --host=127.0.0.1 --port=$MySqlPort `
+                    --connect-timeout=2 ping 2>&1
+        if ("$ping" -match "mysqld is alive") {
+            $MySqlReady = $true
+            Write-Log "MySQL prêt (${i}x2s)"
+            break
+        }
+    }
+    if (-not $MySqlReady) {
+        Write-Log "MySQL n'a pas répondu dans les 40s — vérifiez les logs" "WARN"
+    }
+
+    # ── Créer pos_db + pos_user ────────────────────────────────────────────────
+    $DbName = "pos_db"
+    $DbUser = "pos_user"
+    $MySqlExe = "$MySqlBinDir\mysql.exe"
+
+    # Réutiliser mot de passe existant si pos_server.ini déjà configuré
+    $DbPass = $null
+    if (Test-Path $IniTarget) {
+        foreach ($line in (Get-Content $IniTarget)) {
+            if ($line -match '^\s*password\s*=\s*(.+)$') {
+                $DbPass = $Matches[1].Trim()
+                break
+            }
+        }
+    }
+    if (-not $DbPass) {
+        # Générer un mot de passe fort (16 chars alphanumériques + symboles)
+        $chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#%'
+        $DbPass = -join ((1..16) | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
+    }
+
+    if ($MySqlReady -and (Test-Path $MySqlExe)) {
+        $Sql = @"
+CREATE DATABASE IF NOT EXISTS ``$DbName`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '$DbUser'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '$DbPass';
+CREATE USER IF NOT EXISTS '$DbUser'@'localhost'  IDENTIFIED WITH mysql_native_password BY '$DbPass';
+ALTER  USER '$DbUser'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '$DbPass';
+ALTER  USER '$DbUser'@'localhost'  IDENTIFIED WITH mysql_native_password BY '$DbPass';
+GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'localhost';
+FLUSH PRIVILEGES;
+"@
+        try {
+            $Sql | & $MySqlExe --host=127.0.0.1 --port=$MySqlPort -u root --connect-timeout=10
+            Write-Log "Base '$DbName' et utilisateur '$DbUser' créés/vérifiés"
+        } catch {
+            Write-Log "Création DB/user : $_" "WARN"
+        }
+    }
+
+    # ── Écrire pos_server.ini complet avec MySQL ───────────────────────────────
+    @"
+[database]
+type     = mysql
+host     = 127.0.0.1
+port     = $MySqlPort
+name     = $DbName
+user     = $DbUser
+password = $DbPass
+
+[server]
+host = 0.0.0.0
+port = 9003
+"@ | Out-File -FilePath $IniTarget -Encoding UTF8 -Force
+    Write-Log "pos_server.ini écrit (MySQL 127.0.0.1:$MySqlPort, db=$DbName, user=$DbUser)"
+
+} else {
+    # MySQL absent — fallback SQLite
+    Write-Log "MySQL non disponible — configuration SQLite" "WARN"
+    if (-not (Test-Path $IniTarget)) {
         @"
 [database]
-type     = sqlite
-path     = $DataDir\pos_data.db
+type = sqlite
+path = $DataDir\pos_connect.db
 
 [server]
 host = 0.0.0.0
@@ -74,104 +254,10 @@ port = 9003
     }
 }
 
-# ── 3. Extraire MySQL si le zip est présent et MySQL absent ───────────────────
-if ((Test-Path $MySqlZip) -and (-not (Test-Path $MySqlBin))) {
-    Write-Log "Extraction de MySQL..."
-    try {
-        Expand-Archive -Path $MySqlZip -DestinationPath $InstallDir -Force
-        # Le zip extrait un dossier du style mysql-8.0.41-winx64 — on le renomme
-        $Extracted = Get-ChildItem -Path $InstallDir -Directory -Filter "mysql-*" |
-                     Select-Object -First 1
-        if ($Extracted) {
-            Rename-Item -Path $Extracted.FullName -NewName "mysql" -Force
-        }
-        Write-Log "MySQL extrait dans $MySqlDir"
-    } catch {
-        Write-Log "Échec de l'extraction MySQL : $_" "WARN"
-    }
-}
-
-# ── 4. Initialiser MySQL si nécessaire ────────────────────────────────────────
-if (Test-Path $MySqlBin) {
-    $MySqlData = "$MySqlDir\data"
-    if (-not (Test-Path "$MySqlData\ibdata1")) {
-        Write-Log "Initialisation du datadir MySQL..."
-        try {
-            # Créer my.ini minimal
-            @"
-[mysqld]
-basedir  = $($MySqlDir -replace '\\','/')
-datadir  = $($MySqlData -replace '\\','/')
-port     = 3306
-max_allowed_packet = 64M
-character-set-server = utf8mb4
-collation-server = utf8mb4_unicode_ci
-sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
-
-[mysql]
-default-character-set = utf8mb4
-"@ | Out-File "$MySqlDir\my.ini" -Encoding UTF8
-
-            & "$MySqlDir\bin\mysqld.exe" --initialize-insecure `
-                --basedir="$MySqlDir" --datadir="$MySqlData" 2>&1 |
-                ForEach-Object { Write-Log "  [mysqld] $_" }
-            Write-Log "MySQL initialisé avec mot de passe root vide"
-        } catch {
-            Write-Log "Échec init MySQL : $_" "WARN"
-        }
-    } else {
-        Write-Log "MySQL déjà initialisé"
-    }
-
-    # Installer le service MySQL via NSSM
-    $SvcMySQL = "POS_Connect_MySQL"
-    $existing = & $NssmExe status $SvcMySQL 2>&1
-    if ($LASTEXITCODE -ne 0 -or $existing -match "can't open service") {
-        Write-Log "Installation service $SvcMySQL..."
-        & $NssmExe install $SvcMySQL "$MySqlDir\bin\mysqld.exe"
-        & $NssmExe set    $SvcMySQL AppParameters "--defaults-file=`"$MySqlDir\my.ini`""
-        & $NssmExe set    $SvcMySQL DisplayName   "POS Connect — MySQL"
-        & $NssmExe set    $SvcMySQL Description   "Base de données MySQL pour POS Connect"
-        & $NssmExe set    $SvcMySQL Start         SERVICE_AUTO_START
-        & $NssmExe set    $SvcMySQL AppStdout     "$DataDir\mysql-stdout.log"
-        & $NssmExe set    $SvcMySQL AppStderr     "$DataDir\mysql-stderr.log"
-        Write-Log "Service $SvcMySQL installé"
-    } else {
-        Write-Log "Service $SvcMySQL existe déjà"
-    }
-
-    # Démarrer MySQL
-    try {
-        Start-Service -Name $SvcMySQL -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 5
-        Write-Log "Service $SvcMySQL démarré"
-    } catch {
-        Write-Log "Impossible de démarrer $SvcMySQL : $_" "WARN"
-    }
-
-    # Créer la base de données pos_db si absente
-    $MySqlClient = "$MySqlDir\bin\mysql.exe"
-    if (Test-Path $MySqlClient) {
-        try {
-            & $MySqlClient -u root --execute "CREATE DATABASE IF NOT EXISTS pos_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>&1 |
-                ForEach-Object { Write-Log "  [mysql] $_" }
-            Write-Log "Base pos_db vérifiée/créée"
-
-            # Mettre à jour pos_server.ini pour MySQL
-            $IniContent = Get-Content $IniTarget -Raw
-            $IniContent = $IniContent -replace 'type\s*=\s*sqlite', 'type = mysql'
-            $IniContent | Out-File $IniTarget -Encoding UTF8
-            Write-Log "pos_server.ini mis à jour pour MySQL"
-        } catch {
-            Write-Log "Impossible de créer pos_db : $_" "WARN"
-        }
-    }
-}
-
-# ── 5. Service Windows : POS Connect API ─────────────────────────────────────
+# ── 4. Service : POS Connect API ───────────────────────────────────────────────
 $SvcApi = "POS_Connect_API"
-$existingApi = & $NssmExe status $SvcApi 2>&1
-if ($LASTEXITCODE -ne 0 -or $existingApi -match "can't open service") {
+$svcApiStatus = & $NssmExe status $SvcApi 2>&1
+if ($LASTEXITCODE -ne 0 -or "$svcApiStatus" -match "can't open service|No such service") {
     Write-Log "Installation service $SvcApi..."
     & $NssmExe install $SvcApi $ApiExe
     & $NssmExe set    $SvcApi AppDirectory  $InstallDir
@@ -180,9 +266,7 @@ if ($LASTEXITCODE -ne 0 -or $existingApi -match "can't open service") {
     & $NssmExe set    $SvcApi Start         SERVICE_AUTO_START
     & $NssmExe set    $SvcApi AppStdout     "$DataDir\api-stdout.log"
     & $NssmExe set    $SvcApi AppStderr     "$DataDir\api-stderr.log"
-
-    # Dépend de MySQL si présent
-    if (Test-Path $MySqlBin) {
+    if (Test-Path "$MySqlBinDir\mysqld.exe") {
         & $NssmExe set $SvcApi DependOnService "POS_Connect_MySQL"
     }
     Write-Log "Service $SvcApi installé"
@@ -190,10 +274,10 @@ if ($LASTEXITCODE -ne 0 -or $existingApi -match "can't open service") {
     Write-Log "Service $SvcApi existe déjà"
 }
 
-# ── 6. Service Windows : Nginx ────────────────────────────────────────────────
+# ── 5. Service : Nginx ─────────────────────────────────────────────────────────
 $SvcNginx = "POS_Connect_Nginx"
-$existingNginx = & $NssmExe status $SvcNginx 2>&1
-if ($LASTEXITCODE -ne 0 -or $existingNginx -match "can't open service") {
+$svcNginxStatus = & $NssmExe status $SvcNginx 2>&1
+if ($LASTEXITCODE -ne 0 -or "$svcNginxStatus" -match "can't open service|No such service") {
     Write-Log "Installation service $SvcNginx..."
     & $NssmExe install $SvcNginx $NginxExe
     & $NssmExe set    $SvcNginx AppDirectory  "$InstallDir\nginx"
@@ -208,21 +292,20 @@ if ($LASTEXITCODE -ne 0 -or $existingNginx -match "can't open service") {
     Write-Log "Service $SvcNginx existe déjà"
 }
 
-# ── 7. Démarrer les services dans l'ordre ────────────────────────────────────
-Write-Log "Démarrage des services..."
+# ── 6. Démarrer API + Nginx ────────────────────────────────────────────────────
+Write-Log "Démarrage des services API et Nginx..."
 foreach ($svc in @($SvcApi, $SvcNginx)) {
     try {
-        Start-Service -Name $svc
+        Start-Service -Name $svc -ErrorAction SilentlyContinue
         Write-Log "  ✓ $svc démarré"
     } catch {
-        Write-Log "  ✗ Impossible de démarrer $svc : $_" "WARN"
+        Write-Log "  ✗ $svc : $_" "WARN"
     }
 }
 
-# ── 8. Règle pare-feu Windows ────────────────────────────────────────────────
+# ── 7. Règle pare-feu : port 9003 ─────────────────────────────────────────────
 $FwRuleName = "POS Connect Serveur (port 9003)"
-$existing = Get-NetFirewallRule -DisplayName $FwRuleName -ErrorAction SilentlyContinue
-if (-not $existing) {
+if (-not (Get-NetFirewallRule -DisplayName $FwRuleName -ErrorAction SilentlyContinue)) {
     try {
         New-NetFirewallRule `
             -DisplayName $FwRuleName `
@@ -233,9 +316,9 @@ if (-not $existing) {
             -Profile     Private, Domain | Out-Null
         Write-Log "Règle pare-feu ajoutée : port 9003"
     } catch {
-        Write-Log "Pare-feu non configuré : $_" "WARN"
+        Write-Log "Pare-feu : $_" "WARN"
     }
 }
 
-Write-Log "=== Configuration terminée avec succès ==="
-Write-Log "Logs détaillés : $LogFile"
+Write-Log "=== Configuration POS Connect terminée ==="
+Write-Log "Log complet : $LogFile"

@@ -30,10 +30,10 @@ router = APIRouter(prefix="/setup", tags=["Setup"])
 
 class DbTestRequest(BaseModel):
     db_type: str          # "mysql" | "sqlite"
-    host: str = "localhost"
-    port: int = 3306
+    host: str = "127.0.0.1"
+    port: int = 3307
     name: str = "pos_db"
-    user: str = "root"
+    user: str = "pos_user"
     password: str = ""
     path: str = "./pos_data.db"
 
