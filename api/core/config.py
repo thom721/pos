@@ -181,4 +181,17 @@ def write_ini_config(cfg_data: dict, path: Path = None) -> Path:
     with open(target, "w", encoding="utf-8") as f:
         cfg.write(f)
 
+    # Sur Windows : restreindre la lecture aux seuls SYSTEM et Administrators
+    if os.name == "nt":
+        try:
+            import subprocess as _sp
+            _sp.run(
+                ["icacls", str(target), "/inheritance:r",
+                 "/grant", "SYSTEM:(F)",
+                 "/grant", "Administrators:(F)"],
+                capture_output=True, timeout=5,
+            )
+        except Exception:
+            pass
+
     return target

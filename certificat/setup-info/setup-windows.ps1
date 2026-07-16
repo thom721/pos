@@ -270,6 +270,13 @@ host = 0.0.0.0
 port = 9003
 "@ | Out-File -FilePath $IniTarget -Encoding UTF8 -Force
     Write-Log "pos_server.ini écrit (MySQL 127.0.0.1:$MySqlPort, db=$DbName, user=$DbUser)"
+    # Restreindre les droits : uniquement SYSTEM et Administrateurs peuvent lire le fichier
+    try {
+        icacls $IniTarget /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" | Out-Null
+        Write-Log "Permissions pos_server.ini restreintes (SYSTEM + Administrateurs)"
+    } catch {
+        Write-Log "Impossible de restreindre les permissions de pos_server.ini : $_" "WARN"
+    }
 
 } else {
     # MySQL absent — fallback SQLite
@@ -285,6 +292,12 @@ host = 0.0.0.0
 port = 9003
 "@ | Out-File -FilePath $IniTarget -Encoding UTF8
         Write-Log "pos_server.ini minimal créé (SQLite)"
+        try {
+            icacls $IniTarget /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" | Out-Null
+            Write-Log "Permissions pos_server.ini restreintes (SYSTEM + Administrateurs)"
+        } catch {
+            Write-Log "Impossible de restreindre les permissions de pos_server.ini : $_" "WARN"
+        }
     }
 }
 
