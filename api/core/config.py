@@ -43,11 +43,26 @@ def _find_config_file() -> Path:
     return candidates[0]
 
 
+def _safe_read_ini(cfg: configparser.ConfigParser, path: Path) -> None:
+    """
+    Lit un fichier INI en strippant le BOM UTF-8 si présent.
+    utf-8-sig = utf-8 + strip automatique du BOM ﻿ (créé par Notepad/Windows).
+    En cas de fichier corrompu : repart d'un état vide plutôt que de crasher.
+    """
+    try:
+        cfg.read(path, encoding="utf-8-sig")
+    except configparser.MissingSectionHeaderError:
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "pos_server.ini corrompu ou illisible — réinitialisation : %s", path
+        )
+
+
 def load_ini_config() -> dict:
     cfg = configparser.ConfigParser()
     ini = _find_config_file()
     if ini.exists():
-        cfg.read(ini, encoding="utf-8")
+        _safe_read_ini(cfg, ini)
     db = cfg["database"] if "database" in cfg else {}
     srv = cfg["server"] if "server" in cfg else {}
     return {
@@ -159,7 +174,7 @@ def write_ini_config(cfg_data: dict, path: Path = None) -> Path:
 
     cfg = configparser.ConfigParser()
     if target.exists():
-        cfg.read(target, encoding="utf-8")
+        _safe_read_ini(cfg, target)
 
     if "database" not in cfg:
         cfg["database"] = {}

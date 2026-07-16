@@ -37,6 +37,17 @@ function Write-Log {
     "$ts [$Level] $Msg" | Tee-Object -FilePath $LogFile -Append | Write-Host
 }
 
+# -- Ecriture UTF-8 SANS BOM ----------------------------------------------------
+# PowerShell 5.1 (natif Windows) ecrit un BOM avec -Encoding UTF8 / Out-File.
+# [System.IO.File]::WriteAllText avec UTF8Encoding($false) garantit l'absence de BOM
+# sur toutes les versions de PowerShell, ce qui est requis par Python configparser
+# et par mysqld qui rejettent les fichiers debutant par ﻿.
+function Write-UTF8NoBOM {
+    param([string]$Path, [string]$Content)
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Content, $enc)
+}
+
 Write-Log "=== Debut de la configuration POS Connect ==="
 Write-Log "InstallDir : $InstallDir"
 Write-Log "DataDir    : $DataDir"
@@ -158,7 +169,7 @@ if (Test-Path "$MySqlBinDir\mysqld.exe") {
         # my.ini : port 3307, datadir dans ProgramData
         $basedirFwd = $MySqlDir   -replace '\\', '/'
         $datadirFwd = $MySqlData  -replace '\\', '/'
-        @"
+        Write-UTF8NoBOM $MyIni @"
 [mysqld]
 basedir  = "$basedirFwd"
 datadir  = "$datadirFwd"
@@ -177,17 +188,21 @@ port = $MySqlPort
 
 [client]
 port = $MySqlPort
-"@ | Out-File $MyIni -Encoding UTF8
+"@
 
         & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure 2>&1 |
             ForEach-Object { Write-Log "  [mysqld-init] $_" }
-        Write-Log "MySQL initialise (root sans mot de passe)"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "mysqld --initialize-insecure a echoue (code $LASTEXITCODE) -- verifiez les logs ci-dessus" "ERROR"
+        } else {
+            Write-Log "MySQL initialise (root sans mot de passe)"
+        }
     } else {
         Write-Log "MySQL deja initialise"
         if (-not (Test-Path $MyIni)) {
             $basedirFwd = $MySqlDir  -replace '\\', '/'
             $datadirFwd = $MySqlData -replace '\\', '/'
-            @"
+            Write-UTF8NoBOM $MyIni @"
 [mysqld]
 basedir  = "$basedirFwd"
 datadir  = "$datadirFwd"
@@ -199,7 +214,7 @@ default-authentication-plugin = mysql_native_password
 
 [client]
 port = $MySqlPort
-"@ | Out-File $MyIni -Encoding UTF8
+"@
         }
     }
 
@@ -279,7 +294,7 @@ FLUSH PRIVILEGES;
     }
 
     # -- Ecrire pos_server.ini complet avec MySQL -------------------------------
-    @"
+    Write-UTF8NoBOM $IniTarget @"
 [database]
 type     = mysql
 host     = 127.0.0.1
@@ -291,7 +306,7 @@ password = $DbPass
 [server]
 host = 0.0.0.0
 port = 9003
-"@ | Out-File -FilePath $IniTarget -Encoding UTF8 -Force
+"@
     Write-Log "pos_server.ini ecrit (MySQL 127.0.0.1:$MySqlPort, db=$DbName, user=$DbUser)"
     # Restreindre les droits : uniquement SYSTEM et Administrateurs peuvent lire le fichier
     try {
@@ -305,7 +320,7 @@ port = 9003
     # MySQL absent -- fallback SQLite
     Write-Log "MySQL non disponible -- configuration SQLite" "WARN"
     if (-not (Test-Path $IniTarget)) {
-        @"
+        Write-UTF8NoBOM $IniTarget @"
 [database]
 type = sqlite
 path = $DataDir\pos_connect.db
@@ -313,7 +328,7 @@ path = $DataDir\pos_connect.db
 [server]
 host = 0.0.0.0
 port = 9003
-"@ | Out-File -FilePath $IniTarget -Encoding UTF8
+"@
         Write-Log "pos_server.ini minimal cree (SQLite)"
         try {
             icacls $IniTarget /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" | Out-Null

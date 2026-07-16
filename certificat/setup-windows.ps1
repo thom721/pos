@@ -64,6 +64,13 @@ function Write-OK($msg)   { Write-Host "  ✓ $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "  ! $msg" -ForegroundColor Yellow }
 function Fail($msg)       { Write-Host "`n  X $msg" -ForegroundColor Red; exit 1 }
 
+# Ecriture UTF-8 SANS BOM (PS 5.1 ajoute un BOM avec -Encoding UTF8)
+function Write-UTF8NoBOM {
+    param([string]$Path, [string]$Content)
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Content, $enc)
+}
+
 function New-RandPass([int]$n = 20) {
     $c = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
     -join ((1..$n) | ForEach-Object { $c[(Get-Random -Maximum $c.Length)] })
@@ -180,7 +187,7 @@ Copy-Item "$ScriptDir\server.crt" "$NginxCerts\server.crt" -Force
 Copy-Item "$ScriptDir\server.key" "$NginxCerts\server.key" -Force
 
 # nginx.conf principal
-Set-Content "$NginxConf\nginx.conf" @"
+Write-UTF8NoBOM "$NginxConf\nginx.conf" @"
 worker_processes  1;
 events { worker_connections 1024; }
 http {
@@ -190,10 +197,10 @@ http {
     keepalive_timeout 65;
     include conf/default.conf;
 }
-"@ -Encoding UTF8
+"@
 
 # Vhost généré avec les ports détectés (backtick = échappement PowerShell pour $)
-Set-Content "$NginxConf\default.conf" @"
+Write-UTF8NoBOM "$NginxConf\default.conf" @"
 server {
     listen      $HttpPort;
     server_name $Hostname localhost;
@@ -223,7 +230,7 @@ server {
         proxy_read_timeout 60s;
     }
 }
-"@ -Encoding UTF8
+"@
 Write-OK "Certificats et configuration appliqués."
 
 # ── 6. Copier les fichiers API (build Nuitka) ─────────────────────────────────
@@ -311,19 +318,29 @@ if ($iniExists) {
     $mysqlExe  = "$MysqlInstDir\bin\mysql.exe"
     $dataDir   = "$MysqlInstDir\data"
 
-    # my.ini
-    $baseDirEsc = $MysqlInstDir.Replace('\','\\')
-    $dataDirEsc = $dataDir.Replace('\','\\')
-    Set-Content "$MysqlInstDir\my.ini" @"
+    # my.ini (UTF-8 sans BOM — mysqld rejette les fichiers avec BOM)
+    $baseDirFwd = $MysqlInstDir -replace '\\', '/'
+    $dataDirFwd = $dataDir      -replace '\\', '/'
+    Write-UTF8NoBOM "$MysqlInstDir\my.ini" @"
 [mysqld]
-basedir=$baseDirEsc
-datadir=$dataDirEsc
-port=$DbPort
-character-set-server=utf8mb4
-collation-server=utf8mb4_unicode_ci
+basedir  = "$baseDirFwd"
+datadir  = "$dataDirFwd"
+port     = $DbPort
+max_allowed_packet = 64M
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+default-authentication-plugin = mysql_native_password
+sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+innodb_buffer_pool_size = 64M
+max_connections = 50
+
+[mysql]
+default-character-set = utf8mb4
+port = $DbPort
+
 [client]
-default-character-set=utf8mb4
-"@ -Encoding UTF8
+port = $DbPort
+"@
 
     # Initialiser (sans mot de passe root pour que le setup puisse se connecter)
     if (-not (Test-Path $dataDir)) {
@@ -362,9 +379,9 @@ default-character-set=utf8mb4
     $DbUser = $PosUser ; $DbPass = $PosPass
   }
 
-  # ── Écrire pos_server.ini ─────────────────────────────────────────────────
+  # ── Écrire pos_server.ini (UTF-8 sans BOM) ───────────────────────────────
   $SecretKey = New-HexKey 32
-  Set-Content $IniPath @"
+  Write-UTF8NoBOM $IniPath @"
 [database]
 type     = mysql
 host     = $DbHost
@@ -388,7 +405,7 @@ identity_private_key  =
 billing_url           =
 cors_origins          = *
 web_dir               = web
-"@ -Encoding UTF8
+"@
   Write-OK "pos_server.ini généré dans $IniPath"
 
 } # fin bloc DB
