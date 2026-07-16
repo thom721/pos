@@ -301,10 +301,10 @@ def create_database(data: DbTestRequest):
     try:
         import urllib.parse
         from sqlalchemy import create_engine as _ce
+        from api.core.config import settings as _s
 
         if data.db_type == "mysql":
             pw = urllib.parse.quote_plus(data.password)
-            # 1. Créer la base si elle n'existe pas
             root_url = f"mysql+pymysql://{data.user}:{pw}@{data.host}:{data.port}"
             eng_root = _ce(root_url, connect_args={"connect_timeout": 10})
             with eng_root.connect() as c:
@@ -313,11 +313,34 @@ def create_database(data: DbTestRequest):
                     f"CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
                 ))
             eng_root.dispose()
-            # 2. Créer les tables dans la bonne base avec le bon moteur
             target_url = f"mysql+pymysql://{data.user}:{pw}@{data.host}:{data.port}/{data.name}"
             target_eng = _ce(target_url, connect_args={"connect_timeout": 10})
         else:
-            target_eng = _ce(f"sqlite:///{data.path}", connect_args={"check_same_thread": False})
+            # Sur Windows, chemin relatif → ProgramData pour éviter les problèmes
+            # d'écriture dans C:\Program Files
+            sqlite_path = data.path or "./pos_connect.db"
+            if not os.path.isabs(sqlite_path):
+                if platform.system() == "Windows":
+                    prog_data = os.environ.get("PROGRAMDATA", "C:\\ProgramData")
+                    data_dir = os.path.join(prog_data, "POS_Connect")
+                    os.makedirs(data_dir, exist_ok=True)
+                    sqlite_path = os.path.join(data_dir, "pos_connect.db")
+                else:
+                    sqlite_path = os.path.abspath(sqlite_path)
+
+            # Si le serveur tourne déjà sur cette DB SQLite, les tables existent déjà
+            if _s.DB_TYPE == "sqlite":
+                try:
+                    with engine.connect() as c:
+                        c.execute(text("SELECT COUNT(*) FROM users"))
+                    return {"ok": True}  # DB déjà initialisée par le startup
+                except Exception:
+                    pass  # tables absentes → créer
+
+            target_eng = _ce(
+                f"sqlite:///{sqlite_path}",
+                connect_args={"check_same_thread": False},
+            )
 
         Base.metadata.create_all(bind=target_eng)
         target_eng.dispose()
