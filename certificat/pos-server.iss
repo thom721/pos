@@ -146,14 +146,8 @@ Filename: "{app}\{#MyAppExeName}"; \
 
 ; ── Commandes à la désinstallation ────────────────────────────────────────────
 [UninstallRun]
-; Arrêter et supprimer les services Windows
-Filename: "powershell.exe"; \
-  Parameters: "-NonInteractive -ExecutionPolicy Bypass -Command \
-    ""Stop-Service 'POS_Connect_Nginx','POS_Connect_API' \
-       -Force -ErrorAction SilentlyContinue; \
-      & '{app}\nssm\nssm.exe' remove POS_Connect_Nginx confirm 2>$null; \
-      & '{app}\nssm\nssm.exe' remove POS_Connect_API   confirm 2>$null"""; \
-  Flags: runhidden waituntilterminated
+; Arrêter et supprimer les services Windows (une seule ligne, pas de \ imbriqués)
+Filename: "powershell.exe"; Parameters: "-NonInteractive -ExecutionPolicy Bypass -Command ""Stop-Service 'POS_Connect_Nginx','POS_Connect_API','POS_Connect_MySQL' -Force -ErrorAction SilentlyContinue; & '{app}\nssm\nssm.exe' remove POS_Connect_Nginx confirm; & '{app}\nssm\nssm.exe' remove POS_Connect_API confirm; & '{app}\nssm\nssm.exe' remove POS_Connect_MySQL confirm"""; Flags: runhidden waituntilterminated
 
 ; ── Code Pascal — vérifications avant installation ───────────────────────────
 [Code]
