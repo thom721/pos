@@ -17,6 +17,7 @@ class Purchase(UUIDBase):
 
     supplier_id  = Column(String(36), ForeignKey("suppliers.id"), nullable=False)
     user_id      = Column(String(36), ForeignKey("users.id"))
+    warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=True, index=True)
     reference    = Column(String(255), unique=True, nullable=False)
     total_amount = Column(Numeric(12, 2))
     paid_amount  = Column(Numeric(12, 2), default=0)
@@ -24,10 +25,11 @@ class Purchase(UUIDBase):
     ordered_at   = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     received_at  = Column(DateTime, nullable=True)
 
-    supplier = relationship("Supplier", back_populates="purchases")
-    user     = relationship("User", back_populates="purchases")
-    items    = relationship("PurchaseItem", back_populates="purchase")
-    receipts = relationship("PurchaseReceipt", back_populates="purchase")
+    supplier  = relationship("Supplier",   back_populates="purchases")
+    user      = relationship("User",       back_populates="purchases")
+    warehouse = relationship("Warehouse",  back_populates="purchases")
+    items     = relationship("PurchaseItem",    back_populates="purchase")
+    receipts  = relationship("PurchaseReceipt", back_populates="purchase")
 
     payments = relationship(
         "Payment",

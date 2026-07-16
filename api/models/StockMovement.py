@@ -14,18 +14,20 @@ class StockMovement(UUIDBase):
     __tablename__ = "stock_movements"
     tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
-    product_id  = Column(String(36), ForeignKey("products.id"))
-    user_id     = Column(String(36), ForeignKey("users.id"))
-    type        = Column(Enum(StockType))
-    quantity    = Column(Numeric(12, 2), nullable=False)
-    source_type = Column(String(50))
-    source_id   = Column(String(36))
-    note        = Column(Text)
-    lot_number  = Column(String(100), nullable=True)
-    expiry_date = Column(Date,        nullable=True)
+    product_id   = Column(String(36), ForeignKey("products.id"))
+    user_id      = Column(String(36), ForeignKey("users.id"))
+    warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=True, index=True)
+    type         = Column(Enum(StockType))
+    quantity     = Column(Numeric(12, 2), nullable=False)
+    source_type  = Column(String(50))
+    source_id    = Column(String(36))
+    note         = Column(Text)
+    lot_number   = Column(String(100), nullable=True)
+    expiry_date  = Column(Date,        nullable=True)
 
-    product = relationship("Product", back_populates="stock_movements")
-    user    = relationship("User")
+    product   = relationship("Product",   back_populates="stock_movements")
+    user      = relationship("User")
+    warehouse = relationship("Warehouse", back_populates="stock_movements")
 
     __table_args__ = (
         Index("idx_sm_product_source", "product_id", "source_type"),

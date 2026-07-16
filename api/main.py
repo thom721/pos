@@ -226,6 +226,26 @@ def _ensure_local_tenant(db) -> str:
     return tid
 
 
+def _ensure_default_warehouse(db, tenant_id: str) -> None:
+    """Crée un dépôt par défaut si aucun n'existe pour ce tenant. Idempotent."""
+    from api.models.Warehouse import Warehouse as WarehouseModel
+    try:
+        exists = db.query(WarehouseModel).filter(
+            WarehouseModel.tenant_id == tenant_id
+        ).first()
+        if not exists:
+            db.add(WarehouseModel(
+                tenant_id=tenant_id,
+                name="Depot principal",
+                is_default=True,
+                is_active=True,
+            ))
+            db.commit()
+            _log.info("Depot par defaut cree pour le tenant %s", tenant_id)
+    except Exception as exc:
+        _log.warning("_ensure_default_warehouse: %s", exc)
+
+
 def _ensure_cloud_admin(db, local_tid: str) -> None:
     """
     Garantit qu'un compte superadmin existe dans PlatformConfig ET dans users.
@@ -409,6 +429,8 @@ def on_startup():
         local_tid = _ensure_local_tenant(db)
         # 4. Superadmin — auto-génère les credentials si absent, crée le user
         _ensure_cloud_admin(db, local_tid)
+        # 5. Dépôt par défaut — crée "Depot principal" si aucun dépôt n'existe
+        _ensure_default_warehouse(db, local_tid)
         # Seed built-in roles if not present
         for rd in _BUILTIN_ROLES:
             existing = db.query(RoleModel).filter(RoleModel.name == rd["name"]).first()

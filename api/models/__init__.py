@@ -1,5 +1,6 @@
 from api.models.Tenant import Tenant
 from api.models.BillingPayment import BillingPayment
+from api.models.Warehouse import Warehouse
 from api.models.PosRegister import PosRegister
 from api.models.CashierSession import CashierSession
 from api.models.OfflineSyncQueue import OfflineSyncQueue
