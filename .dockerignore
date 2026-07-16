@@ -1,0 +1,28 @@
+# Config locale — ne jamais copier dans l'image Docker
+# (les variables d'env Docker Compose prennent le relais)
+pos_server.ini
+.env
+*.env
+
+# Données locales
+*.db
+*.db-shm
+*.db-wal
+logs/
+
+# Dev
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Git
+.git/
+.gitignore
+
+# Docs / outils locaux
+*.md
+certificat/
+frontend/
