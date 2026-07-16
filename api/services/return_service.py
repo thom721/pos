@@ -71,15 +71,16 @@ def process_sale_return(
             "subtotal": line_refund,
         })
 
-        # Stock comes back IN
+        # Stock comes back IN (même dépôt que la vente d'origine)
         mv = StockMovement(
             product_id=str(item['product_id']),
             user_id=user_id,
+            warehouse_id=sale.warehouse_id,
             type=StockType.in_,
             quantity=qty,
             source_type="sale_return",
             source_id=sale.id,
-            note=f"Retour client{f' — {reason}' if reason else ''}",
+            note=f"Retour client{f' - {reason}' if reason else ''}",
         )
         if tenant_id:
             mv.tenant_id = tenant_id
@@ -114,6 +115,7 @@ def process_sale_return(
         refund_amount=actual_refund,
         reason=reason,
         user_id=user_id,
+        warehouse_id=sale.warehouse_id,
         items_json=json.dumps(items_summary),
     )
     if tenant_id:
@@ -182,15 +184,16 @@ def process_purchase_return(
             "subtotal": line_value,
         })
 
-        # Stock goes OUT — quantity négative pour réduire le stock
+        # Stock goes OUT (meme depot que l'achat d'origine)
         mv = StockMovement(
             product_id=str(item['product_id']),
             user_id=user_id,
+            warehouse_id=purchase.warehouse_id,
             type=StockType.out,
             quantity=-qty,
             source_type="purchase_return",
             source_id=purchase.id,
-            note=f"Retour fournisseur{f' — {reason}' if reason else ''}",
+            note=f"Retour fournisseur{f' - {reason}' if reason else ''}",
         )
         if tenant_id:
             mv.tenant_id = tenant_id
@@ -208,6 +211,7 @@ def process_purchase_return(
         refund_amount=0,
         reason=reason,
         user_id=user_id,
+        warehouse_id=purchase.warehouse_id,
         items_json=json.dumps(items_summary),
     )
     if tenant_id:

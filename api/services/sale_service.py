@@ -10,6 +10,8 @@ from api.models.Product import Product
 from api.models.StockMovement import StockMovement
 from api.models.Payment import Payment
 from api.models.Customer import Customer
+from api.models.User import User as UserModel
+from api.services.warehouse_helper import resolve_warehouse_id
 
 logger = logging.getLogger(__name__)
 
@@ -295,6 +297,7 @@ def create_sale(
     data,
     user_id: str,
     tenant_id: str | None = None,
+    warehouse_id: str | None = None,
 ):
     from api.models.Debt import Debt
     from api.models.StockMovement import StockType
@@ -335,9 +338,18 @@ def create_sale(
     paid = data.paid_amount or 0
 
     # 2️⃣ Création vente
+    # Warehouse : payload > user assigné > dépôt par défaut
+    payload_wh = getattr(data, 'warehouse_id', None)
+    user_obj = db.get(UserModel, user_id)
+    wh_id = resolve_warehouse_id(
+        db, tenant_id,
+        warehouse_id or payload_wh or (user_obj.warehouse_id if user_obj else None)
+    ) if tenant_id else None
+
     sale = Sale(
         customer_id=str(data.customer_id) if data.customer_id else None,
         user_id=user_id,
+        warehouse_id=wh_id,
         reference=f"VNT-{int(datetime.utcnow().timestamp())}",
         total_amount=total,
         discount=discount,
@@ -367,6 +379,7 @@ def create_sale(
         mv = StockMovement(
             product_id=product.id,
             user_id=user_id,
+            warehouse_id=wh_id,
             type=StockType.out,
             quantity=-item.quantity,
             source_type="SALE",

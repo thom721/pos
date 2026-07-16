@@ -19,6 +19,7 @@ class Sale(UUIDBase):
 
     customer_id  = Column(String(36), ForeignKey("customers.id"), nullable=True)
     user_id      = Column(String(36), ForeignKey("users.id"))
+    warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=True, index=True)
     reference    = Column(String(255), unique=True, nullable=False)
     total_amount = Column(Numeric(12, 2), nullable=False)
     discount     = Column(Numeric(12, 2), default=0)
@@ -26,9 +27,10 @@ class Sale(UUIDBase):
     paid_amount  = Column(Numeric(12, 2), default=0)
     status       = Column(Enum(SaleStatus), default=SaleStatus.unpaid)
 
-    customer = relationship("Customer", back_populates="sales")
-    user     = relationship("User", back_populates="sales")
-    items    = relationship("SaleItem", back_populates="sale")
+    customer  = relationship("Customer",  back_populates="sales")
+    user      = relationship("User",      back_populates="sales")
+    warehouse = relationship("Warehouse", back_populates="sales")
+    items     = relationship("SaleItem",  back_populates="sale")
 
     payments = relationship(
         "Payment",

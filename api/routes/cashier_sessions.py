@@ -140,6 +140,7 @@ def open_session(
         tenant_id=current_user.tenant_id,
         register_id=reg.id,
         cashier_id=current_user.id,
+        warehouse_id=reg.warehouse_id,   # hérite du dépôt de la caisse
         opened_at=datetime.now(timezone.utc),
         opening_balance=body.opening_balance,
         status="open",
