@@ -362,22 +362,38 @@ foreach ($svc in @($SvcApi, $SvcNginx)) {
     }
 }
 
-# ── 7. Règle pare-feu : port 9003 ─────────────────────────────────────────────
-$FwRuleName = "POS Connect Serveur (port 9003)"
-if (-not (Get-NetFirewallRule -DisplayName $FwRuleName -ErrorAction SilentlyContinue)) {
-    try {
-        New-NetFirewallRule `
-            -DisplayName $FwRuleName `
-            -Direction   Inbound `
-            -Protocol    TCP `
-            -LocalPort   9003 `
-            -Action      Allow `
-            -Profile     Private, Domain | Out-Null
-        Write-Log "Règle pare-feu ajoutée : port 9003"
-    } catch {
-        Write-Log "Pare-feu : $_" "WARN"
+# ── 7. Règles pare-feu ────────────────────────────────────────────────────────
+# Profile Any = Private + Domain + Public : évite les blocages silencieux
+# quand Windows classe le réseau en "Public" (réseaux inconnus, Wi-Fi public).
+
+function Add-FwRule {
+    param([string]$Name, [int]$Port)
+    $existing = Get-NetFirewallRule -DisplayName $Name -ErrorAction SilentlyContinue
+    if ($existing) {
+        # Mettre à jour le profil si la règle existe déjà avec Private/Domain seulement
+        try {
+            Set-NetFirewallRule -DisplayName $Name -Profile Any -ErrorAction SilentlyContinue
+        } catch {}
+        Write-Log "Règle pare-feu mise à jour (Any) : $Name"
+    } else {
+        try {
+            New-NetFirewallRule `
+                -DisplayName $Name `
+                -Direction   Inbound `
+                -Protocol    TCP `
+                -LocalPort   $Port `
+                -Action      Allow `
+                -Profile     Any | Out-Null
+            Write-Log "Règle pare-feu ajoutée (Any) : $Name — port $Port"
+        } catch {
+            Write-Log "Pare-feu $Name : $_" "WARN"
+        }
     }
 }
+
+Add-FwRule -Name "POS Connect Serveur API (9003)" -Port 9003
+Add-FwRule -Name "POS Connect Nginx HTTP (80)"    -Port 80
+Add-FwRule -Name "POS Connect Nginx HTTPS (443)"  -Port 443
 
 Write-Log "=== Configuration POS Connect terminée ==="
 Write-Log "Log complet : $LogFile"
