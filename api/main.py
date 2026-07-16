@@ -145,7 +145,19 @@ def _run_alembic_migrations() -> None:
                 alembic_command.stamp(alembic_cfg, "head")
             else:
                 _log.info("Déploiement existant — alembic upgrade head")
-                alembic_command.upgrade(alembic_cfg, "head")
+                try:
+                    alembic_command.upgrade(alembic_cfg, "head")
+                except Exception as rev_err:
+                    # La révision courante dans alembic_version appartient à une
+                    # ancienne chaîne de migrations (ex: top-level alembic/).
+                    # On repart de zéro dans cette chaîne : delete + upgrade.
+                    _log.warning(
+                        "Révision inconnue en DB (%s) — réinitialisation de la chaîne alembic",
+                        rev_err,
+                    )
+                    lock_conn.execute(text("DELETE FROM alembic_version"))
+                    lock_conn.commit()
+                    alembic_command.upgrade(alembic_cfg, "head")
         finally:
             if engine.dialect.name == "mysql":
                 lock_conn.execute(text("SELECT RELEASE_LOCK('pos_alembic_migration')"))
