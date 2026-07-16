@@ -186,16 +186,28 @@ def _auto_fix_mysql_socket(user: str, new_password: str) -> bool:
 
 
 def _detect_mysql() -> dict:
-    """Check if MySQL is installed on this machine."""
+    """Check if MySQL is installed — PATH ou répertoire local POS Connect."""
+    # 1. PATH système
     cmd = shutil.which("mysql")
+
+    # 2. Sur Windows : chercher dans le répertoire d'installation POS Connect
+    if not cmd and platform.system() == "Windows":
+        local_mysql = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),  # api/routes/
+            "..", "..", "mysql", "bin", "mysql.exe",
+        )
+        local_mysql = os.path.normpath(local_mysql)
+        if os.path.isfile(local_mysql):
+            cmd = local_mysql
+
     if not cmd:
         return {"installed": False}
     try:
         r = subprocess.run(
-            ["mysql", "--version"],
+            [cmd, "--version"],
             capture_output=True, text=True, timeout=5
         )
-        return {"installed": True, "version": r.stdout.strip()}
+        return {"installed": True, "version": r.stdout.strip(), "path": cmd}
     except Exception:
         return {"installed": False}
 
@@ -221,39 +233,73 @@ def health(db: Session = Depends(get_db)):
 def detect_mysql():
     """Detect if MySQL is installed and return installation instructions if not."""
     result = _detect_mysql()
-    if not result["installed"]:
-        os_name = platform.system()
-        instructions = {
-            "Windows": (
-                "1. Télécharger MySQL Community Server : https://dev.mysql.com/downloads/mysql/\n"
-                "2. Exécuter l'installateur .msi\n"
-                "3. Choisir 'Server only'\n"
-                "4. Configurer le mot de passe root\n"
-                "5. Relancer ce wizard"
-            ),
-            "Darwin": (
-                "Via Homebrew (recommandé) :\n"
-                "  brew install mysql\n"
-                "  brew services start mysql\n"
-                "  mysql_secure_installation\n\n"
-                "Ou télécharger depuis : https://dev.mysql.com/downloads/mysql/"
-            ),
-            "Linux": (
-                "Ubuntu/Debian :\n"
-                "  sudo apt update && sudo apt install mysql-server\n"
-                "  sudo systemctl start mysql\n"
-                "  sudo mysql_secure_installation\n\n"
-                "CentOS/RHEL :\n"
-                "  sudo yum install mysql-server\n"
-                "  sudo systemctl start mysqld"
-            ),
-        }
-        return {
-            "installed": False,
-            "os": os_name,
-            "instructions": instructions.get(os_name, "Voir https://dev.mysql.com/downloads/mysql/"),
-        }
-    return result
+    if result.get("installed"):
+        # Sur Windows : s'assurer que le service POS_Connect_MySQL tourne
+        if platform.system() == "Windows":
+            try:
+                subprocess.run(
+                    ["powershell", "-NonInteractive", "-Command",
+                     "Start-Service 'POS_Connect_MySQL' -ErrorAction SilentlyContinue"],
+                    capture_output=True, timeout=15,
+                )
+            except Exception:
+                pass
+        return result
+
+    os_name = platform.system()
+    if os_name == "Windows":
+        # Proposer de lancer le script d'installation fourni avec POS Connect
+        ps1 = os.path.normpath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "..", "setup-windows.ps1",
+        ))
+        if os.path.isfile(ps1):
+            try:
+                subprocess.run(
+                    ["powershell", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                     "-File", ps1],
+                    timeout=120, check=False,
+                )
+                result2 = _detect_mysql()
+                if result2.get("installed"):
+                    return result2
+            except Exception:
+                pass
+
+    instructions = {
+        "Windows": (
+            "MySQL n'a pas été trouvé.\n\n"
+            "Si vous venez d'installer POS Connect, relancez l'application —\n"
+            "le script d'installation devrait avoir configuré MySQL automatiquement.\n\n"
+            "Sinon :\n"
+            "1. Télécharger MySQL Community Server : https://dev.mysql.com/downloads/mysql/\n"
+            "2. Exécuter l'installateur .msi\n"
+            "3. Choisir 'Server only'\n"
+            "4. Configurer le mot de passe root\n"
+            "5. Relancer ce wizard"
+        ),
+        "Darwin": (
+            "Via Homebrew (recommandé) :\n"
+            "  brew install mysql\n"
+            "  brew services start mysql\n"
+            "  mysql_secure_installation\n\n"
+            "Ou télécharger depuis : https://dev.mysql.com/downloads/mysql/"
+        ),
+        "Linux": (
+            "Ubuntu/Debian :\n"
+            "  sudo apt update && sudo apt install mysql-server\n"
+            "  sudo systemctl start mysql\n"
+            "  sudo mysql_secure_installation\n\n"
+            "CentOS/RHEL :\n"
+            "  sudo yum install mysql-server\n"
+            "  sudo systemctl start mysqld"
+        ),
+    }
+    return {
+        "installed": False,
+        "os": os_name,
+        "instructions": instructions.get(os_name, "Voir https://dev.mysql.com/downloads/mysql/"),
+    }
 
 
 @router.post("/test-db")
