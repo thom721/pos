@@ -22,7 +22,8 @@ $MySqlVersion = "8.0.41"
 $MySqlZip    = "$InstallDir\mysql-$MySqlVersion-winx64.zip"
 $MySqlZipUrl = "https://downloads.mysql.com/archives/get/p/23/file/mysql-$MySqlVersion-winx64.zip"
 $MySqlDir    = "$InstallDir\mysql"
-$MySqlData   = "$DataDir\mysql-data"
+# Données MySQL dans un dossier séparé — survivent à toute suppression de POS_Connect
+$MySqlData   = "$env:ProgramData\POS_Connect_MySQL"
 $MyIni       = "$MySqlDir\my.ini"
 $MySqlBinDir = "$MySqlDir\bin"
 $MySqlPort   = 3307
@@ -128,6 +129,17 @@ if (-not (Test-Path "$MySqlBinDir\mysqld.exe")) {
 # ── 3. Initialiser MySQL ───────────────────────────────────────────────────────
 if (Test-Path "$MySqlBinDir\mysqld.exe") {
     New-Item -ItemType Directory -Force -Path $MySqlData | Out-Null
+
+    # Protéger le dossier MySQL : refuser la suppression pour tous sauf SYSTEM + Administrateurs
+    try {
+        icacls $MySqlData /inheritance:r `
+            /grant "SYSTEM:(OI)(CI)F" `
+            /grant "Administrators:(OI)(CI)F" `
+            /deny  "Users:(D,DC)" | Out-Null
+        Write-Log "Protection dossier MySQL : suppression refusée aux utilisateurs standard"
+    } catch {
+        Write-Log "Impossible de protéger le dossier MySQL : $_" "WARN"
+    }
 
     if (-not (Test-Path "$MySqlData\ibdata1")) {
         Write-Log "Initialisation du datadir MySQL ($MySqlData)..."

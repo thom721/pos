@@ -18,8 +18,8 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 
-; Dossier d'installation
-DefaultDirName={autopf}\POS_Connect
+; Dossier d'installation — ProgramData (accessible en écriture sans admin)
+DefaultDirName={commonappdata}\POS_Connect
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 
@@ -53,11 +53,12 @@ Name: "desktopicon"; Description: "Créer une icône sur le Bureau"; \
 
 ; ── Dossiers à créer ──────────────────────────────────────────────────────────
 [Dirs]
-; Données modifiables sans droits admin (pos_server.ini, logs, DB SQLite)
-Name: "{commonappdata}\POS_Connect"
+; Répertoire d'install = {app} = C:\ProgramData\POS_Connect\
 Name: "{app}\logs"
 Name: "{app}\nginx\logs"
 Name: "{app}\nginx\temp"
+; Données MySQL séparées — survivent à une suppression de {app}
+Name: "{commonappdata}\POS_Connect_MySQL"
 
 ; ── Fichiers à copier ─────────────────────────────────────────────────────────
 [Files]
@@ -101,7 +102,7 @@ Root: HKLM; Subkey: "SOFTWARE\POS Connect"; \
   Flags: uninsdeletevalue
 Root: HKLM; Subkey: "SOFTWARE\POS Connect"; \
   ValueType: string; ValueName: "DataPath"; \
-  ValueData: "{commonappdata}\POS_Connect"; Flags: uninsdeletevalue
+  ValueData: "{commonappdata}\POS_Connect_MySQL"; Flags: uninsdeletevalue
 Root: HKLM; Subkey: "SOFTWARE\POS Connect"; \
   ValueType: string; ValueName: "Publisher"; ValueData: "{#MyAppPublisher}"; \
   Flags: uninsdeletevalue
@@ -158,17 +159,25 @@ Filename: "powershell.exe"; Parameters: "-NonInteractive -ExecutionPolicy Bypass
 [Code]
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  // Proposer de supprimer les données utilisateur à la désinstallation
+  // Les données MySQL (C:\ProgramData\POS_Connect_MySQL\) ne sont JAMAIS supprimées
+  // automatiquement — elles survivent à toute désinstallation.
+  // On propose uniquement de supprimer les logs et la configuration.
   if CurUninstallStep = usPostUninstall then
   begin
     if MsgBox(
-      'Voulez-vous supprimer les données POS Connect ?' + #13#10 +
-      '(base de données, configuration, logs)' + #13#10 + #13#10 +
-      'Cliquez Non pour conserver vos données.',
+      'Voulez-vous supprimer les logs et la configuration POS Connect ?' + #13#10 +
+      '(pos_server.ini, logs d''installation)' + #13#10 + #13#10 +
+      'Les données MySQL (base de données) sont conservées dans :' + #13#10 +
+      'C:\ProgramData\POS_Connect_MySQL\' + #13#10 + #13#10 +
+      'Cliquez Non pour conserver tous les fichiers.',
       mbConfirmation, MB_YESNO
     ) = IDYES then
     begin
-      DelTree(ExpandConstant('{commonappdata}\POS_Connect'), True, True, True);
+      // Supprimer uniquement les fichiers de configuration et logs
+      // POS_Connect_MySQL reste intact
+      DeleteFile(ExpandConstant('{app}\pos_server.ini'));
+      DeleteFile(ExpandConstant('{app}\install.log'));
+      DelTree(ExpandConstant('{app}\logs'), True, True, True);
     end;
   end;
 end;
