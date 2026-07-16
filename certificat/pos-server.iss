@@ -149,24 +149,9 @@ Filename: "{app}\{#MyAppExeName}"; \
 ; Arrêter et supprimer les services Windows (une seule ligne, pas de \ imbriqués)
 Filename: "powershell.exe"; Parameters: "-NonInteractive -ExecutionPolicy Bypass -Command ""Stop-Service 'POS_Connect_Nginx','POS_Connect_API','POS_Connect_MySQL' -Force -ErrorAction SilentlyContinue; & '{app}\nssm\nssm.exe' remove POS_Connect_Nginx confirm; & '{app}\nssm\nssm.exe' remove POS_Connect_API confirm; & '{app}\nssm\nssm.exe' remove POS_Connect_MySQL confirm"""; Flags: runhidden waituntilterminated
 
-; ── Code Pascal — vérifications avant installation ───────────────────────────
+; ── Code Pascal — désinstallation ────────────────────────────────────────────
+; Note : le contrôle 64-bit est déjà géré par ArchitecturesAllowed=x64compatible
 [Code]
-function InitializeSetup(): Boolean;
-begin
-  // Vérifie Windows 10 minimum
-  if not IsWindows64BitInstallMode then
-  begin
-    MsgBox(
-      'POS Connect nécessite Windows 10 ou 11 (64 bits).' + #13#10 +
-      'Votre système n''est pas compatible.',
-      mbError, MB_OK
-    );
-    Result := False;
-    Exit;
-  end;
-  Result := True;
-end;
-
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   // Proposer de supprimer les données utilisateur à la désinstallation

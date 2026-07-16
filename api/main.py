@@ -335,9 +335,18 @@ def _ensure_db_ready():
                 exc,
             )
             # Recréer le moteur en mode SQLite
+            # Chemin absolu : ProgramData sur Windows, répertoire courant ailleurs
+            import os as _os
+            from pathlib import Path as _Path
             from sqlalchemy import create_engine
             from sqlalchemy.orm import sessionmaker
-            sqlite_url = "sqlite:///./pos_connect.db"
+            if _os.name == "nt":
+                _data = _Path(_os.environ.get("PROGRAMDATA", "C:\\ProgramData")) / "POS_Connect"
+                _data.mkdir(parents=True, exist_ok=True)
+                _sqlite_path = str(_data / "pos_connect.db")
+            else:
+                _sqlite_path = "./pos_connect.db"
+            sqlite_url = f"sqlite:///{_sqlite_path}"
             new_engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
 
             from sqlalchemy import event as _sa_event
