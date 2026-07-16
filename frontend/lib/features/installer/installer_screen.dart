@@ -649,6 +649,8 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
   String? _mysqlInstructions;
   bool _testing = false;
   bool _tested = false;
+  bool _installingMysql = false;
+  String _installProgress = '';
 
   @override
   void initState() {
@@ -668,8 +670,68 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
       final data = res.data as Map<String, dynamic>;
       if (data['installed'] == false) {
         setState(() => _mysqlInstructions = data['instructions'] as String);
+      } else {
+        setState(() { _mysqlInstructions = null; _tested = false; });
       }
     } catch (_) {}
+  }
+
+  /// Lance l'installation automatique de MySQL via le PS1 (Windows uniquement)
+  /// et poll le statut toutes les 3s sans relancer le wizard.
+  Future<void> _autoInstallMysql() async {
+    setState(() {
+      _installingMysql = true;
+      _installProgress = 'Démarrage de l\'installation MySQL...';
+    });
+    try {
+      await dio.post('/api/setup/install-mysql');
+    } catch (_) {}
+
+    // Polling jusqu'à done ou error (max 10 min)
+    for (int i = 0; i < 200; i++) {
+      await Future.delayed(const Duration(seconds: 3));
+      try {
+        final res = await dio.get('/api/setup/install-mysql/status');
+        final data = res.data as Map<String, dynamic>;
+        final status = data['status'] as String? ?? 'running';
+
+        if (!mounted) return;
+        setState(() {
+          _installProgress = switch (status) {
+            'running' => i < 10
+                ? 'Vérification des prérequis (Visual C++)...'
+                : i < 30
+                    ? 'Téléchargement / extraction MySQL...'
+                    : i < 60
+                        ? 'Initialisation de la base de données...'
+                        : 'Configuration des services Windows...',
+            'done'    => 'MySQL installé avec succès !',
+            'error'   => 'Erreur lors de l\'installation.',
+            _         => 'Installation en cours...',
+          };
+        });
+
+        if (status == 'done') {
+          if (!mounted) return;
+          setState(() {
+            _installingMysql = false;
+            _mysqlInstructions = null;
+          });
+          await _detectMysql();
+          return;
+        }
+        if (status == 'error') {
+          setState(() {
+            _installingMysql = false;
+            _mysqlInstructions = 'Installation automatique échouée.\n'
+                'Vérifiez C:\\ProgramData\\POS_Connect\\install.log\n\n'
+                'Ou installez MySQL manuellement et relancez.';
+          });
+          return;
+        }
+      } catch (_) {}
+    }
+    if (mounted) setState(() { _installingMysql = false; });
   }
 
   Future<void> _autoFixWithSudo() async {
@@ -788,13 +850,53 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_mysqlInstructions != null) ...[
+            if (_installingMysql) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.07),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Row(children: [
+                    Icon(Icons.downloading_rounded, color: AppColors.primary, size: 18),
+                    SizedBox(width: 8),
+                    Text('Installation MySQL en cours...',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  ]),
+                  const SizedBox(height: 10),
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 8),
+                  Text(_installProgress,
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                ]),
+              ),
+              const SizedBox(height: 16),
+            ] else if (_mysqlInstructions != null) ...[
               _InfoCard(
                 icon: Icons.warning_amber_rounded,
                 color: AppColors.warning,
                 title: 'MySQL non détecté sur ce système',
                 body: _mysqlInstructions!,
               ),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _autoInstallMysql,
+                    icon: const Icon(Icons.install_desktop_rounded, size: 18),
+                    label: const Text('Installer automatiquement'),
+                    style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: _detectMysql,
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: const Text('Vérifier'),
+                ),
+              ]),
               const SizedBox(height: 16),
             ],
             Row(children: [

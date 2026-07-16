@@ -41,6 +41,40 @@ Write-Log "=== Début de la configuration POS Connect ==="
 Write-Log "InstallDir : $InstallDir"
 Write-Log "DataDir    : $DataDir"
 
+# ── 0. Visual C++ Redistributable (requis par MySQL 8) ────────────────────────
+$VcRuntime = "$env:SystemRoot\System32\vcruntime140.dll"
+if (-not (Test-Path $VcRuntime)) {
+    Write-Log "vcruntime140.dll absent — installation du Visual C++ Redistributable..." "WARN"
+    $VcRedist = "$InstallDir\vcredist\vc_redist.x64.exe"
+    if (-not (Test-Path $VcRedist)) {
+        Write-Log "Téléchargement vc_redist.x64.exe depuis Microsoft..."
+        $VcRedistDir = "$InstallDir\vcredist"
+        New-Item -ItemType Directory -Force -Path $VcRedistDir | Out-Null
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            (New-Object System.Net.WebClient).DownloadFile(
+                "https://aka.ms/vs/17/release/vc_redist.x64.exe",
+                $VcRedist
+            )
+            Write-Log "vc_redist.x64.exe téléchargé"
+        } catch {
+            Write-Log "Impossible de télécharger vc_redist : $_" "WARN"
+        }
+    }
+    if (Test-Path $VcRedist) {
+        Write-Log "Installation vc_redist.x64.exe (silencieux)..."
+        Start-Process -FilePath $VcRedist -ArgumentList "/install /quiet /norestart" `
+            -Wait -NoNewWindow
+        if (Test-Path $VcRuntime) {
+            Write-Log "Visual C++ Redistributable installé avec succès"
+        } else {
+            Write-Log "vcruntime140.dll toujours absent après install — MySQL pourrait échouer" "WARN"
+        }
+    }
+} else {
+    Write-Log "Visual C++ Redistributable OK ($VcRuntime)"
+}
+
 # ── 1. Certificat SSL ──────────────────────────────────────────────────────────
 $CertFile = "$InstallDir\certificat\server.crt"
 if (Test-Path $CertFile) {

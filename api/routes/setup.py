@@ -229,6 +229,53 @@ def health(db: Session = Depends(get_db)):
         raise HTTPException(503, f"DB indisponible: {e}")
 
 
+_mysql_install_state: dict = {"status": "idle", "log": ""}  # idle | running | done | error
+
+
+@router.post("/install-mysql")
+def install_mysql_bg():
+    """Lance l'installation MySQL en arrière-plan via setup-windows.ps1."""
+    import threading
+
+    if _mysql_install_state["status"] == "running":
+        return {"status": "running", "message": "Installation déjà en cours"}
+
+    ps1 = os.path.normpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "setup-windows.ps1",
+    ))
+    if not os.path.isfile(ps1):
+        raise HTTPException(404, "setup-windows.ps1 introuvable")
+
+    def _run():
+        _mysql_install_state["status"] = "running"
+        _mysql_install_state["log"] = ""
+        try:
+            result = subprocess.run(
+                ["powershell", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                 "-File", ps1],
+                capture_output=True, text=True, timeout=600,
+            )
+            _mysql_install_state["log"] = (result.stdout or "") + (result.stderr or "")
+            detected = _detect_mysql()
+            _mysql_install_state["status"] = "done" if detected.get("installed") else "error"
+        except Exception as exc:
+            _mysql_install_state["status"] = "error"
+            _mysql_install_state["log"] = str(exc)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "running", "message": "Installation démarrée"}
+
+
+@router.get("/install-mysql/status")
+def install_mysql_status():
+    """Retourne le statut de l'installation MySQL en arrière-plan."""
+    state = _mysql_install_state.copy()
+    if state["status"] == "done":
+        state["mysql"] = _detect_mysql()
+    return state
+
+
 @router.get("/detect-mysql")
 def detect_mysql():
     """Detect if MySQL is installed and return installation instructions if not."""
