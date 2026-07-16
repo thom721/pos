@@ -350,7 +350,7 @@ jobs:
   inno-setup:
     name: 🏗 Windows Installer (Inno Setup)
     runs-on: windows-latest
-    needs: [backend-windows]
+    needs: [backend-windows, frontend-windows]
     steps:
       - uses: actions/checkout@v4
 
@@ -359,6 +359,12 @@ jobs:
         with:
           name: backend-windows
           path: certificat/backend-windows/
+
+      - name: Télécharger frontend-windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-windows
+          path: certificat/frontend-windows/
 
       - name: Cache MySQL ZIP (~300 Mo)
         id: cache-mysql
