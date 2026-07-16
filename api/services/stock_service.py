@@ -16,6 +16,7 @@ def list_stock_movements(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     tenant_id: str | None = None,
+    warehouse_id: str | None = None,
 ):
     query = (
         db.query(StockMovement)
@@ -27,6 +28,8 @@ def list_stock_movements(
 
     if tenant_id:
         query = query.filter(StockMovement.tenant_id == tenant_id)
+    if warehouse_id:
+        query = query.filter(StockMovement.warehouse_id == warehouse_id)
 
     # 🔍 Recherche (produit ou note)
     if search:

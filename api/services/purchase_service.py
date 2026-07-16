@@ -12,6 +12,7 @@ from api.models.Purchase import Purchase
 from api.models.Supplier import Supplier
 from api.models.Debt import Debt
 from sqlalchemy import or_, and_
+from api.services.warehouse_helper import resolve_warehouse_id
 
 
 
@@ -24,6 +25,7 @@ def list_purchases(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     tenant_id: str | None = None,
+    warehouse_id: str | None = None,
 ):
     query = (
         db.query(Purchase)
@@ -37,6 +39,8 @@ def list_purchases(
 
     if tenant_id:
         query = query.filter(Purchase.tenant_id == tenant_id)
+    if warehouse_id:
+        query = query.filter(Purchase.warehouse_id == warehouse_id)
 
     # 🔍 Recherche (reference + supplier)
     if search:
@@ -94,7 +98,7 @@ def get_purchase(db: Session, purchase_id: str, tenant_id: str | None = None):
     return query.first()
 
 
-def create_purchase(db: Session, data, user_id: str, tenant_id: str | None = None):
+def create_purchase(db: Session, data, user_id: str, tenant_id: str | None = None, warehouse_id: str | None = None):
     if not data.items:
         raise HTTPException(400, "Aucun produit")
 
@@ -119,9 +123,11 @@ def create_purchase(db: Session, data, user_id: str, tenant_id: str | None = Non
     else:
         status = "paid"
 
+    wh_id = resolve_warehouse_id(db, tenant_id, warehouse_id or data.warehouse_id) if tenant_id else None
     purchase = Purchase(
         supplier_id=str(data.supplier_id),
         user_id=user_id,
+        warehouse_id=wh_id,
         reference=f"PUR-{int(datetime.utcnow().timestamp())}",
         total_amount=total,
         paid_amount=data.paid_amount,

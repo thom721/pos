@@ -10,18 +10,22 @@ from sqlalchemy import func
 
 from api.schemas.purchase_receipt import PurchaseReceiptCreate
 from api.models.StockMovement import StockType
+from api.services.warehouse_helper import resolve_warehouse_id
 
 class ReceiptService:
 
     def __init__(self, db: Session):
         self.db = db
 
-    def receive(self, data: PurchaseReceiptCreate,user_id:str):
+    def receive(self, data: PurchaseReceiptCreate, user_id: str, tenant_id: str | None = None):
 
+        wh_id = resolve_warehouse_id(self.db, tenant_id, data.warehouse_id) if tenant_id else None
         receipt = PurchaseReceipt(
             purchase_id=data.purchase_id,
             received_by=data.received_by,
-            note=data.note
+            note=data.note,
+            warehouse_id=wh_id,
+            tenant_id=tenant_id,
         )
         self.db.add(receipt)
 
@@ -51,11 +55,13 @@ class ReceiptService:
             self.db.add(StockMovement(
                 product_id=item.product_id,
                 user_id=user_id,
+                warehouse_id=wh_id,
+                tenant_id=tenant_id,
                 type=StockType.in_,
                 quantity=item.received_qty,
                 source_type="purchase_receipt",
                 source_id=data.purchase_id,
-                note="Entrée stock (achat)",
+                note="Entree stock (achat)",
                 lot_number=item.lot_number,
                 expiry_date=item.expiry_date,
             ))

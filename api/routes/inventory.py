@@ -26,10 +26,13 @@ def preview_inventory(
 def read_inventories(
     page: int = Query(1, ge=1),
     limit: int = Query(20, le=100),
+    warehouse_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.INVENTORY_READ)),
 ):
-    return list_inventories(db, page=page, limit=limit, tenant_id=current_user.tenant_id)
+    return list_inventories(db, page=page, limit=limit,
+                            tenant_id=current_user.tenant_id,
+                            warehouse_id=warehouse_id)
 
 
 @router.get("/{inventory_id}")
@@ -64,7 +67,8 @@ def store_inventory(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.INVENTORY_CREATE)),
 ):
-    record = create_inventory(db, payload, current_user.id, tenant_id=current_user.tenant_id)
+    record = create_inventory(db, payload, current_user.id, tenant_id=current_user.tenant_id,
+                              warehouse_id=payload.warehouse_id)
     return {
         "message": "Inventaire enregistré avec succès",
         "inventory_id": record.id,

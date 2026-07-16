@@ -23,12 +23,14 @@ def read_stock_movements(
     search: Optional[str] = None,
     stock_type: Optional[str] = Query(None, description="IN | OUT"),
     source_type: Optional[str] = None,
+    warehouse_id: Optional[str] = None,
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
 ):
     return list_stock_movements(
         db=db, page=page, limit=limit, search=search,
         stock_type=stock_type, source_type=source_type,
+        warehouse_id=warehouse_id,
         date_from=date_from, date_to=date_to,
         tenant_id=current_user.tenant_id,
     )

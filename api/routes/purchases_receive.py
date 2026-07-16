@@ -16,7 +16,7 @@ def store_receipt(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PURCHASES_RECEIVE)),
 ):
-    purchase = ReceiptService(db).receive(payload, current_user.id)
+    purchase = ReceiptService(db).receive(payload, current_user.id, tenant_id=current_user.tenant_id)
     return {"message": "Livraison enregistrée avec succès", "purchase_id": purchase.id}
 
 

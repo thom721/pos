@@ -17,6 +17,7 @@ class PurchaseReceiptCreate(BaseModel):
     purchase_id: str
     received_by: str | None = None
     note: str | None = None
+    warehouse_id: str | None = None
     items: list[ReceiptItemCreate]
 
 # class PurchaseCreate(BaseModel):

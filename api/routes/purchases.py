@@ -20,7 +20,7 @@ def store_purchase(
     current_user: User = Depends(require_permission(P.PURCHASES_CREATE)),
 ):
     purchase = create_purchase(db, payload, current_user.id, tenant_id=current_user.tenant_id)
-    return {"message": "Achat enregistré avec succès", "purchase_id": purchase.id}
+    return {"message": "Achat enregistre avec succes", "purchase_id": purchase.id}
 
 
 @router.get("/", response_model=PaginatedResponse[PurchaseRead])
@@ -31,11 +31,13 @@ def read_purchases(
     limit: int = Query(10, le=100),
     search: Optional[str] = None,
     status: Optional[str] = None,
+    warehouse_id: Optional[str] = None,
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
 ):
     return list_purchases(db=db, page=page, limit=limit, search=search,
                           status=status, date_from=date_from, date_to=date_to,
+                          warehouse_id=warehouse_id,
                           tenant_id=current_user.tenant_id)
 
 

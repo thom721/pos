@@ -8,9 +8,15 @@ from api.models.Product import Product
 from api.models.Category import Category
 from api.models.StockMovement import StockMovement, StockType
 from api.models.InventoryRecord import InventoryRecord
+from api.services.warehouse_helper import resolve_warehouse_id
 
 
-def _stock_map(db: Session, product_ids: list[str], tenant_id: str | None = None) -> dict[str, float]:
+def _stock_map(
+    db: Session,
+    product_ids: list[str],
+    tenant_id: str | None = None,
+    warehouse_id: str | None = None,
+) -> dict[str, float]:
     """Return {product_id: current_stock} computed via SQL aggregate."""
     if not product_ids:
         return {}
@@ -23,6 +29,8 @@ def _stock_map(db: Session, product_ids: list[str], tenant_id: str | None = None
     )
     if tenant_id:
         query = query.filter(StockMovement.tenant_id == tenant_id)
+    if warehouse_id:
+        query = query.filter(StockMovement.warehouse_id == warehouse_id)
     rows = query.group_by(StockMovement.product_id).all()
     return {r.product_id: float(r.stock) for r in rows}
 
@@ -59,10 +67,18 @@ def get_preview(db: Session, category_ids: list[str] | None = None, tenant_id: s
     ]
 
 
-def list_inventories(db: Session, page: int = 1, limit: int = 20, tenant_id: str | None = None) -> dict:
+def list_inventories(
+    db: Session,
+    page: int = 1,
+    limit: int = 20,
+    tenant_id: str | None = None,
+    warehouse_id: str | None = None,
+) -> dict:
     query = db.query(InventoryRecord)
     if tenant_id:
         query = query.filter(InventoryRecord.tenant_id == tenant_id)
+    if warehouse_id:
+        query = query.filter(InventoryRecord.warehouse_id == warehouse_id)
     total = query.count()
     records = (
         query
@@ -84,12 +100,13 @@ def get_inventory(db: Session, inventory_id: str, tenant_id: str | None = None) 
     return query.first()
 
 
-def create_inventory(db: Session, data, user_id: str, tenant_id: str | None = None) -> InventoryRecord:
+def create_inventory(db: Session, data, user_id: str, tenant_id: str | None = None, warehouse_id: str | None = None) -> InventoryRecord:
     if not data.items:
         raise HTTPException(400, "Aucun produit compté")
 
+    wh_id = resolve_warehouse_id(db, tenant_id, warehouse_id or data.warehouse_id) if tenant_id else None
     product_ids = [str(item.product_id) for item in data.items]
-    stocks = _stock_map(db, product_ids, tenant_id=tenant_id)
+    stocks = _stock_map(db, product_ids, tenant_id=tenant_id, warehouse_id=wh_id)
 
     items_summary = []
     discrepancy_count = 0
@@ -105,6 +122,7 @@ def create_inventory(db: Session, data, user_id: str, tenant_id: str | None = No
         discrepancy_count=0,
         user_id=user_id,
         items_json="[]",
+        warehouse_id=wh_id,
     )
     if tenant_id:
         record.tenant_id = tenant_id
@@ -135,11 +153,12 @@ def create_inventory(db: Session, data, user_id: str, tenant_id: str | None = No
             mv = StockMovement(
                 product_id=pid,
                 user_id=user_id,
+                warehouse_id=wh_id,
                 type=StockType.adjust,
                 quantity=diff,
                 source_type="inventory",
                 source_id=record.id,
-                note=f"Inventaire {reference} — ajustement {expected:+.2f}→{counted:.2f}",
+                note=f"Inventaire {reference}: ajustement {expected:+.2f}->{counted:.2f}",
             )
             if tenant_id:
                 mv.tenant_id = tenant_id

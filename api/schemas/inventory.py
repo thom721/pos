@@ -13,6 +13,7 @@ class InventoryCreate(BaseModel):
     inventory_type: str = "full"          # 'full' | 'partial'
     category_ids: Optional[List[str]] = None
     notes: Optional[str] = None
+    warehouse_id: Optional[str] = None
     items: List[InventoryItemInput]
 
 

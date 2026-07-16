@@ -14,7 +14,8 @@ class PurchaseItemInput(BaseModel):
 class PurchaseCreate(BaseModel):
     supplier_id: UUID
     paid_amount: float = 0
-    total_amount:float=0
+    total_amount: float = 0
+    warehouse_id: Optional[str] = None
     items: List[PurchaseItemInput]
 
 
