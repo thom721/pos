@@ -11,6 +11,7 @@ from api.models.User import User
 from api.models.Tenant import Tenant
 from api.models.BillingPayment import BillingPayment
 from api.models.PlatformConfig import PlatformConfig
+from api.models.Warehouse import Warehouse
 from api.core.config import settings
 from api.core.billing_crypto import try_decrypt_date, encrypt_date
 from api.dependencies.auth import require_permission
@@ -34,6 +35,54 @@ def _get_tenant(db: Session, user: User) -> Tenant:
     return tenant
 
 
+def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None) -> dict:
+    """Calcule le détail d'utilisation du plan et le total mensuel."""
+    # Caisses = utilisateurs avec rôle cashier
+    users = db.query(User).filter(User.tenant_id == tenant.id).all()
+    caisse_count = sum(
+        1 for u in users
+        if u.roles and "cashier" in (u.roles if isinstance(u.roles, list) else [])
+    )
+    # Dépôts = warehouses revendiqués (installations actives)
+    depot_count = db.query(Warehouse).filter(
+        Warehouse.tenant_id == tenant.id,
+        Warehouse.is_claimed == True,
+    ).count()
+
+    max_caisses = tenant.max_caisses
+    max_depots  = getattr(tenant, "max_depots", 1)
+
+    base_htg       = float(cfg.monthly_price_htg)    if cfg else 1500.0
+    base_usd       = float(cfg.monthly_price_usd)    if cfg else 12.0
+    xc_htg         = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
+    xc_usd         = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
+    xd_htg         = float(getattr(cfg, "price_per_extra_depot_htg", 500.0)) if cfg else 500.0
+    xd_usd         = float(getattr(cfg, "price_per_extra_depot_usd", 4.0))   if cfg else 4.0
+
+    extra_caisses  = max(0, caisse_count - max_caisses)
+    extra_depots   = max(0, depot_count  - max_depots)
+
+    total_htg = base_htg + extra_caisses * xc_htg + extra_depots * xd_htg
+    total_usd = base_usd + extra_caisses * xc_usd + extra_depots * xd_usd
+
+    return {
+        "max_caisses":              max_caisses,
+        "current_caisses":          caisse_count,
+        "extra_caisses":            extra_caisses,
+        "price_per_extra_caisse_htg": xc_htg,
+        "price_per_extra_caisse_usd": xc_usd,
+        "max_depots":               max_depots,
+        "current_depots":           depot_count,
+        "extra_depots":             extra_depots,
+        "price_per_extra_depot_htg":  xd_htg,
+        "price_per_extra_depot_usd":  xd_usd,
+        "base_price_htg":           base_htg,
+        "base_price_usd":           base_usd,
+        "total_monthly_htg":        total_htg,
+        "total_monthly_usd":        total_usd,
+    }
+
+
 @router.get("/config")
 def get_billing_config(
     db: Session = Depends(get_db),
@@ -47,6 +96,8 @@ def get_billing_config(
             "monthly_price_htg": 1500.0, "monthly_price_usd": 12.0,
             "moncash_mode": "manual", "natcash_mode": "manual",
             "support_email": "", "support_whatsapp": "",
+            "price_per_extra_caisse_htg": 500.0, "price_per_extra_caisse_usd": 4.0,
+            "price_per_extra_depot_htg":  500.0, "price_per_extra_depot_usd":  4.0,
         }
     return {
         "moncash_number":    cfg.moncash_number,
@@ -59,6 +110,8 @@ def get_billing_config(
         "support_whatsapp":  cfg.support_whatsapp,
         "price_per_extra_caisse_htg": float(cfg.price_per_extra_caisse_htg),
         "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
+        "price_per_extra_depot_htg":  float(getattr(cfg, "price_per_extra_depot_htg", 500.0)),
+        "price_per_extra_depot_usd":  float(getattr(cfg, "price_per_extra_depot_usd", 4.0)),
     }
 
 
@@ -107,7 +160,20 @@ def get_billing_status(
             if tenant.subscription_started_at else None,
         "subscription_ends_at": sub_end.isoformat() if sub_end else None,
         "has_stripe": bool(tenant.stripe_subscription_id),
+        "max_caisses": tenant.max_caisses,
+        "max_depots": getattr(tenant, "max_depots", 1),
     }
+
+
+@router.get("/plan-usage")
+def get_plan_usage(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.CONFIG_READ)),
+):
+    """Retourne le détail d'utilisation du plan : caisses + dépôts + total mensuel calculé."""
+    tenant = _get_tenant(db, current_user)
+    cfg    = db.query(PlatformConfig).first()
+    return _compute_plan_usage(tenant, db, cfg)
 
 
 def _build_license_payload(tenant: "Tenant", db: Session) -> dict:
@@ -123,15 +189,8 @@ def _build_license_payload(tenant: "Tenant", db: Session) -> dict:
     if sub_end and sub_end.tzinfo is None:
         sub_end = sub_end.replace(tzinfo=timezone.utc)
 
-    users = db.query(User).filter(User.tenant_id == tenant.id).all()
-    caisse_count = sum(
-        1 for u in users
-        if u.roles and "cashier" in (u.roles if isinstance(u.roles, list) else [])
-    )
-
-    cfg = db.query(PlatformConfig).first()
-    price_extra_htg = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
-    price_extra_usd = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
+    cfg   = db.query(PlatformConfig).first()
+    usage = _compute_plan_usage(tenant, db, cfg)
 
     return {
         "tenant_id":            tenant.id,
@@ -143,10 +202,7 @@ def _build_license_payload(tenant: "Tenant", db: Session) -> dict:
         "valid_until":          valid_until.isoformat(),
         "trial_ends_at":        trial_end.isoformat() if trial_end else None,
         "subscription_ends_at": sub_end.isoformat() if sub_end else None,
-        "max_caisses":          tenant.max_caisses,
-        "current_caisses":      caisse_count,
-        "price_per_extra_caisse_htg": price_extra_htg,
-        "price_per_extra_caisse_usd": price_extra_usd,
+        **usage,
     }
 
 
@@ -244,21 +300,19 @@ def get_caisse_count(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.CONFIG_READ)),
 ):
-    """Returns current caisse count vs plan limit for the tenant."""
+    """Retourne le décompte caisses + dépôts vs limites du plan (alias de plan-usage)."""
     tenant = _get_tenant(db, current_user)
-    users  = db.query(User).filter(User.tenant_id == tenant.id).all()
-    count  = sum(
-        1 for u in users
-        if u.roles and "cashier" in (u.roles if isinstance(u.roles, list) else [])
-    )
-    cfg = db.query(PlatformConfig).first()
+    cfg    = db.query(PlatformConfig).first()
+    usage  = _compute_plan_usage(tenant, db, cfg)
+    # Compatibilité avec les anciens champs
     return {
-        "current_caisses": count,
-        "max_caisses":     tenant.max_caisses,
-        "over_limit":      count > tenant.max_caisses,
-        "extra_count":     max(0, count - tenant.max_caisses),
-        "price_per_extra_htg": float(cfg.price_per_extra_caisse_htg) if cfg else 500.0,
-        "price_per_extra_usd": float(cfg.price_per_extra_caisse_usd) if cfg else 4.0,
+        **usage,
+        "current_caisses": usage["current_caisses"],
+        "max_caisses":     usage["max_caisses"],
+        "over_limit":      usage["extra_caisses"] > 0 or usage["extra_depots"] > 0,
+        "extra_count":     usage["extra_caisses"],
+        "price_per_extra_htg": usage["price_per_extra_caisse_htg"],
+        "price_per_extra_usd": usage["price_per_extra_caisse_usd"],
     }
 
 
@@ -350,10 +404,10 @@ def submit_payment(
 
     tenant = _get_tenant(db, current_user)
 
-    # Compute amount from platform config
-    cfg = db.query(PlatformConfig).first()
-    price_htg = float(cfg.monthly_price_htg) if cfg else 1500.0
-    amount = price_htg * body.months
+    # Total mensuel = base + extras caisses + extras dépôts
+    cfg    = db.query(PlatformConfig).first()
+    usage  = _compute_plan_usage(tenant, db, cfg)
+    amount = usage["total_monthly_htg"] * body.months
 
     now = datetime.now(timezone.utc)
     year   = now.year

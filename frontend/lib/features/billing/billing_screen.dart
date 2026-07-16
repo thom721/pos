@@ -27,6 +27,11 @@ final _billingConfigProvider = FutureProvider<Map<String, dynamic>>((ref) async 
   return res.data as Map<String, dynamic>;
 });
 
+final _planUsageProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final res = await dio.get('/api/billing/plan-usage');
+  return res.data as Map<String, dynamic>;
+});
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 class BillingScreen extends ConsumerWidget {
@@ -275,7 +280,18 @@ class _BillingContent extends ConsumerWidget {
             subscriptionEndsAt: subscriptionEndsAt),
         const SizedBox(height: 24),
 
-        // ── Payment options (only if not active) ───────────────────────────
+        // ── Plan usage (caisses + dépôts) ──────────────────────────────────
+        const Text('Utilisation du plan',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        ref.watch(_planUsageProvider).when(
+          loading: () => const LinearProgressIndicator(),
+          error:   (_, __) => const SizedBox.shrink(),
+          data: (usage) => _PlanUsageCard(usage: usage),
+        ),
+        const SizedBox(height: 24),
+
+        // ── Payment options ────────────────────────────────────────────────
         if (status != 'active') ...[
           const Text('Souscrire à un plan',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
@@ -286,17 +302,23 @@ class _BillingContent extends ConsumerWidget {
           const SizedBox(height: 16),
           _StripeCard(ref: ref),
           const SizedBox(height: 12),
-          ref.watch(_billingConfigProvider).when(
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
-            data: (cfg) => Column(
-              children: [
-                _MoncashCard(config: cfg),
-                const SizedBox(height: 12),
-                _NatcashCard(config: cfg),
-              ],
-            ),
-          ),
+          // Combine plan-usage (real total) + config (payment modes)
+          Builder(builder: (ctx) {
+            final cfgAsync   = ref.watch(_billingConfigProvider);
+            final usageAsync = ref.watch(_planUsageProvider);
+            return cfgAsync.when(
+              loading: () => const SizedBox.shrink(),
+              error:   (_, __) => const SizedBox.shrink(),
+              data: (cfg) {
+                final priceHtg = usageAsync.when(
+                  data:    (u) => (u['total_monthly_htg'] as num? ?? cfg['monthly_price_htg'] as num? ?? 1500).toDouble(),
+                  loading: ()  => (cfg['monthly_price_htg'] as num? ?? 1500).toDouble(),
+                  error:   (_, __) => (cfg['monthly_price_htg'] as num? ?? 1500).toDouble(),
+                );
+                return _PaymentCards(priceHtg: priceHtg, config: cfg);
+              },
+            );
+          }),
           const SizedBox(height: 24),
         ],
 
@@ -550,17 +572,201 @@ class _StripeCardState extends State<_StripeCard> {
   }
 }
 
-// ── MonCash card ──────────────────────────────────────────────────────────────
+// ── Détail utilisation du plan (caisses + dépôts) ────────────────────────────
 
-class _MoncashCard extends StatelessWidget {
-  final Map<String, dynamic> config;
-  const _MoncashCard({required this.config});
+class _PlanUsageCard extends StatelessWidget {
+  final Map<String, dynamic> usage;
+  const _PlanUsageCard({required this.usage});
 
   @override
   Widget build(BuildContext context) {
-    final priceHtg = (config['monthly_price_htg'] as num? ?? 1500).toDouble();
-    final mode    = config['moncash_mode'] as String? ?? 'manual';
-    final isApi   = mode == 'api';
+    final maxCaisses   = usage['max_caisses']   as int?    ?? 1;
+    final curCaisses   = usage['current_caisses'] as int?  ?? 0;
+    final extraCaisses = usage['extra_caisses'] as int?    ?? 0;
+    final xCaisseHtg   = (usage['price_per_extra_caisse_htg'] as num? ?? 500).toDouble();
+    final maxDepots    = usage['max_depots']    as int?    ?? 1;
+    final curDepots    = usage['current_depots'] as int?   ?? 0;
+    final extraDepots  = usage['extra_depots']  as int?    ?? 0;
+    final xDepotHtg    = (usage['price_per_extra_depot_htg'] as num? ?? 500).toDouble();
+    final baseHtg      = (usage['base_price_htg']    as num? ?? 1500).toDouble();
+    final totalHtg     = (usage['total_monthly_htg'] as num? ?? 1500).toDouble();
+    final hasExtras    = extraCaisses > 0 || extraDepots > 0;
+
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _UsageRow(
+            icon: Icons.point_of_sale_rounded,
+            label: 'Caisses',
+            current: curCaisses,
+            max: maxCaisses,
+            extra: extraCaisses,
+            extraPriceHtg: xCaisseHtg,
+          ),
+          const SizedBox(height: 10),
+          _UsageRow(
+            icon: Icons.warehouse_rounded,
+            label: 'Dépôts',
+            current: curDepots,
+            max: maxDepots,
+            extra: extraDepots,
+            extraPriceHtg: xDepotHtg,
+          ),
+          const Divider(height: 24),
+          if (hasExtras) ...[
+            _PriceBreakRow('Plan de base', baseHtg),
+            if (extraCaisses > 0)
+              _PriceBreakRow(
+                '$extraCaisses caisse${extraCaisses > 1 ? "s" : ""} supplémentaire${extraCaisses > 1 ? "s" : ""}',
+                extraCaisses * xCaisseHtg,
+              ),
+            if (extraDepots > 0)
+              _PriceBreakRow(
+                '$extraDepots dépôt${extraDepots > 1 ? "s" : ""} supplémentaire${extraDepots > 1 ? "s" : ""}',
+                extraDepots * xDepotHtg,
+              ),
+            const Divider(height: 16),
+          ],
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Total / mois',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              Text('${totalHtg.toStringAsFixed(0)} HTG',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: AppColors.primary)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UsageRow extends StatelessWidget {
+  final IconData icon;
+  final String   label;
+  final int      current;
+  final int      max;
+  final int      extra;
+  final double   extraPriceHtg;
+
+  const _UsageRow({
+    required this.icon,
+    required this.label,
+    required this.current,
+    required this.max,
+    required this.extra,
+    required this.extraPriceHtg,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isOver  = extra > 0;
+    final barFrac = max == 0 ? 1.0 : (current / max).clamp(0.0, 1.0);
+    final color   = isOver ? AppColors.error : AppColors.success;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Icon(icon, size: 14, color: AppColors.textSecondary),
+          const SizedBox(width: 6),
+          Text(label,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+          const Spacer(),
+          Text('$current / $max inclus',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: isOver ? AppColors.error : AppColors.textSecondary,
+                  fontWeight: isOver ? FontWeight.w600 : FontWeight.w400)),
+          if (isOver) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text('+$extra × ${extraPriceHtg.toStringAsFixed(0)} HTG',
+                  style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.error)),
+            ),
+          ],
+        ]),
+        const SizedBox(height: 5),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: barFrac,
+            minHeight: 5,
+            backgroundColor: AppColors.divider,
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PriceBreakRow extends StatelessWidget {
+  final String label;
+  final double amount;
+  const _PriceBreakRow(this.label, this.amount);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          Text('${amount.toStringAsFixed(0)} HTG',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Cartes de paiement (MonCash + NatCash) ────────────────────────────────────
+
+class _PaymentCards extends StatelessWidget {
+  final double              priceHtg;
+  final Map<String, dynamic> config;
+
+  const _PaymentCards({required this.priceHtg, required this.config});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _MoncashCard(priceHtg: priceHtg, config: config),
+        const SizedBox(height: 12),
+        _NatcashCard(priceHtg: priceHtg, config: config),
+      ],
+    );
+  }
+}
+
+// ── MonCash card ──────────────────────────────────────────────────────────────
+
+class _MoncashCard extends StatelessWidget {
+  final double              priceHtg;
+  final Map<String, dynamic> config;
+  const _MoncashCard({required this.priceHtg, required this.config});
+
+  @override
+  Widget build(BuildContext context) {
+    final mode  = config['moncash_mode'] as String? ?? 'manual';
+    final isApi = mode == 'api';
 
     return _PaymentCard(
       icon: Icons.phone_android_rounded,
@@ -583,14 +789,14 @@ class _MoncashCard extends StatelessWidget {
 // ── NatCash card ──────────────────────────────────────────────────────────────
 
 class _NatcashCard extends StatelessWidget {
+  final double              priceHtg;
   final Map<String, dynamic> config;
-  const _NatcashCard({required this.config});
+  const _NatcashCard({required this.priceHtg, required this.config});
 
   @override
   Widget build(BuildContext context) {
-    final priceHtg = (config['monthly_price_htg'] as num? ?? 1500).toDouble();
-    final mode     = config['natcash_mode'] as String? ?? 'manual';
-    final isApi    = mode == 'api';
+    final mode  = config['natcash_mode'] as String? ?? 'manual';
+    final isApi = mode == 'api';
 
     return _PaymentCard(
       icon: Icons.smartphone_rounded,

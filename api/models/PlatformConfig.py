@@ -24,6 +24,10 @@ class PlatformConfig(UUIDBase):
     price_per_extra_caisse_htg = Column(Numeric(10, 2), nullable=False, default=500.00)
     price_per_extra_caisse_usd = Column(Numeric(10, 2), nullable=False, default=4.00)
 
+    # Prix par dépôt supplémentaire (au-delà du max_depots du plan)
+    price_per_extra_depot_htg = Column(Numeric(10, 2), nullable=False, default=500.00)
+    price_per_extra_depot_usd = Column(Numeric(10, 2), nullable=False, default=4.00)
+
     # SMTP — pour les notifications d'expiration de plan
     smtp_host     = Column(String(200), nullable=False, default='')
     smtp_port     = Column(Integer,     nullable=False, default=587)

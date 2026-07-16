@@ -32,6 +32,9 @@ class Tenant(UUIDBase):
     # Nombre de caisses inclus dans le plan (positionnable par le superadmin)
     max_caisses = Column(Integer, nullable=False, default=1)
 
+    # Nombre de dépôts inclus dans le plan (positionnable par le superadmin)
+    max_depots = Column(Integer, nullable=False, default=1)
+
     # Autorise ce tenant self-hosted à gérer ses propres sous-tenants
     can_manage_tenants = Column(Boolean, nullable=False, default=False)
 

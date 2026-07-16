@@ -39,6 +39,7 @@ class CreateTenantPayload(BaseModel):
     type:          str = "shared"          # 'shared' | 'selfhosted'
     self_hosted_url: str | None = None
     max_caisses:   int = 1
+    max_depots:    int = 1
     can_manage_tenants: bool = False
 
 
@@ -48,6 +49,7 @@ class TenantPatch(BaseModel):
     type: str | None = None             # 'shared' | 'selfhosted'
     self_hosted_url: str | None = None
     max_caisses: int | None = None
+    max_depots:  int | None = None
     can_manage_tenants: bool | None = None
 
 
@@ -77,6 +79,8 @@ class PlatformConfigUpdate(BaseModel):
     natcash_mode: str | None = None   # 'manual' | 'api'
     price_per_extra_caisse_htg: float | None = None
     price_per_extra_caisse_usd: float | None = None
+    price_per_extra_depot_htg:  float | None = None
+    price_per_extra_depot_usd:  float | None = None
 
 
 # ── Internal helpers ────────────────────────────────────────────────────────
@@ -248,6 +252,7 @@ def list_tenants(
             "type":                   t.type,
             "self_hosted_url":        t.self_hosted_url,
             "max_caisses":            t.max_caisses,
+            "max_depots":             getattr(t, "max_depots", 1),
             "can_manage_tenants":     t.can_manage_tenants,
             "days_left":              _days_left(t),
             "trial_ends_at":          t.trial_ends_at.isoformat() if t.trial_ends_at else None,
@@ -308,6 +313,7 @@ def create_tenant(
         type=body.type,
         self_hosted_url=body.self_hosted_url,
         max_caisses=body.max_caisses,
+        max_depots=body.max_depots,
         can_manage_tenants=body.can_manage_tenants,
     )
     db.add(tenant)
@@ -429,6 +435,11 @@ def patch_tenant(
             raise HTTPException(status_code=400, detail="max_caisses doit être >= 1")
         t.max_caisses = body.max_caisses
 
+    if body.max_depots is not None:
+        if body.max_depots < 1:
+            raise HTTPException(status_code=400, detail="max_depots doit être >= 1")
+        t.max_depots = body.max_depots
+
     if body.can_manage_tenants is not None:
         t.can_manage_tenants = body.can_manage_tenants
 
@@ -440,6 +451,7 @@ def patch_tenant(
         "type":               t.type,
         "self_hosted_url":    t.self_hosted_url,
         "max_caisses":        t.max_caisses,
+        "max_depots":         getattr(t, "max_depots", 1),
         "can_manage_tenants": t.can_manage_tenants,
         "trial_ends_at":      t.trial_ends_at.isoformat() if t.trial_ends_at else None,
         "days_left":          _days_left(t),
@@ -587,6 +599,8 @@ def get_platform_config(
         "natcash_mode":      cfg.natcash_mode or "manual",
         "price_per_extra_caisse_htg": float(cfg.price_per_extra_caisse_htg),
         "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
+        "price_per_extra_depot_htg":  float(getattr(cfg, "price_per_extra_depot_htg", 500.0)),
+        "price_per_extra_depot_usd":  float(getattr(cfg, "price_per_extra_depot_usd", 4.0)),
         "created_at":        cfg.created_at.isoformat() if cfg.created_at else None,
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }
@@ -621,6 +635,10 @@ def update_platform_config(
         cfg.price_per_extra_caisse_htg = body.price_per_extra_caisse_htg
     if body.price_per_extra_caisse_usd is not None:
         cfg.price_per_extra_caisse_usd = body.price_per_extra_caisse_usd
+    if body.price_per_extra_depot_htg is not None:
+        cfg.price_per_extra_depot_htg = body.price_per_extra_depot_htg
+    if body.price_per_extra_depot_usd is not None:
+        cfg.price_per_extra_depot_usd = body.price_per_extra_depot_usd
 
     db.commit()
     db.refresh(cfg)
@@ -639,5 +657,7 @@ def update_platform_config(
         "natcash_mode":      cfg.natcash_mode or "manual",
         "price_per_extra_caisse_htg": float(cfg.price_per_extra_caisse_htg),
         "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
+        "price_per_extra_depot_htg":  float(getattr(cfg, "price_per_extra_depot_htg", 500.0)),
+        "price_per_extra_depot_usd":  float(getattr(cfg, "price_per_extra_depot_usd", 4.0)),
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }
