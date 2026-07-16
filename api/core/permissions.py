@@ -111,6 +111,12 @@ class P:
     # Audit trail
     AUDIT_READ = "audit.read"
 
+    # Warehouses (depots)
+    WAREHOUSES_CREATE = "warehouses.create"
+    WAREHOUSES_READ   = "warehouses.read"
+    WAREHOUSES_UPDATE = "warehouses.update"
+    WAREHOUSES_DELETE = "warehouses.delete"
+
 
 # ---------------------------------------------------------------------------
 # Role → permissions mapping
@@ -141,6 +147,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.PAYROLL_CREATE, P.PAYROLL_READ, P.PAYROLL_PROCESS, P.PAYROLL_PAY,
         P.SESSIONS_OPEN, P.SESSIONS_CLOSE, P.SESSIONS_READ,
         P.AUDIT_READ,
+        P.WAREHOUSES_CREATE, P.WAREHOUSES_READ, P.WAREHOUSES_UPDATE, P.WAREHOUSES_DELETE,
     },
 
     "cashier": {
@@ -155,6 +162,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.INVOICES_CREATE, P.INVOICES_READ, P.INVOICES_UPDATE,
         P.CONFIG_READ,
         P.SESSIONS_OPEN, P.SESSIONS_CLOSE,
+        P.WAREHOUSES_READ,
     },
 
     "stock_manager": {
@@ -166,6 +174,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.STOCK_READ, P.STOCK_ADJUST,
         P.INVENTORY_CREATE, P.INVENTORY_READ,
         P.CONFIG_READ,
+        P.WAREHOUSES_READ, P.WAREHOUSES_UPDATE,
     },
 }
 
