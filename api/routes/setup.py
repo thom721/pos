@@ -250,26 +250,10 @@ def install_mysql_bg():
     def _run():
         _mysql_install_state["status"] = "running"
         _mysql_install_state["log"] = ""
-        tmp_ps1 = None
         try:
-            # PowerShell 5 (Windows 10) lit les scripts en Windows-1252 par défaut.
-            # Un fichier UTF-8 sans BOM corrompt les caractères accentués → parse errors.
-            # Solution : réécrire le script dans un fichier temporaire avec UTF-8 BOM
-            # que PowerShell 5 détecte automatiquement.
-            import tempfile
-            with open(ps1, "r", encoding="utf-8") as f:
-                content = f.read()
-            tmp = tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8-sig",  # utf-8-sig = UTF-8 + BOM
-                suffix=".ps1", delete=False,
-            )
-            tmp.write(content)
-            tmp.close()
-            tmp_ps1 = tmp.name
-
             result = subprocess.run(
                 ["powershell", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                 "-File", tmp_ps1],
+                 "-File", ps1],
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=600,
             )
@@ -279,12 +263,6 @@ def install_mysql_bg():
         except Exception as exc:
             _mysql_install_state["status"] = "error"
             _mysql_install_state["log"] = str(exc)
-        finally:
-            if tmp_ps1 and os.path.exists(tmp_ps1):
-                try:
-                    os.unlink(tmp_ps1)
-                except Exception:
-                    pass
 
     threading.Thread(target=_run, daemon=True).start()
     return {"status": "running", "message": "Installation démarrée"}
