@@ -17,6 +17,18 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
     if not auth.verify_password(data.password, user.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    # Contrôle dépôt : si ce serveur est assigné à un dépôt, vérifier que
+    # l'utilisateur est autorisé (warehouse_id = None → accès partout)
+    from api.core.config import settings as _cfg
+    installer_wh = _cfg.INSTALLER_WAREHOUSE_ID or None
+    if installer_wh and user.warehouse_id is not None:
+        allowed = user.warehouse_id if isinstance(user.warehouse_id, list) else [str(user.warehouse_id)]
+        if installer_wh not in allowed:
+            raise HTTPException(
+                status_code=403,
+                detail="Cet utilisateur n'est pas autorisé à se connecter sur ce dépôt",
+            )
+
     # Avertissement plan expirant (cloud seulement)
     warning = None
     if user.tenant_id:

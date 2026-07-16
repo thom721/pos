@@ -8,6 +8,8 @@ class UserModel {
   final List<String> roles;
   final List<String> permissions;
   final bool mustChangePassword;
+  /// Tableau d'UUID de dépôts autorisés. Vide = accès à tous les dépôts.
+  final List<String> warehouseIds;
 
   const UserModel({
     required this.id,
@@ -17,6 +19,7 @@ class UserModel {
     this.roles = const [],
     this.permissions = const [],
     this.mustChangePassword = false,
+    this.warehouseIds = const [],
   });
 
   String get fullName => '$fname $lname'.trim();
@@ -68,6 +71,7 @@ class UserModel {
         roles: _toStringList(json['roles']),
         permissions: _toStringList(json['permissions']),
         mustChangePassword: json['must_change_password'] as bool? ?? false,
+        warehouseIds: _toStringList(json['warehouse_id']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -78,6 +82,7 @@ class UserModel {
         'roles': roles,
         'permissions': permissions,
         'must_change_password': mustChangePassword,
+        if (warehouseIds.isNotEmpty) 'warehouse_id': warehouseIds,
       };
 
   static List<String> _toStringList(dynamic value) {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -1299,6 +1300,7 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
   late final TextEditingController _pwdCtrl;
   bool _isActive = true;
   String _selectedRole = 'cashier';
+  List<String> _selectedWarehouseIds = [];
   bool _saving = false;
 
   bool get _isEdit => widget.existing != null;
@@ -1322,6 +1324,12 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
     } else if ((e?['permissions'] as List?)?.contains('all') ?? false) {
       _selectedRole = 'admin';
     }
+
+    // Charger les dépôts déjà assignés (warehouse_id est un tableau JSON)
+    final raw = e?['warehouse_id'];
+    if (raw is List) {
+      _selectedWarehouseIds = raw.map((v) => v.toString()).toList();
+    }
   }
 
   @override
@@ -1336,16 +1344,18 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
     setState(() => _saving = true);
     try {
       final body = {
-        'fname':       _fnameCtrl.text.trim(),
-        'lname':       _lnameCtrl.text.trim(),
-        'username':    _usernameCtrl.text.trim(),
-        'email':       _emailCtrl.text.trim(),
-        'phone':       _phoneCtrl.text.trim(),
-        'address':     _addressCtrl.text.trim(),
-        'password':    _pwdCtrl.text.isNotEmpty ? _pwdCtrl.text : 'ChangeMe123!',
-        'is_active':   _isActive,
-        'roles':       [_selectedRole],
-        'permissions': _selectedRole == 'admin' ? ['all'] : [_selectedRole],
+        'fname':        _fnameCtrl.text.trim(),
+        'lname':        _lnameCtrl.text.trim(),
+        'username':     _usernameCtrl.text.trim(),
+        'email':        _emailCtrl.text.trim(),
+        'phone':        _phoneCtrl.text.trim(),
+        'address':      _addressCtrl.text.trim(),
+        'password':     _pwdCtrl.text.isNotEmpty ? _pwdCtrl.text : 'ChangeMe123!',
+        'is_active':    _isActive,
+        'roles':        [_selectedRole],
+        'permissions':  _selectedRole == 'admin' ? ['all'] : [_selectedRole],
+        // null = accès à tous les dépôts ; liste vide envoyée comme null aussi
+        'warehouse_id': _selectedWarehouseIds.isEmpty ? null : _selectedWarehouseIds,
       };
       if (_isEdit) {
         await dio.put('/api/users/${widget.existing!['id']}',
@@ -1458,6 +1468,14 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
                   loading: () => const LinearProgressIndicator(),
                   error: (_, __) => const Text('Impossible de charger les rôles'),
                   data: (roles) => _buildRolePicker(roles),
+                ),
+
+                const SizedBox(height: 20),
+
+                // ── Restriction de dépôts ────────────────────────────────
+                _WarehouseAccessSection(
+                  selectedIds: _selectedWarehouseIds,
+                  onChanged: (ids) => setState(() => _selectedWarehouseIds = ids),
                 ),
 
                 const SizedBox(height: 12),
@@ -1596,6 +1614,106 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
       }
     }
     return labels;
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Sélecteur multi-dépôts pour le formulaire utilisateur
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _WarehouseAccessSection extends ConsumerWidget {
+  final List<String> selectedIds;
+  final ValueChanged<List<String>> onChanged;
+
+  const _WarehouseAccessSection({
+    required this.selectedIds,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(warehouseListProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Icon(Icons.warehouse_rounded, size: 15, color: AppColors.textSecondary),
+          const SizedBox(width: 6),
+          const Text('Accès aux dépôts',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary)),
+        ]),
+        const SizedBox(height: 4),
+        const Text(
+          'Vide = accès à tous les dépôts. '
+          'Cochez pour restreindre à des dépôts spécifiques '
+          '(dérogation temporaire possible en cochant plusieurs).',
+          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 8),
+        async.when(
+          loading: () => const LinearProgressIndicator(),
+          error:   (_, __) => const SizedBox.shrink(),
+          data: (warehouses) {
+            if (warehouses.isEmpty) return const SizedBox.shrink();
+            return Column(
+              children: warehouses.map((wh) {
+                final id       = wh.id;
+                final name     = wh.name;
+                final checked  = selectedIds.contains(id);
+                return InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () {
+                    final next = List<String>.from(selectedIds);
+                    if (checked) { next.remove(id); } else { next.add(id); }
+                    onChanged(next);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(children: [
+                      Checkbox(
+                        value: checked,
+                        visualDensity: VisualDensity.compact,
+                        onChanged: (_) {
+                          final next = List<String>.from(selectedIds);
+                          if (checked) { next.remove(id); } else { next.add(id); }
+                          onChanged(next);
+                        },
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.warehouse_rounded,
+                          size: 15,
+                          color: checked ? AppColors.primary : AppColors.textSecondary),
+                      const SizedBox(width: 6),
+                      Text(name,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: checked ? FontWeight.w600 : FontWeight.w400,
+                              color: checked ? AppColors.primary : AppColors.textPrimary)),
+                      if (wh.isDefault) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text('Principal',
+                              style: TextStyle(fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary)),
+                        ),
+                      ],
+                    ]),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
+    );
   }
 }
 

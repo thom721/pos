@@ -15,7 +15,7 @@ class UserCreate(BaseModel):
     is_active: bool = True
     roles: Optional[List[str]] = []
     permissions: Optional[List[str]] = []
-    warehouse_id: Optional[str] = None
+    warehouse_id: Optional[List[str]] = None   # tableau de dépôts autorisés
 
 
 class UserUpdate(BaseModel):
@@ -30,7 +30,7 @@ class UserUpdate(BaseModel):
     is_active: bool = True
     roles: Optional[List[str]] = None
     permissions: Optional[List[str]] = None
-    warehouse_id: Optional[str] = None
+    warehouse_id: Optional[List[str]] = None   # tableau de dépôts autorisés
 
 
 class ChangePasswordRequest(BaseModel):
@@ -51,7 +51,7 @@ class UserRead(BaseModel):
     roles: List[str] = []
     permissions: List[str] = []
     must_change_password: bool = True
-    warehouse_id: Optional[str] = None
+    warehouse_id: Optional[List[str]] = None   # tableau de dépôts autorisés
 
 class UserOut(BaseModel):
     id: str

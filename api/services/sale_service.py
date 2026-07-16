@@ -338,12 +338,13 @@ def create_sale(
     paid = data.paid_amount or 0
 
     # 2️⃣ Création vente
-    # Warehouse : payload > user assigné > dépôt par défaut
-    payload_wh = getattr(data, 'warehouse_id', None)
-    user_obj = db.get(UserModel, user_id)
+    # Warehouse : paramètre > payload > dépôt installer du serveur > défaut
+    from api.core.config import settings as _cfg
+    payload_wh   = getattr(data, 'warehouse_id', None)
+    server_wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
     wh_id = resolve_warehouse_id(
         db, tenant_id,
-        warehouse_id or payload_wh or (user_obj.warehouse_id if user_obj else None)
+        warehouse_id or payload_wh or server_wh_id,
     ) if tenant_id else None
 
     sale = Sale(
