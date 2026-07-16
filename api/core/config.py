@@ -52,10 +52,10 @@ def load_ini_config() -> dict:
     srv = cfg["server"] if "server" in cfg else {}
     return {
         "DB_TYPE":     db.get("type",     os.getenv("DB_TYPE",     "mysql")),
-        "DB_HOST":     db.get("host",     os.getenv("DB_HOST",     "localhost")),
-        "DB_PORT":     int(db.get("port", os.getenv("DB_PORT",     "3306"))),
+        "DB_HOST":     db.get("host",     os.getenv("DB_HOST",     "127.0.0.1")),
+        "DB_PORT":     int(db.get("port", os.getenv("DB_PORT",     "3307"))),
         "DB_NAME":     db.get("name",     os.getenv("DB_NAME",     "pos_db")),
-        "DB_USER":     db.get("user",     os.getenv("DB_USER",     "root")),
+        "DB_USER":     db.get("user",     os.getenv("DB_USER",     "pos_user")),
         "DB_PASSWORD": db.get("password", os.getenv("DB_PASSWORD", "")),
         "DB_PATH":     db.get("path",     os.getenv("DB_PATH",     "./pos_data.db")),
         "SECRET_KEY":  srv.get("secret_key",  os.getenv("SECRET_KEY",  "change_me_use_openssl_rand_hex_32")),
@@ -84,10 +84,10 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     DB_TYPE: str = "mysql"       # "mysql" | "sqlite"
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 3306
+    DB_HOST: str = "127.0.0.1"
+    DB_PORT: int = 3307
     DB_NAME: str = "pos_db"
-    DB_USER: str = "root"
+    DB_USER: str = "pos_user"
     DB_PASSWORD: str = ""
     DB_PATH: str = "./pos_data.db"
 

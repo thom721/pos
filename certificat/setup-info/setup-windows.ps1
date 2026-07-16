@@ -103,8 +103,8 @@ if (Test-Path "$MySqlBinDir\mysqld.exe") {
         $datadirFwd = $MySqlData  -replace '\\', '/'
         @"
 [mysqld]
-basedir  = $basedirFwd
-datadir  = $datadirFwd
+basedir  = "$basedirFwd"
+datadir  = "$datadirFwd"
 port     = $MySqlPort
 max_allowed_packet = 64M
 character-set-server = utf8mb4
@@ -132,8 +132,8 @@ port = $MySqlPort
             $datadirFwd = $MySqlData -replace '\\', '/'
             @"
 [mysqld]
-basedir  = $basedirFwd
-datadir  = $datadirFwd
+basedir  = "$basedirFwd"
+datadir  = "$datadirFwd"
 port     = $MySqlPort
 max_allowed_packet = 64M
 character-set-server = utf8mb4
