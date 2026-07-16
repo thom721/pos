@@ -15,11 +15,21 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _col_exists(table: str, column: str) -> bool:
+    n = op.get_bind().execute(sa.text(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c"
+    ), {"t": table, "c": column}).scalar()
+    return bool(n)
+
+
 def upgrade() -> None:
-    op.add_column('platform_config',
-        sa.Column('admin_email', sa.String(200), nullable=False, server_default=''))
-    op.add_column('platform_config',
-        sa.Column('admin_password_hash', sa.String(255), nullable=False, server_default=''))
+    if not _col_exists('platform_config', 'admin_email'):
+        op.add_column('platform_config',
+            sa.Column('admin_email', sa.String(200), nullable=False, server_default=''))
+    if not _col_exists('platform_config', 'admin_password_hash'):
+        op.add_column('platform_config',
+            sa.Column('admin_password_hash', sa.String(255), nullable=False, server_default=''))
 
 
 def downgrade() -> None:
