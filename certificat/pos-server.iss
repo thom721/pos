@@ -31,9 +31,9 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
 ; Fichiers de documentation (chemins relatifs au .iss)
-LicenseFile=LICENSE.txt
-InfoBeforeFile=AVANT_INSTALLATION.txt
-InfoAfterFile=APRES_INSTALLATION.txt
+LicenseFile=setup-info\LICENSE.txt
+InfoBeforeFile=setup-info\AVANT_INSTALLATION.txt
+InfoAfterFile=setup-info\APRES_INSTALLATION.txt
 
 ; Icône et output
 UninstallDisplayIcon={app}\{#MyAppExeName}
