@@ -46,6 +46,7 @@ from api.models.PurchaseReceipt import PurchaseReceipt
 from api.models.PurchaseReceiptItem import PurchaseReceiptItem
 from api.models.CashierSession import CashierSession
 from api.models.AuditLog import AuditLog
+from api.models.Warehouse import Warehouse
 from api.models.EmployeeProfile import EmployeeProfile
 from api.models.PayrollPeriod import PayrollPeriod
 from api.models.PayrollEntry import PayrollEntry
@@ -59,6 +60,7 @@ _log = logging.getLogger("pos.sync")
 
 _MODEL_MAP: dict[str, Any] = {
     # Reference data
+    "warehouse":              Warehouse,
     "category":               Category,
     "supplier":               Supplier,
     "product":                Product,

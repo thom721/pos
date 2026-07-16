@@ -39,6 +39,7 @@ from api.models.PurchaseReceipt import PurchaseReceipt
 from api.models.PurchaseReceiptItem import PurchaseReceiptItem
 from api.models.CashierSession import CashierSession
 from api.models.AuditLog import AuditLog
+from api.models.Warehouse import Warehouse
 from api.models.EmployeeProfile import EmployeeProfile
 from api.models.PayrollPeriod import PayrollPeriod
 from api.models.PayrollEntry import PayrollEntry
@@ -52,6 +53,10 @@ _log = logging.getLogger("pos.sync")
 
 SYNC_ENTITIES: list[dict] = [
     # ── Reference data ──────────────────────────────────────────────────────
+    # Warehouses : pull uniquement — le cloud est la source de vérité.
+    # Filtre: tenant_id seulement (comme toutes les entités). warehouse_id
+    # est une colonne de données, jamais un critère de sync.
+    {"type": "warehouse",              "model": Warehouse,            "direction": "pull"},
     {"type": "category",               "model": Category,             "direction": "both"},
     {"type": "supplier",               "model": Supplier,             "direction": "both"},
     {"type": "product",                "model": Product,              "direction": "both"},
