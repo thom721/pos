@@ -11,6 +11,7 @@ class Warehouse(UUIDBase):
     description = Column(Text, nullable=True)
     is_active   = Column(Boolean, nullable=False, default=True)
     is_default  = Column(Boolean, nullable=False, default=False)
+    is_claimed  = Column(Boolean, nullable=False, default=False)
 
     stock_movements    = relationship("StockMovement",    back_populates="warehouse")
     purchases          = relationship("Purchase",         back_populates="warehouse")

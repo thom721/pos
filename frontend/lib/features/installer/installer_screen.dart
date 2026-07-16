@@ -1709,7 +1709,8 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
           'server_port': cfg.serverPort,
         };
         if (cfg.selectedWarehouseId.isNotEmpty) {
-          body['warehouse_id'] = cfg.selectedWarehouseId;
+          body['warehouse_id']   = cfg.selectedWarehouseId;
+          body['warehouse_name'] = cfg.selectedWarehouseName;
         }
         await dio.post('/api/setup/connect-tenant', data: body);
       });

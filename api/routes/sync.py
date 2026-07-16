@@ -205,7 +205,8 @@ def issue_sync_token(payload: SyncTokenRequest, db: Session = Depends(get_db)):
     from api.models.Warehouse import Warehouse as _WH
     wh_rows = db.query(_WH).filter(
         _WH.tenant_id == tenant.id,
-        _WH.is_active == True,  # noqa: E712
+        _WH.is_active  == True,   # noqa: E712
+        _WH.is_claimed == False,  # noqa: E712
     ).order_by(_WH.is_default.desc(), _WH.name).all()
 
     return {
@@ -434,3 +435,42 @@ def configure_billing(body: BillingConfigRequest):
     settings.BILLING_URL = billing_url
 
     return {"ok": True, "billing_url": billing_url}
+
+
+# ── CLOUD: claim a warehouse for a local installation ─────────────────────────
+
+class _ClaimWarehouseBody(BaseModel):
+    warehouse_id: str
+
+
+@router.post("/claim-warehouse")
+def claim_warehouse(
+    body:   _ClaimWarehouseBody,
+    claims: dict = Depends(require_sync_token),
+    db:     Session = Depends(get_db),
+):
+    """
+    Marque un warehouse comme utilisé par cette installation locale (is_claimed=True).
+    Appelé par le serveur local pendant connect-tenant.
+    Retourne 409 si le warehouse est déjà pris par une autre installation.
+    """
+    from api.models.Warehouse import Warehouse as _WH
+    tenant_id = claims["tenant_id"]
+
+    wh = db.query(_WH).filter(
+        _WH.id        == body.warehouse_id,
+        _WH.tenant_id == tenant_id,
+    ).first()
+
+    if not wh:
+        raise HTTPException(status_code=404, detail="Dépôt introuvable")
+
+    if wh.is_claimed:
+        raise HTTPException(
+            status_code=409,
+            detail="Ce dépôt est déjà utilisé par une autre installation"
+        )
+
+    wh.is_claimed = True
+    db.commit()
+    return {"ok": True, "warehouse_id": body.warehouse_id}

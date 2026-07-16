@@ -75,7 +75,8 @@ class ConnectTenantRequest(BaseModel):
     path: str = "./pos_data.db"
     server_host: str = "0.0.0.0"
     server_port: int = 9003
-    warehouse_id: str | None = None
+    warehouse_id:   str | None = None
+    warehouse_name: str | None = None
 
 
 class MigrateRequest(BaseModel):
@@ -706,7 +707,46 @@ def connect_tenant(data: ConnectTenantRequest):
                     db.execute(_sa_text("SET FOREIGN_KEY_CHECKS=1"))
                 db.flush()
 
+            # Créer/mettre à jour le warehouse dans la DB locale
+            if data.warehouse_id:
+                from api.models.Warehouse import Warehouse as WHModel
+                existing_wh = db.query(WHModel).filter(
+                    WHModel.id == data.warehouse_id
+                ).first()
+                if not existing_wh:
+                    db.add(WHModel(
+                        id=data.warehouse_id,
+                        tenant_id=local_tid,
+                        name=data.warehouse_name or "Depot principal",
+                        is_default=True,
+                        is_active=True,
+                        is_claimed=True,
+                    ))
+                elif not existing_wh.is_claimed:
+                    existing_wh.is_claimed = True
+
             db.commit()
+
+            # Marquer comme pris sur le cloud
+            if data.warehouse_id:
+                try:
+                    claim_resp = httpx.post(
+                        f"{cloud_url}/api/sync/claim-warehouse",
+                        json={"warehouse_id": data.warehouse_id},
+                        headers={"Authorization": f"Bearer {sync_token}"},
+                        timeout=10,
+                    )
+                    if claim_resp.status_code == 409:
+                        raise HTTPException(
+                            409,
+                            "Ce dépôt est déjà utilisé par une autre installation. "
+                            "Relancez l'installation et choisissez un autre dépôt."
+                        )
+                except HTTPException:
+                    raise
+                except Exception:
+                    pass
+
             return {"ok": True, "message": "Compte déjà lié — mot de passe mis à jour."}
 
         # Use business_name from cloud response for the user's display name
@@ -736,7 +776,48 @@ def connect_tenant(data: ConnectTenantRequest):
 
         admin = User(**user_kwargs)
         db.add(admin)
+        db.flush()
+
+        # ── Créer le warehouse dans la DB locale avec l'UUID cloud ────────────
+        if data.warehouse_id:
+            from api.models.Warehouse import Warehouse as WHModel
+            existing_wh = db.query(WHModel).filter(
+                WHModel.id == data.warehouse_id
+            ).first()
+            if not existing_wh:
+                db.add(WHModel(
+                    id=data.warehouse_id,
+                    tenant_id=local_tid,
+                    name=data.warehouse_name or "Depot principal",
+                    is_default=True,
+                    is_active=True,
+                    is_claimed=True,
+                ))
+            elif not existing_wh.is_claimed:
+                existing_wh.is_claimed = True
+
         db.commit()
+
+        # ── Marquer le warehouse comme pris sur le cloud ──────────────────────
+        if data.warehouse_id:
+            try:
+                claim_resp = httpx.post(
+                    f"{cloud_url}/api/sync/claim-warehouse",
+                    json={"warehouse_id": data.warehouse_id},
+                    headers={"Authorization": f"Bearer {sync_token}"},
+                    timeout=10,
+                )
+                if claim_resp.status_code == 409:
+                    raise HTTPException(
+                        409,
+                        "Ce dépôt est déjà utilisé par une autre installation. "
+                        "Relancez l'installation et choisissez un autre dépôt."
+                    )
+            except HTTPException:
+                raise
+            except Exception:
+                pass  # Non-bloquant si le cloud est injoignable
+
         return {
             "ok":               True,
             "message":          f"Installation liée au compte {data.email}",
