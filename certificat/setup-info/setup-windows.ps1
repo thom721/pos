@@ -1,4 +1,3 @@
-#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
     Configure POS Connect après installation Inno Setup.
@@ -41,6 +40,18 @@ function Write-Log {
 Write-Log "=== Début de la configuration POS Connect ==="
 Write-Log "InstallDir : $InstallDir"
 Write-Log "DataDir    : $DataDir"
+
+# ── Vérification droits Administrateur ────────────────────────────────────────
+$isAdmin = ([Security.Principal.WindowsPrincipal] `
+    [Security.Principal.WindowsIdentity]::GetCurrent() `
+).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdmin) {
+    Write-Log "ERREUR : ce script doit etre execute en tant qu'Administrateur." "ERROR"
+    Write-Log "Relancez posconnect-server.exe via un terminal Administrateur." "ERROR"
+    Write-Log "=== Configuration POS Connect terminee (erreur droits) ===" "ERROR"
+    exit 1
+}
 
 # ── 0. Visual C++ Redistributable (requis par MySQL 8) ────────────────────────
 $VcRuntime = "$env:SystemRoot\System32\vcruntime140.dll"
