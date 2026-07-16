@@ -16,15 +16,12 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tab;
-
-  // Cloud fields
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  // Cloud fields (web only)
   final _emailCtrl     = TextEditingController();
   final _cloudPassCtrl = TextEditingController();
 
-  // Local fields
+  // Local fields (desktop)
   final _usernameCtrl  = TextEditingController();
   final _localPassCtrl = TextEditingController();
   final _serverCtrl    = TextEditingController();
@@ -39,14 +36,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 2, vsync: this);
-    _tab.addListener(() => setState(() {}));
     if (!kIsWeb) _loadSavedServer();
   }
 
   @override
   void dispose() {
-    _tab.dispose();
     _emailCtrl.dispose();
     _cloudPassCtrl.dispose();
     _usernameCtrl.dispose();
@@ -190,59 +184,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         const SizedBox(height: 24),
                       ],
 
-                      // ── Tabs (desktop only) ────────────────────────────
-                      if (!kIsWeb) ...[
-                        Container(
-                          decoration: BoxDecoration(
-                            color: AppColors.divider.withValues(alpha: 0.3),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          padding: const EdgeInsets.all(4),
-                          child: TabBar(
-                            controller: _tab,
-                            labelColor: AppColors.textPrimary,
-                            unselectedLabelColor: AppColors.textSecondary,
-                            indicator: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(7),
-                              boxShadow: [
-                                BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.08),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 1))
-                              ],
-                            ),
-                            indicatorSize: TabBarIndicatorSize.tab,
-                            dividerColor: Colors.transparent,
-                            tabs: const [
-                              Tab(
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.cloud_outlined, size: 16),
-                                    SizedBox(width: 6),
-                                    Text('Compte cloud',
-                                        style: TextStyle(fontSize: 13)),
-                                  ],
-                                ),
-                              ),
-                              Tab(
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.dns_outlined, size: 16),
-                                    SizedBox(width: 6),
-                                    Text('Serveur local',
-                                        style: TextStyle(fontSize: 13)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-                      ],
-
                       // ── Error banner ──────────────────────────────────
                       if (authState.error != null) ...[
                         Container(
@@ -268,11 +209,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         ),
                       ],
 
-                      // Web : toujours cloud
-                      // Desktop : selon l'onglet sélectionné
-                      if (kIsWeb || _tab.index == 0)
+                      if (kIsWeb)
                         _buildCloudForm(authState),
-                      if (!kIsWeb && _tab.index == 1)
+                      if (!kIsWeb)
                         _buildLocalForm(authState),
                     ],
                   ),
