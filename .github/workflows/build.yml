@@ -337,6 +337,114 @@ jobs:
           path: frontend/build/web/
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  INNO SETUP  —  Installeur Windows (.exe)
+#
+#  Dépendances téléchargées au moment du build :
+#    - nginx 1.27.4   (nginx.org)
+#    - nssm  2.24     (nssm.cc)
+#    - MySQL 8.0.41   (downloads.mysql.com, ~300 Mo — mis en cache)
+#  Certificats SSL :
+#    - Secrets GitHub SSL_CERT_B64 + SSL_KEY_B64 (base64 PEM)
+#    - Si absents, un cert auto-signé ephémère est généré (pour test)
+# ══════════════════════════════════════════════════════════════════════════════
+
+  inno-setup:
+    name: 🏗 Windows Installer (Inno Setup)
+    runs-on: windows-latest
+    needs: [backend-windows]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Télécharger backend-windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-windows
+          path: certificat/backend-windows/
+
+      - name: Cache MySQL ZIP (~300 Mo)
+        id: cache-mysql
+        uses: actions/cache@v4
+        with:
+          path: certificat/mysql-8.0.41-winx64.zip
+          key: mysql-8.0.41-winx64-zip
+
+      - name: Télécharger MySQL ZIP
+        if: steps.cache-mysql.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $url = "https://downloads.mysql.com/archives/get/p/23/file/mysql-8.0.41-winx64.zip"
+          Write-Host "Téléchargement MySQL $url"
+          Invoke-WebRequest -Uri $url -OutFile "certificat\mysql-8.0.41-winx64.zip" -UseBasicParsing
+
+      - name: Télécharger et extraire nginx 1.27.4
+        shell: pwsh
+        run: |
+          $ver = "1.27.4"
+          Invoke-WebRequest -Uri "https://nginx.org/download/nginx-$ver.zip" -OutFile "nginx.zip" -UseBasicParsing
+          Expand-Archive "nginx.zip" -DestinationPath "certificat" -Force
+          if (Test-Path "certificat\nginx") { Remove-Item "certificat\nginx" -Recurse -Force }
+          Rename-Item "certificat\nginx-$ver" "certificat\nginx"
+
+      - name: Télécharger et extraire NSSM 2.24
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile "nssm.zip" -UseBasicParsing
+          Expand-Archive "nssm.zip" -DestinationPath "nssm-tmp" -Force
+          New-Item -ItemType Directory -Force -Path "certificat\nssm" | Out-Null
+          Copy-Item "nssm-tmp\nssm-2.24\win64\*" "certificat\nssm\" -Recurse -Force
+
+      - name: Décoder les certificats SSL (depuis secrets)
+        shell: pwsh
+        env:
+          SSL_CERT_B64: ${{ secrets.SSL_CERT_B64 }}
+          SSL_KEY_B64: ${{ secrets.SSL_KEY_B64 }}
+        run: |
+          if ($env:SSL_CERT_B64 -and $env:SSL_KEY_B64) {
+            Write-Host "Restauration des certificats SSL depuis les secrets GitHub"
+            [System.Convert]::FromBase64String($env:SSL_CERT_B64) |
+              Set-Content "certificat\setup-info\server.crt" -AsByteStream
+            [System.Convert]::FromBase64String($env:SSL_KEY_B64)  |
+              Set-Content "certificat\setup-info\server.key"  -AsByteStream
+          } else {
+            Write-Host "Secrets SSL absents — génération d'un certificat auto-signé (test uniquement)"
+            $gitOpenssl = "C:\Program Files\Git\usr\bin\openssl.exe"
+            if (Test-Path $gitOpenssl) {
+              & $gitOpenssl req -x509 -newkey rsa:2048 -days 3650 -nodes `
+                -subj "/CN=posconnect.local/O=POS Connect/C=HT" `
+                -keyout "certificat\setup-info\server.key" `
+                -out    "certificat\setup-info\server.crt"
+            } else {
+              "SELF_SIGNED_PLACEHOLDER" | Out-File "certificat\setup-info\server.key" -Encoding utf8
+              "SELF_SIGNED_PLACEHOLDER" | Out-File "certificat\setup-info\server.crt" -Encoding utf8
+            }
+          }
+
+      - name: Déterminer la version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${{ github.event.inputs.version || '1.0.0' }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compiler l'installeur Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          $ver  = "${{ steps.version.outputs.VERSION }}"
+          Write-Host "Compilation Inno Setup v$ver"
+          & $iscc "/DMyAppVersion=$ver" "certificat\pos-server.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup ISCC.exe a échoué (code $LASTEXITCODE)" }
+
+      - name: Upload installeur Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: certificat/POSConnect-Setup-*.exe
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  RELEASE  —  Assembler et publier
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -350,6 +458,7 @@ jobs:
       - frontend-linux
       - frontend-macos
       - frontend-web
+      - inno-setup
     runs-on: ubuntu-latest
     steps:
       - name: Télécharger tous les artifacts
@@ -366,13 +475,18 @@ jobs:
             echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Assembler Windows (zip)
+      - name: Assembler Windows (zip backend+frontend)
         run: |
           mkdir -p packages/windows
           cp -r artifacts/backend-windows/* packages/windows/
           cp -r artifacts/frontend-windows/* packages/windows/
           cd packages
           zip -r posconnect-windows-${{ steps.version.outputs.VERSION }}.zip windows/
+
+      - name: Copier installeur Windows (.exe)
+        run: |
+          cp artifacts/windows-installer/POSConnect-Setup-*.exe packages/ 2>/dev/null || \
+            echo "Avertissement : aucun EXE Inno Setup trouvé"
 
       - name: Assembler Linux (tar.gz)
         run: |
@@ -406,6 +520,7 @@ jobs:
           name: posconnect-v${{ steps.version.outputs.VERSION }}
           path: |
             packages/posconnect-windows-*.zip
+            packages/POSConnect-Setup-*.exe
             packages/posconnect-linux-*.tar.gz
             packages/posconnect-macos-*.tar.gz
             packages/posconnect-web-*.zip
@@ -421,16 +536,22 @@ jobs:
 
             | Plateforme | Fichier |
             |-----------|---------|
-            | Windows   | `posconnect-windows-${{ steps.version.outputs.VERSION }}.zip` |
-            | Linux     | `posconnect-linux-${{ steps.version.outputs.VERSION }}.tar.gz` |
-            | macOS     | `posconnect-macos-${{ steps.version.outputs.VERSION }}.tar.gz` |
-            | Web       | `posconnect-web-${{ steps.version.outputs.VERSION }}.zip` |
+            | Windows — Installeur | `POSConnect-Setup-${{ steps.version.outputs.VERSION }}.exe` |
+            | Windows — Zip        | `posconnect-windows-${{ steps.version.outputs.VERSION }}.zip` |
+            | Linux                | `posconnect-linux-${{ steps.version.outputs.VERSION }}.tar.gz` |
+            | macOS                | `posconnect-macos-${{ steps.version.outputs.VERSION }}.tar.gz` |
+            | Web                  | `posconnect-web-${{ steps.version.outputs.VERSION }}.zip` |
+
+            ### Installation Windows
+            Télécharger et exécuter `POSConnect-Setup-*.exe` en tant qu'Administrateur.
+            Installe dans `C:\ProgramData\POS_Connect\` (données MySQL dans `C:\ProgramData\POS_Connect_MySQL\`).
 
             ### Déploiement Web
             Extraire `posconnect-web-*.zip` dans le dossier `web/` à côté du serveur FastAPI,
             ou servir avec Nginx (voir documentation).
           files: |
             packages/posconnect-windows-*.zip
+            packages/POSConnect-Setup-*.exe
             packages/posconnect-linux-*.tar.gz
             packages/posconnect-macos-*.tar.gz
             packages/posconnect-web-*.zip
