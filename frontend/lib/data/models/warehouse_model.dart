@@ -4,6 +4,8 @@ class WarehouseModel {
   final String? description;
   final bool isActive;
   final bool isDefault;
+  /// True sur le serveur local qui a revendiqué ce dépôt lors de l'installation.
+  final bool isClaimed;
 
   const WarehouseModel({
     required this.id,
@@ -11,6 +13,7 @@ class WarehouseModel {
     this.description,
     required this.isActive,
     required this.isDefault,
+    this.isClaimed = false,
   });
 
   factory WarehouseModel.fromJson(Map<String, dynamic> json) => WarehouseModel(
@@ -19,6 +22,7 @@ class WarehouseModel {
         description: json['description']?.toString(),
         isActive: json['is_active'] as bool? ?? true,
         isDefault: json['is_default'] as bool? ?? false,
+        isClaimed: json['is_claimed'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -27,5 +31,6 @@ class WarehouseModel {
         'description': description,
         'is_active': isActive,
         'is_default': isDefault,
+        'is_claimed': isClaimed,
       };
 }
