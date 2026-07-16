@@ -20,6 +20,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     user: dict
+    plan_warning: dict | None = None
 
 
 class TokenData(BaseModel):

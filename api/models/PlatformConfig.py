@@ -23,3 +23,10 @@ class PlatformConfig(UUIDBase):
     # Prix par caisse supplémentaire (au-delà du max_caisses du plan)
     price_per_extra_caisse_htg = Column(Numeric(10, 2), nullable=False, default=500.00)
     price_per_extra_caisse_usd = Column(Numeric(10, 2), nullable=False, default=4.00)
+
+    # SMTP — pour les notifications d'expiration de plan
+    smtp_host     = Column(String(200), nullable=False, default='')
+    smtp_port     = Column(Integer,     nullable=False, default=587)
+    smtp_user     = Column(String(200), nullable=False, default='')
+    smtp_password = Column(String(255), nullable=False, default='')
+    smtp_from     = Column(String(200), nullable=False, default='')

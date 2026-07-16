@@ -1,12 +1,12 @@
-from fastapi import APIRouter, Depends 
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from api.database import get_db 
+from api.database import get_db
 from api.services.auth import Auth,Token,TokenData
 from datetime import timedelta
 from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-import jwt 
+import jwt
 
 
 
@@ -32,6 +32,19 @@ def login_for_access_token(
     access_token = auth.create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
+
+    # Avertissement plan expirant (cloud seulement)
+    warning = None
+    if user.tenant_id:
+        from api.models.Tenant import Tenant
+        from api.core.tenant import plan_warning
+        from api.utils.email import maybe_send_warning
+        tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+        if tenant and not getattr(tenant, "is_local", False):
+            warning = plan_warning(tenant)
+            if warning:
+                maybe_send_warning(tenant, db)
+
     return Token(access_token=access_token, token_type="bearer", user={
         'id': user.id,
         'username': user.username,
@@ -43,7 +56,7 @@ def login_for_access_token(
         'roles': user.roles,
         'permissions': user.permissions,
         'must_change_password': user.must_change_password,
-    })
+    }, plan_warning=warning)
 
 
 # @router.get("/users/me/", response_model=User)

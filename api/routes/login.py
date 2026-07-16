@@ -17,10 +17,23 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
     if not auth.verify_password(data.password, user.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    # Avertissement plan expirant (cloud seulement)
+    warning = None
+    if user.tenant_id:
+        from api.models.Tenant import Tenant as TenantModel
+        from api.core.tenant import plan_warning
+        from api.utils.email import maybe_send_warning
+        tenant = db.query(TenantModel).filter(TenantModel.id == user.tenant_id).first()
+        if tenant and not getattr(tenant, "is_local", False):
+            warning = plan_warning(tenant)
+            if warning:
+                maybe_send_warning(tenant, db)
+
     return {
         "access_token": auth.create_access_token(user.id),
         "refresh_token": auth.create_refresh_token(user.id),
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "plan_warning": warning,
     }
 
 

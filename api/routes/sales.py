@@ -11,6 +11,7 @@ from api.schemas.common import PaginatedResponse
 from api.services.sale_service import create_sale, list_sales, get_sale, cancel_sale, update_sale
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
+from api.core.tenant import require_active_plan
 from api.core.PaginateHelper import PaginatedResponse as LegacyPaginatedResponse
 from api.services import audit_service
 
@@ -22,6 +23,7 @@ def store_sale(
     payload: SaleCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_CREATE)),
+    _plan: None = Depends(require_active_plan),
 ):
     sale = create_sale(db, payload, current_user.id, tenant_id=current_user.tenant_id)
     audit_service.log(
@@ -78,6 +80,7 @@ def update_sale_endpoint(
     payload: SaleUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_UPDATE)),
+    _plan: None = Depends(require_active_plan),
 ):
     sale = update_sale(db, sale_id, payload, current_user.id, tenant_id=current_user.tenant_id)
     return {"message": "Vente modifiée avec succès", "sale_id": sale.id}
@@ -88,6 +91,7 @@ def cancel_sale_endpoint(
     sale_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_CANCEL)),
+    _plan: None = Depends(require_active_plan),
 ):
     cancel_sale(db, sale_id, current_user.id, tenant_id=current_user.tenant_id)
     audit_service.log(

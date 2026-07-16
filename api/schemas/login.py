@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel
 
 class LoginRequest(BaseModel):
@@ -8,3 +9,4 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str
+    plan_warning: Optional[dict] = None
