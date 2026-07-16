@@ -8,10 +8,19 @@ SQLALCHEMY_DATABASE_URL = get_database_url()
 _connect_args = {}
 if settings.DB_TYPE == "sqlite":
     _connect_args = {"check_same_thread": False}
+elif settings.DB_TYPE == "mysql":
+    # connect_timeout évite que PyMySQL bloque indéfiniment si MySQL ne répond pas
+    _connect_args = {"connect_timeout": 10}
 
 _pool_kwargs = {}
 if settings.DB_TYPE == "mysql":
-    _pool_kwargs = {"pool_pre_ping": True, "pool_recycle": 3600}
+    _pool_kwargs = {
+        "pool_pre_ping":  True,
+        "pool_recycle":   3600,
+        "pool_timeout":   10,   # attente max pour obtenir une conn du pool
+        "pool_size":      5,
+        "max_overflow":   10,
+    }
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args=_connect_args, **_pool_kwargs)
 

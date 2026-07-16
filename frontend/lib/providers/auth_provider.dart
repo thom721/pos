@@ -79,9 +79,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       return true;
     } catch (e) {
-      final msg = e.toString().contains('401')
-          ? 'Identifiants incorrects'
-          : 'Impossible de se connecter. Vérifiez votre connexion.';
+      final msg = _loginErrorMsg(e);
       state = state.copyWith(isLoading: false, error: msg);
       return false;
     }
@@ -128,6 +126,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(isLoading: false, error: msg);
       return false;
     }
+  }
+
+  String _loginErrorMsg(Object e) {
+    final s = e.toString();
+    if (s.contains('401') || s.contains('400')) return 'Identifiants incorrects';
+    if (s.contains('receive timeout') || s.contains('receiveTimeout')) {
+      return 'Le serveur ne répond pas (base de données lente ou non démarrée). Réessayez dans quelques secondes.';
+    }
+    if (s.contains('connect timeout') || s.contains('connectTimeout') ||
+        s.contains('connection')) {
+      return 'Impossible de joindre le serveur. Vérifiez l\'adresse IP et que le serveur est démarré.';
+    }
+    return 'Impossible de se connecter. Vérifiez votre connexion.';
   }
 
   void dismissPlanWarning() {
