@@ -1,11 +1,11 @@
 {
-    "name": "pos_connect",
-    "short_name": "pos_connect",
+    "name": "POS Connect",
+    "short_name": "POS Connect",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#1B2A3B",
+    "theme_color": "#1B2A3B",
+    "description": "Gérez votre commerce avec précision",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

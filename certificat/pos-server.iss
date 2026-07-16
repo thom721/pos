@@ -36,7 +36,8 @@ InfoBeforeFile=setup-info\AVANT_INSTALLATION.txt
 InfoAfterFile=setup-info\APRES_INSTALLATION.txt
 
 ; Icône et output
-UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile=setup-info\pos.ico
+UninstallDisplayIcon={app}\pos.ico
 OutputDir=.
 OutputBaseFilename=POSConnect-Setup-{#MyAppVersion}
 SolidCompression=yes
@@ -79,6 +80,9 @@ Source: "mysql-8.0.41-winx64.zip"; DestDir: "{app}"; Flags: ignoreversion
 ; Certificat SSL
 Source: "setup-info\server.crt"; DestDir: "{app}\certificat"; Flags: ignoreversion
 Source: "setup-info\server.key"; DestDir: "{app}\certificat"; Flags: ignoreversion
+
+; Icône de l'application
+Source: "setup-info\pos.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Script d'installation des services (appelé en [Run])
 Source: "setup-info\setup-windows.ps1"; DestDir: "{app}"; Flags: ignoreversion
@@ -127,8 +131,8 @@ Root: HKLM; \
 
 ; ── Icônes ────────────────────────────────────────────────────────────────────
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}";  Filename: "{app}\{#MyAppExeName}"; \
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\pos.ico"
+Name: "{autodesktop}\{#MyAppName}";  Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\pos.ico"; \
   Tasks: desktopicon
 
 ; ── Commandes après installation ──────────────────────────────────────────────
