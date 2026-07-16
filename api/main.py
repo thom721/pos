@@ -116,14 +116,10 @@ _BUILTIN_ROLES = [
 
 def _run_alembic_migrations() -> None:
     """
-    Applique les migrations Alembic en attente.
-
-    Nouveau déploiement (aucune table) :
-      → create_all crée toutes les tables, puis on stamp 'head'
-        pour qu'Alembic sache que la baseline est déjà en place.
-
-    Déploiement existant (tables déjà là) :
-      → alembic upgrade head applique uniquement les nouvelles migrations.
+    Applique les migrations Alembic en attente, sérialisées par un verrou MySQL
+    advisory pour éviter les conflits entre workers Gunicorn qui démarrent en
+    parallèle. Chaque worker attend son tour ; ceux qui arrivent après le premier
+    trouvent les migrations déjà appliquées et terminent immédiatement.
     """
     import os
     from alembic.config import Config as AlembicConfig
@@ -132,16 +128,27 @@ def _run_alembic_migrations() -> None:
     ini_path = os.path.join(os.path.dirname(__file__), "alembic.ini")
     alembic_cfg = AlembicConfig(ini_path)
 
-    with engine.connect() as conn:
-        has_alembic_table = engine.dialect.has_table(conn, "alembic_version")
-        if not has_alembic_table:
-            # Nouveau déploiement : les tables viennent d'être créées par create_all.
-            # On marque directement la baseline pour éviter de ré-exécuter upgrade.
-            _log.info("Nouveau déploiement — stamp Alembic à 'head'")
-            alembic_command.stamp(alembic_cfg, "head")
-        else:
-            _log.info("Déploiement existant — alembic upgrade head")
-            alembic_command.upgrade(alembic_cfg, "head")
+    with engine.connect() as lock_conn:
+        # Verrou advisory MySQL — attend jusqu'à 60 s que le worker précédent finisse
+        if engine.dialect.name == "mysql":
+            got = lock_conn.execute(
+                text("SELECT GET_LOCK('pos_alembic_migration', 60)")
+            ).scalar()
+            if not got:
+                _log.warning("Migration lock timeout — un autre worker migre déjà")
+                return
+
+        try:
+            has_alembic_table = engine.dialect.has_table(lock_conn, "alembic_version")
+            if not has_alembic_table:
+                _log.info("Nouveau déploiement — stamp Alembic à 'head'")
+                alembic_command.stamp(alembic_cfg, "head")
+            else:
+                _log.info("Déploiement existant — alembic upgrade head")
+                alembic_command.upgrade(alembic_cfg, "head")
+        finally:
+            if engine.dialect.name == "mysql":
+                lock_conn.execute(text("SELECT RELEASE_LOCK('pos_alembic_migration')"))
 
 
 def _ensure_local_tenant(db) -> str:
