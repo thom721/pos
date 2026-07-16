@@ -75,6 +75,7 @@ class ConnectTenantRequest(BaseModel):
     path: str = "./pos_data.db"
     server_host: str = "0.0.0.0"
     server_port: int = 9003
+    warehouse_id: str | None = None
 
 
 class MigrateRequest(BaseModel):
@@ -558,12 +559,13 @@ def connect_tenant(data: ConnectTenantRequest):
         "secret_key":         secret,
         "server_host":        data.server_host,
         "server_port":        str(data.server_port),
-        "cloud_sync_url":     data_sync_url,
-        "cloud_sync_token":   sync_token,
-        "cloud_sync_enabled": "true",
-        "billing_url":        cloud_url,
-        "cloud_tenant_id":    cloud_tenant_id,
-        "cloud_owner_email":  data.email,
+        "cloud_sync_url":          data_sync_url,
+        "cloud_sync_token":        sync_token,
+        "cloud_sync_enabled":      "true",
+        "billing_url":             cloud_url,
+        "cloud_tenant_id":         cloud_tenant_id,
+        "cloud_owner_email":       data.email,
+        "installer_warehouse_id":  data.warehouse_id or "",
     })
 
     can_manage = body.get("can_manage_tenants", False)

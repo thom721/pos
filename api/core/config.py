@@ -71,9 +71,10 @@ def load_ini_config() -> dict:
         "cloud_tenant_id":      srv.get("cloud_tenant_id",      os.getenv("CLOUD_TENANT_ID",      "")),
         "cloud_owner_email":    srv.get("cloud_owner_email",    os.getenv("CLOUD_OWNER_EMAIL",    "")),
         "IDENTITY_PRIVATE_KEY": srv.get("identity_private_key", os.getenv("IDENTITY_PRIVATE_KEY", "")),
-        "BILLING_URL":   srv.get("billing_url",   os.getenv("BILLING_URL",   "")),
-        "CORS_ORIGINS":  srv.get("cors_origins",  os.getenv("CORS_ORIGINS",  "*")),
-        "WEB_DIR":       srv.get("web_dir",       os.getenv("WEB_DIR",       "web")),
+        "BILLING_URL":            srv.get("billing_url",            os.getenv("BILLING_URL",            "")),
+        "CORS_ORIGINS":           srv.get("cors_origins",           os.getenv("CORS_ORIGINS",           "*")),
+        "WEB_DIR":                srv.get("web_dir",                os.getenv("WEB_DIR",                "web")),
+        "INSTALLER_WAREHOUSE_ID": srv.get("installer_warehouse_id", os.getenv("INSTALLER_WAREHOUSE_ID", "")),
     }
 
 
@@ -112,6 +113,9 @@ class Settings(BaseSettings):
     # Server identity — Ed25519 private key (base64 raw)
     # Generate: python -c "from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey; from cryptography.hazmat.primitives.serialization import Encoding,PrivateFormat,NoEncryption; import base64; k=Ed25519PrivateKey.generate(); print(base64.b64encode(k.private_bytes(Encoding.Raw,PrivateFormat.Raw,NoEncryption())).decode())"
     IDENTITY_PRIVATE_KEY: str = ""
+
+    # Dépôt sélectionné lors de l'installation (UUID cloud du warehouse)
+    INSTALLER_WAREHOUSE_ID: str = ""
 
     # URL du serveur billing (posconnect.ht). Séparé de CLOUD_SYNC_URL pour les
     # tenants self-hosted dont les données business vont vers leur propre serveur.
@@ -171,7 +175,7 @@ def write_ini_config(cfg_data: dict, path: Path = None) -> Path:
                    "cloud_sync_url", "cloud_sync_token", "cloud_sync_enabled",
                    "cloud_tenant_id", "cloud_owner_email",
                    "identity_private_key", "billing_url",
-                   "cors_origins", "web_dir"):
+                   "cors_origins", "web_dir", "installer_warehouse_id"):
             cfg["server"][k] = str(val)
         elif k == "server_host":
             cfg["server"]["host"] = str(val)

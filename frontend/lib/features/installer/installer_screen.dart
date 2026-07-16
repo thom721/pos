@@ -38,6 +38,9 @@ class InstallConfig {
   String cloudUrl;
   String tenantEmail;
   String tenantPassword;
+  // Depot sélectionné lors de l'installation
+  String selectedWarehouseId;
+  String selectedWarehouseName;
 
   InstallConfig({
     this.serverUrl = '',
@@ -54,6 +57,8 @@ class InstallConfig {
     this.cloudUrl = '',
     this.tenantEmail = '',
     this.tenantPassword = '',
+    this.selectedWarehouseId = '',
+    this.selectedWarehouseName = '',
   });
 }
 
@@ -1311,6 +1316,8 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
   bool _testing = false;
   bool _verified = false;
   String? _error;
+  List<Map<String, dynamic>> _warehouses = [];
+  String? _selectedWarehouseId;
 
   @override
   void initState() {
@@ -1373,17 +1380,42 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
       }
 
       // ── Step 2 : validate tenant credentials ─────────────────────────
-      await cloudDio.post(
+      final tokenRes = await cloudDio.post(
         '$url/api/sync/token',
         data: {'owner_email': email, 'password': pwd},
       );
+      final tokenBody = tokenRes.data as Map<String, dynamic>;
+
+      // Parse warehouse list returned by the cloud
+      final rawWarehouses = tokenBody['warehouses'] as List<dynamic>? ?? [];
+      final warehouses = rawWarehouses
+          .cast<Map<String, dynamic>>()
+          .toList();
+
+      // Auto-select if only one warehouse; require selection if multiple
+      String? autoSelectedId;
+      String autoSelectedName = '';
+      if (warehouses.length == 1) {
+        autoSelectedId   = warehouses.first['id'] as String?;
+        autoSelectedName = warehouses.first['name'] as String? ?? '';
+      } else if (warehouses.isEmpty) {
+        // No warehouses on cloud yet — will be created/synced by server
+        autoSelectedId   = null;
+        autoSelectedName = '';
+      }
 
       final c = ref.read(_configProvider);
       ref.read(_configProvider.notifier).state = c
-        ..cloudUrl       = url
-        ..tenantEmail    = email
-        ..tenantPassword = pwd;
-      setState(() => _verified = true);
+        ..cloudUrl              = url
+        ..tenantEmail           = email
+        ..tenantPassword        = pwd
+        ..selectedWarehouseId   = autoSelectedId ?? ''
+        ..selectedWarehouseName = autoSelectedName;
+      setState(() {
+        _verified             = true;
+        _warehouses           = warehouses;
+        _selectedWarehouseId  = autoSelectedId;
+      });
 
     } on DioException catch (e) {
       final code = e.response?.statusCode;
@@ -1402,14 +1434,15 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
   void _switchMode(bool usePosConnect) {
     setState(() {
       _usePosConnectCloud = usePosConnect;
-      // Reset URL to the appropriate default when switching modes
       if (usePosConnect) {
         _customUrl.text = AppConstants.cloudUrl;
       } else {
         _customUrl.text = '';
       }
-      _verified = false;
-      _error = null;
+      _verified            = false;
+      _error               = null;
+      _warehouses          = [];
+      _selectedWarehouseId = null;
     });
   }
 
@@ -1438,10 +1471,14 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
 
   @override
   Widget build(BuildContext context) {
+    // "Suivant" nécessite : vérifié + dépôt choisi (ou pas de dépôts sur le cloud)
+    final canProceed = _verified &&
+        (_warehouses.isEmpty || _selectedWarehouseId != null);
+
     return _PageShell(
       title: 'Connexion au compte cloud',
       subtitle: 'Liez cette installation à votre compte POS Connect',
-      onNext: _verified ? widget.onNext : null,
+      onNext: canProceed ? widget.onNext : null,
       onBack: widget.onBack,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1590,6 +1627,19 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
                 ),
               ]),
             ),
+            const SizedBox(height: 20),
+            // ── Sélection du dépôt ───────────────────────────────────────
+            _WarehousePickerSection(
+              warehouses:           _warehouses,
+              selectedWarehouseId:  _selectedWarehouseId,
+              onSelected: (id, name) {
+                final c = ref.read(_configProvider);
+                ref.read(_configProvider.notifier).state = c
+                  ..selectedWarehouseId   = id
+                  ..selectedWarehouseName = name;
+                setState(() => _selectedWarehouseId = id);
+              },
+            ),
           ],
         ],
       ),
@@ -1644,7 +1694,7 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
       if (_failed) return;
 
       await _step('Liaison au compte cloud', () async {
-        await dio.post('/api/setup/connect-tenant', data: {
+        final body = <String, dynamic>{
           'cloud_url':   cfg.cloudUrl,
           'email':       cfg.tenantEmail,
           'password':    cfg.tenantPassword,
@@ -1657,7 +1707,11 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
           'path':        cfg.dbPath,
           'server_host': cfg.serverHost,
           'server_port': cfg.serverPort,
-        });
+        };
+        if (cfg.selectedWarehouseId.isNotEmpty) {
+          body['warehouse_id'] = cfg.selectedWarehouseId;
+        }
+        await dio.post('/api/setup/connect-tenant', data: body);
       });
       if (_failed) return;
 
@@ -1828,6 +1882,11 @@ class _DonePage extends ConsumerWidget {
                 icon: Icons.dns_rounded,
                 label: 'Serveur API',
                 value: 'http://${cfg.serverHost}:${cfg.serverPort}'),
+            if (cfg.selectedWarehouseName.isNotEmpty)
+              _SummaryRow(
+                  icon: Icons.warehouse_rounded,
+                  label: 'Dépôt',
+                  value: cfg.selectedWarehouseName),
           ],
           const SizedBox(height: 20),
           if (needsServer)
@@ -1854,6 +1913,174 @@ class _DonePage extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Warehouse picker — affiché après vérification du tenant
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _WarehousePickerSection extends StatelessWidget {
+  final List<Map<String, dynamic>> warehouses;
+  final String? selectedWarehouseId;
+  final void Function(String id, String name) onSelected;
+
+  const _WarehousePickerSection({
+    required this.warehouses,
+    required this.selectedWarehouseId,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (warehouses.isEmpty) {
+      // Pas encore de dépôts sur le cloud — le serveur local en créera un au démarrage
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+        ),
+        child: const Row(children: [
+          Icon(Icons.warehouse_rounded, color: AppColors.primary, size: 18),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Dépôt principal sera créé automatiquement sur ce serveur.',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+          ),
+        ]),
+      );
+    }
+
+    if (warehouses.length == 1) {
+      // Un seul dépôt — sélection automatique, juste l'afficher
+      final name = warehouses.first['name'] as String? ?? '';
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.success.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.warehouse_rounded, color: AppColors.success, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Dépôt assigné à ce poste',
+                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+              Text(name,
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700,
+                      color: AppColors.success)),
+            ]),
+          ),
+          const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 18),
+        ]),
+      );
+    }
+
+    // Plusieurs dépôts — sélection obligatoire
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Icon(Icons.warehouse_rounded, color: AppColors.primary, size: 16),
+          const SizedBox(width: 8),
+          const Text('Dépôt de ce poste',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppColors.error.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text('Obligatoire',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                    color: AppColors.error)),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        const Text(
+          'Chaque poste est exclusivement lié à un dépôt. '
+          'Ce choix ne pourra pas être modifié après installation.',
+          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        ...warehouses.map((wh) {
+          final id       = wh['id'] as String? ?? '';
+          final name     = wh['name'] as String? ?? '';
+          final isDefault = wh['is_default'] as bool? ?? false;
+          final selected = id == selectedWarehouseId;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: GestureDetector(
+              onTap: () => onSelected(id, name),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? AppColors.primary.withValues(alpha: 0.06)
+                      : AppColors.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: selected ? AppColors.primary : AppColors.divider,
+                    width: selected ? 2 : 1,
+                  ),
+                ),
+                child: Row(children: [
+                  Icon(Icons.warehouse_rounded,
+                      color: selected ? AppColors.primary : AppColors.textSecondary,
+                      size: 18),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Row(children: [
+                      Text(name,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: selected ? AppColors.primary : AppColors.textPrimary)),
+                      if (isDefault) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text('Principal',
+                              style: TextStyle(fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary)),
+                        ),
+                      ],
+                    ]),
+                  ),
+                  Icon(
+                    selected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
+                    color: selected ? AppColors.primary : AppColors.textSecondary,
+                    size: 20,
+                  ),
+                ]),
+              ),
+            ),
+          );
+        }),
+        if (selectedWarehouseId == null)
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text('Sélectionnez un dépôt pour continuer.',
+                style: TextStyle(fontSize: 11, color: AppColors.error)),
+          ),
+      ],
     );
   }
 }

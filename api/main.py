@@ -229,9 +229,44 @@ def _ensure_local_tenant(db) -> str:
 
 
 def _ensure_default_warehouse(db, tenant_id: str) -> None:
-    """Crée un dépôt par défaut si aucun n'existe pour ce tenant. Idempotent."""
+    """Crée ou identifie le dépôt par défaut pour ce tenant. Idempotent."""
     from api.models.Warehouse import Warehouse as WarehouseModel
+    from api.core.config import settings as _cfg
     try:
+        installer_wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
+
+        if installer_wh_id:
+            # Cherche le warehouse avec l'UUID cloud sélectionné à l'installation
+            wh = db.query(WarehouseModel).filter(
+                WarehouseModel.id == installer_wh_id,
+                WarehouseModel.tenant_id == tenant_id,
+            ).first()
+            if wh:
+                if not wh.is_default:
+                    db.query(WarehouseModel).filter(
+                        WarehouseModel.tenant_id == tenant_id,
+                        WarehouseModel.is_default == True,  # noqa: E712
+                    ).update({"is_default": False})
+                    wh.is_default = True
+                    db.commit()
+                return
+            # Warehouse pas encore syncsé — crée un placeholder avec l'UUID cloud
+            db.query(WarehouseModel).filter(
+                WarehouseModel.tenant_id == tenant_id,
+                WarehouseModel.is_default == True,  # noqa: E712
+            ).update({"is_default": False})
+            db.add(WarehouseModel(
+                id=installer_wh_id,
+                tenant_id=tenant_id,
+                name="Depot principal",
+                is_default=True,
+                is_active=True,
+            ))
+            db.commit()
+            _log.info("Depot installer cree (placeholder) ID=%s", installer_wh_id)
+            return
+
+        # Pas d'ID installer — comportement par défaut
         exists = db.query(WarehouseModel).filter(
             WarehouseModel.tenant_id == tenant_id
         ).first()

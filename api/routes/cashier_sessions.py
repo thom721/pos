@@ -74,7 +74,12 @@ def _compute_reconciliation(db: Session, session: CashierSession, closed_at: dat
 def _get_or_create_register(db: Session, tenant_id: str, device_id: str, name: str) -> PosRegister:
     reg = db.query(PosRegister).filter_by(tenant_id=tenant_id, device_id=device_id).first()
     if not reg:
-        reg = PosRegister(tenant_id=tenant_id, device_id=device_id, name=name)
+        from api.core.config import settings as _cfg
+        from api.models.Warehouse import Warehouse as _WH
+        wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
+        if wh_id and not db.query(_WH.id).filter_by(id=wh_id, tenant_id=tenant_id).first():
+            wh_id = None
+        reg = PosRegister(tenant_id=tenant_id, device_id=device_id, name=name, warehouse_id=wh_id)
         db.add(reg)
         db.flush()
     return reg

@@ -202,6 +202,12 @@ def issue_sync_token(payload: SyncTokenRequest, db: Session = Depends(get_db)):
     if not user or not _PH.recommended().verify(payload.password, user.password):
         raise HTTPException(status_code=403, detail="Email ou mot de passe incorrect")
 
+    from api.models.Warehouse import Warehouse as _WH
+    wh_rows = db.query(_WH).filter(
+        _WH.tenant_id == tenant.id,
+        _WH.is_active == True,  # noqa: E712
+    ).order_by(_WH.is_default.desc(), _WH.name).all()
+
     return {
         "sync_token":        _make_sync_token(tenant.id, payload.device_id, tenant.type),
         "tenant_id":         tenant.id,
@@ -213,6 +219,7 @@ def issue_sync_token(payload: SyncTokenRequest, db: Session = Depends(get_db)):
         "max_caisses":       tenant.max_caisses,
         "expires_in_days":   365,
         "user_id":           user.id,
+        "warehouses":        [{"id": w.id, "name": w.name, "is_default": w.is_default} for w in wh_rows],
     }
 
 
