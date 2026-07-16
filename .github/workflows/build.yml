@@ -350,7 +350,7 @@ jobs:
   inno-setup:
     name: 🏗 Windows Installer (Inno Setup)
     runs-on: windows-latest
-    needs: [backend-windows, frontend-windows]
+    needs: [backend-windows]
     steps:
       - uses: actions/checkout@v4
 
@@ -359,12 +359,6 @@ jobs:
         with:
           name: backend-windows
           path: certificat/backend-windows/
-
-      - name: Télécharger frontend-windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-windows
-          path: certificat/frontend-windows/
 
       - name: Cache MySQL ZIP (~300 Mo)
         id: cache-mysql
@@ -434,6 +428,48 @@ jobs:
           path: certificat/POSConnect-Setup-*.exe
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  INNO CLIENT  —  Installeur Flutter Windows (.exe)
+# ══════════════════════════════════════════════════════════════════════════════
+
+  inno-client:
+    name: 🖥 Client Installer (Inno Setup)
+    runs-on: windows-latest
+    needs: [frontend-windows]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Télécharger frontend-windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-windows
+          path: certificat/frontend-windows/
+
+      - name: Déterminer la version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${{ github.event.inputs.version || '1.0.0' }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compiler l'installeur client Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          $ver  = "${{ steps.version.outputs.VERSION }}"
+          Write-Host "Compilation client Inno Setup v$ver"
+          & $iscc "/DMyAppVersion=$ver" "certificat\pos-client.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup ISCC.exe a échoué (code $LASTEXITCODE)" }
+
+      - name: Upload installeur client Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-client-installer
+          path: certificat/POSConnect-Client-Setup-*.exe
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  RELEASE  —  Assembler et publier
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -448,6 +484,7 @@ jobs:
       - frontend-macos
       - frontend-web
       - inno-setup
+      - inno-client
     runs-on: ubuntu-latest
     steps:
       - name: Télécharger tous les artifacts
@@ -472,10 +509,15 @@ jobs:
           cd packages
           zip -r posconnect-windows-${{ steps.version.outputs.VERSION }}.zip windows/
 
-      - name: Copier installeur Windows (.exe)
+      - name: Copier installeur serveur Windows (.exe)
         run: |
           cp artifacts/windows-installer/POSConnect-Setup-*.exe packages/ 2>/dev/null || \
-            echo "Avertissement : aucun EXE Inno Setup trouvé"
+            echo "Avertissement : aucun EXE serveur Inno Setup trouvé"
+
+      - name: Copier installeur client Windows (.exe)
+        run: |
+          cp artifacts/windows-client-installer/POSConnect-Client-Setup-*.exe packages/ 2>/dev/null || \
+            echo "Avertissement : aucun EXE client Inno Setup trouvé"
 
       - name: Assembler Linux (tar.gz)
         run: |
@@ -510,6 +552,7 @@ jobs:
           path: |
             packages/posconnect-windows-*.zip
             packages/POSConnect-Setup-*.exe
+            packages/POSConnect-Client-Setup-*.exe
             packages/posconnect-linux-*.tar.gz
             packages/posconnect-macos-*.tar.gz
             packages/posconnect-web-*.zip
@@ -525,8 +568,9 @@ jobs:
 
             | Plateforme | Fichier |
             |-----------|---------|
-            | Windows — Installeur | `POSConnect-Setup-${{ steps.version.outputs.VERSION }}.exe` |
-            | Windows — Zip        | `posconnect-windows-${{ steps.version.outputs.VERSION }}.zip` |
+            | Windows — Serveur (installeur) | `POSConnect-Setup-${{ steps.version.outputs.VERSION }}.exe` |
+            | Windows — Client (installeur)  | `POSConnect-Client-Setup-${{ steps.version.outputs.VERSION }}.exe` |
+            | Windows — Zip (serveur+client) | `posconnect-windows-${{ steps.version.outputs.VERSION }}.zip` |
             | Linux                | `posconnect-linux-${{ steps.version.outputs.VERSION }}.tar.gz` |
             | macOS                | `posconnect-macos-${{ steps.version.outputs.VERSION }}.tar.gz` |
             | Web                  | `posconnect-web-${{ steps.version.outputs.VERSION }}.zip` |
@@ -541,6 +585,7 @@ jobs:
           files: |
             packages/posconnect-windows-*.zip
             packages/POSConnect-Setup-*.exe
+            packages/POSConnect-Client-Setup-*.exe
             packages/posconnect-linux-*.tar.gz
             packages/posconnect-macos-*.tar.gz
             packages/posconnect-web-*.zip

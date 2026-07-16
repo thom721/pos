@@ -3,12 +3,11 @@
 ;  Génère : POSConnect-Setup-1.0.0.exe
 ; ============================================================
 
-#define MyAppName        "POS Connect"
-#define MyAppVersion     "1.0.0"
-#define MyAppPublisher   "POS Connect"
-#define MyAppURL         "https://posconnect.ht"
-#define MyAppExeName     "posconnect-server.exe"
-#define MyFrontendExe    "pos_connect.exe"
+#define MyAppName    "POS Connect"
+#define MyAppVersion "1.0.0"
+#define MyAppPublisher "POS Connect"
+#define MyAppURL     "https://posconnect.ht"
+#define MyAppExeName "posconnect-server.exe"
 
 [Setup]
 AppId={{B21FF9C0-EEE3-4C72-BC41-F50544579485}
@@ -68,11 +67,6 @@ Source: "backend-windows\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversio
 Source: "backend-windows\*"; DestDir: "{app}"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
-; Application Flutter Windows (UI caisse)
-Source: "frontend-windows\{#MyFrontendExe}"; DestDir: "{app}\app"; Flags: ignoreversion
-Source: "frontend-windows\*"; DestDir: "{app}\app"; \
-  Flags: ignoreversion recursesubdirs createallsubdirs
-
 ; Nginx
 Source: "nginx\*"; DestDir: "{app}\nginx"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
@@ -116,14 +110,14 @@ Root: HKLM; Subkey: "SOFTWARE\POS Connect"; \
   ValueType: string; ValueName: "Website"; ValueData: "{#MyAppURL}"; \
   Flags: uninsdeletevalue
 
-; Chemin exécutable UI (accessible via Démarrer → Exécuter)
+; Chemin exécutable (accessible via Démarrer → Exécuter)
 Root: HKLM; \
-  Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{#MyFrontendExe}"; \
-  ValueType: string; ValueName: ""; ValueData: "{app}\app\{#MyFrontendExe}"; \
+  Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExeName}"; \
+  ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName}"; \
   Flags: uninsdeletekey
 Root: HKLM; \
-  Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{#MyFrontendExe}"; \
-  ValueType: string; ValueName: "Path"; ValueData: "{app}\app"; \
+  Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExeName}"; \
+  ValueType: string; ValueName: "Path"; ValueData: "{app}"; \
   Flags: uninsdeletevalue
 
 ; Event Log
@@ -138,10 +132,8 @@ Root: HKLM; \
 
 ; ── Icônes ────────────────────────────────────────────────────────────────────
 [Icons]
-; Les raccourcis lancent l'UI Flutter (app\pos_connect.exe), pas le serveur
-; (le serveur tourne en arrière-plan via NSSM, pas besoin de raccourci)
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\app\{#MyFrontendExe}"; IconFilename: "{app}\pos.ico"
-Name: "{autodesktop}\{#MyAppName}";  Filename: "{app}\app\{#MyFrontendExe}"; IconFilename: "{app}\pos.ico"; \
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\pos.ico"
+Name: "{autodesktop}\{#MyAppName}";  Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\pos.ico"; \
   Tasks: desktopicon
 
 ; ── Commandes après installation ──────────────────────────────────────────────
@@ -152,8 +144,8 @@ Filename: "powershell.exe"; \
   StatusMsg: "Configuration de POS Connect (services, certificat, base de données)..."; \
   Flags: runhidden waituntilterminated
 
-; Proposer de lancer l'UI après installation (le serveur démarre automatiquement via NSSM)
-Filename: "{app}\app\{#MyFrontendExe}"; \
+; Proposer de lancer l'app après installation
+Filename: "{app}\{#MyAppExeName}"; \
   Description: "Démarrer POS Connect maintenant"; \
   Flags: nowait postinstall skipifsilent
 
