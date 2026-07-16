@@ -31,9 +31,9 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
 ; Fichiers de documentation (chemins relatifs au .iss)
-LicenseFile=setup-info\LICENSE.txt
-InfoBeforeFile=setup-info\AVANT_INSTALLATION.txt
-InfoAfterFile=setup-info\APRES_INSTALLATION.txt
+LicenseFile=LICENSE.txt
+InfoBeforeFile=AVANT_INSTALLATION.txt
+InfoAfterFile=APRES_INSTALLATION.txt
 
 ; Icône et output
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -133,32 +133,13 @@ Name: "{autodesktop}\{#MyAppName}";  Filename: "{app}\{#MyAppExeName}"; \
 
 ; ── Commandes après installation ──────────────────────────────────────────────
 [Run]
-; 1. Copier pos_server.ini dans ProgramData (modifiable sans admin)
+; Tout est géré par setup-windows.ps1 : pos_server.ini, certificat SSL, services NSSM
 Filename: "powershell.exe"; \
-  Parameters: "-NonInteractive -ExecutionPolicy Bypass -Command \
-    ""if (-not (Test-Path '{commonappdata}\POS_Connect\pos_server.ini')) \
-      {{ Copy-Item '{app}\pos_server.ini' \
-         '{commonappdata}\POS_Connect\pos_server.ini' -Force }}"""; \
-  StatusMsg: "Configuration initiale..."; Flags: runhidden waituntilterminated
-
-; 2. Installer le certificat SSL dans les autorités de confiance
-Filename: "powershell.exe"; \
-  Parameters: "-NonInteractive -ExecutionPolicy Bypass -Command \
-    ""$cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(\
-      '{app}\certificat\server.crt'); \
-      $store = New-Object System.Security.Cryptography.X509Certificates.X509Store(\
-        'Root','LocalMachine'); \
-      $store.Open('ReadWrite'); $store.Add($cert); $store.Close()"""; \
-  StatusMsg: "Installation du certificat SSL..."; Flags: runhidden waituntilterminated
-
-; 3. Configurer les services Windows (Nginx + API via NSSM)
-Filename: "powershell.exe"; \
-  Parameters: "-NonInteractive -ExecutionPolicy Bypass \
-    -File ""{app}\setup-windows.ps1"""; \
-  StatusMsg: "Configuration des services Windows..."; \
+  Parameters: "-NonInteractive -ExecutionPolicy Bypass -File ""{app}\setup-windows.ps1"""; \
+  StatusMsg: "Configuration de POS Connect (services, certificat, base de données)..."; \
   Flags: runhidden waituntilterminated
 
-; 4. Proposer de lancer l'app (optionnel, après installation)
+; Proposer de lancer l'app après installation
 Filename: "{app}\{#MyAppExeName}"; \
   Description: "Démarrer POS Connect maintenant"; \
   Flags: nowait postinstall skipifsilent

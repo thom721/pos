@@ -34,7 +34,24 @@ Write-Log "=== Début de la configuration POS Connect ==="
 Write-Log "InstallDir : $InstallDir"
 Write-Log "DataDir    : $DataDir"
 
-# ── 1. Créer pos_server.ini dans ProgramData si absent ────────────────────────
+# ── 1. Installer le certificat SSL dans les autorités de confiance ─────────────
+$CertFile = "$InstallDir\certificat\server.crt"
+if (Test-Path $CertFile) {
+    try {
+        $cert  = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($CertFile)
+        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store("Root", "LocalMachine")
+        $store.Open("ReadWrite")
+        $store.Add($cert)
+        $store.Close()
+        Write-Log "Certificat SSL installé dans les autorités de confiance"
+    } catch {
+        Write-Log "Impossible d'installer le certificat : $_" "WARN"
+    }
+} else {
+    Write-Log "Pas de certificat trouvé à $CertFile — étape ignorée" "WARN"
+}
+
+# ── 2. Créer pos_server.ini dans ProgramData si absent ────────────────────────
 $IniSource = "$InstallDir\pos_server.ini"
 $IniTarget = "$DataDir\pos_server.ini"
 
@@ -57,7 +74,7 @@ port = 9003
     }
 }
 
-# ── 2. Extraire MySQL si le zip est présent et MySQL absent ───────────────────
+# ── 3. Extraire MySQL si le zip est présent et MySQL absent ───────────────────
 if ((Test-Path $MySqlZip) -and (-not (Test-Path $MySqlBin))) {
     Write-Log "Extraction de MySQL..."
     try {
@@ -74,7 +91,7 @@ if ((Test-Path $MySqlZip) -and (-not (Test-Path $MySqlBin))) {
     }
 }
 
-# ── 3. Initialiser MySQL si nécessaire ────────────────────────────────────────
+# ── 4. Initialiser MySQL si nécessaire ────────────────────────────────────────
 if (Test-Path $MySqlBin) {
     $MySqlData = "$MySqlDir\data"
     if (-not (Test-Path "$MySqlData\ibdata1")) {
@@ -151,7 +168,7 @@ default-character-set = utf8mb4
     }
 }
 
-# ── 4. Service Windows : POS Connect API ─────────────────────────────────────
+# ── 5. Service Windows : POS Connect API ─────────────────────────────────────
 $SvcApi = "POS_Connect_API"
 $existingApi = & $NssmExe status $SvcApi 2>&1
 if ($LASTEXITCODE -ne 0 -or $existingApi -match "can't open service") {
@@ -173,7 +190,7 @@ if ($LASTEXITCODE -ne 0 -or $existingApi -match "can't open service") {
     Write-Log "Service $SvcApi existe déjà"
 }
 
-# ── 5. Service Windows : Nginx ────────────────────────────────────────────────
+# ── 6. Service Windows : Nginx ────────────────────────────────────────────────
 $SvcNginx = "POS_Connect_Nginx"
 $existingNginx = & $NssmExe status $SvcNginx 2>&1
 if ($LASTEXITCODE -ne 0 -or $existingNginx -match "can't open service") {
@@ -191,7 +208,7 @@ if ($LASTEXITCODE -ne 0 -or $existingNginx -match "can't open service") {
     Write-Log "Service $SvcNginx existe déjà"
 }
 
-# ── 6. Démarrer les services dans l'ordre ────────────────────────────────────
+# ── 7. Démarrer les services dans l'ordre ────────────────────────────────────
 Write-Log "Démarrage des services..."
 foreach ($svc in @($SvcApi, $SvcNginx)) {
     try {
@@ -202,7 +219,7 @@ foreach ($svc in @($SvcApi, $SvcNginx)) {
     }
 }
 
-# ── 7. Règle pare-feu Windows ────────────────────────────────────────────────
+# ── 8. Règle pare-feu Windows ────────────────────────────────────────────────
 $FwRuleName = "POS Connect Serveur (port 9003)"
 $existing = Get-NetFirewallRule -DisplayName $FwRuleName -ErrorAction SilentlyContinue
 if (-not $existing) {
