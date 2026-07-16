@@ -15,6 +15,7 @@ class UserCreate(BaseModel):
     is_active: bool = True
     roles: Optional[List[str]] = []
     permissions: Optional[List[str]] = []
+    warehouse_id: Optional[str] = None
 
 
 class UserUpdate(BaseModel):
@@ -29,6 +30,7 @@ class UserUpdate(BaseModel):
     is_active: bool = True
     roles: Optional[List[str]] = None
     permissions: Optional[List[str]] = None
+    warehouse_id: Optional[str] = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -49,6 +51,7 @@ class UserRead(BaseModel):
     roles: List[str] = []
     permissions: List[str] = []
     must_change_password: bool = True
+    warehouse_id: Optional[str] = None
 
 class UserOut(BaseModel):
     id: str

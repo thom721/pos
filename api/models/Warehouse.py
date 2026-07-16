@@ -17,3 +17,5 @@ class Warehouse(UUIDBase):
     purchase_receipts  = relationship("PurchaseReceipt",  back_populates="warehouse")
     inventory_records  = relationship("InventoryRecord",  back_populates="warehouse")
     pos_registers      = relationship("PosRegister",      back_populates="warehouse")
+    users              = relationship("User",             back_populates="warehouse",
+                                     foreign_keys="[User.warehouse_id]")

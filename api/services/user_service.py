@@ -30,6 +30,7 @@ class UserService(TenantService):
                 roles=data.roles or [],
                 permissions=data.permissions or [],
                 must_change_password=True,
+                warehouse_id=data.warehouse_id,
             )
             self._set_tenant(user)
             self.db.add(user)

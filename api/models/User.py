@@ -4,7 +4,8 @@ from .base import UUIDBase
 
 class User(UUIDBase):
     __tablename__ = "users"
-    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
+    tenant_id    = Column(String(36), ForeignKey('tenants.id'),   nullable=True, index=True)
+    warehouse_id = Column(String(36), ForeignKey('warehouses.id'), nullable=True, index=True)
 
     fname    = Column(String(255), nullable=False)
     lname    = Column(String(255), nullable=False)
@@ -22,3 +23,4 @@ class User(UUIDBase):
     purchases        = relationship("Purchase",        back_populates="user")
     payments         = relationship("Payment",         back_populates="user")
     employee_profile = relationship("EmployeeProfile", back_populates="user", uselist=False)
+    warehouse        = relationship("Warehouse",       foreign_keys=[warehouse_id])
