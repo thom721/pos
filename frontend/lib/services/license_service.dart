@@ -148,7 +148,31 @@ class LicenseService {
       );
     }
 
-    // 7. valid_until has passed → offline grace period
+    // 7. valid_until has passed — le blob doit être rafraîchi.
+    //
+    //    CAS A : abonnement payé encore valide (subEndsAt dans le futur)
+    //    → autoriser l'accès jusqu'à subEndsAt, même sans internet.
+    //    Le blob ne sert qu'à re-vérification périodique ; la date de fin
+    //    d'abonnement est la vraie borne.
+    //
+    //    CAS B : essai / pas d'abonnement → grâce courte de _kOfflineGrace jours.
+    if (subEndsAt != null &&
+        now.isBefore(subEndsAt) &&
+        tenantStatus == 'active') {
+      // Abonnement payé, encore dans sa période → accès autorisé hors ligne
+      final subDaysLeft = (subEndsAt.difference(now).inSeconds / 86400).ceil();
+      return withMeta(
+        access: LicenseAccess.allowed,
+        status: tenantStatus,
+        isOfflineVal: isOffline,
+        daysLeft: subDaysLeft,
+        message: isOffline
+            ? 'Mode hors ligne — abonnement valide jusqu\'au ${_fmtDate(subEndsAt)}. '
+              'Reconnectez-vous pour synchroniser.'
+            : null,
+      );
+    }
+
     if (validUntil != null) {
       final graceEnd = validUntil.add(const Duration(days: _kOfflineGrace));
       final inGrace  = now.isBefore(graceEnd);
@@ -242,5 +266,12 @@ class LicenseService {
   static DateTime? _dt(dynamic v) {
     if (v == null) return null;
     try { return DateTime.parse(v as String).toUtc(); } catch (_) { return null; }
+  }
+
+  static String _fmtDate(DateTime dt) {
+    final local = dt.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}/'
+           '${local.month.toString().padLeft(2, '0')}/'
+           '${local.year}';
   }
 }
