@@ -42,7 +42,8 @@ def login_for_access_token(
         tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
         if tenant and not getattr(tenant, "is_local", False):
             warning = plan_warning(tenant)
-            if warning:
+            # Email uniquement au propriétaire du tenant
+            if warning and user.email == tenant.owner_email:
                 maybe_send_warning(tenant, db)
 
     return Token(access_token=access_token, token_type="bearer", user={

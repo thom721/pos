@@ -26,7 +26,8 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         tenant = db.query(TenantModel).filter(TenantModel.id == user.tenant_id).first()
         if tenant and not getattr(tenant, "is_local", False):
             warning = plan_warning(tenant)
-            if warning:
+            # Email uniquement au propriétaire du tenant
+            if warning and user.email == tenant.owner_email:
                 maybe_send_warning(tenant, db)
 
     return {

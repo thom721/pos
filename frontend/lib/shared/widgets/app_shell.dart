@@ -100,11 +100,20 @@ class AppShell extends ConsumerWidget {
       );
     }
 
+    final authState = ref.watch(authProvider);
     final shell = context.isMobile
         ? _MobileShell(child: child)
         : _DesktopShell(child: child);
 
     final banners = <Widget>[];
+
+    // Bandeau d'avertissement plan expirant (vient du login, pour tous les utilisateurs)
+    if (authState.planWarning != null) {
+      banners.add(_PlanWarningBanner(
+        warning: authState.planWarning!,
+        onDismiss: () => ref.read(authProvider.notifier).dismissPlanWarning(),
+      ));
+    }
 
     // Licence expiry / offline warning
     if (license != null && license.hasWarning && license.message != null) {
@@ -664,6 +673,81 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
 // ═════════════════════════════════════════════════════════════════════════════
 // License widgets
 // ═════════════════════════════════════════════════════════════════════════════
+
+// ── Bandeau avertissement plan expirant ───────────────────────────────────────
+
+class _PlanWarningBanner extends StatelessWidget {
+  final Map<String, dynamic> warning;
+  final VoidCallback onDismiss;
+
+  const _PlanWarningBanner({required this.warning, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    final daysLeft = warning['days_left'] as int? ?? 0;
+    final type = warning['type'] as String? ?? 'trial';
+    final label = type == 'trial' ? "période d'essai" : 'abonnement';
+
+    final String msg;
+    if (daysLeft == 0) {
+      msg = 'Votre $label expire aujourd\'hui. Renouvelez maintenant.';
+    } else if (daysLeft == 1) {
+      msg = 'Votre $label expire demain. Renouvelez maintenant.';
+    } else {
+      msg = 'Votre $label expire dans $daysLeft jours. Renouvelez maintenant.';
+    }
+
+    return Material(
+      color: const Color(0xFFD97706), // amber-600
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              const Icon(Icons.access_time_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  msg,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => context.go('/billing'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+                child: const Text('Renouveler'),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 16),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: onDismiss,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Bandeau avertissement licence (offline / expiry via signed blob) ──────────
 
 class _LicenseWarningBanner extends StatefulWidget {
   final String message;

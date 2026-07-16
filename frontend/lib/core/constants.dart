@@ -33,6 +33,7 @@ class AppConstants {
   static const deviceIdKey = 'device_id';
   static const tenantKey = 'tenant_data';
   static const clientSetupDoneKey = 'client_setup_done';
+  static const planWarningKey = 'plan_warning';
 
   static const appName = 'POS Connect';
 }

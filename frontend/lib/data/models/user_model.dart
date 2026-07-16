@@ -90,16 +90,19 @@ class AuthToken {
   final String accessToken;
   final String tokenType;
   final Map<String, dynamic>? user;
+  final Map<String, dynamic>? planWarning;
 
   AuthToken({
     required this.accessToken,
     required this.tokenType,
     this.user,
+    this.planWarning,
   });
 
   factory AuthToken.fromJson(Map<String, dynamic> json) => AuthToken(
         accessToken: json['access_token']?.toString() ?? '',
         tokenType: json['token_type']?.toString() ?? 'bearer',
         user: json['user'] as Map<String, dynamic>?,
+        planWarning: json['plan_warning'] as Map<String, dynamic>?,
       );
 }

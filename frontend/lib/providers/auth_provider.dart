@@ -11,12 +11,14 @@ class AuthState {
   final bool isLoading;
   final UserModel? user;
   final String? error;
+  final Map<String, dynamic>? planWarning;
 
   const AuthState({
     this.isAuthenticated = false,
     this.isLoading = true,
     this.user,
     this.error,
+    this.planWarning,
   });
 
   AuthState copyWith({
@@ -24,12 +26,15 @@ class AuthState {
     bool? isLoading,
     UserModel? user,
     String? error,
+    Map<String, dynamic>? planWarning,
+    bool clearPlanWarning = false,
   }) =>
       AuthState(
         isAuthenticated: isAuthenticated ?? this.isAuthenticated,
         isLoading: isLoading ?? this.isLoading,
         user: user ?? this.user,
         error: error,
+        planWarning: clearPlanWarning ? null : (planWarning ?? this.planWarning),
       );
 }
 
@@ -44,10 +49,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final token = await _repo.getToken();
     if (token != null) {
       final userData = await _repo.getSavedUser();
+      final warning  = await _repo.getSavedPlanWarning();
       state = AuthState(
         isAuthenticated: true,
         isLoading: false,
         user: userData != null ? UserModel.fromJson(userData) : null,
+        planWarning: warning,
       );
     } else {
       state = const AuthState(isAuthenticated: false, isLoading: false);
@@ -60,10 +67,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final token = await _repo.login(username, password);
       await _repo.saveToken(token.accessToken);
       if (token.user != null) await _repo.saveUser(token.user!);
+      await _repo.savePlanWarning(token.planWarning);
       await _repo.setConnectionMode('local');
 
       final user = token.user != null ? UserModel.fromJson(token.user!) : null;
-      state = AuthState(isAuthenticated: true, isLoading: false, user: user);
+      state = AuthState(
+        isAuthenticated: true,
+        isLoading: false,
+        user: user,
+        planWarning: token.planWarning,
+      );
       return true;
     } catch (e) {
       final msg = e.toString().contains('401')
@@ -93,9 +106,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       await _repo.saveToken(token.accessToken);
       if (token.user != null) await _repo.saveUser(token.user!);
+      await _repo.savePlanWarning(token.planWarning);
       await _repo.setConnectionMode('cloud');
 
-      state = AuthState(isAuthenticated: true, isLoading: false, user: user);
+      state = AuthState(
+        isAuthenticated: true,
+        isLoading: false,
+        user: user,
+        planWarning: token.planWarning,
+      );
       return true;
     } catch (e) {
       String msg;
@@ -109,6 +128,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(isLoading: false, error: msg);
       return false;
     }
+  }
+
+  void dismissPlanWarning() {
+    _repo.savePlanWarning(null);
+    state = state.copyWith(clearPlanWarning: true);
   }
 
   void clearMustChangePassword() {

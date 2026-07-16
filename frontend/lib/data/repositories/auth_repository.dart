@@ -109,11 +109,28 @@ class AuthRepository {
     return jsonDecode(raw) as Map<String, dynamic>;
   }
 
+  Future<void> savePlanWarning(Map<String, dynamic>? warning) async {
+    final prefs = await _prefs;
+    if (warning == null) {
+      await prefs.remove(AppConstants.planWarningKey);
+    } else {
+      await prefs.setString(AppConstants.planWarningKey, jsonEncode(warning));
+    }
+  }
+
+  Future<Map<String, dynamic>?> getSavedPlanWarning() async {
+    final prefs = await _prefs;
+    final raw = prefs.getString(AppConstants.planWarningKey);
+    if (raw == null) return null;
+    return jsonDecode(raw) as Map<String, dynamic>;
+  }
+
   Future<void> logout() async {
     final prefs = await _prefs;
     await prefs.remove(AppConstants.tokenKey);
     await prefs.remove(AppConstants.userKey);
     await prefs.remove(AppConstants.tenantKey);
     await prefs.remove(AppConstants.connectionModeKey);
+    await prefs.remove(AppConstants.planWarningKey);
   }
 }
