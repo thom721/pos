@@ -287,7 +287,9 @@ if ($iniExists) {
     $ok = Invoke-Sql -Exe $mysqlExe -Host $DbHost -Port $DbPort -User $adminUser -Pass $adminPassPlain -Statements @(
         "CREATE DATABASE IF NOT EXISTS ${DbName} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
         "CREATE USER IF NOT EXISTS '${PosUser}'@'localhost' IDENTIFIED BY '${PosPass}'",
+        "CREATE USER IF NOT EXISTS '${PosUser}'@'127.0.0.1' IDENTIFIED BY '${PosPass}'",
         "GRANT ALL PRIVILEGES ON ${DbName}.* TO '${PosUser}'@'localhost'",
+        "GRANT ALL PRIVILEGES ON ${DbName}.* TO '${PosUser}'@'127.0.0.1'",
         "FLUSH PRIVILEGES"
     )
     if (-not $ok) { Fail "Impossible de créer la base '$DbName' ou l'utilisateur '$PosUser'." }
@@ -365,7 +367,9 @@ port = $DbPort
         "ALTER USER 'root'@'localhost' IDENTIFIED BY '${RootPass}'",
         "CREATE DATABASE IF NOT EXISTS ${DbName} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
         "CREATE USER IF NOT EXISTS '${PosUser}'@'localhost' IDENTIFIED BY '${PosPass}'",
+        "CREATE USER IF NOT EXISTS '${PosUser}'@'127.0.0.1' IDENTIFIED BY '${PosPass}'",
         "GRANT ALL PRIVILEGES ON ${DbName}.* TO '${PosUser}'@'localhost'",
+        "GRANT ALL PRIVILEGES ON ${DbName}.* TO '${PosUser}'@'127.0.0.1'",
         "FLUSH PRIVILEGES"
     )
     if (-not $ok) { Fail "Impossible de configurer MySQL." }

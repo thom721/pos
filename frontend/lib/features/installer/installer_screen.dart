@@ -961,62 +961,118 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(children: [
-                        Icon(Icons.lightbulb_outline, color: AppColors.warning, size: 16),
-                        SizedBox(width: 6),
-                        Text('Debian / Ubuntu — auth_socket',
-                            style: TextStyle(
-                                color: AppColors.warning,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13)),
-                      ]),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'MySQL utilise "auth_socket" par défaut (pas de mot de passe).\n'
-                        'Exécutez ces commandes sur le serveur puis réessayez :',
-                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E2A38),
-                          borderRadius: BorderRadius.circular(6),
+                  child: Platform.isWindows
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(children: [
+                              Icon(Icons.lightbulb_outline, color: AppColors.warning, size: 16),
+                              SizedBox(width: 6),
+                              Text('Windows — créer l\'utilisateur MySQL',
+                                  style: TextStyle(
+                                      color: AppColors.warning,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13)),
+                            ]),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'L\'utilisateur MySQL n\'existe pas encore ou n\'a pas accès depuis 127.0.0.1.\n'
+                              'Cliquez sur le bouton ci-dessous pour le créer automatiquement via root.',
+                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E2A38),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'mysql -u root -P ${_port.text} -e "\n'
+                                "CREATE USER IF NOT EXISTS '${_user.text}'@'127.0.0.1'\n"
+                                "  IDENTIFIED BY '${_pass.text.replaceAll("'", "\\'")}'; \n"
+                                "GRANT ALL ON ${_name.text}.* TO '${_user.text}'@'127.0.0.1';\n"
+                                'FLUSH PRIVILEGES;"',
+                                style: const TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 11,
+                                    color: Color(0xFF7DD3FC)),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                    backgroundColor: AppColors.warning),
+                                onPressed: _fixingSocket ? null : _test,
+                                icon: _fixingSocket
+                                    ? const SizedBox(width: 16, height: 16,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2, color: Colors.white))
+                                    : const Icon(Icons.auto_fix_high_rounded, size: 16),
+                                label: const Text('Créer automatiquement'),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(children: [
+                              Icon(Icons.lightbulb_outline, color: AppColors.warning, size: 16),
+                              SizedBox(width: 6),
+                              Text('Debian / Ubuntu — auth_socket',
+                                  style: TextStyle(
+                                      color: AppColors.warning,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13)),
+                            ]),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'MySQL utilise "auth_socket" par défaut (pas de mot de passe).\n'
+                              'Exécutez ces commandes sur le serveur puis réessayez :',
+                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E2A38),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'sudo mysql -u root\n'
+                                "ALTER USER 'root'@'localhost' IDENTIFIED BY '${_pass.text}';\n"
+                                'FLUSH PRIVILEGES;\n'
+                                'exit',
+                                style: const TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 11,
+                                    color: Color(0xFF7DD3FC)),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                    backgroundColor: AppColors.warning),
+                                onPressed: _fixingSocket ? null : _autoFixWithSudo,
+                                icon: _fixingSocket
+                                    ? const SizedBox(width: 16, height: 16,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2, color: Colors.white))
+                                    : const Icon(Icons.build_rounded, size: 16),
+                                label: Text(_fixingSocket
+                                    ? 'Configuration en cours...'
+                                    : 'Corriger automatiquement (sudo)'),
+                              ),
+                            ),
+                          ],
                         ),
-                        child: Text(
-                          'sudo mysql -u root\n'
-                          "ALTER USER 'root'@'localhost' IDENTIFIED BY '${_pass.text}';\n"
-                          'FLUSH PRIVILEGES;\n'
-                          'exit',
-                          style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontSize: 11,
-                              color: Color(0xFF7DD3FC)),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.warning),
-                          onPressed: _fixingSocket ? null : _autoFixWithSudo,
-                          icon: _fixingSocket
-                              ? const SizedBox(width: 16, height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white))
-                              : const Icon(Icons.build_rounded, size: 16),
-                          label: Text(_fixingSocket
-                              ? 'Configuration en cours...'
-                              : 'Corriger automatiquement (sudo)'),
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ],
             ],

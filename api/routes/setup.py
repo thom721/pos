@@ -187,6 +187,60 @@ def _auto_fix_mysql_socket(user: str, new_password: str) -> bool:
     return False
 
 
+def _auto_fix_mysql_windows(
+    host: str, port: int, db_name: str, pos_user: str, pos_password: str
+) -> bool:
+    """
+    Sur Windows avec MySQL local bundlé, tente de créer pos_user via root (sans mot de passe).
+    Crée l'utilisateur pour les deux hôtes 'localhost' et '127.0.0.1'.
+    Retourne True si la création a réussi.
+    """
+    import pymysql
+
+    # Chercher mysql.exe dans le dossier bundlé POS Connect
+    local_exe = os.path.normpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "mysql", "bin", "mysqld.exe",
+    ))
+    mysql_exe = os.path.normpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..", "..", "mysql", "bin", "mysql.exe",
+    ))
+
+    root_passwords = [""]  # Le MySQL bundlé n'a pas de mot de passe root par défaut
+    root_hosts = ["localhost", "127.0.0.1"]
+
+    for root_pass in root_passwords:
+        for root_host in root_hosts:
+            try:
+                conn = pymysql.connect(
+                    host=root_host, port=port, user="root", password=root_pass,
+                    charset="utf8mb4", connect_timeout=5,
+                )
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"CREATE DATABASE IF NOT EXISTS `{db_name}` "
+                        f"CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                    )
+                    for h in ("localhost", "127.0.0.1"):
+                        cur.execute(
+                            f"CREATE USER IF NOT EXISTS %s@'{h}' "
+                            f"IDENTIFIED WITH mysql_native_password BY %s",
+                            (pos_user, pos_password),
+                        )
+                        cur.execute(
+                            f"GRANT ALL PRIVILEGES ON `{db_name}`.* TO %s@'{h}'",
+                            (pos_user,),
+                        )
+                    cur.execute("FLUSH PRIVILEGES")
+                conn.commit()
+                conn.close()
+                return True
+            except Exception:
+                continue
+    return False
+
+
 def _detect_mysql() -> dict:
     """Check if MySQL is installed — PATH ou répertoire local POS Connect."""
     # 1. PATH système
@@ -352,10 +406,16 @@ def test_db_connection(data: DbTestRequest):
         })
         return {"ok": True, "message": "Connexion MySQL réussie."}
 
-    # Sur Debian/Ubuntu, MySQL root utilise auth_socket — tentative de configuration automatique
     is_access_denied = "1045" in err or "Access denied" in err.lower()
     if is_access_denied and data.host in ("localhost", "127.0.0.1"):
-        fixed = _auto_fix_mysql_socket(data.user, data.password)
+        # Sur Windows : tenter de créer pos_user via root MySQL bundlé (sans mot de passe)
+        if platform.system() == "Windows":
+            fixed = _auto_fix_mysql_windows(
+                data.host, data.port, data.name, data.user, data.password
+            )
+        else:
+            # Sur Debian/Ubuntu : MySQL root utilise auth_socket
+            fixed = _auto_fix_mysql_socket(data.user, data.password)
         if fixed:
             err2 = _test_mysql(data.host, data.port, data.name, data.user, data.password)
             if err2 is None:
