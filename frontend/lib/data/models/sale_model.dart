@@ -59,7 +59,7 @@ class SalePaymentModel {
         id: json['id']?.toString() ?? '',
         amount: double.tryParse(json['amount']?.toString() ?? '0') ?? 0,
         method: json['method']?.toString() ?? '',
-        createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+        createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
             DateTime.now(),
       );
 }
@@ -111,7 +111,7 @@ class SaleModel {
             double.tryParse(json['paid_amount']?.toString() ?? '0') ?? 0,
         status: json['status']?.toString() ?? 'UNPAID',
         createdAt:
-            DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+            DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
                 DateTime.now(),
         customerName: json['customer']?['name']?.toString(),
         customerPhone: json['customer']?['phone']?.toString(),

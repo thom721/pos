@@ -289,7 +289,7 @@ class _TenantCard extends ConsumerWidget {
     String? formattedDate;
     if (createdAt != null) {
       try {
-        formattedDate = DateFormat('dd/MM/yyyy').format(DateTime.parse(createdAt));
+        formattedDate = DateFormat('dd/MM/yyyy').format(DateTime.parse(createdAt).toLocal());
       } catch (_) {}
     }
 
@@ -810,7 +810,7 @@ class _PaymentRow extends StatelessWidget {
     if (paidAt != null) {
       try {
         formattedDate =
-            DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(paidAt));
+            DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(paidAt).toLocal());
       } catch (_) {}
     }
 

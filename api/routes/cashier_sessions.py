@@ -159,7 +159,11 @@ def open_session(
         action="OPEN",
         resource_type="cashier_session",
         resource_id=session.id,
-        detail={"opening_balance": body.opening_balance, "device_id": body.device_id},
+        detail={
+            "opening_balance": body.opening_balance,
+            "device_id": body.device_id,
+            "opened_at": session.opened_at.isoformat(),
+        },
     )
 
     db.commit()
@@ -240,7 +244,11 @@ def close_session(
         action="CLOSE",
         resource_type="cashier_session",
         resource_id=session.id,
-        detail={"closing_balance": body.closing_balance},
+        detail={
+            "closing_balance": body.closing_balance,
+            "closed_at": closed_at.isoformat(),
+            "cash_difference": float(session.cash_difference or 0),
+        },
     )
 
     db.commit()

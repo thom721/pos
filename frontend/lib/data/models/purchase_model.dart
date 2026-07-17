@@ -63,7 +63,7 @@ class PurchaseModel {
             double.tryParse(json['paid_amount']?.toString() ?? '0') ?? 0,
         status: json['status']?.toString() ?? 'pending',
         createdAt:
-            DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+            DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
                 DateTime.now(),
         supplierName: json['supplier']?['name']?.toString(),
         supplierId: json['supplier']?['id']?.toString(),

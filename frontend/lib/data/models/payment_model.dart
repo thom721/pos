@@ -26,7 +26,7 @@ class PaymentModel {
       amount: double.tryParse(json['amount']?.toString() ?? '0') ?? 0,
       method: json['method']?.toString() ?? 'CASH',
       createdAt:
-          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+          DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
               DateTime.now(),
       userFullName: user != null
           ? '${user['fname'] ?? ''} ${user['lname'] ?? ''}'.trim()

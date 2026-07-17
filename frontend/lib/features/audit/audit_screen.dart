@@ -262,7 +262,7 @@ class _AuditRow extends StatelessWidget {
     final userName     = entry['user_name'] as String? ?? 'Système';
     final detail       = entry['detail'] as String?;
     final createdAt    = entry['created_at'] != null
-        ? DateTime.tryParse(entry['created_at'].toString())
+        ? DateTime.tryParse(entry['created_at'].toString())?.toLocal()
         : null;
     final dateFmt = DateFormat('dd/MM/yyyy HH:mm', 'fr');
 

@@ -38,7 +38,7 @@ class DebtModel {
         balance: double.tryParse(json['balance']?.toString() ?? '0') ?? 0,
         status: json['status']?.toString() ?? 'UNPAID',
         createdAt:
-            DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+            DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
                 DateTime.now(),
         partnerName: json['partner_name']?.toString(),
       );

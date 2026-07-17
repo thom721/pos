@@ -90,7 +90,7 @@ class InventoryModel {
             int.tryParse(json['total_products']?.toString() ?? '0') ?? 0,
         discrepancyCount:
             int.tryParse(json['discrepancy_count']?.toString() ?? '0') ?? 0,
-        createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+        createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
             DateTime.now(),
         items: (json['items'] as List? ?? [])
             .map((e) => InventoryResultItem.fromJson(e))
