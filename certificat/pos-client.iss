@@ -52,7 +52,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Créer une icône sur le Bureau"; \
-  GroupDescription: "Icônes supplémentaires"; Flags: checked
+  GroupDescription: "Icônes supplémentaires"
 
 ; ── Fichiers à copier ─────────────────────────────────────────────────────────
 [Files]
