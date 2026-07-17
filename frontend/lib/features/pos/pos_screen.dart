@@ -798,7 +798,8 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   // ── Session caisse ────────────────────────────────────────────────────────
   Map<String, dynamic>? _session;   // null = pas encore chargé
   bool _sessionChecked = false;
-  bool _noSessionPermission = false; // true si 403 sur sessions.open
+  bool _noSessionPermission = false; // true si 403 permission sessions.open
+  bool _caisseDisabled = false;      // true si caisse/dépôt désactivé
   String? _deviceId;
 
   @override
@@ -822,12 +823,14 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     try {
       final res = await dio.get('/api/sessions/current', queryParameters: {'device_id': _deviceId});
       final session = res.data['session'];
+      final disabled = res.data['disabled'] == true;
       if (mounted) {
         setState(() {
           _session = session as Map<String, dynamic>?;
           _sessionChecked = true;
+          _caisseDisabled = disabled;
         });
-        if (_session == null && mounted) {
+        if (_session == null && !disabled && mounted) {
           _promptOpenSession();
         }
       }
@@ -1048,7 +1051,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
             child: Row(
               children: [
                 Icon(
-                  _noSessionPermission
+                  (_noSessionPermission || _caisseDisabled)
                       ? Icons.no_accounts_rounded
                       : Icons.lock_rounded,
                   color: AppColors.error,
@@ -1059,14 +1062,16 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                   child: Text(
                     _noSessionPermission
                         ? 'Votre rôle ne permet pas d\'ouvrir une session caisse'
-                        : 'Caisse non ouverte — les encaissements sont désactivés',
+                        : _caisseDisabled
+                            ? 'Cette caisse est désactivée — contactez votre administrateur'
+                            : 'Caisse non ouverte — les encaissements sont désactivés',
                     style: const TextStyle(
                         color: AppColors.error,
                         fontWeight: FontWeight.w500,
                         fontSize: 11),
                   ),
                 ),
-                if (!_noSessionPermission)
+                if (!_noSessionPermission && !_caisseDisabled)
                   TextButton(
                     onPressed: _promptOpenSession,
                     style: TextButton.styleFrom(
@@ -1495,7 +1500,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           foregroundColor: Colors.white,
                         )
                       : null,
-                  onPressed: (pos.items.isEmpty || pos.isProcessing || (_sessionChecked && (_session == null || _noSessionPermission)))
+                  onPressed: (pos.items.isEmpty || pos.isProcessing || (_sessionChecked && (_session == null || _noSessionPermission || _caisseDisabled)))
                       ? null
                       : () async {
                           if (isEdit) {
@@ -2147,12 +2152,19 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
       final confirmed = await handleLimitExceeded(context, e);
       if (!mounted) return;
       if (confirmed) { _open(force: true); return; }
-      setState(() {
-        _loading = false;
-        _error = e is DioException
-            ? (e.response?.data['detail'] ?? e.response?.data['message'] ?? 'Erreur réseau')
-            : e.toString();
-      });
+
+      String msg;
+      if (e is DioException) {
+        final detail = e.response?.data?['detail'] as String?;
+        if (detail == 'caisse_disabled') {
+          msg = 'Cette caisse a été désactivée. Contactez votre administrateur.';
+        } else {
+          msg = detail ?? e.response?.data?['message'] as String? ?? 'Erreur réseau';
+        }
+      } else {
+        msg = e.toString();
+      }
+      setState(() { _loading = false; _error = msg; });
     }
   }
 

@@ -79,6 +79,8 @@ def _get_or_create_register(
     db: Session, tenant_id: str, device_id: str, name: str, force: bool = False
 ) -> PosRegister | JSONResponse:
     reg = db.query(PosRegister).filter_by(tenant_id=tenant_id, device_id=device_id).first()
+    if reg and not reg.is_active:
+        return JSONResponse(status_code=403, content={"detail": "caisse_disabled"})
     if not reg:
         # Only check limit when actually creating a new register
         if not force:
@@ -122,8 +124,8 @@ def get_current_session(
     reg = db.query(PosRegister).filter_by(
         tenant_id=current_user.tenant_id, device_id=device_id
     ).first()
-    if not reg:
-        return {"session": None}
+    if not reg or not reg.is_active:
+        return {"session": None, "disabled": not reg.is_active if reg else False}
 
     session = (
         db.query(CashierSession)
@@ -168,9 +170,16 @@ def open_session(
     reg = _get_or_create_register(
         db, current_user.tenant_id, body.device_id, body.register_name, force=body.force
     )
-    # Propagate 402 limit_exceeded response
+    # Propagate 402 limit_exceeded or 403 caisse_disabled
     if isinstance(reg, JSONResponse):
         return reg
+
+    # Block if the linked warehouse is disabled
+    if reg.warehouse_id:
+        from api.models.Warehouse import Warehouse as _WH
+        wh = db.get(_WH, reg.warehouse_id)
+        if wh and not wh.is_active:
+            raise HTTPException(403, "Le dépôt associé à cette caisse est désactivé")
 
     session = CashierSession(
         tenant_id=current_user.tenant_id,
