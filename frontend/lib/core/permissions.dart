@@ -70,6 +70,12 @@ abstract class Perm {
   static const configRead   = 'config.read';
   static const configUpdate = 'config.update';
 
+  // Dépôts (warehouses)
+  static const warehousesCreate = 'warehouses.create';
+  static const warehousesRead   = 'warehouses.read';
+  static const warehousesUpdate = 'warehouses.update';
+  static const warehousesDelete = 'warehouses.delete';
+
   // Proformas
   static const proformasCreate = 'proformas.create';
   static const proformasRead   = 'proformas.read';

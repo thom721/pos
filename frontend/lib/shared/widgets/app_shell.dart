@@ -33,6 +33,7 @@ const _mainNavItems = [
   _NavItem('Dettes', Icons.account_balance_wallet_rounded, '/debts'),
   _NavItem('Retours', Icons.assignment_return_rounded, '/returns'),
   _NavItem('Inventaire', Icons.warehouse_rounded, '/inventory'),
+  _NavItem('Dépôts', Icons.store_rounded, '/warehouses'),
 ];
 
 const _analyticsNavItems = [
@@ -75,7 +76,8 @@ const Map<String, String> _routePermission = {
   '/events':     Perm.reportsReadAll,
   '/statistics': Perm.reportsReadAll,
   '/hr':         Perm.employeesRead,
-  '/settings':   Perm.configUpdate,
+  '/settings':    Perm.configUpdate,
+  '/warehouses':  Perm.warehousesRead,
 };
 
 bool _canShowItem(_NavItem item, UserModel? user) {
