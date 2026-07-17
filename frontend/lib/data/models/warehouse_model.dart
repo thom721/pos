@@ -33,4 +33,10 @@ class WarehouseModel {
         'is_default': isDefault,
         'is_claimed': isClaimed,
       };
+
+  @override
+  bool operator ==(Object other) => other is WarehouseModel && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }

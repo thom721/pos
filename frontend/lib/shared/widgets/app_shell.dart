@@ -518,9 +518,13 @@ class _WarehouseSelector extends ConsumerWidget {
     // Only show selector when there are multiple depots
     if (warehouses.length <= 1) return const SizedBox.shrink();
 
-    final current = active ?? warehouses.firstWhere(
-      (w) => w.isDefault,
-      orElse: () => warehouses.first,
+    // Toujours utiliser une instance issue de warehouses pour que == fonctionne
+    final current = warehouses.firstWhere(
+      (w) => w.id == (active?.id ?? ''),
+      orElse: () => warehouses.firstWhere(
+        (w) => w.isDefault,
+        orElse: () => warehouses.first,
+      ),
     );
 
     return Container(
@@ -533,7 +537,7 @@ class _WarehouseSelector extends ConsumerWidget {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<WarehouseModel>(
-          value: warehouses.any((w) => w.id == current.id) ? current : warehouses.first,
+          value: current,
           isDense: true,
           icon: const Icon(Icons.expand_more, size: 16, color: AppColors.textSecondary),
           style: const TextStyle(
