@@ -26,6 +26,7 @@ from api.routes import admin as admin_router
 from api.routes import cashier_sessions as cashier_sessions_router
 from api.routes import audit as audit_router
 from api.routes import warehouse as warehouse_router
+from api.routes import reports as reports_router
 # Import models so create_all picks them up
 from api.models import (  # noqa: F401
     Tenant, PosRegister, CashierSession, OfflineSyncQueue,
@@ -105,6 +106,7 @@ app.include_router(billing_router.router)
 app.include_router(cashier_sessions_router.router)
 app.include_router(audit_router.router)
 app.include_router(admin_router.router)
+app.include_router(reports_router.router)
 app.include_router(warehouse_router.router)
 
 # ── Built-in role definitions ─────────────────────────────────────────────────

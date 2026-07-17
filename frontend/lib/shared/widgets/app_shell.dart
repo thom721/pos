@@ -39,6 +39,7 @@ const _mainNavItems = [
 const _analyticsNavItems = [
   _NavItem('Événements', Icons.event_note_rounded, '/events'),
   _NavItem('Rapports', Icons.assessment_rounded, '/reports'),
+  _NavItem('Rapports dépôts', Icons.store_mall_directory_rounded, '/reports/depots'),
   _NavItem('Statistiques', Icons.bar_chart_rounded, '/statistics'),
 ];
 
@@ -73,8 +74,9 @@ const Map<String, String> _routePermission = {
   '/suppliers':  Perm.suppliersRead,
   '/returns':    Perm.returnsRead,
   '/inventory':  Perm.inventoryRead,
-  '/events':     Perm.reportsReadAll,
-  '/statistics': Perm.reportsReadAll,
+  '/events':          Perm.reportsReadAll,
+  '/reports/depots':  Perm.reportsRead,
+  '/statistics':      Perm.reportsReadAll,
   '/hr':         Perm.employeesRead,
   '/settings':    Perm.configUpdate,
   '/warehouses':  Perm.warehousesRead,
