@@ -53,10 +53,9 @@ _log = logging.getLogger("pos.sync")
 
 SYNC_ENTITIES: list[dict] = [
     # ── Reference data ──────────────────────────────────────────────────────
-    # Warehouses : pull uniquement — le cloud est la source de vérité.
-    # Filtre: tenant_id seulement (comme toutes les entités). warehouse_id
-    # est une colonne de données, jamais un critère de sync.
-    {"type": "warehouse",              "model": Warehouse,            "direction": "pull"},
+    # Warehouses : bidirectionnel — un admin sur app bureau peut créer un dépôt local
+    # qui doit remonter vers le cloud pour être visible partout.
+    {"type": "warehouse",              "model": Warehouse,            "direction": "both"},
     {"type": "category",               "model": Category,             "direction": "both"},
     {"type": "supplier",               "model": Supplier,             "direction": "both"},
     {"type": "product",                "model": Product,              "direction": "both"},
