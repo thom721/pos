@@ -689,29 +689,43 @@ def connect_tenant(data: ConnectTenantRequest):
         # Using the cloud UUID avoids FK conflicts when pulling cloud records:
         # pulled records already carry the correct tenant_id and need no substitution.
         business_name = body.get("business_name", "") or data.email.split("@")[0]
+        cloud_slug    = body.get("tenant_slug") or "__local__"
 
         # Try to find an existing tenant that already has the cloud UUID
         local_tenant = (
             db.query(Tenant).filter(Tenant.id == cloud_tenant_id).first()
             if cloud_tenant_id else None
         )
+        if not local_tenant and cloud_slug != "__local__":
+            local_tenant = db.query(Tenant).filter(Tenant.slug == cloud_slug).first()
         if not local_tenant:
             local_tenant = db.query(Tenant).filter(Tenant.slug == "__local__").first()
 
         if not local_tenant:
-            # Fresh DB — create with the cloud UUID directly
-            kwargs = dict(
-                slug="__local__",
+            # Fresh DB — create with the REAL cloud tenant data (not a "local" placeholder)
+            local_tenant = Tenant(
+                id=cloud_tenant_id or None,
+                slug=cloud_slug,
                 business_name=business_name,
-                owner_email=data.email,
-                status="local",
-                is_local=True,
+                owner_email=body.get("owner_email") or data.email,
+                phone=body.get("phone") or "",
+                status=body.get("tenant_status") or "trial",
+                is_local=False,
+                type=body.get("tenant_type", "shared"),
+                max_caisses=body.get("max_caisses") or 1,
+                can_manage_tenants=body.get("can_manage_tenants") or False,
             )
-            if cloud_tenant_id:
-                kwargs["id"] = cloud_tenant_id
-            local_tenant = Tenant(**kwargs)
             db.add(local_tenant)
             db.flush()
+        else:
+            # Existing tenant found — update its fields to match current cloud data
+            if cloud_tenant_id and local_tenant.id == cloud_tenant_id:
+                local_tenant.slug          = cloud_slug
+                local_tenant.business_name = business_name
+                local_tenant.status        = body.get("tenant_status") or local_tenant.status
+                local_tenant.is_local      = False
+                local_tenant.max_caisses   = body.get("max_caisses") or local_tenant.max_caisses
+                db.flush()
         elif cloud_tenant_id and local_tenant.id != cloud_tenant_id:
             # Tenant exists with wrong UUID — realign to cloud UUID.
             old_tid = local_tenant.id
@@ -821,27 +835,9 @@ def connect_tenant(data: ConnectTenantRequest):
                     db.execute(_sa_text("SET FOREIGN_KEY_CHECKS=1"))
                 db.flush()
 
-            # Créer/mettre à jour le warehouse dans la DB locale
-            if data.warehouse_id:
-                from api.models.Warehouse import Warehouse as WHModel
-                existing_wh = db.query(WHModel).filter(
-                    WHModel.id == data.warehouse_id
-                ).first()
-                if not existing_wh:
-                    db.add(WHModel(
-                        id=data.warehouse_id,
-                        tenant_id=local_tid,
-                        name=data.warehouse_name or "Depot principal",
-                        is_default=True,
-                        is_active=True,
-                        is_claimed=True,
-                    ))
-                elif not existing_wh.is_claimed:
-                    existing_wh.is_claimed = True
-
             db.commit()
 
-            # Marquer comme pris sur le cloud
+            # Réclamer le warehouse sur le cloud — le sync pull l'apportera en local
             if data.warehouse_id:
                 try:
                     claim_resp = httpx.post(
@@ -892,27 +888,9 @@ def connect_tenant(data: ConnectTenantRequest):
         db.add(admin)
         db.flush()
 
-        # ── Créer le warehouse dans la DB locale avec l'UUID cloud ────────────
-        if data.warehouse_id:
-            from api.models.Warehouse import Warehouse as WHModel
-            existing_wh = db.query(WHModel).filter(
-                WHModel.id == data.warehouse_id
-            ).first()
-            if not existing_wh:
-                db.add(WHModel(
-                    id=data.warehouse_id,
-                    tenant_id=local_tid,
-                    name=data.warehouse_name or "Depot principal",
-                    is_default=True,
-                    is_active=True,
-                    is_claimed=True,
-                ))
-            elif not existing_wh.is_claimed:
-                existing_wh.is_claimed = True
-
         db.commit()
 
-        # ── Marquer le warehouse comme pris sur le cloud ──────────────────────
+        # ── Réclamer le warehouse sur le cloud — le sync pull l'apportera en local ──
         if data.warehouse_id:
             try:
                 claim_resp = httpx.post(
