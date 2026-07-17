@@ -75,8 +75,8 @@ Source: "nginx\*"; DestDir: "{app}\nginx"; \
 Source: "nssm\*"; DestDir: "{app}\nssm"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
-; MySQL zip (extrait par le script PowerShell)
-Source: "mysql-8.0.41-winx64.zip"; DestDir: "{app}"; Flags: ignoreversion
+; NB : le ZIP MySQL n'est PAS bundlé — setup-windows.ps1 le télécharge
+; automatiquement lors de l'installation si absent ($MySqlZipUrl).
 
 ; Certificat SSL (à la racine de certificat/, commités dans git)
 Source: "server.crt"; DestDir: "{app}\certificat"; Flags: ignoreversion

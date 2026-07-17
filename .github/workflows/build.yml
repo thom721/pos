@@ -342,7 +342,7 @@ jobs:
 #  Dépendances téléchargées au moment du build :
 #    - nginx 1.27.4   (nginx.org)
 #    - nssm  2.24     (nssm.cc)
-#    - MySQL 8.0.41   (downloads.mysql.com, ~300 Mo — mis en cache)
+#  MySQL N'EST PAS bundlé — setup-windows.ps1 le télécharge à l'install
 #  Certificats SSL :
 #    - certificat/server.crt + server.key commités dans le repo (auto-signés)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -359,21 +359,6 @@ jobs:
         with:
           name: backend-windows
           path: certificat/backend-windows/
-
-      - name: Cache MySQL ZIP (~300 Mo)
-        id: cache-mysql
-        uses: actions/cache@v4
-        with:
-          path: certificat/mysql-8.0.41-winx64.zip
-          key: mysql-8.0.41-winx64-zip
-
-      - name: Télécharger MySQL ZIP
-        if: steps.cache-mysql.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          $url = "https://downloads.mysql.com/archives/get/p/23/file/mysql-8.0.41-winx64.zip"
-          Write-Host "Téléchargement MySQL $url"
-          Invoke-WebRequest -Uri $url -OutFile "certificat\mysql-8.0.41-winx64.zip" -UseBasicParsing
 
       - name: Télécharger et extraire nginx 1.27.4
         shell: pwsh
