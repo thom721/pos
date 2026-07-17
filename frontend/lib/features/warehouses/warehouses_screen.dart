@@ -7,6 +7,7 @@ import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/repositories/warehouse_repository.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/shared/widgets/limit_exceeded_dialog.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -683,16 +684,15 @@ class _WarehouseDialogState extends State<_WarehouseDialog> {
     super.dispose();
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool force = false}) async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
       final repo = WarehouseRepository();
-      final desc =
-          _desc.text.trim().isEmpty ? null : _desc.text.trim();
+      final desc = _desc.text.trim().isEmpty ? null : _desc.text.trim();
       if (widget.warehouse == null) {
         await repo.createWarehouse(_name.text.trim(),
-            description: desc);
+            description: desc, force: force);
       } else {
         await repo.updateWarehouse(widget.warehouse!.id,
             name: _name.text.trim(), description: desc ?? '');
@@ -700,12 +700,15 @@ class _WarehouseDialogState extends State<_WarehouseDialog> {
       widget.onSaved();
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Erreur : $e'),
-          backgroundColor: AppColors.error,
-        ));
-      }
+      if (!mounted) return;
+      // 402 = limit exceeded → show pricing warning with mandatory checkbox
+      final confirmed = await handleLimitExceeded(context, e);
+      if (!mounted) return;
+      if (confirmed) { _save(force: true); return; }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Erreur : $e'),
+        backgroundColor: AppColors.error,
+      ));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -793,28 +796,30 @@ class _RegisterDialogState extends State<_RegisterDialog> {
     super.dispose();
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool force = false}) async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
       final repo = WarehouseRepository();
       if (widget.register == null) {
-        await repo.createRegister(
-            widget.warehouseId, _name.text.trim());
+        await repo.createRegister(widget.warehouseId, _name.text.trim(),
+            force: force);
       } else {
-        await repo.updateRegister(
-            widget.warehouseId, widget.register!.id,
+        await repo.updateRegister(widget.warehouseId, widget.register!.id,
             name: _name.text.trim());
       }
       widget.onSaved();
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Erreur : $e'),
-          backgroundColor: AppColors.error,
-        ));
-      }
+      if (!mounted) return;
+      // 402 = limit exceeded → show pricing warning with mandatory checkbox
+      final confirmed = await handleLimitExceeded(context, e);
+      if (!mounted) return;
+      if (confirmed) { _save(force: true); return; }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Erreur : $e'),
+        backgroundColor: AppColors.error,
+      ));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

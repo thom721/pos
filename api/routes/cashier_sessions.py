@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -10,6 +11,8 @@ from api.models.CashierSession import CashierSession
 from api.models.Payment import Payment
 from api.models.ReturnRecord import ReturnRecord
 from api.models.PosRegister import PosRegister
+from api.models.Tenant import Tenant
+from api.models.PlatformConfig import PlatformConfig
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
 from api.services import audit_service
@@ -21,6 +24,7 @@ class OpenSessionBody(BaseModel):
     device_id: str
     register_name: str = "Caisse"
     opening_balance: float = 0.0
+    force: bool = False  # bypass caisse limit after user confirmation
 
 
 class CloseSessionBody(BaseModel):
@@ -71,9 +75,33 @@ def _compute_reconciliation(db: Session, session: CashierSession, closed_at: dat
     }
 
 
-def _get_or_create_register(db: Session, tenant_id: str, device_id: str, name: str) -> PosRegister:
+def _get_or_create_register(
+    db: Session, tenant_id: str, device_id: str, name: str, force: bool = False
+) -> PosRegister | JSONResponse:
     reg = db.query(PosRegister).filter_by(tenant_id=tenant_id, device_id=device_id).first()
     if not reg:
+        # Only check limit when actually creating a new register
+        if not force:
+            tenant = db.get(Tenant, tenant_id)
+            if tenant:
+                current_count = db.query(PosRegister).filter_by(
+                    tenant_id=tenant_id, is_active=True
+                ).count()
+                if current_count >= tenant.max_caisses:
+                    cfg = db.query(PlatformConfig).first()
+                    price_htg = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
+                    price_usd = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
+                    return JSONResponse(
+                        status_code=402,
+                        content={
+                            "detail":   "limit_exceeded",
+                            "resource": "caisse",
+                            "current":  current_count,
+                            "max":      tenant.max_caisses,
+                            "price_htg": price_htg,
+                            "price_usd": price_usd,
+                        },
+                    )
         from api.core.config import settings as _cfg
         from api.models.Warehouse import Warehouse as _WH
         wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
@@ -138,8 +166,11 @@ def open_session(
         raise HTTPException(400, "Une session est déjà ouverte sur cet appareil")
 
     reg = _get_or_create_register(
-        db, current_user.tenant_id, body.device_id, body.register_name
+        db, current_user.tenant_id, body.device_id, body.register_name, force=body.force
     )
+    # Propagate 402 limit_exceeded response
+    if isinstance(reg, JSONResponse):
+        return reg
 
     session = CashierSession(
         tenant_id=current_user.tenant_id,

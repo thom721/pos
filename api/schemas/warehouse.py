@@ -6,6 +6,7 @@ from datetime import datetime
 class WarehouseCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    force: bool = False  # bypass limit check after user confirmation
 
 
 class WarehouseUpdate(BaseModel):

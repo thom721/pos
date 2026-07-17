@@ -1,5 +1,6 @@
 import uuid as _uuid
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -10,7 +11,34 @@ from api.core.permissions import P
 from api.models.User import User
 from api.models.Warehouse import Warehouse
 from api.models.PosRegister import PosRegister
+from api.models.Tenant import Tenant
+from api.models.PlatformConfig import PlatformConfig
 from api.schemas.warehouse import WarehouseCreate, WarehouseUpdate, WarehouseRead
+
+
+def _pricing(db: Session) -> PlatformConfig | None:
+    return db.query(PlatformConfig).first()
+
+
+def _limit_response(resource: str, current: int, max_: int, cfg: PlatformConfig | None):
+    """Return a 402 JSON response when a tenant exceeds caisse/dépôt limits."""
+    if resource == "caisse":
+        price_htg = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
+        price_usd = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
+    else:
+        price_htg = float(cfg.price_per_extra_depot_htg) if cfg else 500.0
+        price_usd = float(cfg.price_per_extra_depot_usd) if cfg else 4.0
+    return JSONResponse(
+        status_code=402,
+        content={
+            "detail":   "limit_exceeded",
+            "resource": resource,
+            "current":  current,
+            "max":      max_,
+            "price_htg": price_htg,
+            "price_usd": price_usd,
+        },
+    )
 
 
 class RegisterRead(BaseModel):
@@ -27,6 +55,7 @@ class RegisterRead(BaseModel):
 class RegisterCreate(BaseModel):
     name: str
     device_id: Optional[str] = None  # auto-généré si absent
+    force: bool = False  # bypass limit check after user confirmation
 
 
 class RegisterUpdate(BaseModel):
@@ -59,12 +88,21 @@ def list_warehouses(
     )
 
 
-@router.post("/", response_model=WarehouseRead, status_code=201)
+@router.post("/", status_code=201)
 def create_warehouse(
     data: WarehouseCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.WAREHOUSES_CREATE)),
 ):
+    if not data.force:
+        tenant = db.get(Tenant, current_user.tenant_id)
+        if tenant:
+            current_count = db.query(Warehouse).filter_by(
+                tenant_id=current_user.tenant_id, is_active=True
+            ).count()
+            if current_count >= tenant.max_depots:
+                return _limit_response("dépôt", current_count, tenant.max_depots, _pricing(db))
+
     wh = Warehouse(
         tenant_id=current_user.tenant_id,
         name=data.name,
@@ -172,7 +210,7 @@ def list_registers(
     )
 
 
-@router.post("/{warehouse_id}/registers", response_model=RegisterRead, status_code=201)
+@router.post("/{warehouse_id}/registers", status_code=201)
 def create_register(
     warehouse_id: str,
     data: RegisterCreate,
@@ -180,6 +218,16 @@ def create_register(
     current_user: User = Depends(require_permission(P.WAREHOUSES_UPDATE)),
 ):
     _get_or_404(db, warehouse_id, current_user.tenant_id)
+
+    if not data.force:
+        tenant = db.get(Tenant, current_user.tenant_id)
+        if tenant:
+            current_count = db.query(PosRegister).filter_by(
+                tenant_id=current_user.tenant_id, is_active=True
+            ).count()
+            if current_count >= tenant.max_caisses:
+                return _limit_response("caisse", current_count, tenant.max_caisses, _pricing(db))
+
     device_id = data.device_id or str(_uuid.uuid4())
     reg = PosRegister(
         tenant_id=current_user.tenant_id,

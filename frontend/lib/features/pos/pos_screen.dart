@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/shared/widgets/limit_exceeded_dialog.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/product_model.dart';
@@ -2128,22 +2129,28 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
     super.dispose();
   }
 
-  Future<void> _open() async {
+  Future<void> _open({bool force = false}) async {
     setState(() { _loading = true; _error = null; });
     try {
       final res = await dio.post('/api/sessions/open', data: {
         'device_id': widget.deviceId,
         'register_name': 'Caisse',
         'opening_balance': double.tryParse(_balanceCtrl.text) ?? 0,
+        'force': force,
       });
       final session = res.data['session'] as Map<String, dynamic>;
       widget.onOpened(session);
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
+      if (!mounted) return;
+      // 402 = new device exceeds caisse limit → warn and let user confirm
+      final confirmed = await handleLimitExceeded(context, e);
+      if (!mounted) return;
+      if (confirmed) { _open(force: true); return; }
       setState(() {
         _loading = false;
         _error = e is DioException
-            ? (e.response?.data['message'] ?? 'Erreur réseau')
+            ? (e.response?.data['detail'] ?? e.response?.data['message'] ?? 'Erreur réseau')
             : e.toString();
       });
     }

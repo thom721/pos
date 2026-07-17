@@ -9,10 +9,12 @@ class WarehouseRepository {
     return data.map((e) => WarehouseModel.fromJson(e)).toList();
   }
 
-  Future<WarehouseModel> createWarehouse(String name, {String? description}) async {
+  Future<WarehouseModel> createWarehouse(String name,
+      {String? description, bool force = false}) async {
     final res = await dio.post('/api/warehouses/', data: {
       'name': name,
       if (description != null && description.isNotEmpty) 'description': description,
+      'force': force,
     });
     return WarehouseModel.fromJson(res.data);
   }
@@ -49,9 +51,10 @@ class WarehouseRepository {
         .toList();
   }
 
-  Future<PosRegisterModel> createRegister(String warehouseId, String name) async {
+  Future<PosRegisterModel> createRegister(String warehouseId, String name,
+      {bool force = false}) async {
     final res = await dio.post('/api/warehouses/$warehouseId/registers',
-        data: {'name': name});
+        data: {'name': name, 'force': force});
     return PosRegisterModel.fromJson(res.data);
   }
 
