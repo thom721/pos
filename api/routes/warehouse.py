@@ -1,12 +1,13 @@
 import uuid as _uuid
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timezone
+from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from api.database import get_db
-from api.dependencies.auth import require_permission
+from api.dependencies.auth import get_current_user, require_permission
 from api.core.permissions import P
 from api.models.User import User
 from api.models.Warehouse import Warehouse
@@ -291,4 +292,21 @@ def delete_register(
     _billing.close_extra(db, reg.id)
     db.delete(reg)
     db.commit()
+    return {"ok": True}
+
+
+@router.post("/registers/heartbeat")
+def register_heartbeat(
+    device_id: str = Body(..., embed=True),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Updates last_seen for the calling device's register (keeps the session slot alive)."""
+    register = db.query(PosRegister).filter(
+        PosRegister.tenant_id == current_user.tenant_id,
+        PosRegister.device_id == device_id,
+    ).first()
+    if register:
+        register.last_seen = datetime.now(timezone.utc)
+        db.commit()
     return {"ok": True}

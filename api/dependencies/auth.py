@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from api.database import get_db
 from api.models.User import User
+from api.models.PosRegister import PosRegister
 from api.services.auth import Auth
 from api.core.config import settings
 from api.core.permissions import has_permission
@@ -36,6 +37,23 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         user = auth.get_user(username=sub)
     if user is None:
         raise credentials_exception
+
+    # Validate session token for device-based logins (cloud JWTs include device_id + sid)
+    device_id = payload.get("device_id")
+    sid = payload.get("sid")
+    if device_id and sid:
+        tenant_id = payload.get("tenant_id")
+        register = db.query(PosRegister).filter(
+            PosRegister.tenant_id == tenant_id,
+            PosRegister.device_id == device_id,
+        ).first()
+        if register and register.session_token != sid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session expirée — une autre connexion a été ouverte sur ce compte",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
     return user
 
 

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, Tar
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/core/router.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
@@ -10,6 +11,7 @@ import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/services/offline_cache_service.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
 import 'package:pos_connect/services/websocket_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Android: WebSocket for real-time push + 2-min fallback timer
 // Desktop/Web: 5-min polling timer only
@@ -29,6 +31,7 @@ class PosApp extends ConsumerStatefulWidget {
 class _PosAppState extends ConsumerState<PosApp> {
   late final StreamSubscription<void> _authSub;
   Timer? _syncTimer;
+  Timer? _heartbeatTimer;
 
   @override
   void initState() {
@@ -43,18 +46,36 @@ class _PosAppState extends ConsumerState<PosApp> {
     _syncTimer?.cancel();
     _triggerSync();
     if (_isAndroid) {
-      // WebSocket pour les push temps-réel + timer de secours si WS déconnecté
       WebSocketService.instance.start(_triggerSync);
       _syncTimer = Timer.periodic(_kAndroidFallbackInterval, (_) => _triggerSync());
     } else {
       _syncTimer = Timer.periodic(_kDesktopSyncInterval, (_) => _triggerSync());
     }
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(
+      const Duration(minutes: 2),
+      (_) => _sendHeartbeat(),
+    );
+    _sendHeartbeat();
   }
 
   void _stopAutoSync() {
     _syncTimer?.cancel();
     _syncTimer = null;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
     WebSocketService.instance.stop();
+  }
+
+  Future<void> _sendHeartbeat() async {
+    final prefs = await SharedPreferences.getInstance();
+    final deviceId = prefs.getString(AppConstants.deviceIdKey);
+    if (deviceId == null) return;
+    try {
+      await dio.post('/api/warehouses/registers/heartbeat', data: {'device_id': deviceId});
+    } catch (_) {
+      // Non-fatal: heartbeat failures don't interrupt the user
+    }
   }
 
   Future<void> _triggerSync() async {

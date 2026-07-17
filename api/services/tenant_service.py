@@ -9,9 +9,12 @@ from api.models.Tenant import Tenant
 from api.models.User import User
 from api.models.AppConfig import AppConfig
 from api.models.PosRegister import PosRegister
+from api.models.Warehouse import Warehouse
 from api.models.PlatformConfig import PlatformConfig
 from api.services.auth import Auth
 from api.core.security import create_access_token
+
+_ONLINE_WINDOW_MINUTES = 5
 
 
 def _get_trial_days(db: Session) -> int:
@@ -82,6 +85,16 @@ def register_tenant(db: Session, business_name: str, owner_email: str,
     config = AppConfig(tenant_id=tenant.id, business_name=business_name)
     db.add(config)
 
+    # Default warehouse included in every plan
+    warehouse = Warehouse(
+        tenant_id=tenant.id,
+        name="Dépôt principal",
+        is_active=True,
+        is_default=True,
+        is_claimed=True,
+    )
+    db.add(warehouse)
+
     db.commit()
     db.refresh(tenant)
     db.refresh(user)
@@ -123,22 +136,50 @@ def cloud_login(db: Session, email: str, password: str,
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="Période d'essai expirée — veuillez souscrire")
 
-    # Register the device if device_id provided
+    # Register / authenticate the device if device_id provided
     register_id = None
+    session_token = None
     if device_id:
         register = db.query(PosRegister).filter(
             PosRegister.tenant_id == tenant.id,
             PosRegister.device_id == device_id,
         ).first()
+
         if not register:
+            # New device: enforce max_caisses by counting currently-online registers
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=_ONLINE_WINDOW_MINUTES)
+            online_count = db.query(PosRegister).filter(
+                PosRegister.tenant_id == tenant.id,
+                PosRegister.is_active == True,   # noqa: E712
+                PosRegister.last_seen >= cutoff,
+            ).count()
+            if online_count >= tenant.max_caisses:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Limite de caisses atteinte ({tenant.max_caisses}). "
+                        "Déconnectez une caisse active avant d'en ouvrir une nouvelle."
+                    ),
+                )
+            # Attach to default warehouse
+            default_wh = db.query(Warehouse).filter(
+                Warehouse.tenant_id == tenant.id,
+                Warehouse.is_default == True,   # noqa: E712
+            ).first()
             register = PosRegister(
                 tenant_id=tenant.id,
                 device_id=device_id,
-                name=register_name or f"Caisse {device_id[:8]}",
+                warehouse_id=default_wh.id if default_wh else None,
+                name=register_name or "Caisse 1",
             )
             db.add(register)
-            db.commit()
-            db.refresh(register)
+
+        # Rotate session token and stamp last_seen on every login
+        session_token = str(uuid.uuid4())
+        register.session_token = session_token
+        register.last_seen = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(register)
         register_id = register.id
 
     token_data = {
@@ -147,6 +188,7 @@ def cloud_login(db: Session, email: str, password: str,
         "tenant_status": tenant.status,
         "role": (user.roles or ["cashier"])[0],
         "device_id": device_id,
+        "sid": session_token,   # session token — validated on each request
     }
     access_token = create_access_token(token_data)
 
