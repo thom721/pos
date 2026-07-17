@@ -2175,7 +2175,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
   void initState() {
     super.initState();
     _opening = (widget.session['opening_balance'] as num?)?.toDouble() ?? 0;
-    _balanceCtrl = TextEditingController(text: _opening.toStringAsFixed(2));
+    _balanceCtrl = TextEditingController();  // vide — le caissier doit compter
     _balanceCtrl.addListener(() => setState(() {}));
     _fetchSummary();
   }
@@ -2199,7 +2199,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
         _bank     = (d['total_bank_sales']          as num?)?.toDouble() ?? 0;
         _refunds  = (d['total_refunds_cash']        as num?)?.toDouble() ?? 0;
         _expected = (d['expected_closing_balance']  as num?)?.toDouble() ?? _opening;
-        _balanceCtrl.text = _expected.toStringAsFixed(2);
+        // Ne pas pré-remplir le solde réel — le caissier doit compter
         _loadingSummary = false;
       });
     } catch (_) {
@@ -2292,8 +2292,10 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
                   TextField(
                     controller: _balanceCtrl,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    autofocus: true,
                     decoration: const InputDecoration(
-                      labelText: 'Solde réel en caisse (HTG)',
+                      labelText: 'Solde réel en caisse *',
+                      hintText: 'Comptez et saisissez le montant',
                       prefixIcon: Icon(Icons.payments_outlined, size: 20),
                       isDense: true,
                     ),
@@ -2336,7 +2338,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-          onPressed: (_loading || _loadingSummary) ? null : _close,
+          onPressed: (_loading || _loadingSummary || _balanceCtrl.text.trim().isEmpty) ? null : _close,
           child: _loading
               ? const SizedBox(width: 14, height: 14,
                   child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
