@@ -280,7 +280,10 @@ class _TenantCard extends ConsumerWidget {
     final paymentCount = tenant['payment_count'] as int? ?? 0;
     final createdAt = tenant['created_at'] as String?;
     final isActive = status == 'active';
-    final maxCaisses = tenant['max_caisses'] as int? ?? 1;
+    final maxCaisses       = tenant['max_caisses']    as int? ?? 1;
+    final maxDepots        = tenant['max_depots']     as int? ?? 1;
+    final registerCount    = tenant['register_count'] as int? ?? 0;
+    final depotCount       = tenant['depot_count']    as int? ?? 0;
     final canManageTenants = tenant['can_manage_tenants'] as bool? ?? false;
 
     String? formattedDate;
@@ -359,11 +362,24 @@ class _TenantCard extends ConsumerWidget {
                     size: 13, color: AppColors.textSecondary),
                 const SizedBox(width: 4),
                 Text(
-                  '$maxCaisses caisse${maxCaisses > 1 ? 's' : ''}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: AppColors.textSecondary),
+                  '$registerCount / $maxCaisses caisse${maxCaisses > 1 ? 's' : ''}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: registerCount >= maxCaisses
+                            ? AppColors.warning
+                            : AppColors.textSecondary,
+                      ),
+                ),
+                const SizedBox(width: 12),
+                Icon(Icons.store_rounded,
+                    size: 13, color: AppColors.textSecondary),
+                const SizedBox(width: 4),
+                Text(
+                  '$depotCount / $maxDepots dépôt${maxDepots > 1 ? 's' : ''}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: depotCount >= maxDepots
+                            ? AppColors.warning
+                            : AppColors.textSecondary,
+                      ),
                 ),
                 const SizedBox(width: 12),
                 if (canManageTenants) ...[

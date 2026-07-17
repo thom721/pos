@@ -19,6 +19,8 @@ from api.database import get_db
 from api.models.BillingPayment import BillingPayment
 from api.models.PlatformConfig import PlatformConfig
 from api.models.Tenant import Tenant
+from api.models.PosRegister import PosRegister
+from api.models.Warehouse import Warehouse
 
 router = APIRouter(prefix="/api/admin", tags=["SuperAdmin"])
 _log = logging.getLogger("pos.admin")
@@ -229,6 +231,29 @@ def list_tenants(
         .all()
     )
 
+    # Batch-count registers and warehouses for all tenants in 2 queries
+    tenant_ids = [t.id for t in tenants]
+
+    register_counts = {
+        row.tenant_id: row.cnt
+        for row in db.query(
+            PosRegister.tenant_id,
+            func.count(PosRegister.id).label("cnt"),
+        ).filter(PosRegister.tenant_id.in_(tenant_ids))
+         .group_by(PosRegister.tenant_id)
+         .all()
+    }
+
+    depot_counts = {
+        row.tenant_id: row.cnt
+        for row in db.query(
+            Warehouse.tenant_id,
+            func.count(Warehouse.id).label("cnt"),
+        ).filter(Warehouse.tenant_id.in_(tenant_ids))
+         .group_by(Warehouse.tenant_id)
+         .all()
+    }
+
     result = []
     for t in tenants:
         # payment stats
@@ -261,6 +286,8 @@ def list_tenants(
             "payment_count":          payment_count,
             "last_payment_at":        last_payment_at,
             "has_stripe":             bool(t.stripe_customer_id or t.stripe_subscription_id),
+            "register_count":         register_counts.get(t.id, 0),
+            "depot_count":            depot_counts.get(t.id, 0),
         })
 
     return result
