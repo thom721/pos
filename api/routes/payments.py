@@ -24,15 +24,16 @@ def store_payment(
 
 @router.get("/", response_model=List[PaymentResponse])
 def list_payments(
-    reference_type: str = Query(..., description="SALE ou PURCHASE"),
-    reference_id: str = Query(..., description="UUID de la vente ou de l'achat"),
+    reference_type: str = Query(None, description="SALE ou PURCHASE (optionnel)"),
+    reference_id: str = Query(None, description="UUID de la vente ou de l'achat (optionnel)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PAYMENTS_READ)),
 ):
-    query = db.query(Payment).filter(
-        Payment.reference_type == reference_type.upper(),
-        Payment.reference_id == reference_id,
-    )
+    query = db.query(Payment)
+    if reference_type:
+        query = query.filter(Payment.reference_type == reference_type.upper())
+    if reference_id:
+        query = query.filter(Payment.reference_id == reference_id)
     if current_user.tenant_id:
         query = query.filter(Payment.tenant_id == current_user.tenant_id)
     return query.order_by(Payment.created_at.desc()).all()

@@ -83,7 +83,10 @@ def list_warehouses(
 ):
     return (
         db.query(Warehouse)
-        .filter(Warehouse.tenant_id == current_user.tenant_id)
+        .filter(
+            Warehouse.tenant_id == current_user.tenant_id,
+            Warehouse.is_active == True,  # noqa: E712
+        )
         .order_by(Warehouse.is_default.desc(), Warehouse.name)
         .all()
     )

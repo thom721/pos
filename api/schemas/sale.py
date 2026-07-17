@@ -15,11 +15,12 @@ class SaleItemInput(BaseModel):
 
 class SaleCreate(BaseModel):
     customer_id: Optional[UUID] = None
+    warehouse_id: Optional[str] = None
     discount: float = 0
     paid_amount: float = 0
     total_amount: float = 0
     payment_method: Optional[str] = None
-    approval_code: Optional[str] = None   # code terminal pour paiement CARD
+    approval_code: Optional[str] = None
     items: List[SaleItemInput]
 
 

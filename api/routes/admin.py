@@ -550,6 +550,11 @@ def manual_activate_tenant(
 
 # ── Purge unclaimed warehouses ──────────────────────────────────────────────
 
+_WH_FK_TABLES = [
+    "sales", "purchases", "stock_movements", "cashier_sessions",
+    "inventory_records", "return_records",
+]
+
 @router.delete("/tenants/{tenant_id}/warehouses/unclaimed")
 def purge_unclaimed_warehouses(
     tenant_id: str,
@@ -558,16 +563,34 @@ def purge_unclaimed_warehouses(
     _: dict = Depends(require_superadmin),
 ):
     """Supprime les dépôts orphelins (is_claimed=False) d'un tenant.
-    Avec include_claimed=true, supprime aussi les dépôts réclamés (installations actives)."""
+    Nullifie d'abord les FK dans les tables enfants (toutes nullable) avant DELETE.
+    Avec include_claimed=true, supprime aussi les dépôts réclamés."""
+    from sqlalchemy import text as _text
+
     q = db.query(Warehouse).filter(Warehouse.tenant_id == tenant_id)
     if not include_claimed:
         q = q.filter(Warehouse.is_claimed == False)  # noqa: E712
     rows = q.all()
-    count = len(rows)
+    if not rows:
+        return {"deleted": 0}
+
+    wh_ids = [wh.id for wh in rows]
+    placeholders = ", ".join(f"'{wid}'" for wid in wh_ids)
+
+    # Nullify FK references so DELETE succeeds regardless of DB engine
+    for tbl in _WH_FK_TABLES:
+        try:
+            db.execute(_text(
+                f"UPDATE {tbl} SET warehouse_id = NULL "
+                f"WHERE warehouse_id IN ({placeholders})"
+            ))
+        except Exception:
+            pass
+
     for wh in rows:
         db.delete(wh)
     db.commit()
-    return {"deleted": count}
+    return {"deleted": len(rows)}
 
 
 # ── Confirm pending payment ──────────────────────────────────────────────────
