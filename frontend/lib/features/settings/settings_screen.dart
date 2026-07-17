@@ -360,11 +360,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const SizedBox(height: 24),
 
-            // ── Synchronisation cloud ─────────────────────────────────────
-            const _SyncSection(),
-
-            // ── Serveur de facturation (local uniquement) ─────────────────
-            const _BillingUrlSection(),
           ],
         ),
       ),

@@ -149,8 +149,9 @@ class AppShell extends ConsumerWidget {
       ));
     }
 
-    // Caisse over-limit warning (non-blocking)
-    if (license != null && license.caisseOverLimit) {
+    // Caisse over-limit warning — desktop/web only (billing managed by admin, not cashiers)
+    final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    if (!isAndroid && license != null && license.caisseOverLimit) {
       final extra = license.currentCaisses - license.maxCaisses;
       banners.add(_CaisseOverLimitBanner(
         extra: extra,
