@@ -370,10 +370,19 @@ def create_tenant(
         must_change_password=False,
     )
     db.add(owner_user)
+
+    default_warehouse = Warehouse(
+        tenant_id=tenant.id,
+        name="Dépôt principal",
+        is_default=True,
+        is_active=True,
+        is_claimed=False,
+    )
+    db.add(default_warehouse)
     db.commit()
     db.refresh(tenant)
 
-    _log.info("Tenant créé: %s (%s) type=%s", tenant.slug, tenant.id, tenant.type)
+    _log.info("Tenant créé: %s (%s) type=%s, warehouse=%s", tenant.slug, tenant.id, tenant.type, default_warehouse.id)
 
     return {
         "id":                  tenant.id,
@@ -386,6 +395,7 @@ def create_tenant(
         "max_caisses":         tenant.max_caisses,
         "can_manage_tenants":  tenant.can_manage_tenants,
         "trial_ends_at":       tenant.trial_ends_at.isoformat() if tenant.trial_ends_at else None,
+        "default_warehouse_id": default_warehouse.id,
     }
 
 
