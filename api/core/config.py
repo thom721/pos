@@ -59,7 +59,7 @@ def _safe_read_ini(cfg: configparser.ConfigParser, path: Path) -> None:
 
 
 def load_ini_config() -> dict:
-    cfg = configparser.ConfigParser()
+    cfg = configparser.RawConfigParser()
     ini = _find_config_file()
     if ini.exists():
         _safe_read_ini(cfg, ini)
