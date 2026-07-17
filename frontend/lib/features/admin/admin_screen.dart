@@ -521,6 +521,8 @@ class _TenantCard extends ConsumerWidget {
       BuildContext context, WidgetRef ref, Map<String, dynamic> tenant) async {
     final maxCaisseCtrl = TextEditingController(
         text: (tenant['max_caisses'] as int? ?? 1).toString());
+    final maxDepotCtrl = TextEditingController(
+        text: (tenant['max_depots'] as int? ?? 1).toString());
     bool canManage = tenant['can_manage_tenants'] as bool? ?? false;
     final formKey = GlobalKey<FormState>();
 
@@ -540,6 +542,19 @@ class _TenantCard extends ConsumerWidget {
                   decoration: const InputDecoration(
                     labelText: 'Nombre de caisses max',
                     prefixIcon: Icon(Icons.point_of_sale_rounded),
+                  ),
+                  validator: (v) {
+                    final n = int.tryParse(v ?? '');
+                    return (n == null || n < 1) ? 'Minimum 1' : null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: maxDepotCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre de dépôts max',
+                    prefixIcon: Icon(Icons.store_rounded),
                   ),
                   validator: (v) {
                     final n = int.tryParse(v ?? '');
@@ -574,6 +589,7 @@ class _TenantCard extends ConsumerWidget {
                     '/api/admin/tenants/${tenant['id']}',
                     data: {
                       'max_caisses': int.parse(maxCaisseCtrl.text),
+                      'max_depots':  int.parse(maxDepotCtrl.text),
                       'can_manage_tenants': canManage,
                     },
                   );
@@ -859,6 +875,8 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   final _priceUsdCtrl          = TextEditingController();
   final _extraCaisseHtgCtrl    = TextEditingController();
   final _extraCaisseUsdCtrl    = TextEditingController();
+  final _extraDepotHtgCtrl     = TextEditingController();
+  final _extraDepotUsdCtrl     = TextEditingController();
   final _stripePriceCtrl       = TextEditingController();
   final _trialDaysCtrl         = TextEditingController();
   final _supportEmailCtrl      = TextEditingController();
@@ -876,6 +894,8 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _priceUsdCtrl.text       = cfg['monthly_price_usd']?.toString()          ?? '12';
     _extraCaisseHtgCtrl.text = cfg['price_per_extra_caisse_htg']?.toString() ?? '500';
     _extraCaisseUsdCtrl.text = cfg['price_per_extra_caisse_usd']?.toString() ?? '4';
+    _extraDepotHtgCtrl.text  = cfg['price_per_extra_depot_htg']?.toString()  ?? '500';
+    _extraDepotUsdCtrl.text  = cfg['price_per_extra_depot_usd']?.toString()  ?? '4';
     _stripePriceCtrl.text    = cfg['stripe_price_id']?.toString()            ?? '';
     _trialDaysCtrl.text      = cfg['trial_days']?.toString()                 ?? '30';
     _supportEmailCtrl.text   = cfg['support_email']?.toString()              ?? '';
@@ -893,6 +913,8 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _priceUsdCtrl.dispose();
     _extraCaisseHtgCtrl.dispose();
     _extraCaisseUsdCtrl.dispose();
+    _extraDepotHtgCtrl.dispose();
+    _extraDepotUsdCtrl.dispose();
     _stripePriceCtrl.dispose();
     _trialDaysCtrl.dispose();
     _supportEmailCtrl.dispose();
@@ -912,6 +934,8 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
         'monthly_price_usd':           double.tryParse(_priceUsdCtrl.text) ?? 12,
         'price_per_extra_caisse_htg':  double.tryParse(_extraCaisseHtgCtrl.text) ?? 500,
         'price_per_extra_caisse_usd':  double.tryParse(_extraCaisseUsdCtrl.text) ?? 4,
+        'price_per_extra_depot_htg':   double.tryParse(_extraDepotHtgCtrl.text)  ?? 500,
+        'price_per_extra_depot_usd':   double.tryParse(_extraDepotUsdCtrl.text)  ?? 4,
         'stripe_price_id':             _stripePriceCtrl.text.trim(),
         'trial_days':                  int.tryParse(_trialDaysCtrl.text) ?? 30,
         'support_email':               _supportEmailCtrl.text.trim(),
@@ -1046,6 +1070,32 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                           keyboardType: TextInputType.number,
                           decoration: const InputDecoration(
                               labelText: 'Prix / caisse supp. (USD)'),
+                          validator: (v) =>
+                              double.tryParse(v ?? '') == null ? 'Invalide' : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _extraDepotHtgCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Prix / dépôt supp. (HTG)'),
+                          validator: (v) =>
+                              double.tryParse(v ?? '') == null ? 'Invalide' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _extraDepotUsdCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                              labelText: 'Prix / dépôt supp. (USD)'),
                           validator: (v) =>
                               double.tryParse(v ?? '') == null ? 'Invalide' : null,
                         ),
