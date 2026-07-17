@@ -415,6 +415,14 @@ class _TenantCard extends ConsumerWidget {
                     foregroundColor: AppColors.primary,
                   ),
                 ),
+                IconButton(
+                  onPressed: () => _showPurgeDialog(context, ref, tenant),
+                  icon: const Icon(Icons.cleaning_services_rounded, size: 18),
+                  tooltip: 'Supprimer les dépôts non réclamés',
+                  style: IconButton.styleFrom(
+                    foregroundColor: AppColors.warning,
+                  ),
+                ),
                 if (!isActive)
                   OutlinedButton.icon(
                     onPressed: () => _showActivateDialog(context, ref, tenant),
@@ -431,6 +439,57 @@ class _TenantCard extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _showPurgeDialog(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> tenant) async {
+    final tenantId = tenant['id'] as String;
+    final name = tenant['business_name'] as String? ?? tenantId;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer les dépôts non réclamés'),
+        content: Text(
+          'Supprimer tous les dépôts is_claimed=false pour "$name" ?\n\n'
+          'Ces dépôts correspondent à des installations partielles abandonnées '
+          'et ne sont associés à aucune caisse active.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.warning),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      final res = await d.delete('/api/admin/tenants/$tenantId/warehouses/unclaimed');
+      final deleted = (res.data as Map<String, dynamic>?)?['deleted'] ?? 0;
+      ref.invalidate(_tenantsProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$deleted dépôt${deleted != 1 ? 's' : ''} supprimé${deleted != 1 ? 's' : ''}'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : $e'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    }
   }
 
   Future<void> _showActivateDialog(
