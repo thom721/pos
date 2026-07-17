@@ -48,7 +48,7 @@ def upgrade() -> None:
         except Exception:
             pass
         try:
-            op.drop_index('ix_users_warehouse_id', table_name='users')
+            op.drop_index('ix_user_warehouse_id', table_name='users')
         except Exception:
             pass
 
