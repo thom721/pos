@@ -301,7 +301,8 @@ def _run_sync_inner(db: Session) -> dict:
                                     break
 
                     if existing is None:
-                        fields = {k: v for k, v in rec.items() if k in col_names}
+                        coerced = _coerce_for_db(model, rec)
+                        fields = {k: v for k, v in coerced.items() if k in col_names}
                         try:
                             with db.begin_nested():
                                 db.add(model(**fields))
@@ -315,7 +316,8 @@ def _run_sync_inner(db: Session) -> dict:
                         if local_ts and local_ts.tzinfo is None:
                             local_ts = local_ts.replace(tzinfo=timezone.utc)
                         if remote_ts and (not local_ts or remote_ts > local_ts):
-                            for k, v in rec.items():
+                            coerced = _coerce_for_db(model, rec)
+                            for k, v in coerced.items():
                                 if k in col_names and k != "id":
                                     setattr(existing, k, v)
                             applied += 1
@@ -344,6 +346,29 @@ def _parse_dt(value: str | None) -> datetime | None:
         return dt
     except Exception:
         return None
+
+
+def _coerce_for_db(model: Any, record: dict) -> dict:
+    """
+    Convert ISO datetime strings to Python datetime objects for DateTime columns.
+    SQLite's DateTime type rejects raw strings; MySQL accepts them silently.
+    """
+    from sqlalchemy import DateTime as _DT, inspect as _insp
+    try:
+        mapper = _insp(model)
+        cols = {c.key: c for c in mapper.columns}
+    except Exception:
+        return record
+
+    result = {}
+    for k, v in record.items():
+        if isinstance(v, str) and k in cols:
+            col_type = cols[k].type
+            if isinstance(col_type, _DT):
+                parsed = _parse_dt(v)
+                v = parsed if parsed is not None else v
+        result[k] = v
+    return result
 
 
 # ── Sync status ──────────────────────────────────────────────────────────────

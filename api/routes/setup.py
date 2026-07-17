@@ -8,6 +8,7 @@ Called once by the installer to:
 
 After initial setup, the /setup/init endpoint is permanently disabled.
 """
+import logging
 import os
 import subprocess
 import platform
@@ -639,10 +640,34 @@ def connect_tenant(data: ConnectTenantRequest):
         db_url = f"mysql+pymysql://{data.user}:{pw}@{data.host}:{data.port}/{data.name}"
         target_eng = _ce(db_url, connect_args={"connect_timeout": 10})
     else:
-        target_eng = _ce(
-            f"sqlite:///{data.path}",
-            connect_args={"check_same_thread": False},
-        )
+        # Normalise le chemin SQLite exactement comme create-db le fait,
+        # pour être sûr d'ouvrir le même fichier que celui déjà initialisé.
+        sqlite_path = data.path or "./pos_connect.db"
+        if not os.path.isabs(sqlite_path):
+            if platform.system() == "Windows":
+                prog_data = os.environ.get("PROGRAMDATA", "C:\\ProgramData")
+                data_dir = os.path.join(prog_data, "POS_Connect")
+                os.makedirs(data_dir, exist_ok=True)
+                sqlite_path = os.path.join(data_dir, "pos_connect.db")
+            else:
+                sqlite_path = os.path.abspath(sqlite_path)
+
+        # Si l'engine principal pointe déjà sur ce fichier, le réutiliser
+        # évite les conflits de verrou SQLite entre deux engines sur le même fichier.
+        from api.database import engine as _main_engine
+        main_url = str(_main_engine.url)
+        if f"sqlite:///{sqlite_path}" == main_url or sqlite_path in main_url:
+            target_eng = _main_engine
+            _reuse_main_engine = True
+        else:
+            target_eng = _ce(
+                f"sqlite:///{sqlite_path}",
+                connect_args={"check_same_thread": False},
+            )
+            _reuse_main_engine = False
+            # S'assurer que les tables existent dans ce fichier
+            from api.database import Base as _Base
+            _Base.metadata.create_all(bind=target_eng)
 
     # Make phone nullable on the target DB (MySQL only, safe no-op if already nullable)
     if data.db_type == "mysql":
@@ -887,10 +912,14 @@ def connect_tenant(data: ConnectTenantRequest):
         }
     except Exception as exc:
         db.rollback()
+        import traceback as _tb
+        _log_setup = logging.getLogger("pos.setup")
+        _log_setup.error("connect-tenant error: %s\n%s", exc, _tb.format_exc())
         raise HTTPException(500, f"Erreur création compte local: {exc}")
     finally:
         db.close()
-        target_eng.dispose()
+        if not locals().get("_reuse_main_engine", False):
+            target_eng.dispose()
 
 
 @router.post("/migrate-db")
