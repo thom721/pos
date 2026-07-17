@@ -53,6 +53,9 @@ class Auth:
     def authenticate_user(self, username: str, password: str):
         try:
             user = self.get_user(username)
+            # Fallback: accept email in the username field
+            if user is None:
+                user = self.db.query(Out).filter(Out.email == username).first()
             if not user or not self.verify_password(password, user.password):
                 return None
             return user
