@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
@@ -148,11 +149,32 @@ final reportSalesProvider =
 final _dateFmt = DateFormat('dd/MM/yyyy', 'fr');
 final _dtFmt = DateFormat('dd/MM/yyyy HH:mm', 'fr');
 
-class ReportsScreen extends ConsumerWidget {
+class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
+}
+
+class _ReportsScreenState extends ConsumerState<ReportsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final user = ref.read(authProvider).user;
+      final isCashier = !(user?.hasPermission(Perm.reportsReadAll) ?? false);
+      if (isCashier) {
+        ref.read(reportParamsProvider.notifier).state =
+            const ReportParams(period: ReportPeriod.today);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = ref.watch(authProvider).user;
+    final isCashier = !(user?.hasPermission(Perm.reportsReadAll) ?? false);
     final params = ref.watch(reportParamsProvider);
     final salesAsync = ref.watch(reportSalesProvider);
 
@@ -248,7 +270,7 @@ class ReportsScreen extends ConsumerWidget {
         Expanded(
           child: salesAsync.when(
             data: (sales) =>
-                _ReportContent(allSales: sales, params: params),
+                _ReportContent(allSales: sales, params: params, isCashier: isCashier),
             loading: () =>
                 const Center(child: CircularProgressIndicator()),
             error: (e, s) => Center(
@@ -280,8 +302,9 @@ class ReportsScreen extends ConsumerWidget {
 class _ReportContent extends ConsumerStatefulWidget {
   final List<SaleModel> allSales;
   final ReportParams params;
+  final bool isCashier;
 
-  const _ReportContent({required this.allSales, required this.params});
+  const _ReportContent({required this.allSales, required this.params, this.isCashier = false});
 
   @override
   ConsumerState<_ReportContent> createState() => _ReportContentState();
@@ -337,8 +360,8 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
                 ),
               ),
 
-              // User filter
-              if (uniqueUsers.isNotEmpty) ...[
+              // User filter — hidden for cashiers (backend enforces their own data)
+              if (!widget.isCashier && uniqueUsers.isNotEmpty) ...[
                 Container(
                   height: 36,
                   padding: const EdgeInsets.symmetric(horizontal: 10),

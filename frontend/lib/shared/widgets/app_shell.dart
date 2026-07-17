@@ -75,7 +75,7 @@ const Map<String, String> _routePermission = {
   '/returns':    Perm.returnsRead,
   '/inventory':  Perm.inventoryRead,
   '/events':          Perm.reportsReadAll,
-  '/reports/depots':  Perm.reportsRead,
+  '/reports/depots':  Perm.reportsReadAll,
   '/statistics':      Perm.reportsReadAll,
   '/hr':         Perm.employeesRead,
   '/settings':    Perm.configUpdate,

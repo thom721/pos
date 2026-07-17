@@ -49,6 +49,7 @@ def list_sales(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     tenant_id: str | None = None,
+    cashier_id: str | None = None,
 ):
     query = (
         db.query(Sale)
@@ -62,6 +63,9 @@ def list_sales(
 
     if tenant_id:
         query = query.filter(Sale.tenant_id == tenant_id)
+
+    if cashier_id:
+        query = query.filter(Sale.user_id == cashier_id)
 
     if search:
         query = query.outerjoin(Customer, Sale.customer_id == Customer.id).filter(

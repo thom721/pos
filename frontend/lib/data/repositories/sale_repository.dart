@@ -8,12 +8,16 @@ class SaleRepository {
     int limit = 15,
     String? search,
     String? status,
+    DateTime? dateFrom,
+    DateTime? dateTo,
   }) async {
     final params = <String, dynamic>{
       'page': page,
       'limit': limit,
       if (search != null && search.isNotEmpty) 'search': search,
       if (status != null) 'status': status,
+      if (dateFrom != null) 'date_from': dateFrom.toIso8601String(),
+      if (dateTo != null) 'date_to': dateTo.toIso8601String(),
     };
     final res = await dio.get('/api/sales/', queryParameters: params);
     return PaginatedResponse.fromJson(res.data, SaleModel.fromJson);

@@ -42,3 +42,18 @@ final saleDetailProvider =
   final repo = ref.read(saleRepositoryProvider);
   return repo.getSale(id);
 });
+
+/// For the dashboard: if isCashier=true, restrict to today (backend already
+/// enforces user_id filter for cashiers).
+final dashboardSalesProvider =
+    FutureProvider.autoDispose.family<PaginatedResponse<SaleModel>, bool>(
+        (ref, isCashier) async {
+  final repo = ref.read(saleRepositoryProvider);
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  return repo.getSales(
+    limit: 50,
+    dateFrom: isCashier ? today : null,
+    dateTo: isCashier ? today.add(const Duration(days: 1)) : null,
+  );
+});

@@ -10,7 +10,7 @@ from api.schemas.sale import SaleCreate, SaleUpdate, ProductSaleItem, SaleRead
 from api.schemas.common import PaginatedResponse
 from api.services.sale_service import create_sale, list_sales, get_sale, cancel_sale, update_sale
 from api.dependencies.auth import require_permission
-from api.core.permissions import P
+from api.core.permissions import P, has_permission as _has_perm
 from api.core.tenant import require_active_plan
 from api.core.PaginateHelper import PaginatedResponse as LegacyPaginatedResponse
 from api.services import audit_service
@@ -46,9 +46,12 @@ def read_sales(
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
 ):
+    cashier_id = None
+    if not _has_perm(current_user.permissions or [], current_user.roles or [], P.REPORTS_READ_ALL):
+        cashier_id = current_user.id
     return list_sales(db=db, page=page, limit=limit, search=search,
                       status=status, date_from=date_from, date_to=date_to,
-                      tenant_id=current_user.tenant_id)
+                      tenant_id=current_user.tenant_id, cashier_id=cashier_id)
 
 
 @router.get("/products/search", response_model=LegacyPaginatedResponse[ProductSaleItem])

@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
+import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/sale_provider.dart';
 import 'package:pos_connect/providers/debt_provider.dart';
 import 'package:pos_connect/shared/widgets/stat_card.dart';
@@ -17,7 +19,9 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final salesAsync = ref.watch(salesProvider);
+    final user = ref.watch(authProvider).user;
+    final isCashier = !(user?.hasPermission(Perm.reportsReadAll) ?? false);
+    final salesAsync = ref.watch(dashboardSalesProvider(isCashier));
     final debtsAsync = ref.watch(debtsProvider);
 
     final pad = context.hPad;
@@ -92,7 +96,7 @@ class DashboardScreen extends ConsumerWidget {
               return _ResponsiveGrid(
                 children: [
                   StatCard(
-                    label: 'Ventes (cette page)',
+                    label: isCashier ? 'Mes ventes (aujourd\'hui)' : 'Ventes du jour',
                     value: countSales.toString(),
                     icon: Icons.receipt_long_rounded,
                     color: AppColors.primary,
