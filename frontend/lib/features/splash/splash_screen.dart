@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -80,15 +80,24 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     if (!mounted) return;
 
     if (!kIsWeb) {
-      // Desktop/mobile: setup completion is tracked locally so that each
-      // device must run the wizard independently (not based on server state).
       final prefs = await SharedPreferences.getInstance();
-      final localSetupDone =
-          prefs.getBool(AppConstants.clientSetupDoneKey) ?? false;
-      if (!mounted) return;
-      if (!localSetupDone) {
-        context.go('/install');
-        return;
+      final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS;
+
+      if (isMobile) {
+        // Android/iOS n'ont pas de wizard d'installation — ils se connectent
+        // toujours à un serveur existant. On marque le flag pour éviter la
+        // vérification à chaque démarrage.
+        await prefs.setBool(AppConstants.clientSetupDoneKey, true);
+      } else {
+        // Desktop : premier démarrage → wizard obligatoire.
+        final localSetupDone =
+            prefs.getBool(AppConstants.clientSetupDoneKey) ?? false;
+        if (!mounted) return;
+        if (!localSetupDone) {
+          context.go('/install');
+          return;
+        }
       }
     } else {
       // Web: no wizard — check server health for legacy compat, ignore errors.

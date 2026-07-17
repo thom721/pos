@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,7 +52,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       final location = state.matchedLocation;
 
       if (location == '/splash') return null;
-      if (location == '/install') return null;
+      if (location == '/install') {
+        // Le wizard n'existe pas sur Android/iOS — rediriger vers login.
+        final isMobile = !kIsWeb &&
+            (defaultTargetPlatform == TargetPlatform.android ||
+                defaultTargetPlatform == TargetPlatform.iOS);
+        return isMobile ? '/login' : null;
+      }
       if (location == '/register') return null; // always accessible
       if (location == '/admin') return null; // super-admin panel — has its own auth
       if (!isLoggedIn && location != '/login') return '/login';

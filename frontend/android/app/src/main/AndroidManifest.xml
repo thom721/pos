@@ -1,11 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Connexion réseau vers l'API (HTTP local en dev) -->
+    <!-- Connexion réseau -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Lecture stockage pour picker image (API < 33) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <!-- Lecture images (API >= 33) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <!-- Bluetooth imprimante thermique (API >= 31) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" android:minSdkVersion="31"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:minSdkVersion="31"/>
+    <!-- Démarrage automatique après reboot (bornes POS fixes) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
     <application
         android:label="POS Connect"
@@ -18,7 +23,6 @@
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
-            android:screenOrientation="portrait"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
