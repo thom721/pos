@@ -271,7 +271,7 @@ port = $MySqlPort
     }
     if (-not $DbPass) {
         # Generer un mot de passe fort (16 chars alphanumeriques + symboles)
-        $chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#%'
+        $chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
         $DbPass = -join ((1..16) | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
     }
 
