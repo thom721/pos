@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/core/constants.dart';
@@ -104,8 +105,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
       final user = token.user != null ? UserModel.fromJson(token.user!) : null;
 
-      // Only admin/owner accounts can log in via cloud
-      if (user == null || !user.isAdmin) {
+      // Sur web, seul l'admin peut accéder à l'interface de gestion cloud.
+      // Sur Android/desktop, tout utilisateur peut se connecter (caissier, gérant…).
+      if (kIsWeb && (user == null || !user.isAdmin)) {
         await _repo.logout();
         state = state.copyWith(
           isLoading: false,
