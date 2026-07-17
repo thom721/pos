@@ -239,7 +239,10 @@ def list_tenants(
         for row in db.query(
             PosRegister.tenant_id,
             func.count(PosRegister.id).label("cnt"),
-        ).filter(PosRegister.tenant_id.in_(tenant_ids))
+        ).filter(
+            PosRegister.tenant_id.in_(tenant_ids),
+            PosRegister.is_active == True,  # noqa: E712
+        )
          .group_by(PosRegister.tenant_id)
          .all()
     }
@@ -249,7 +252,10 @@ def list_tenants(
         for row in db.query(
             Warehouse.tenant_id,
             func.count(Warehouse.id).label("cnt"),
-        ).filter(Warehouse.tenant_id.in_(tenant_ids))
+        ).filter(
+            Warehouse.tenant_id.in_(tenant_ids),
+            Warehouse.is_active == True,  # noqa: E712
+        )
          .group_by(Warehouse.tenant_id)
          .all()
     }
