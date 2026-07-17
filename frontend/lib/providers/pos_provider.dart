@@ -146,7 +146,7 @@ class PosNotifier extends StateNotifier<PosState> {
 
   void clearCart() => state = const PosState();
 
-  Future<String?> checkout({String? approvalCode}) async {
+  Future<String?> checkout({String? approvalCode, String? warehouseId}) async {
     if (state.items.isEmpty) return null;
     state = state.copyWith(isProcessing: true, error: null);
     try {
@@ -157,6 +157,7 @@ class PosNotifier extends StateNotifier<PosState> {
         'payment_method': state.paymentMethod,
         if (approvalCode != null && approvalCode.isNotEmpty)
           'approval_code': approvalCode,
+        if (warehouseId != null) 'warehouse_id': warehouseId,
         'items': state.items
             .map((i) => {
                   'product_id': i.product.id,

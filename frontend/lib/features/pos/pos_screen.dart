@@ -21,6 +21,7 @@ import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/pos_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/thermal_printer_service.dart';
 
 final _fmt =
@@ -1543,8 +1544,11 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                             if (!context.mounted) return;
                           }
 
+                          final warehouseId =
+                              ref.read(activeWarehouseProvider)?.id;
                           final saleId = await notifier.checkout(
-                              approvalCode: approvalCode);
+                              approvalCode: approvalCode,
+                              warehouseId: warehouseId);
                           if (!context.mounted || saleId == null) return;
                           await showDialog(
                             context: context,

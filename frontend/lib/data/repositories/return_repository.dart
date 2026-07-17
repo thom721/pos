@@ -27,12 +27,14 @@ class ReturnRepository {
     required List<Map<String, dynamic>> items,
     required double refundAmount,
     String? reason,
+    String? warehouseId,
   }) async {
     await dio.post('/api/returns/sale', data: {
       'sale_id': saleId,
       'items': items,
       'refund_amount': refundAmount,
       if (reason != null && reason.isNotEmpty) 'reason': reason,
+      if (warehouseId != null) 'warehouse_id': warehouseId,
     });
   }
 
@@ -40,11 +42,13 @@ class ReturnRepository {
     required String purchaseId,
     required List<Map<String, dynamic>> items,
     String? reason,
+    String? warehouseId,
   }) async {
     await dio.post('/api/returns/purchase', data: {
       'purchase_id': purchaseId,
       'items': items,
       if (reason != null && reason.isNotEmpty) 'reason': reason,
+      if (warehouseId != null) 'warehouse_id': warehouseId,
     });
   }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,8 +9,15 @@ import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/services/offline_cache_service.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
+import 'package:pos_connect/services/websocket_service.dart';
 
-const _kSyncInterval = Duration(minutes: 5);
+// Android: WebSocket for real-time push + 2-min fallback timer
+// Desktop/Web: 5-min polling timer only
+const _kAndroidFallbackInterval = Duration(minutes: 2);
+const _kDesktopSyncInterval = Duration(minutes: 5);
+
+bool get _isAndroid =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
 class PosApp extends ConsumerStatefulWidget {
   const PosApp({super.key});
@@ -33,14 +41,20 @@ class _PosAppState extends ConsumerState<PosApp> {
 
   void _startAutoSync() {
     _syncTimer?.cancel();
-    // Warm-up immédiat du cache au login
     _triggerSync();
-    _syncTimer = Timer.periodic(_kSyncInterval, (_) => _triggerSync());
+    if (_isAndroid) {
+      // WebSocket pour les push temps-réel + timer de secours si WS déconnecté
+      WebSocketService.instance.start(_triggerSync);
+      _syncTimer = Timer.periodic(_kAndroidFallbackInterval, (_) => _triggerSync());
+    } else {
+      _syncTimer = Timer.periodic(_kDesktopSyncInterval, (_) => _triggerSync());
+    }
   }
 
   void _stopAutoSync() {
     _syncTimer?.cancel();
     _syncTimer = null;
+    WebSocketService.instance.stop();
   }
 
   Future<void> _triggerSync() async {

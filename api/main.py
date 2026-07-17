@@ -27,6 +27,9 @@ from api.routes import cashier_sessions as cashier_sessions_router
 from api.routes import audit as audit_router
 from api.routes import warehouse as warehouse_router
 from api.routes import reports as reports_router
+from api.routes import ws as ws_router
+from api.ws_manager import manager as _ws_manager
+from api.core.security import verify_token as _verify_token
 # Import models so create_all picks them up
 from api.models import (  # noqa: F401
     Tenant, PosRegister, CashierSession, OfflineSyncQueue,
@@ -73,6 +76,15 @@ async def _write_sync_trigger(request: Request, call_next):
         and not any(request.url.path.startswith(p) for p in _NO_SIGNAL_PREFIXES)
     ):
         signal_pending_sync()
+        # Push real-time notification to connected WebSocket clients of the same tenant
+        auth_header = request.headers.get("authorization", "")
+        token = auth_header.removeprefix("Bearer ").strip()
+        if token:
+            payload = _verify_token(token)
+            if payload:
+                tid = payload.get("tenant_id")
+                if tid and _ws_manager.connection_count(tid) > 0:
+                    asyncio.create_task(_ws_manager.notify(tid))
     return response
 
 app.mount("/static", StaticFiles(directory="api/static"), name="static")
@@ -108,6 +120,7 @@ app.include_router(audit_router.router)
 app.include_router(admin_router.router)
 app.include_router(reports_router.router)
 app.include_router(warehouse_router.router)
+app.include_router(ws_router.router)
 
 # ── Built-in role definitions ─────────────────────────────────────────────────
 _BUILTIN_ROLES = [

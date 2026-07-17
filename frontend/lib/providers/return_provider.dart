@@ -59,6 +59,7 @@ class ReturnsNotifier extends StateNotifier<ReturnsState> {
     required List<Map<String, dynamic>> items,
     required double refundAmount,
     String? reason,
+    String? warehouseId,
   }) async {
     try {
       await _repo.createSaleReturn(
@@ -66,6 +67,7 @@ class ReturnsNotifier extends StateNotifier<ReturnsState> {
         items: items,
         refundAmount: refundAmount,
         reason: reason,
+        warehouseId: warehouseId,
       );
       await fetch();
       return true;
@@ -79,12 +81,14 @@ class ReturnsNotifier extends StateNotifier<ReturnsState> {
     required String purchaseId,
     required List<Map<String, dynamic>> items,
     String? reason,
+    String? warehouseId,
   }) async {
     try {
       await _repo.createPurchaseReturn(
         purchaseId: purchaseId,
         items: items,
         reason: reason,
+        warehouseId: warehouseId,
       );
       await fetch();
       return true;

@@ -9,6 +9,7 @@ import 'package:pos_connect/data/models/purchase_model.dart';
 import 'package:pos_connect/data/repositories/return_repository.dart';
 import 'package:pos_connect/providers/return_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/shared/utils/return_pdf.dart';
 
 final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
@@ -148,6 +149,7 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen>
   }
 
   void _showNewReturnDialog(BuildContext context) {
+    final warehouseId = ref.read(activeWarehouseProvider)?.id;
     if (_isSaleTab) {
       showDialog<bool>(
         context: context,
@@ -159,6 +161,7 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen>
                 items: items,
                 refundAmount: refund,
                 reason: reason,
+                warehouseId: warehouseId,
               ),
         ),
       ).then((ok) {
@@ -182,6 +185,7 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen>
                   purchaseId: purchaseId,
                   items: items,
                   reason: reason,
+                  warehouseId: warehouseId,
                 );
             if (ok && context.mounted) {
               Navigator.pop(context);
