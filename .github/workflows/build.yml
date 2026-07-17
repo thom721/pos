@@ -367,7 +367,7 @@ jobs:
           Invoke-WebRequest -Uri "https://nginx.org/download/nginx-$ver.zip" -OutFile "nginx.zip" -UseBasicParsing
           Expand-Archive "nginx.zip" -DestinationPath "certificat" -Force
           if (Test-Path "certificat\nginx") { Remove-Item "certificat\nginx" -Recurse -Force }
-          Rename-Item "certificat\nginx-$ver" "certificat\nginx"
+          Rename-Item "certificat\nginx-$ver" "nginx"
 
       - name: Télécharger et extraire NSSM 2.24
         shell: pwsh
