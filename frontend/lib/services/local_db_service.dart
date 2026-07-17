@@ -8,6 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/product_model.dart';
+import 'package:pos_connect/data/models/warehouse_model.dart';
 
 /// Cache SQLite local pour les données critiques POS (produits, clients, catégories).
 ///
@@ -34,9 +35,24 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 1,
+      version: 2,
       onCreate: _createSchema,
+      onUpgrade: _onUpgrade,
     );
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS warehouses (
+          id          TEXT PRIMARY KEY,
+          name        TEXT NOT NULL,
+          description TEXT,
+          is_default  INTEGER NOT NULL DEFAULT 0,
+          is_active   INTEGER NOT NULL DEFAULT 1
+        )
+      ''');
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -82,6 +98,16 @@ class LocalDbService {
     ''');
 
     // Index pour la recherche texte
+    await db.execute('''
+      CREATE TABLE warehouses (
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        description TEXT,
+        is_default  INTEGER NOT NULL DEFAULT 0,
+        is_active   INTEGER NOT NULL DEFAULT 1
+      )
+    ''');
+
     await db.execute('CREATE INDEX idx_products_name ON products (name)');
     await db.execute('CREATE INDEX idx_customers_name ON customers (name)');
   }
@@ -302,6 +328,45 @@ class LocalDbService {
               name: r['name'] as String,
             ))
         .toList();
+  }
+
+  // ── Dépôts ───────────────────────────────────────────────────────────────
+
+  Future<void> upsertWarehouses(List<WarehouseModel> warehouses) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final w in warehouses) {
+      batch.insert(
+        'warehouses',
+        {
+          'id': w.id,
+          'name': w.name,
+          'description': w.description,
+          'is_default': w.isDefault ? 1 : 0,
+          'is_active': w.isActive ? 1 : 0,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<WarehouseModel>> getWarehouses() async {
+    final db = _safeDb;
+    if (db == null) return const [];
+    final rows = await db.query(
+      'warehouses',
+      where: 'is_active = 1',
+      orderBy: 'is_default DESC, name ASC',
+    );
+    return rows.map((r) => WarehouseModel(
+          id: r['id'] as String,
+          name: r['name'] as String,
+          description: r['description'] as String?,
+          isDefault: (r['is_default'] as int) == 1,
+          isActive: (r['is_active'] as int) == 1,
+        )).toList();
   }
 
   // ── Méta-sync ─────────────────────────────────────────────────────────────

@@ -26,7 +26,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscureCloud = true;
   bool _obscureLocal = true;
   bool _showServerConfig = false;
-  int  _androidMode = 0; // 0 = réseau local, 1 = cloud
 
   final _cloudFormKey = GlobalKey<FormState>();
   final _localFormKey = GlobalKey<FormState>();
@@ -37,7 +36,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    if (!kIsWeb) _loadSavedServer();
+    // Android est cloud-only : pas de serveur local à charger.
+    if (!kIsWeb && !_isAndroid) _loadSavedServer();
   }
 
   @override
@@ -217,6 +217,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   // ── Android layout ──────────────────────────────────────────────────────────
+  // Android est exclusivement cloud-first : pas de serveur local, pas de toggle.
+  // L'authentification utilise email + mot de passe → API cloud.
 
   Widget _buildAndroidLayout(AuthState authState) {
     return Scaffold(
@@ -247,35 +249,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700,
                             letterSpacing: -0.3)),
                   ),
+                  const SizedBox(height: 4),
+                  const Center(
+                    child: Text('Connexion',
+                        style: TextStyle(fontSize: 14,
+                            color: AppColors.textSecondary)),
+                  ),
                   const SizedBox(height: 32),
-
-                  SegmentedButton<int>(
-                    segments: const [
-                      ButtonSegment(
-                        value: 0,
-                        label: Text('Réseau local'),
-                        icon: Icon(Icons.wifi_rounded, size: 16),
-                      ),
-                      ButtonSegment(
-                        value: 1,
-                        label: Text('Cloud'),
-                        icon: Icon(Icons.cloud_outlined, size: 16),
-                      ),
-                    ],
-                    selected: {_androidMode},
-                    onSelectionChanged: (s) =>
-                        setState(() => _androidMode = s.first),
-                  ),
-                  const SizedBox(height: 28),
-
                   _buildErrorBanner(authState),
-
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: _androidMode == 0
-                        ? _buildLocalForm(authState)
-                        : _buildCloudForm(authState),
-                  ),
+                  _buildCloudForm(authState),
                 ],
               ),
             ),

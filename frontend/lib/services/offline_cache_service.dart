@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/models/product_model.dart';
+import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/services/local_db_service.dart';
 
 /// Synchronise les données critiques API → SQLite local.
@@ -29,6 +30,7 @@ class OfflineCacheService {
         _syncProducts(),
         _syncCustomers(),
         _syncCategories(),
+        _syncWarehouses(),
       ]);
     } catch (e) {
       debugPrint('[OfflineCache] syncAll error: $e');
@@ -121,6 +123,26 @@ class OfflineCacheService {
       debugPrint('[OfflineCache] categories: ${cats.length} mis en cache');
     } catch (e) {
       debugPrint('[OfflineCache] categories sync error: $e');
+    }
+  }
+
+  // ── Dépôts ────────────────────────────────────────────────────────────────
+
+  Future<void> _syncWarehouses() async {
+    try {
+      final res = await dio.get('/api/warehouses/');
+      final raw = res.data;
+      final items = raw is Map
+          ? (raw['data'] as List? ?? [])
+          : (raw as List? ?? []);
+      final warehouses = items
+          .map((e) => WarehouseModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await LocalDbService.instance.upsertWarehouses(warehouses);
+      await LocalDbService.instance.setLastSynced('warehouses');
+      debugPrint('[OfflineCache] warehouses: ${warehouses.length} mis en cache');
+    } catch (e) {
+      debugPrint('[OfflineCache] warehouses sync error: $e');
     }
   }
 }
