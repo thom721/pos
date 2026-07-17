@@ -55,9 +55,17 @@ $MysqlInstDir = Join-Path $env:ProgramFiles "MySQL\MySQL Server 8.0"
 $MysqlZipName = "mysql-$MysqlVer-winx64.zip"
 $MysqlZipLocal= Join-Path $InstallRoot $MysqlZipName   # cache local avant téléchargement
 $MysqlUrl     = "https://dev.mysql.com/get/Downloads/MySQL-8.0/$MysqlZipName"
-$DbHost       = "localhost"
-$DbPort       = 3306
-$DbName       = "pos_connect"
+$DbHost       = "127.0.0.1"
+$DbPort       = 3307
+$DbName       = "pos_db"
+
+# MySQL bundlé dans le dossier POS_Connect (prioritaire sur le MySQL système)
+$BundledMysqlDir  = Join-Path $InstallRoot "mysql"
+$BundledMysqldExe = Join-Path $BundledMysqlDir "bin\mysqld.exe"
+$BundledMysqlExe  = Join-Path $BundledMysqlDir "bin\mysql.exe"
+$BundledMyIni     = Join-Path $BundledMysqlDir "my.ini"
+$BundledDataDir   = "C:\ProgramData\POS_Connect_MySQL"
+$BundledSvcName   = "POS_Connect_MySQL"
 
 function Write-Step($msg) { Write-Host "`n→ $msg" -ForegroundColor Cyan }
 function Write-OK($msg)   { Write-Host "  ✓ $msg" -ForegroundColor Green }
@@ -79,10 +87,15 @@ function New-HexKey([int]$bytes = 32) {
     -join ((1..$bytes) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
 }
 
-# Trouve mysql.exe : PATH d'abord, puis emplacements courants
+# Trouve mysql.exe : bundlé POS_Connect d'abord, puis PATH, puis emplacements courants
 function Find-MysqlExe {
+    # 1. MySQL bundlé dans POS_Connect (prioritaire)
+    $bundled = Join-Path $InstallRoot "mysql\bin\mysql.exe"
+    if (Test-Path $bundled) { return $bundled }
+    # 2. PATH système
     $fromPath = Get-Command "mysql" -ErrorAction SilentlyContinue
     if ($fromPath) { return $fromPath.Source }
+    # 3. Emplacements MySQL standard
     $candidates = Get-ChildItem "$env:ProgramFiles\MySQL" -Recurse -Filter "mysql.exe" -ErrorAction SilentlyContinue
     if ($candidates) { return $candidates[0].FullName }
     return $null
@@ -259,68 +272,127 @@ if ($iniExists) {
 
   Write-Step "Base de données MySQL..."
 
-  # ── Détecter MySQL ────────────────────────────────────────────────────────
-  $mysqlSvc = Get-Service -Name "MySQL*" -ErrorAction SilentlyContinue |
-              Where-Object { $_.Status -eq "Running" } | Select-Object -First 1
-  $mysqlExe = Find-MysqlExe
+  $PosUser = "pos_user"
+  $PosPass = New-RandPass 24
+  $RootPass = $null
 
-  if ($mysqlSvc -and $mysqlExe) {
-    # ── MySQL déjà installé : demander les identifiants admin ──────────────
-    Write-Host "  MySQL détecté : service '$($mysqlSvc.Name)'." -ForegroundColor DarkGray
-    Write-Host ""
+  # ── CAS 1 : MySQL bundlé dans POS_Connect\mysql\ (prioritaire) ───────────
+  if (Test-Path $BundledMysqldExe) {
+    Write-Host "  MySQL bundlé détecté : $BundledMysqlDir" -ForegroundColor DarkGray
+
+    # Créer le répertoire de données si absent (mysqld jamais initialisé)
+    if (-not (Test-Path $BundledDataDir)) {
+      New-Item -Path $BundledDataDir -ItemType Directory -Force | Out-Null
+      Write-Host "  Initialisation du répertoire de données MySQL..." -ForegroundColor DarkGray
+      # --initialize-insecure : root sans mot de passe (on le change juste après)
+      & $BundledMysqldExe --defaults-file="$BundledMyIni" --initialize-insecure --console 2>&1 |
+        ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+      Write-OK "Répertoire '$BundledDataDir' initialisé."
+    } else {
+      Write-Host "  Répertoire de données présent — initialisation ignorée." -ForegroundColor DarkGray
+    }
+
+    # Installer le service Windows s'il n'existe pas
+    if (-not (Get-Service $BundledSvcName -ErrorAction SilentlyContinue)) {
+      & $BundledMysqldExe --install $BundledSvcName --defaults-file="$BundledMyIni" 2>&1 | Out-Null
+      Write-OK "Service '$BundledSvcName' installé."
+    }
+
+    # Démarrer (ou redémarrer) le service
+    $svc = Get-Service $BundledSvcName -ErrorAction SilentlyContinue
+    if ($svc.Status -ne "Running") {
+      Start-Service $BundledSvcName -ErrorAction SilentlyContinue
+      Start-Sleep -Seconds 5
+    }
+    Write-OK "Service '$BundledSvcName' démarré (port $DbPort)."
+
+    $mysqlExe = $BundledMysqlExe
+
+    # Sécuriser root puis créer pos_user (root sans mot de passe après --initialize-insecure)
+    $RootPass = New-RandPass 24
+    $ok = Invoke-Sql -Exe $mysqlExe -Host $DbHost -Port $DbPort -User "root" -Pass "" -Statements @(
+      "ALTER USER 'root'@'localhost' IDENTIFIED BY '${RootPass}'",
+      "CREATE DATABASE IF NOT EXISTS ``${DbName}`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+      "CREATE USER IF NOT EXISTS '${PosUser}'@'localhost'  IDENTIFIED WITH mysql_native_password BY '${PosPass}'",
+      "CREATE USER IF NOT EXISTS '${PosUser}'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '${PosPass}'",
+      "GRANT ALL PRIVILEGES ON ``${DbName}``.* TO '${PosUser}'@'localhost'",
+      "GRANT ALL PRIVILEGES ON ``${DbName}``.* TO '${PosUser}'@'127.0.0.1'",
+      "FLUSH PRIVILEGES"
+    )
+    if (-not $ok) {
+      # root a peut-être déjà un mot de passe (réinstallation) — demander
+      Write-Host "  Mot de passe root MySQL requis pour continuer :" -ForegroundColor Yellow
+      $rp = Read-Host "    Mot de passe root" -AsSecureString
+      $RootPass = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+                    [Runtime.InteropServices.Marshal]::SecureStringToBSTR($rp))
+      $ok = Invoke-Sql -Exe $mysqlExe -Host $DbHost -Port $DbPort -User "root" -Pass $RootPass -Statements @(
+        "CREATE DATABASE IF NOT EXISTS ``${DbName}`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+        "CREATE USER IF NOT EXISTS '${PosUser}'@'localhost'  IDENTIFIED WITH mysql_native_password BY '${PosPass}'",
+        "CREATE USER IF NOT EXISTS '${PosUser}'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '${PosPass}'",
+        "GRANT ALL PRIVILEGES ON ``${DbName}``.* TO '${PosUser}'@'localhost'",
+        "GRANT ALL PRIVILEGES ON ``${DbName}``.* TO '${PosUser}'@'127.0.0.1'",
+        "FLUSH PRIVILEGES"
+      )
+      if (-not $ok) { Fail "Impossible de configurer la base MySQL bundlée." }
+    }
+    Write-OK "Base '$DbName' et utilisateur '$PosUser' configurés."
+    $DbUser = $PosUser ; $DbPass = $PosPass
+
+  # ── CAS 2 : MySQL système déjà installé et en cours d'exécution ──────────
+  } elseif ((Get-Service -Name "MySQL*" -ErrorAction SilentlyContinue |
+             Where-Object { $_.Status -eq "Running" } | Select-Object -First 1) -and
+            (Find-MysqlExe)) {
+    $mysqlSvc = Get-Service -Name "MySQL*" | Where-Object { $_.Status -eq "Running" } | Select-Object -First 1
+    $mysqlExe = Find-MysqlExe
+    Write-Host "  MySQL système détecté : service '$($mysqlSvc.Name)'." -ForegroundColor DarkGray
+
     Write-Host "  Identifiants d'un compte admin MySQL (pour créer la base POS) :" -ForegroundColor White
     $adminUser = Read-Host "    Utilisateur (ex: root)"
     $adminPass = Read-Host "    Mot de passe" -AsSecureString
     $adminPassPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
                         [Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminPass))
 
-    # Test de connexion
     $env:MYSQL_PWD = $adminPassPlain
     & $mysqlExe -h$DbHost -P$DbPort -u$adminUser --execute="SELECT 1;" 2>&1 | Out-Null
     Remove-Item Env:\MYSQL_PWD -ErrorAction SilentlyContinue
     if ($LASTEXITCODE -ne 0) { Fail "Connexion MySQL échouée. Vérifiez les identifiants." }
     Write-OK "Connexion MySQL réussie."
 
-    # Créer base + utilisateur dédié POS
-    $PosUser = "pos_user"
-    $PosPass = New-RandPass
     $ok = Invoke-Sql -Exe $mysqlExe -Host $DbHost -Port $DbPort -User $adminUser -Pass $adminPassPlain -Statements @(
-        "CREATE DATABASE IF NOT EXISTS ${DbName} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
-        "CREATE USER IF NOT EXISTS '${PosUser}'@'localhost' IDENTIFIED BY '${PosPass}'",
-        "CREATE USER IF NOT EXISTS '${PosUser}'@'127.0.0.1' IDENTIFIED BY '${PosPass}'",
-        "GRANT ALL PRIVILEGES ON ${DbName}.* TO '${PosUser}'@'localhost'",
-        "GRANT ALL PRIVILEGES ON ${DbName}.* TO '${PosUser}'@'127.0.0.1'",
-        "FLUSH PRIVILEGES"
+      "CREATE DATABASE IF NOT EXISTS ``${DbName}`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+      "CREATE USER IF NOT EXISTS '${PosUser}'@'localhost'  IDENTIFIED BY '${PosPass}'",
+      "CREATE USER IF NOT EXISTS '${PosUser}'@'127.0.0.1' IDENTIFIED BY '${PosPass}'",
+      "GRANT ALL PRIVILEGES ON ``${DbName}``.* TO '${PosUser}'@'localhost'",
+      "GRANT ALL PRIVILEGES ON ``${DbName}``.* TO '${PosUser}'@'127.0.0.1'",
+      "FLUSH PRIVILEGES"
     )
     if (-not $ok) { Fail "Impossible de créer la base '$DbName' ou l'utilisateur '$PosUser'." }
     Write-OK "Base '$DbName' et utilisateur '$PosUser' créés."
     $DbUser = $PosUser ; $DbPass = $PosPass
 
+  # ── CAS 3 : MySQL complètement absent — téléchargement et installation ───
   } else {
-    # ── MySQL absent : installation silencieuse depuis le ZIP officiel ─────
     Write-Host "  MySQL non détecté — installation en cours..." -ForegroundColor DarkGray
 
     if (-not (Test-Path "$MysqlInstDir\bin\mysqld.exe")) {
-        # Vérifier le cache local avant de télécharger
-        if (Test-Path $MysqlZipLocal) {
-            Write-Host "  ZIP MySQL trouvé dans $InstallRoot — extraction..." -ForegroundColor DarkGray
-        } else {
-            Write-Host "  Téléchargement MySQL $MysqlVer..." -ForegroundColor DarkGray
-            Invoke-WebRequest -Uri $MysqlUrl -OutFile $MysqlZipLocal -UseBasicParsing
-            Write-OK "ZIP téléchargé et conservé dans $InstallRoot"
-        }
-        New-Item -Path (Split-Path $MysqlInstDir -Parent) -ItemType Directory -Force | Out-Null
-        Expand-Archive $MysqlZipLocal "$env:TEMP\mysql_tmp" -Force
-        Move-Item "$env:TEMP\mysql_tmp\mysql-$MysqlVer-winx64" $MysqlInstDir
-        Remove-Item "$env:TEMP\mysql_tmp" -Recurse -Force
-        Write-OK "MySQL extrait dans $MysqlInstDir"
+      if (Test-Path $MysqlZipLocal) {
+        Write-Host "  ZIP MySQL trouvé dans $InstallRoot — extraction..." -ForegroundColor DarkGray
+      } else {
+        Write-Host "  Téléchargement MySQL $MysqlVer..." -ForegroundColor DarkGray
+        Invoke-WebRequest -Uri $MysqlUrl -OutFile $MysqlZipLocal -UseBasicParsing
+        Write-OK "ZIP téléchargé."
+      }
+      New-Item -Path (Split-Path $MysqlInstDir -Parent) -ItemType Directory -Force | Out-Null
+      Expand-Archive $MysqlZipLocal "$env:TEMP\mysql_tmp" -Force
+      Move-Item "$env:TEMP\mysql_tmp\mysql-$MysqlVer-winx64" $MysqlInstDir
+      Remove-Item "$env:TEMP\mysql_tmp" -Recurse -Force
+      Write-OK "MySQL extrait dans $MysqlInstDir"
     }
 
     $mysqldExe = "$MysqlInstDir\bin\mysqld.exe"
     $mysqlExe  = "$MysqlInstDir\bin\mysql.exe"
-    $dataDir   = "$MysqlInstDir\data"
+    $dataDir   = "C:\ProgramData\POS_Connect_MySQL"
 
-    # my.ini (UTF-8 sans BOM — mysqld rejette les fichiers avec BOM)
     $baseDirFwd = $MysqlInstDir -replace '\\', '/'
     $dataDirFwd = $dataDir      -replace '\\', '/'
     Write-UTF8NoBOM "$MysqlInstDir\my.ini" @"
@@ -344,43 +416,41 @@ port = $DbPort
 port = $DbPort
 "@
 
-    # Initialiser (sans mot de passe root pour que le setup puisse se connecter)
     if (-not (Test-Path $dataDir)) {
-        & $mysqldExe --initialize-insecure --console 2>&1 | Out-Null
-        Write-OK "Répertoire de données initialisé."
+      New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
+      & $mysqldExe --defaults-file="$MysqlInstDir\my.ini" --initialize-insecure --console 2>&1 | Out-Null
+      Write-OK "Répertoire de données initialisé."
     }
 
-    # Installer et démarrer le service Windows
-    $svcName = "MySQL80"
+    $svcName = "POS_Connect_MySQL"
     if (-not (Get-Service $svcName -ErrorAction SilentlyContinue)) {
-        & $mysqldExe --install $svcName 2>&1 | Out-Null
+      & $mysqldExe --install $svcName --defaults-file="$MysqlInstDir\my.ini" 2>&1 | Out-Null
     }
     Start-Service $svcName
-    Start-Sleep -Seconds 4   # laisser MySQL démarrer
+    Start-Sleep -Seconds 5
 
-    # Mot de passe root + base + utilisateur POS
     $RootPass = New-RandPass 24
-    $PosUser  = "pos_user"
-    $PosPass  = New-RandPass 24
-
     $ok = Invoke-Sql -Exe $mysqlExe -Host $DbHost -Port $DbPort -User "root" -Pass "" -Statements @(
-        "ALTER USER 'root'@'localhost' IDENTIFIED BY '${RootPass}'",
-        "CREATE DATABASE IF NOT EXISTS ${DbName} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
-        "CREATE USER IF NOT EXISTS '${PosUser}'@'localhost' IDENTIFIED BY '${PosPass}'",
-        "CREATE USER IF NOT EXISTS '${PosUser}'@'127.0.0.1' IDENTIFIED BY '${PosPass}'",
-        "GRANT ALL PRIVILEGES ON ${DbName}.* TO '${PosUser}'@'localhost'",
-        "GRANT ALL PRIVILEGES ON ${DbName}.* TO '${PosUser}'@'127.0.0.1'",
-        "FLUSH PRIVILEGES"
+      "ALTER USER 'root'@'localhost' IDENTIFIED BY '${RootPass}'",
+      "CREATE DATABASE IF NOT EXISTS ``${DbName}`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+      "CREATE USER IF NOT EXISTS '${PosUser}'@'localhost'  IDENTIFIED WITH mysql_native_password BY '${PosPass}'",
+      "CREATE USER IF NOT EXISTS '${PosUser}'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '${PosPass}'",
+      "GRANT ALL PRIVILEGES ON ``${DbName}``.* TO '${PosUser}'@'localhost'",
+      "GRANT ALL PRIVILEGES ON ``${DbName}``.* TO '${PosUser}'@'127.0.0.1'",
+      "FLUSH PRIVILEGES"
     )
     if (-not $ok) { Fail "Impossible de configurer MySQL." }
-
     Write-OK "MySQL installé, base '$DbName' et utilisateur '$PosUser' créés."
-    Write-Host ""
-    Write-Host "  ┌─────────────────────────────────────────────────┐" -ForegroundColor Yellow
-    Write-Host "  │  Mot de passe root MySQL : $RootPass" -ForegroundColor Yellow
-    Write-Host "  │  Notez-le maintenant — il ne sera plus affiché.  │" -ForegroundColor Yellow
-    Write-Host "  └─────────────────────────────────────────────────┘" -ForegroundColor Yellow
     $DbUser = $PosUser ; $DbPass = $PosPass
+  }
+
+  # Afficher le mot de passe root si généré
+  if ($RootPass) {
+    Write-Host ""
+    Write-Host "  ┌──────────────────────────────────────────────────────────┐" -ForegroundColor Yellow
+    Write-Host "  │  Mot de passe root MySQL : $RootPass" -ForegroundColor Yellow
+    Write-Host "  │  Notez-le maintenant — il ne sera plus affiché.          │" -ForegroundColor Yellow
+    Write-Host "  └──────────────────────────────────────────────────────────┘" -ForegroundColor Yellow
   }
 
   # ── Écrire pos_server.ini (UTF-8 sans BOM) ───────────────────────────────
