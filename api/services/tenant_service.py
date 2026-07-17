@@ -2,6 +2,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
@@ -85,7 +86,7 @@ def register_tenant(db: Session, business_name: str, owner_email: str,
     config = AppConfig(tenant_id=tenant.id, business_name=business_name)
     db.add(config)
 
-    # Default warehouse included in every plan
+    # Default warehouse + Caisse 1 slot included in every plan
     warehouse = Warehouse(
         tenant_id=tenant.id,
         name="Dépôt principal",
@@ -94,6 +95,16 @@ def register_tenant(db: Session, business_name: str, owner_email: str,
         is_claimed=True,
     )
     db.add(warehouse)
+    db.flush()  # get warehouse.id
+
+    register = PosRegister(
+        tenant_id=tenant.id,
+        warehouse_id=warehouse.id,
+        name="Caisse 1",
+        is_active=True,
+        # device_id intentionally NULL — claimed by first device to log in
+    )
+    db.add(register)
 
     db.commit()
     db.refresh(tenant)
@@ -136,18 +147,20 @@ def cloud_login(db: Session, email: str, password: str,
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="Période d'essai expirée — veuillez souscrire")
 
-    # Register / authenticate the device if device_id provided
+    # Slot-based session management
     register_id = None
     session_token = None
     if device_id:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=_ONLINE_WINDOW_MINUTES)
+
+        # 1. This device already owns a slot → re-login on same slot
         register = db.query(PosRegister).filter(
             PosRegister.tenant_id == tenant.id,
             PosRegister.device_id == device_id,
         ).first()
 
         if not register:
-            # New device: enforce max_caisses by counting currently-online registers
-            cutoff = datetime.now(timezone.utc) - timedelta(minutes=_ONLINE_WINDOW_MINUTES)
+            # 2. All active slots have live sessions → block
             online_count = db.query(PosRegister).filter(
                 PosRegister.tenant_id == tenant.id,
                 PosRegister.is_active == True,   # noqa: E712
@@ -158,21 +171,24 @@ def cloud_login(db: Session, email: str, password: str,
                     status_code=status.HTTP_409_CONFLICT,
                     detail=(
                         f"Limite de caisses atteinte ({tenant.max_caisses}). "
-                        "Déconnectez une caisse active avant d'en ouvrir une nouvelle."
+                        "Une caisse est déjà ouverte — fermez-la avant d'en ouvrir une autre."
                     ),
                 )
-            # Attach to default warehouse
-            default_wh = db.query(Warehouse).filter(
-                Warehouse.tenant_id == tenant.id,
-                Warehouse.is_default == True,   # noqa: E712
-            ).first()
-            register = PosRegister(
-                tenant_id=tenant.id,
-                device_id=device_id,
-                warehouse_id=default_wh.id if default_wh else None,
-                name=register_name or "Caisse 1",
-            )
-            db.add(register)
+
+            # 3. Claim a free slot (session expired or never used)
+            register = db.query(PosRegister).filter(
+                PosRegister.tenant_id == tenant.id,
+                PosRegister.is_active == True,   # noqa: E712
+                or_(PosRegister.last_seen.is_(None), PosRegister.last_seen < cutoff),
+            ).order_by(PosRegister.last_seen.asc().nullsfirst()).first()
+
+            if not register:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Aucun slot de caisse disponible pour ce tenant.",
+                )
+
+            register.device_id = device_id
 
         # Rotate session token and stamp last_seen on every login
         session_token = str(uuid.uuid4())
