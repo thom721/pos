@@ -49,7 +49,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     final token = await _repo.getToken();
     if (token != null) {
       final userData = await _repo.getSavedUser();
-      final warning  = await _repo.getSavedPlanWarning();
+      final warning  = _refreshWarning(await _repo.getSavedPlanWarning());
       state = AuthState(
         isAuthenticated: true,
         isLoading: false,
@@ -59,6 +59,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } else {
       state = const AuthState(isAuthenticated: false, isLoading: false);
     }
+  }
+
+  /// Recalcule days_left à partir de expires_at pour éviter la valeur figée du cache.
+  Map<String, dynamic>? _refreshWarning(Map<String, dynamic>? warning) {
+    if (warning == null) return null;
+    final raw = warning['expires_at']?.toString();
+    if (raw == null) return warning;
+    final expiresAt = DateTime.tryParse(raw)?.toLocal();
+    if (expiresAt == null) return warning;
+    final daysLeft = expiresAt.difference(DateTime.now()).inDays;
+    if (daysLeft < 0) return null; // expiré → le backend suspendra au prochain login
+    return {...warning, 'days_left': daysLeft};
   }
 
   Future<bool> login(String username, String password) async {
@@ -142,7 +154,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   void dismissPlanWarning() {
-    _repo.savePlanWarning(null);
+    // Cache uniquement l'état "masqué pour cette session" — on garde expires_at
+    // pour que le décompte reste correct au prochain démarrage.
     state = state.copyWith(clearPlanWarning: true);
   }
 
