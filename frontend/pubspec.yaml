@@ -76,9 +76,35 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   msix: ^3.16.8
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.3
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/launcher_icon.png"
+  adaptive_icon_background: "#0077C5"
+  adaptive_icon_foreground: "assets/icon/launcher_icon_fg.png"
+  min_sdk_android: 21
+  web:
+    generate: false
+  windows:
+    generate: false
+  macos:
+    generate: false
+
+flutter_native_splash:
+  color: "#1B2A3B"
+  image: assets/icon/splash_logo.png
+  android_12:
+    image: assets/icon/splash_logo.png
+    color: "#1B2A3B"
+    icon_background_color: "#1B2A3B"
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icon/
 
 msix_config:
   display_name: POS Connect

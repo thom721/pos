@@ -135,30 +135,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Logo box
+                  // Logo
                   ScaleTransition(
                     scale: _logoScale,
                     child: FadeTransition(
                       opacity: _logoOpacity,
-                      child: Container(
-                        width: 100,
-                        height: 100,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0078C8),
-                          borderRadius: BorderRadius.circular(26),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF0078C8).withValues(alpha: 0.45),
-                              blurRadius: 40,
-                              spreadRadius: 4,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.point_of_sale_rounded,
-                          color: Colors.white,
-                          size: 54,
-                        ),
+                      child: Image.asset(
+                        'assets/icon/splash_logo.png',
+                        width: 150,
+                        height: 150,
+                        fit: BoxFit.contain,
                       ),
                     ),
                   ),
