@@ -797,6 +797,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   // ── Session caisse ────────────────────────────────────────────────────────
   Map<String, dynamic>? _session;   // null = pas encore chargé
   bool _sessionChecked = false;
+  bool _noSessionPermission = false; // true si 403 sur sessions.open
   String? _deviceId;
 
   @override
@@ -831,11 +832,13 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _sessionChecked = true);
-        // Prompt to open a session unless the user truly has no permission.
         final is4xx = e is DioException &&
             ((e.response?.statusCode ?? 0) == 401 ||
              (e.response?.statusCode ?? 0) == 403);
+        setState(() {
+          _sessionChecked = true;
+          _noSessionPermission = is4xx;
+        });
         if (!is4xx) _promptOpenSession();
       }
     }
@@ -1043,31 +1046,39 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
             color: AppColors.error.withValues(alpha: 0.08),
             child: Row(
               children: [
-                const Icon(Icons.lock_rounded,
-                    color: AppColors.error, size: 14),
+                Icon(
+                  _noSessionPermission
+                      ? Icons.no_accounts_rounded
+                      : Icons.lock_rounded,
+                  color: AppColors.error,
+                  size: 14,
+                ),
                 const SizedBox(width: 6),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Caisse non ouverte — les encaissements sont désactivés',
-                    style: TextStyle(
+                    _noSessionPermission
+                        ? 'Votre rôle ne permet pas d\'ouvrir une session caisse'
+                        : 'Caisse non ouverte — les encaissements sont désactivés',
+                    style: const TextStyle(
                         color: AppColors.error,
                         fontWeight: FontWeight.w500,
                         fontSize: 11),
                   ),
                 ),
-                TextButton(
-                  onPressed: _promptOpenSession,
-                  style: TextButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    foregroundColor: AppColors.error,
-                    textStyle: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w600),
+                if (!_noSessionPermission)
+                  TextButton(
+                    onPressed: _promptOpenSession,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      foregroundColor: AppColors.error,
+                      textStyle: const TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                    child: const Text('Ouvrir la caisse'),
                   ),
-                  child: const Text('Ouvrir la caisse'),
-                ),
               ],
             ),
           ),
@@ -1483,7 +1494,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           foregroundColor: Colors.white,
                         )
                       : null,
-                  onPressed: (pos.items.isEmpty || pos.isProcessing || (_sessionChecked && _session == null))
+                  onPressed: (pos.items.isEmpty || pos.isProcessing || (_sessionChecked && (_session == null || _noSessionPermission)))
                       ? null
                       : () async {
                           if (isEdit) {

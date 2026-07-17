@@ -66,6 +66,11 @@ abstract class Perm {
   static const reportsRead    = 'reports.read';
   static const reportsReadAll = 'reports.read_all';
 
+  // Cashier sessions
+  static const sessionsOpen  = 'sessions.open';
+  static const sessionsClose = 'sessions.close';
+  static const sessionsRead  = 'sessions.read';
+
   // Config
   static const configRead   = 'config.read';
   static const configUpdate = 'config.update';
@@ -123,6 +128,7 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.stockRead, Perm.stockAdjust,
     Perm.inventoryCreate, Perm.inventoryRead,
     Perm.reportsRead, Perm.reportsReadAll,
+    Perm.sessionsOpen, Perm.sessionsClose, Perm.sessionsRead,
     Perm.configRead, Perm.configUpdate,
     Perm.proformasCreate, Perm.proformasRead, Perm.proformasUpdate, Perm.proformasDelete,
     Perm.invoicesCreate, Perm.invoicesRead, Perm.invoicesUpdate, Perm.invoicesDelete,
@@ -138,6 +144,7 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.paymentsCreate, Perm.paymentsRead,
     Perm.debtsRead,
     Perm.reportsRead,
+    Perm.sessionsOpen, Perm.sessionsClose,
     Perm.proformasCreate, Perm.proformasRead, Perm.proformasUpdate,
     Perm.invoicesCreate, Perm.invoicesRead, Perm.invoicesUpdate,
     Perm.configRead,
