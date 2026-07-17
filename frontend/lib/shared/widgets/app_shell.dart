@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,13 +7,16 @@ import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
+import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/license_provider.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
+import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/license_service.dart';
+import 'package:pos_connect/services/offline_queue_service.dart';
 
 class _NavItem {
   final String label;
@@ -607,8 +612,40 @@ class _MobileShell extends ConsumerStatefulWidget {
 }
 
 class _MobileShellState extends ConsumerState<_MobileShell> {
+  Timer? _pendingRefreshTimer;
+  bool _isSyncing = false;
+
   bool get _isAndroid =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isAndroid) {
+      // Rafraîchit le compteur d'opérations en attente toutes les 10 secondes.
+      _pendingRefreshTimer = Timer.periodic(
+        const Duration(seconds: 10),
+        (_) => ref.invalidate(pendingOfflineCountProvider),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _pendingRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _syncNow() async {
+    if (_isSyncing) return;
+    setState(() => _isSyncing = true);
+    try {
+      await OfflineQueueService.instance.drain(dio);
+    } finally {
+      ref.invalidate(pendingOfflineCountProvider);
+      if (mounted) setState(() => _isSyncing = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -630,6 +667,10 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
         )
         .label;
 
+    final pendingCount = _isAndroid
+        ? (ref.watch(pendingOfflineCountProvider).valueOrNull ?? 0)
+        : 0;
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.surface,
@@ -644,6 +685,53 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
           ),
         ),
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        actions: _isAndroid
+            ? [
+                if (_isSyncing)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppColors.accent),
+                    ),
+                  )
+                else if (pendingCount > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: TextButton.icon(
+                      onPressed: _syncNow,
+                      icon: const Icon(Icons.sync_rounded, size: 16),
+                      label: Text('$pendingCount en attente'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.orange,
+                        textStyle: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.circle,
+                            size: 8, color: AppColors.accent),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Connecté',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+              ]
+            : null,
         bottom: const PreferredSize(
           preferredSize: Size.fromHeight(1),
           child: Divider(height: 1, color: AppColors.divider),
