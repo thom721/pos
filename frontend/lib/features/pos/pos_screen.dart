@@ -829,8 +829,15 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
           _promptOpenSession();
         }
       }
-    } catch (_) {
-      if (mounted) setState(() => _sessionChecked = true);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _sessionChecked = true);
+        // Prompt to open a session unless the user truly has no permission.
+        final is4xx = e is DioException &&
+            ((e.response?.statusCode ?? 0) == 401 ||
+             (e.response?.statusCode ?? 0) == 403);
+        if (!is4xx) _promptOpenSession();
+      }
     }
   }
 
@@ -1024,6 +1031,42 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                             decoration: TextDecoration.underline,
                             decorationColor: AppColors.accent)),
                   ),
+                ),
+              ],
+            ),
+          )
+        else
+          // Session absente après vérification — bloquer visuellement
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            color: AppColors.error.withValues(alpha: 0.08),
+            child: Row(
+              children: [
+                const Icon(Icons.lock_rounded,
+                    color: AppColors.error, size: 14),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Text(
+                    'Caisse non ouverte — les encaissements sont désactivés',
+                    style: TextStyle(
+                        color: AppColors.error,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 11),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _promptOpenSession,
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    foregroundColor: AppColors.error,
+                    textStyle: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w600),
+                  ),
+                  child: const Text('Ouvrir la caisse'),
                 ),
               ],
             ),
@@ -1440,7 +1483,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           foregroundColor: Colors.white,
                         )
                       : null,
-                  onPressed: (pos.items.isEmpty || pos.isProcessing)
+                  onPressed: (pos.items.isEmpty || pos.isProcessing || (_sessionChecked && _session == null))
                       ? null
                       : () async {
                           if (isEdit) {
