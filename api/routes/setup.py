@@ -726,65 +726,65 @@ def connect_tenant(data: ConnectTenantRequest):
                 local_tenant.is_local      = False
                 local_tenant.max_caisses   = body.get("max_caisses") or local_tenant.max_caisses
                 db.flush()
-        elif cloud_tenant_id and local_tenant.id != cloud_tenant_id:
-            # Tenant exists with wrong UUID — realign to cloud UUID.
-            old_tid = local_tenant.id
-            from sqlalchemy import text as _sa_text, inspect as _sa_insp
-
-            _child_tables = [
-                "warehouses", "users", "categories", "suppliers", "products",
-                "customers", "sales", "sale_items", "purchases", "purchase_items",
-                "purchase_receipts", "purchase_receipt_items", "payments",
-                "stock_movements", "debts", "return_records", "inventory_records",
-                "app_config", "proformas", "proforma_items", "invoices",
-                "invoice_items", "employee_profiles", "employee_loans",
-                "payroll_periods", "payroll_entries", "payroll_loan_deductions",
-                "roles", "pos_registers", "cashier_sessions",
-                "audit_logs", "billing_extras",
-            ]
-
-            if data.db_type == "mysql":
-                # MySQL: disable FK checks, update PK, update children, re-enable.
-                db.execute(_sa_text("SET FOREIGN_KEY_CHECKS=0"))
-                db.execute(
-                    _sa_text("UPDATE tenants SET id = :new WHERE id = :old"),
-                    {"new": cloud_tenant_id, "old": old_tid},
-                )
-                for _tbl in _child_tables:
-                    try:
-                        db.execute(
-                            _sa_text(f"UPDATE {_tbl} SET tenant_id = :new WHERE tenant_id = :old"),
-                            {"new": cloud_tenant_id, "old": old_tid},
-                        )
-                    except Exception:
-                        pass
-                db.execute(_sa_text("SET FOREIGN_KEY_CHECKS=1"))
-            else:
-                # SQLite: PRAGMA foreign_keys = OFF is a no-op inside a transaction.
-                # Strategy: INSERT clone with new UUID → UPDATE children → DELETE old.
-                mapper = _sa_insp(type(local_tenant))
-                cols = [c.key for c in mapper.columns]
-                vals = {c: getattr(local_tenant, c) for c in cols}
-                vals["id"] = cloud_tenant_id
-                col_list = ", ".join(cols)
-                ph_list = ", ".join(f":{c}" for c in cols)
-                db.execute(
-                    _sa_text(f"INSERT INTO tenants ({col_list}) VALUES ({ph_list})"),
-                    vals,
-                )
-                for _tbl in _child_tables:
-                    try:
-                        db.execute(
-                            _sa_text(f"UPDATE {_tbl} SET tenant_id = :new WHERE tenant_id = :old"),
-                            {"new": cloud_tenant_id, "old": old_tid},
-                        )
-                    except Exception:
-                        pass
-                db.execute(
-                    _sa_text("DELETE FROM tenants WHERE id = :old"),
-                    {"old": old_tid},
-                )
-            db.flush()
+            elif cloud_tenant_id and local_tenant.id != cloud_tenant_id:
+                # Tenant exists with wrong UUID — realign to cloud UUID.
+                old_tid = local_tenant.id
+                from sqlalchemy import text as _sa_text, inspect as _sa_insp
+    
+                _child_tables = [
+                    "warehouses", "users", "categories", "suppliers", "products",
+                    "customers", "sales", "sale_items", "purchases", "purchase_items",
+                    "purchase_receipts", "purchase_receipt_items", "payments",
+                    "stock_movements", "debts", "return_records", "inventory_records",
+                    "app_config", "proformas", "proforma_items", "invoices",
+                    "invoice_items", "employee_profiles", "employee_loans",
+                    "payroll_periods", "payroll_entries", "payroll_loan_deductions",
+                    "roles", "pos_registers", "cashier_sessions",
+                    "audit_logs", "billing_extras",
+                ]
+    
+                if data.db_type == "mysql":
+                    # MySQL: disable FK checks, update PK, update children, re-enable.
+                    db.execute(_sa_text("SET FOREIGN_KEY_CHECKS=0"))
+                    db.execute(
+                        _sa_text("UPDATE tenants SET id = :new WHERE id = :old"),
+                        {"new": cloud_tenant_id, "old": old_tid},
+                    )
+                    for _tbl in _child_tables:
+                        try:
+                            db.execute(
+                                _sa_text(f"UPDATE {_tbl} SET tenant_id = :new WHERE tenant_id = :old"),
+                                {"new": cloud_tenant_id, "old": old_tid},
+                            )
+                        except Exception:
+                            pass
+                    db.execute(_sa_text("SET FOREIGN_KEY_CHECKS=1"))
+                else:
+                    # SQLite: PRAGMA foreign_keys = OFF is a no-op inside a transaction.
+                    # Strategy: INSERT clone with new UUID → UPDATE children → DELETE old.
+                    mapper = _sa_insp(type(local_tenant))
+                    cols = [c.key for c in mapper.columns]
+                    vals = {c: getattr(local_tenant, c) for c in cols}
+                    vals["id"] = cloud_tenant_id
+                    col_list = ", ".join(cols)
+                    ph_list = ", ".join(f":{c}" for c in cols)
+                    db.execute(
+                        _sa_text(f"INSERT INTO tenants ({col_list}) VALUES ({ph_list})"),
+                        vals,
+                    )
+                    for _tbl in _child_tables:
+                        try:
+                            db.execute(
+                                _sa_text(f"UPDATE {_tbl} SET tenant_id = :new WHERE tenant_id = :old"),
+                                {"new": cloud_tenant_id, "old": old_tid},
+                            )
+                        except Exception:
+                            pass
+                    db.execute(
+                        _sa_text("DELETE FROM tenants WHERE id = :old"),
+                        {"old": old_tid},
+                    )
+                db.flush()
 
         local_tid = cloud_tenant_id or local_tenant.id
 
