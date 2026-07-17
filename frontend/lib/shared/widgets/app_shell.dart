@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -57,6 +57,21 @@ const _adminNavItems = [
 const _bottomNavItems = [
   _NavItem('Profil', Icons.person_rounded, '/profile'),
   _NavItem('Paramètres', Icons.settings_rounded, '/settings'),
+];
+
+// ── Android nav (focused cashier workflow) ────────────────────────────────
+const _androidBottomNavItems = [
+  _NavItem('Caisse',  Icons.point_of_sale_rounded, '/pos'),
+  _NavItem('Ventes',  Icons.receipt_long_rounded,  '/sales'),
+  _NavItem('Clients', Icons.people_alt_rounded,    '/customers'),
+  _NavItem('Profil',  Icons.person_rounded,        '/profile'),
+];
+
+const _androidDrawerMainItems = [
+  _NavItem('Caisse',   Icons.point_of_sale_rounded, '/pos'),
+  _NavItem('Ventes',   Icons.receipt_long_rounded,  '/sales'),
+  _NavItem('Clients',  Icons.people_alt_rounded,    '/customers'),
+  _NavItem('Produits', Icons.inventory_2_rounded,   '/products'),
 ];
 
 // All items for title lookup
@@ -592,12 +607,19 @@ class _MobileShell extends ConsumerStatefulWidget {
 }
 
 class _MobileShellState extends ConsumerState<_MobileShell> {
+  bool get _isAndroid =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).uri.toString();
     final isAdmin = ref.watch(isAdminProvider);
     final user = ref.watch(authProvider).user;
-    final bottomItems = _mainNavItems.take(5).toList();
+
+    final bottomItems = _isAndroid
+        ? _androidBottomNavItems.toList()
+        : _mainNavItems.take(5).toList();
+
     final currentIndex =
         bottomItems.indexWhere((i) => location.startsWith(i.route));
 
@@ -632,8 +654,7 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
         selectedIndex: currentIndex < 0 ? 0 : currentIndex,
         backgroundColor: AppColors.surface,
         indicatorColor: AppColors.primary.withValues(alpha: 0.15),
-        labelBehavior:
-            NavigationDestinationLabelBehavior.onlyShowSelected,
+        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
         onDestinationSelected: (i) => context.go(bottomItems[i].route),
         destinations: bottomItems
             .map((item) => NavigationDestination(
@@ -651,8 +672,7 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
               child: Row(
                 children: [
                   Container(
-                    width: 36,
-                    height: 36,
+                    width: 36, height: 36,
                     decoration: BoxDecoration(
                       color: AppColors.primary,
                       borderRadius: BorderRadius.circular(8),
@@ -675,80 +695,13 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                children: [
-                  ..._mainNavItems
-                      .where((i) => _canShowItem(i, user))
-                      .map((item) => _SidebarItem(
-                            item: item,
-                            isActive: location.startsWith(item.route),
-                            onTap: () {
-                              Navigator.pop(context);
-                              context.go(item.route);
-                            },
-                          )),
-                  if (_analyticsNavItems.any((i) => _canShowItem(i, user))) ...[
-                    _SectionDivider(label: 'Analyse'),
-                    ..._analyticsNavItems
-                        .where((i) => _canShowItem(i, user))
-                        .map((item) => _SidebarItem(
-                              item: item,
-                              isActive: location.startsWith(item.route),
-                              onTap: () {
-                                Navigator.pop(context);
-                                context.go(item.route);
-                              },
-                            )),
-                  ],
-                  if (_hrNavItems.any((i) => _canShowItem(i, user))) ...[
-                    _SectionDivider(label: 'RH & Paie'),
-                    ..._hrNavItems
-                        .where((i) => _canShowItem(i, user))
-                        .map((item) => _SidebarItem(
-                              item: item,
-                              isActive: location.startsWith(item.route),
-                              onTap: () {
-                                Navigator.pop(context);
-                                context.go(item.route);
-                              },
-                            )),
-                  ],
-                  if (isAdmin) ...[
-                    _SectionDivider(label: 'Administration'),
-                    ..._adminNavItems.map((item) => _SidebarItem(
-                          item: item,
-                          isActive: location.startsWith(item.route),
-                          onTap: () {
-                            Navigator.pop(context);
-                            context.go(item.route);
-                          },
-                        )),
-                    _SidebarItem(
-                      item: const _NavItem('Journal d\'audit',
-                          Icons.history_rounded, '/audit'),
-                      isActive: location.startsWith('/audit'),
-                      onTap: () {
-                        Navigator.pop(context);
-                        context.go('/audit');
-                      },
-                    ),
-                  ],
-                  _SectionDivider(label: 'Compte'),
-                  ..._bottomNavItems
-                      .where((i) => _canShowItem(i, user))
-                      .map((item) => _SidebarItem(
-                            item: item,
-                            isActive: location.startsWith(item.route),
-                            onTap: () {
-                              Navigator.pop(context);
-                              context.go(item.route);
-                            },
-                          )),
-                ],
+                children: _isAndroid
+                    ? _buildAndroidDrawerItems(context, location, isAdmin, user)
+                    : _buildFullDrawerItems(context, location, isAdmin, user),
               ),
             ),
             ListTile(
-              leading:
-                  const Icon(Icons.logout, color: Color(0xFF8BA4BE)),
+              leading: const Icon(Icons.logout, color: Color(0xFF8BA4BE)),
               title: const Text('Déconnexion',
                   style: TextStyle(color: Colors.white)),
               onTap: () => ref.read(authProvider.notifier).logout(),
@@ -757,6 +710,111 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
         ),
       ),
     );
+  }
+
+  List<Widget> _buildAndroidDrawerItems(
+    BuildContext context,
+    String location,
+    bool isAdmin,
+    UserModel? user,
+  ) {
+    void go(String route) {
+      Navigator.pop(context);
+      context.go(route);
+    }
+
+    return [
+      ..._androidDrawerMainItems.map((item) => _SidebarItem(
+            item: item,
+            isActive: location.startsWith(item.route),
+            onTap: () => go(item.route),
+          )),
+      if (isAdmin) ...[
+        _SectionDivider(label: 'Administration'),
+        ..._adminNavItems.map((item) => _SidebarItem(
+              item: item,
+              isActive: location.startsWith(item.route),
+              onTap: () => go(item.route),
+            )),
+        _SidebarItem(
+          item: const _NavItem('Dépôts', Icons.store_rounded, '/warehouses'),
+          isActive: location.startsWith('/warehouses'),
+          onTap: () => go('/warehouses'),
+        ),
+      ],
+      _SectionDivider(label: 'Compte'),
+      ..._bottomNavItems
+          .where((i) => _canShowItem(i, user))
+          .map((item) => _SidebarItem(
+                item: item,
+                isActive: location.startsWith(item.route),
+                onTap: () => go(item.route),
+              )),
+    ];
+  }
+
+  List<Widget> _buildFullDrawerItems(
+    BuildContext context,
+    String location,
+    bool isAdmin,
+    UserModel? user,
+  ) {
+    void go(String route) {
+      Navigator.pop(context);
+      context.go(route);
+    }
+
+    return [
+      ..._mainNavItems
+          .where((i) => _canShowItem(i, user))
+          .map((item) => _SidebarItem(
+                item: item,
+                isActive: location.startsWith(item.route),
+                onTap: () => go(item.route),
+              )),
+      if (_analyticsNavItems.any((i) => _canShowItem(i, user))) ...[
+        _SectionDivider(label: 'Analyse'),
+        ..._analyticsNavItems
+            .where((i) => _canShowItem(i, user))
+            .map((item) => _SidebarItem(
+                  item: item,
+                  isActive: location.startsWith(item.route),
+                  onTap: () => go(item.route),
+                )),
+      ],
+      if (_hrNavItems.any((i) => _canShowItem(i, user))) ...[
+        _SectionDivider(label: 'RH & Paie'),
+        ..._hrNavItems
+            .where((i) => _canShowItem(i, user))
+            .map((item) => _SidebarItem(
+                  item: item,
+                  isActive: location.startsWith(item.route),
+                  onTap: () => go(item.route),
+                )),
+      ],
+      if (isAdmin) ...[
+        _SectionDivider(label: 'Administration'),
+        ..._adminNavItems.map((item) => _SidebarItem(
+              item: item,
+              isActive: location.startsWith(item.route),
+              onTap: () => go(item.route),
+            )),
+        _SidebarItem(
+          item: const _NavItem(
+              'Journal d\'audit', Icons.history_rounded, '/audit'),
+          isActive: location.startsWith('/audit'),
+          onTap: () => go('/audit'),
+        ),
+      ],
+      _SectionDivider(label: 'Compte'),
+      ..._bottomNavItems
+          .where((i) => _canShowItem(i, user))
+          .map((item) => _SidebarItem(
+                item: item,
+                isActive: location.startsWith(item.route),
+                onTap: () => go(item.route),
+              )),
+    ];
   }
 }
 
