@@ -14,6 +14,7 @@ from api.models.PosRegister import PosRegister
 from api.models.Tenant import Tenant
 from api.models.PlatformConfig import PlatformConfig
 from api.schemas.warehouse import WarehouseCreate, WarehouseUpdate, WarehouseRead
+from api.services import billing_extra_service as _billing
 
 
 def _pricing(db: Session) -> PlatformConfig | None:
@@ -103,6 +104,11 @@ def create_warehouse(
             if current_count >= tenant.max_depots:
                 return _limit_response("dépôt", current_count, tenant.max_depots, _pricing(db))
 
+    tenant = db.get(Tenant, current_user.tenant_id)
+    active_before = db.query(Warehouse).filter_by(
+        tenant_id=current_user.tenant_id, is_active=True
+    ).count()
+
     wh = Warehouse(
         tenant_id=current_user.tenant_id,
         name=data.name,
@@ -111,6 +117,12 @@ def create_warehouse(
         is_default=False,
     )
     db.add(wh)
+    db.flush()
+
+    # Record extra if this depot exceeds the plan limit (force confirmed by user)
+    if data.force and tenant and active_before >= tenant.max_depots:
+        _billing.record_extra(db, current_user.tenant_id, "depot", wh.id)
+
     db.commit()
     db.refresh(wh)
     return wh
@@ -140,6 +152,8 @@ def update_warehouse(
     if data.is_active is not None:
         if wh.is_default and not data.is_active:
             raise HTTPException(400, "Impossible de desactiver le depot par defaut")
+        if wh.is_active and not data.is_active:
+            _billing.close_extra(db, wh.id)
         wh.is_active = data.is_active
     db.commit()
     db.refresh(wh)
@@ -173,6 +187,7 @@ def delete_warehouse(
     wh = _get_or_404(db, warehouse_id, current_user.tenant_id)
     if wh.is_default:
         raise HTTPException(400, "Impossible de supprimer le depot par defaut")
+    _billing.close_extra(db, wh.id)
     wh.is_active = False
     db.commit()
     return {"ok": True}
@@ -254,6 +269,8 @@ def update_register(
     if data.name is not None:
         reg.name = data.name
     if data.is_active is not None:
+        if reg.is_active and not data.is_active:
+            _billing.close_extra(db, reg.id)
         reg.is_active = data.is_active
     db.commit()
     db.refresh(reg)
@@ -268,6 +285,7 @@ def delete_register(
     current_user: User = Depends(require_permission(P.WAREHOUSES_DELETE)),
 ):
     reg = _get_register_or_404(db, warehouse_id, register_id, current_user.tenant_id)
+    _billing.close_extra(db, reg.id)
     db.delete(reg)
     db.commit()
     return {"ok": True}

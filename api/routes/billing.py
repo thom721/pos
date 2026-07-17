@@ -12,10 +12,12 @@ from api.models.Tenant import Tenant
 from api.models.BillingPayment import BillingPayment
 from api.models.PlatformConfig import PlatformConfig
 from api.models.Warehouse import Warehouse
+from api.models.PosRegister import PosRegister
 from api.core.config import settings
 from api.core.billing_crypto import try_decrypt_date, encrypt_date
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
+from api.services import billing_extra_service as _billing
 
 
 class SubmitPaymentRequest(BaseModel):
@@ -36,50 +38,79 @@ def _get_tenant(db: Session, user: User) -> Tenant:
 
 
 def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None) -> dict:
-    """Calcule le détail d'utilisation du plan et le total mensuel."""
-    # Caisses = utilisateurs avec rôle cashier
-    users = db.query(User).filter(User.tenant_id == tenant.id).all()
-    caisse_count = sum(
-        1 for u in users
-        if u.roles and "cashier" in (u.roles if isinstance(u.roles, list) else [])
-    )
-    # Dépôts = warehouses revendiqués (installations actives)
+    """Calcule le détail d'utilisation du plan et le total du cycle en cours (avec prorata)."""
+    # Caisses = PosRegisters actifs (cohérent avec l'enforcement de limite)
+    caisse_count = db.query(PosRegister).filter(
+        PosRegister.tenant_id == tenant.id,
+        PosRegister.is_active == True,  # noqa: E712
+    ).count()
+    # Dépôts = warehouses actifs
     depot_count = db.query(Warehouse).filter(
         Warehouse.tenant_id == tenant.id,
-        Warehouse.is_claimed == True,
+        Warehouse.is_active == True,  # noqa: E712
     ).count()
 
     max_caisses = tenant.max_caisses
     max_depots  = getattr(tenant, "max_depots", 1)
 
-    base_htg       = float(cfg.monthly_price_htg)    if cfg else 1500.0
-    base_usd       = float(cfg.monthly_price_usd)    if cfg else 12.0
-    xc_htg         = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
-    xc_usd         = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
-    xd_htg         = float(getattr(cfg, "price_per_extra_depot_htg", 500.0)) if cfg else 500.0
-    xd_usd         = float(getattr(cfg, "price_per_extra_depot_usd", 4.0))   if cfg else 4.0
+    base_htg = float(cfg.monthly_price_htg)             if cfg else 1500.0
+    base_usd = float(cfg.monthly_price_usd)             if cfg else 12.0
+    xc_htg   = float(cfg.price_per_extra_caisse_htg)    if cfg else 500.0
+    xc_usd   = float(cfg.price_per_extra_caisse_usd)    if cfg else 4.0
+    xd_htg   = float(getattr(cfg, "price_per_extra_depot_htg", 500.0)) if cfg else 500.0
+    xd_usd   = float(getattr(cfg, "price_per_extra_depot_usd", 4.0))   if cfg else 4.0
 
-    extra_caisses  = max(0, caisse_count - max_caisses)
-    extra_depots   = max(0, depot_count  - max_depots)
+    extra_caisses = max(0, caisse_count - max_caisses)
+    extra_depots  = max(0, depot_count  - max_depots)
 
-    total_htg = base_htg + extra_caisses * xc_htg + extra_depots * xd_htg
-    total_usd = base_usd + extra_caisses * xc_usd + extra_depots * xd_usd
+    # Cycle de facturation courant : commence à subscription_started_at (jour du mois)
+    now = datetime.now(timezone.utc)
+    sub_start = getattr(tenant, "subscription_started_at", None)
+    if sub_start:
+        if sub_start.tzinfo is None:
+            sub_start = sub_start.replace(tzinfo=timezone.utc)
+        # Trouver le début du cycle courant (même jour du mois que sub_start)
+        cycle_start = sub_start.replace(year=now.year, month=now.month)
+        if cycle_start > now:
+            # On est avant le jour de renouvellement ce mois — le cycle a commencé le mois passé
+            m = now.month - 1 or 12
+            y = now.year if now.month > 1 else now.year - 1
+            cycle_start = sub_start.replace(year=y, month=m)
+        cycle_end = cycle_start + timedelta(days=30)
+    else:
+        # Pas encore abonné : cycle = mois calendaire courant
+        cycle_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        cycle_end   = (cycle_start + timedelta(days=32)).replace(day=1)
+
+    # Prorata sur les extras
+    prorated = _billing.compute_prorated(
+        db, tenant.id, cycle_start, cycle_end,
+        xc_htg, xc_usd, xd_htg, xd_usd,
+    )
+
+    total_htg = base_htg + prorated["total_htg"]
+    total_usd = base_usd + prorated["total_usd"]
 
     return {
-        "max_caisses":              max_caisses,
-        "current_caisses":          caisse_count,
-        "extra_caisses":            extra_caisses,
+        "max_caisses":                max_caisses,
+        "current_caisses":            caisse_count,
+        "extra_caisses":              extra_caisses,
         "price_per_extra_caisse_htg": xc_htg,
         "price_per_extra_caisse_usd": xc_usd,
-        "max_depots":               max_depots,
-        "current_depots":           depot_count,
-        "extra_depots":             extra_depots,
+        "max_depots":                 max_depots,
+        "current_depots":             depot_count,
+        "extra_depots":               extra_depots,
         "price_per_extra_depot_htg":  xd_htg,
         "price_per_extra_depot_usd":  xd_usd,
-        "base_price_htg":           base_htg,
-        "base_price_usd":           base_usd,
-        "total_monthly_htg":        total_htg,
-        "total_monthly_usd":        total_usd,
+        "base_price_htg":             base_htg,
+        "base_price_usd":             base_usd,
+        "prorated_extras_htg":        prorated["total_htg"],
+        "prorated_extras_usd":        prorated["total_usd"],
+        "prorated_breakdown":         prorated["extras"],
+        "cycle_start":                cycle_start.isoformat(),
+        "cycle_end":                  cycle_end.isoformat(),
+        "total_monthly_htg":          total_htg,
+        "total_monthly_usd":          total_usd,
     }
 
 

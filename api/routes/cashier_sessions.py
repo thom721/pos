@@ -16,6 +16,7 @@ from api.models.PlatformConfig import PlatformConfig
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
 from api.services import audit_service
+from api.services import billing_extra_service as _billing
 
 router = APIRouter(prefix="/api/sessions", tags=["Cashier Sessions"])
 
@@ -112,6 +113,19 @@ def _get_or_create_register(
         reg = PosRegister(tenant_id=tenant_id, device_id=device_id, name=name, warehouse_id=wh_id)
         db.add(reg)
         db.flush()
+
+        # If this creation exceeds the plan limit (force=True path), record the extra
+        if force:
+            tenant = db.get(Tenant, tenant_id)
+            if tenant:
+                existing_count = db.query(PosRegister).filter(
+                    PosRegister.tenant_id == tenant_id,
+                    PosRegister.is_active == True,  # noqa: E712
+                    PosRegister.id != reg.id,
+                ).count()
+                if existing_count >= tenant.max_caisses:
+                    _billing.record_extra(db, tenant_id, "caisse", reg.id)
+
     return reg
 
 
