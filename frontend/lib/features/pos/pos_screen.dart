@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:go_router/go_router.dart';
 import 'package:dio/dio.dart' show FormData, Options, DioException;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -841,6 +842,9 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         deviceId: _deviceId!,
         onOpened: (session) {
           if (mounted) setState(() => _session = session);
+        },
+        onCancelled: () {
+          if (mounted) context.go('/dashboard');
         },
       ),
     );
@@ -2052,7 +2056,8 @@ class _SupervisorAuthDialogState extends State<_SupervisorAuthDialog> {
 class _OpenSessionDialog extends StatefulWidget {
   final String deviceId;
   final void Function(Map<String, dynamic> session) onOpened;
-  const _OpenSessionDialog({required this.deviceId, required this.onOpened});
+  final VoidCallback? onCancelled;
+  const _OpenSessionDialog({required this.deviceId, required this.onOpened, this.onCancelled});
 
   @override
   State<_OpenSessionDialog> createState() => _OpenSessionDialogState();
@@ -2133,6 +2138,14 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
         ],
       ),
       actions: [
+        if (widget.onCancelled != null)
+          TextButton(
+            onPressed: _loading ? null : () {
+              Navigator.of(context).pop();
+              widget.onCancelled!();
+            },
+            child: const Text('Annuler'),
+          ),
         FilledButton(
           onPressed: _loading ? null : _open,
           child: _loading

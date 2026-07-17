@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -41,14 +42,15 @@ class DashboardScreen extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => context.go('/pos'),
-                icon: const Icon(Icons.point_of_sale_rounded, size: 18),
-                label: const Text('Ouvrir la caisse'),
+            if (!kIsWeb)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => context.go('/pos'),
+                  icon: const Icon(Icons.point_of_sale_rounded, size: 18),
+                  label: const Text('Ouvrir la caisse'),
+                ),
               ),
-            ),
           ] else
             Row(
               children: [
@@ -68,11 +70,12 @@ class DashboardScreen extends ConsumerWidget {
                   ],
                 ),
                 const Spacer(),
-                ElevatedButton.icon(
-                  onPressed: () => context.go('/pos'),
-                  icon: const Icon(Icons.point_of_sale_rounded, size: 18),
-                  label: const Text('Ouvrir la caisse'),
-                ),
+                if (!kIsWeb)
+                  ElevatedButton.icon(
+                    onPressed: () => context.go('/pos'),
+                    icon: const Icon(Icons.point_of_sale_rounded, size: 18),
+                    label: const Text('Ouvrir la caisse'),
+                  ),
               ],
             ),
           const SizedBox(height: 24),
