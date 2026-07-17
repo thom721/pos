@@ -23,7 +23,7 @@ $MySqlZipUrl = "https://downloads.mysql.com/archives/get/p/23/file/mysql-$MySqlV
 $MySqlDir    = "$InstallDir\mysql"
 # Donnees MySQL dans un dossier separe -- survivent a toute suppression de POS_Connect
 $MySqlData   = "$env:ProgramData\POS_Connect_MySQL"
-$MyIni       = "$MySqlDir\my.ini"
+$MyIni       = "$MySqlData\my.ini"   # chemin sans espace — NSSM gere mal les guillemets internes
 $MySqlBinDir = "$MySqlDir\bin"
 $MySqlPort   = 3307
 $IniTarget   = "$DataDir\pos_server.ini"
@@ -152,17 +152,6 @@ if (-not (Test-Path "$MySqlBinDir\mysqld.exe")) {
 if (Test-Path "$MySqlBinDir\mysqld.exe") {
     New-Item -ItemType Directory -Force -Path $MySqlData | Out-Null
 
-    # Proteger le dossier MySQL : refuser la suppression pour tous sauf SYSTEM + Administrateurs
-    try {
-        icacls $MySqlData /inheritance:r `
-            /grant "SYSTEM:(OI)(CI)F" `
-            /grant "Administrators:(OI)(CI)F" `
-            /deny  "Users:(D,DC)" | Out-Null
-        Write-Log "Protection dossier MySQL : suppression refusee aux utilisateurs standard"
-    } catch {
-        Write-Log "Impossible de proteger le dossier MySQL : $_" "WARN"
-    }
-
     if (-not (Test-Path "$MySqlData\ibdata1")) {
         Write-Log "Initialisation du datadir MySQL ($MySqlData)..."
 
@@ -196,6 +185,16 @@ port = $MySqlPort
             Write-Log "mysqld --initialize-insecure a echoue (code $LASTEXITCODE) -- verifiez les logs ci-dessus" "ERROR"
         } else {
             Write-Log "MySQL initialise (root sans mot de passe)"
+            # Proteger apres init reussie -- GRANT seulement, pas de DENY
+            # (un DENY Users bloquerait aussi les Administrateurs membres de ce groupe)
+            try {
+                icacls $MySqlData /inheritance:r `
+                    /grant "SYSTEM:(OI)(CI)F" `
+                    /grant "Administrators:(OI)(CI)F" | Out-Null
+                Write-Log "Protection dossier MySQL : acces restreint a SYSTEM + Administrateurs"
+            } catch {
+                Write-Log "Impossible de proteger le dossier MySQL : $_" "WARN"
+            }
         }
     } else {
         Write-Log "MySQL deja initialise"
@@ -224,7 +223,6 @@ port = $MySqlPort
     if ($LASTEXITCODE -ne 0 -or "$svcStatus" -match "can't open service|No such service") {
         Write-Log "Installation service $SvcMySQL..."
         & $NssmExe install $SvcMySQL "$MySqlBinDir\mysqld.exe"
-        & $NssmExe set    $SvcMySQL AppParameters "--defaults-file=`"$MyIni`""
         & $NssmExe set    $SvcMySQL DisplayName   "POS Connect -- MySQL"
         & $NssmExe set    $SvcMySQL Description   "Base de donnees MySQL locale pour POS Connect"
         & $NssmExe set    $SvcMySQL Start         SERVICE_AUTO_START
@@ -233,7 +231,10 @@ port = $MySqlPort
         Write-Log "Service $SvcMySQL installe"
     } else {
         Write-Log "Service $SvcMySQL existe deja ($svcStatus)"
+        Stop-Service -Name $SvcMySQL -Force -ErrorAction SilentlyContinue
     }
+    # Toujours mettre a jour AppParameters pour corriger le chemin my.ini (reinstallation)
+    & $NssmExe set $SvcMySQL AppParameters "--defaults-file=$MyIni"
 
     # Demarrer MySQL et attendre qu'il soit pret
     Start-Service -Name $SvcMySQL -ErrorAction SilentlyContinue
