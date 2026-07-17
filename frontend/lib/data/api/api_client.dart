@@ -28,6 +28,11 @@ Future<String> getEffectiveBaseUrl() async {
 }
 
 Future<void> initServerUrl() async {
+  // Android is cloud-only: ignore any saved local server URL, always use cloud
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    dio.options.baseUrl = AppConstants.cloudUrl;
+    return;
+  }
   final prefs = await SharedPreferences.getInstance();
   final url = prefs.getString(AppConstants.serverUrlKey);
   if (url == _localBaseUrl) {

@@ -66,6 +66,7 @@ class OfflineQueueService {
   static const _skipPaths = [
     '/api/auth',
     '/api/login',
+    '/api/public',
     '/api/sync',
     '/api/setup',
   ];
