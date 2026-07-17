@@ -553,15 +553,16 @@ def manual_activate_tenant(
 @router.delete("/tenants/{tenant_id}/warehouses/unclaimed")
 def purge_unclaimed_warehouses(
     tenant_id: str,
+    include_claimed: bool = False,
     db: Session = Depends(get_db),
     _: dict = Depends(require_superadmin),
 ):
-    """Supprime tous les dépôts non réclamés (is_claimed=False) d'un tenant.
-    Utile après des installations partielles qui ont créé des warehouses orphelins."""
-    rows = db.query(Warehouse).filter(
-        Warehouse.tenant_id == tenant_id,
-        Warehouse.is_claimed == False,  # noqa: E712
-    ).all()
+    """Supprime les dépôts orphelins (is_claimed=False) d'un tenant.
+    Avec include_claimed=true, supprime aussi les dépôts réclamés (installations actives)."""
+    q = db.query(Warehouse).filter(Warehouse.tenant_id == tenant_id)
+    if not include_claimed:
+        q = q.filter(Warehouse.is_claimed == False)  # noqa: E712
+    rows = q.all()
     count = len(rows)
     for wh in rows:
         db.delete(wh)

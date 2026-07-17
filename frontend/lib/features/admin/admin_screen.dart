@@ -446,34 +446,77 @@ class _TenantCard extends ConsumerWidget {
     final tenantId = tenant['id'] as String;
     final name = tenant['business_name'] as String? ?? tenantId;
 
+    bool includeClaimed = false;
+    final confirmCtrl = TextEditingController();
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Supprimer les dépôts non réclamés'),
-        content: Text(
-          'Supprimer tous les dépôts is_claimed=false pour "$name" ?\n\n'
-          'Ces dépôts correspondent à des installations partielles abandonnées '
-          'et ne sont associés à aucune caisse active.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setState) {
+        final canConfirm = !includeClaimed || confirmCtrl.text.trim() == 'supprimer';
+        return AlertDialog(
+          title: const Text('Supprimer les dépôts'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Supprimer les dépôts non réclamés pour "$name" ?\n\n'
+                'Ces dépôts correspondent à des installations partielles abandonnées.',
+              ),
+              const SizedBox(height: 16),
+              CheckboxListTile(
+                value: includeClaimed,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Inclure aussi les dépôts réclamés',
+                    style: TextStyle(fontSize: 13)),
+                subtitle: const Text(
+                    'Supprime les dépôts d\'installations actives',
+                    style: TextStyle(fontSize: 11)),
+                activeColor: AppColors.error,
+                onChanged: (v) => setState(() {
+                  includeClaimed = v ?? false;
+                  if (!includeClaimed) confirmCtrl.clear();
+                }),
+              ),
+              if (includeClaimed) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: confirmCtrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Tapez "supprimer" pour confirmer',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.warning),
-            child: const Text('Supprimer'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: canConfirm ? () => Navigator.pop(ctx, true) : null,
+              style: FilledButton.styleFrom(
+                backgroundColor: includeClaimed ? AppColors.error : AppColors.warning,
+              ),
+              child: const Text('Supprimer'),
+            ),
+          ],
+        );
+      }),
     );
 
     if (confirmed != true || !context.mounted) return;
 
     try {
       final d = await ref.read(adminDioProvider.future);
-      final res = await d.delete('/api/admin/tenants/$tenantId/warehouses/unclaimed');
+      final url = '/api/admin/tenants/$tenantId/warehouses/unclaimed'
+          '${includeClaimed ? '?include_claimed=true' : ''}';
+      final res = await d.delete(url);
       final deleted = (res.data as Map<String, dynamic>?)?['deleted'] ?? 0;
       ref.invalidate(_tenantsProvider);
       if (context.mounted) {
