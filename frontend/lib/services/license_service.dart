@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
@@ -59,11 +60,20 @@ class LicenseService {
     final now = DateTime.now().toUtc();
 
     // 1. Try fresh license
-    Map<String, dynamic>? payload = await _fetchAndCache();
-    final isOffline = payload == null;
+    bool serverReachable = false;
+    Map<String, dynamic>? payload;
+    try {
+      payload = await _fetchAndCache();
+      serverReachable = true; // reached server (got a valid response)
+    } on DioException catch (e) {
+      // Server responded with an error (4xx/5xx) — device is online, billing is broken
+      serverReachable = e.response != null;
+    } catch (_) {}
+
+    final isOffline = payload == null && !serverReachable;
 
     // 2. Fall back to signed cache
-    if (isOffline) payload = await _readCached();
+    if (payload == null) payload = await _readCached();
 
     // 3. No license at all → local mode or first boot
     if (payload == null) {
@@ -222,6 +232,11 @@ class LicenseService {
         await _storage.write(key: _kSigKey,  value: sig);
       } catch (_) {}
       return _decode(data);
+    } on DioException catch (e) {
+      // Server responded with an error (4xx/5xx) → server is reachable, not offline.
+      // Re-throw so check() knows this is a server error, not a network issue.
+      if (e.response != null) rethrow;
+      return null; // network unreachable → treat as offline
     } catch (_) {
       return null;
     }

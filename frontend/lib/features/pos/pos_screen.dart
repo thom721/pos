@@ -1090,8 +1090,9 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Réserve au minimum 100dp pour la zone panier (empty state = 100dp)
-        final paymentMaxH = (constraints.maxHeight - 48 - 100).clamp(150.0, 500.0);
+        // Réserve au minimum 160dp pour la liste panier sur mobile, 100dp sinon
+        final minCartH = context.isMobile ? 160.0 : 100.0;
+        final paymentMaxH = (constraints.maxHeight - 48 - minCartH).clamp(150.0, 420.0);
         return _buildCart(context, pos, notifier, drafts, isEdit, paymentMaxH, canDiscount);
       },
     );
@@ -1429,7 +1430,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
               _TotalRow('Total', _fmt.format(pos.total), bold: true),
               const SizedBox(height: 12),
 
-              // Payment method
+              // Payment method — une seule ligne
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1437,33 +1438,35 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                       style: TextStyle(
                           fontSize: 13, color: AppColors.textSecondary)),
                   const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
+                  Row(
                     children: [
-                      ('CASH', Icons.payments_rounded),
-                      ('CARD', Icons.credit_card_rounded),
-                      ('BANK', Icons.account_balance_rounded),
+                      ('CASH',   Icons.payments_rounded),
+                      ('CARD',   Icons.credit_card_rounded),
+                      ('BANK',   Icons.account_balance_rounded),
                       ('MOBILE', Icons.phone_android_rounded),
-                    ]
-                        .map((m) => ChoiceChip(
-                              label: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(m.$2, size: 14),
-                                  const SizedBox(width: 4),
-                                  Text(m.$1,
-                                      style:
-                                          const TextStyle(fontSize: 11)),
-                                ],
-                              ),
-                              selected: pos.paymentMethod == m.$1,
-                              selectedColor: AppColors.primary
-                                  .withValues(alpha: 0.15),
-                              onSelected: (_) =>
-                                  notifier.setPaymentMethod(m.$1),
-                            ))
-                        .toList(),
+                    ].map((m) => Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: ChoiceChip(
+                          label: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(m.$2, size: 13),
+                              const SizedBox(width: 3),
+                              Text(m.$1,
+                                  style: const TextStyle(fontSize: 10)),
+                            ],
+                          ),
+                          selected: pos.paymentMethod == m.$1,
+                          selectedColor:
+                              AppColors.primary.withValues(alpha: 0.15),
+                          onSelected: (_) => notifier.setPaymentMethod(m.$1),
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
+                      ),
+                    )).toList(),
                   ),
                 ],
               ),
