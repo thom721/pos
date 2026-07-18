@@ -1546,14 +1546,31 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
 
                           final warehouseId =
                               ref.read(activeWarehouseProvider)?.id;
-                          final saleId = await notifier.checkout(
+                          String? customerName;
+                          ref.read(customersProvider).whenData((c) {
+                            customerName = c.data
+                                .where((x) => x.id == ref.read(posProvider).customerId)
+                                .map((x) => x.name)
+                                .firstOrNull;
+                          });
+                          final result = await notifier.checkout(
                               approvalCode: approvalCode,
-                              warehouseId: warehouseId);
-                          if (!context.mounted || saleId == null) return;
+                              warehouseId: warehouseId,
+                              customerName: customerName);
+                          if (!context.mounted || result.saleId == null) return;
+                          if (result.offline && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Vente enregistrée hors-ligne — sera synchronisée au retour du réseau'),
+                                backgroundColor: Colors.orange,
+                                duration: Duration(seconds: 4),
+                              ),
+                            );
+                          }
                           await showDialog(
                             context: context,
                             barrierDismissible: false,
-                            builder: (_) => _ReceiptDialog(saleId: saleId),
+                            builder: (_) => _ReceiptDialog(saleId: result.saleId!),
                           );
                           if (!context.mounted) return;
                           notifier.clearCart();

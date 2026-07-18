@@ -364,6 +364,12 @@ def create_sale(
     )
     if tenant_id:
         sale.tenant_id = tenant_id
+    # Utiliser l'UUID généré par le client (offline-first) si fourni et valide
+    if getattr(data, 'client_id', None):
+        import re
+        _UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+        if _UUID_RE.match(data.client_id):
+            sale.id = data.client_id
     db.add(sale)
     db.flush()
 

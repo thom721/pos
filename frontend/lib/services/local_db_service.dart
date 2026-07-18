@@ -5,9 +5,12 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:uuid/uuid.dart';
+
 import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/product_model.dart';
+import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 
 /// Cache SQLite local pour les données critiques POS (produits, clients, catégories).
@@ -35,7 +38,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 2,
+      version: 3,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -52,6 +55,9 @@ class LocalDbService {
           is_active   INTEGER NOT NULL DEFAULT 1
         )
       ''');
+    }
+    if (oldVersion < 3) {
+      await _createSalesTables(db);
     }
   }
 
@@ -110,6 +116,50 @@ class LocalDbService {
 
     await db.execute('CREATE INDEX idx_products_name ON products (name)');
     await db.execute('CREATE INDEX idx_customers_name ON customers (name)');
+    await _createSalesTables(db);
+  }
+
+  Future<void> _createSalesTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sales (
+        id             TEXT PRIMARY KEY,
+        reference      TEXT NOT NULL DEFAULT '',
+        customer_id    TEXT,
+        customer_name  TEXT,
+        warehouse_id   TEXT,
+        total_amount   REAL NOT NULL DEFAULT 0,
+        discount       REAL NOT NULL DEFAULT 0,
+        final_amount   REAL NOT NULL DEFAULT 0,
+        paid_amount    REAL NOT NULL DEFAULT 0,
+        payment_method TEXT NOT NULL DEFAULT 'CASH',
+        status         TEXT NOT NULL DEFAULT 'UNPAID',
+        created_at     TEXT NOT NULL,
+        synced         INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sale_items (
+        id             TEXT PRIMARY KEY,
+        sale_id        TEXT NOT NULL,
+        product_id     TEXT NOT NULL,
+        product_name   TEXT,
+        quantity       REAL NOT NULL,
+        unit_price     REAL NOT NULL,
+        original_price REAL,
+        subtotal       REAL NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sale_payments (
+        id         TEXT PRIMARY KEY,
+        sale_id    TEXT NOT NULL,
+        amount     REAL NOT NULL,
+        method     TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_sales_created ON sales (created_at DESC)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON sale_items (sale_id)');
   }
 
   Database? get _safeDb => kIsWeb ? null : _db;
@@ -404,5 +454,207 @@ class LocalDbService {
         ) ??
         0;
     return count == 0;
+  }
+
+  // ── Ventes (offline-first) ────────────────────────────────────────────────
+
+  /// Insère une vente localement avant l'envoi cloud.
+  /// Retourne le [saleId] généré (UUID client).
+  Future<String> insertLocalSale({
+    required Map<String, dynamic> payload,
+    required String? customerName,
+  }) async {
+    final db = _safeDb;
+    if (db == null) throw StateError('SQLite non disponible');
+
+    final saleId   = const Uuid().v4();
+    final now      = DateTime.now().toUtc().toIso8601String();
+    final total    = (payload['items'] as List).fold<double>(
+      0, (s, i) => s + (i['subtotal'] as num).toDouble());
+    final discount = (payload['discount'] as num?)?.toDouble() ?? 0;
+    final paid     = (payload['paid_amount'] as num?)?.toDouble() ?? 0;
+
+    await db.insert('sales', {
+      'id':             saleId,
+      'reference':      'HL-${DateTime.now().millisecondsSinceEpoch}',
+      'customer_id':    payload['customer_id'],
+      'customer_name':  customerName,
+      'warehouse_id':   payload['warehouse_id'],
+      'total_amount':   total,
+      'discount':       discount,
+      'final_amount':   total - discount,
+      'paid_amount':    paid,
+      'payment_method': payload['payment_method'] ?? 'CASH',
+      'status':         paid >= (total - discount) ? 'PAID' : 'UNPAID',
+      'created_at':     now,
+      'synced':         0,
+    });
+
+    final batch = db.batch();
+    for (final item in (payload['items'] as List)) {
+      batch.insert('sale_items', {
+        'id':             const Uuid().v4(),
+        'sale_id':        saleId,
+        'product_id':     item['product_id'],
+        'product_name':   item['product_name'],
+        'quantity':       item['quantity'],
+        'unit_price':     item['unit_price'],
+        'original_price': item['original_price'],
+        'subtotal':       item['subtotal'],
+      });
+    }
+    await batch.commit(noResult: true);
+
+    return saleId;
+  }
+
+  /// Marque une vente locale comme synchronisée et met à jour la référence serveur.
+  Future<void> markSaleSynced(String localId, String reference) async {
+    final db = _safeDb;
+    if (db == null) return;
+    await db.update(
+      'sales',
+      {'synced': 1, 'reference': reference},
+      where: 'id = ?',
+      whereArgs: [localId],
+    );
+  }
+
+  /// Insère ou met à jour des ventes reçues du cloud.
+  Future<void> upsertSales(List<SaleModel> sales) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final s in sales) {
+      batch.insert('sales', {
+        'id':             s.id,
+        'reference':      s.reference,
+        'customer_id':    s.customerId,
+        'customer_name':  s.customerName,
+        'total_amount':   s.totalAmount,
+        'discount':       s.discount,
+        'final_amount':   s.finalAmount,
+        'paid_amount':    s.paidAmount,
+        'payment_method': s.payments.isNotEmpty ? s.payments.first.method : 'CASH',
+        'status':         s.status,
+        'created_at':     s.createdAt.toUtc().toIso8601String(),
+        'synced':         1,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+
+      for (final item in s.items) {
+        batch.insert('sale_items', {
+          'id':           item.id.isEmpty ? const Uuid().v4() : item.id,
+          'sale_id':      s.id,
+          'product_id':   item.productId,
+          'product_name': item.productName,
+          'quantity':     item.quantity,
+          'unit_price':   item.unitPrice,
+          'original_price': item.originalPrice,
+          'subtotal':     item.subtotal,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<PaginatedResponse<SaleModel>> getSales({
+    String? search,
+    String? status,
+    int page = 1,
+    int limit = 15,
+  }) async {
+    final db = _safeDb;
+    if (db == null) {
+      return PaginatedResponse(
+        data: const [],
+        meta: PaginationMeta(page: 1, limit: limit, total: 0, pages: 1),
+      );
+    }
+
+    final where = <String>[];
+    final args  = <dynamic>[];
+    if (search != null && search.isNotEmpty) {
+      where.add('(reference LIKE ? OR customer_name LIKE ?)');
+      args.addAll(['%$search%', '%$search%']);
+    }
+    if (status != null) {
+      where.add('status = ?');
+      args.add(status);
+    }
+    final whereStr = where.isEmpty ? null : where.join(' AND ');
+
+    final total = Sqflite.firstIntValue(await db.rawQuery(
+      'SELECT COUNT(*) FROM sales${whereStr != null ? ' WHERE $whereStr' : ''}',
+      args,
+    )) ?? 0;
+
+    final rows = await db.query(
+      'sales',
+      where: whereStr,
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'created_at DESC',
+      limit: limit,
+      offset: (page - 1) * limit,
+    );
+
+    final sales = <SaleModel>[];
+    for (final row in rows) {
+      final itemRows = await db.query(
+        'sale_items',
+        where: 'sale_id = ?',
+        whereArgs: [row['id']],
+      );
+      sales.add(_saleFromRow(row, itemRows));
+    }
+
+    return PaginatedResponse(
+      data: sales,
+      meta: PaginationMeta(
+        page: page, limit: limit, total: total,
+        pages: (total / limit).ceil().clamp(1, 99999),
+      ),
+    );
+  }
+
+  Future<void> deleteSale(String saleId) async {
+    final db = _safeDb;
+    if (db == null) return;
+    await db.delete('sale_items', where: 'sale_id = ?', whereArgs: [saleId]);
+    await db.delete('sales', where: 'id = ?', whereArgs: [saleId]);
+  }
+
+  /// Décrémente le stock d'un produit lors d'une vente offline.
+  Future<void> decrementStock(String productId, double qty) async {
+    final db = _safeDb;
+    if (db == null) return;
+    await db.rawUpdate(
+      'UPDATE products SET stock = MAX(0, COALESCE(stock, 0) - ?) WHERE id = ?',
+      [qty, productId],
+    );
+  }
+
+  SaleModel _saleFromRow(Map<String, dynamic> row, List<Map<String, dynamic>> itemRows) {
+    return SaleModel(
+      id:           row['id'] as String,
+      reference:    row['reference'] as String,
+      totalAmount:  (row['total_amount'] as num).toDouble(),
+      discount:     (row['discount'] as num).toDouble(),
+      finalAmount:  (row['final_amount'] as num).toDouble(),
+      paidAmount:   (row['paid_amount'] as num).toDouble(),
+      status:       row['status'] as String,
+      createdAt:    DateTime.parse(row['created_at'] as String).toLocal(),
+      customerName: row['customer_name'] as String?,
+      customerId:   row['customer_id'] as String?,
+      items: itemRows.map((r) => SaleItemModel(
+        id:            r['id'] as String,
+        productId:     r['product_id'] as String,
+        productName:   r['product_name'] as String?,
+        quantity:      (r['quantity'] as num).toDouble(),
+        unitPrice:     (r['unit_price'] as num).toDouble(),
+        originalPrice: r['original_price'] != null ? (r['original_price'] as num).toDouble() : null,
+        subtotal:      (r['subtotal'] as num).toDouble(),
+      )).toList(),
+      payments: const [],
+    );
   }
 }

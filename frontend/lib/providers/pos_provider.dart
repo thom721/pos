@@ -146,29 +146,44 @@ class PosNotifier extends StateNotifier<PosState> {
 
   void clearCart() => state = const PosState();
 
-  Future<String?> checkout({String? approvalCode, String? warehouseId}) async {
-    if (state.items.isEmpty) return null;
+  /// Retourne le sale_id si succès (online ou offline), null si erreur.
+  /// [offlineMode] sera true si la vente a été enregistrée localement
+  /// mais pas encore envoyée au cloud.
+  Future<({String? saleId, bool offline})> checkout({
+    String? approvalCode,
+    String? warehouseId,
+    String? customerName,
+  }) async {
+    if (state.items.isEmpty) return (saleId: null, offline: false);
     state = state.copyWith(isProcessing: true, error: null);
     try {
-      final data = await _repo.createSale({
-        'customer_id': state.customerId,
-        'discount': state.discount,
-        'paid_amount': state.paidAmount,
-        'payment_method': state.paymentMethod,
-        if (approvalCode != null && approvalCode.isNotEmpty)
-          'approval_code': approvalCode,
-        if (warehouseId != null) 'warehouse_id': warehouseId,
-        'items': state.items
-            .map((i) => {
-                  'product_id': i.product.id,
-                  'quantity': i.quantity,
-                  'unit_price': i.unitPrice,
-                  'subtotal': i.subtotal,
-                })
-            .toList(),
-      });
+      final data = await _repo.createSale(
+        {
+          'customer_id': state.customerId,
+          'discount': state.discount,
+          'paid_amount': state.paidAmount,
+          'payment_method': state.paymentMethod,
+          if (approvalCode != null && approvalCode.isNotEmpty)
+            'approval_code': approvalCode,
+          if (warehouseId != null) 'warehouse_id': warehouseId,
+          'items': state.items
+              .map((i) => {
+                    'product_id': i.product.id,
+                    'product_name': i.product.name,
+                    'quantity': i.quantity,
+                    'unit_price': i.unitPrice,
+                    'original_price': i.product.salePrice,
+                    'subtotal': i.subtotal,
+                  })
+              .toList(),
+        },
+        customerName: customerName,
+      );
       state = state.copyWith(isProcessing: false, error: null);
-      return data['sale_id']?.toString();
+      return (
+        saleId: data['sale_id']?.toString(),
+        offline: data['offline'] == true,
+      );
     } on DioException catch (e) {
       final msg = e.response?.data is Map
           ? (e.response!.data['message'] ?? e.response!.data['detail'])?.toString()
@@ -177,13 +192,13 @@ class PosNotifier extends StateNotifier<PosState> {
         isProcessing: false,
         error: msg ?? 'Erreur lors de la vente. Réessayez.',
       );
-      return null;
+      return (saleId: null, offline: false);
     } catch (e) {
       state = state.copyWith(
         isProcessing: false,
         error: 'Erreur lors de la vente. Réessayez.',
       );
-      return null;
+      return (saleId: null, offline: false);
     }
   }
 

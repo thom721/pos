@@ -14,6 +14,7 @@ class SaleItemInput(BaseModel):
 
 
 class SaleCreate(BaseModel):
+    client_id: Optional[str] = None      # UUID généré côté client pour l'offline-first
     customer_id: Optional[UUID] = None
     warehouse_id: Optional[str] = None
     discount: float = 0
