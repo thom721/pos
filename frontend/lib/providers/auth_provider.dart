@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:cryptography/cryptography.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/services/license_service.dart';
+import 'package:pos_connect/services/local_db_service.dart';
 
 class AuthState {
   final bool isAuthenticated;
@@ -102,13 +104,33 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<bool> cloudLogin(String email, String password) async {
     state = state.copyWith(isLoading: true, error: null);
-    try {
-      final token = await _repo.cloudLogin(email, password);
+    final emailLower = email.trim().toLowerCase();
 
+    // ── 1. Auth locale (SQLite) en premier — fonctionne hors ligne ───────────
+    if (!kIsWeb) {
+      try {
+        final localUser = await LocalDbService.instance.getLocalUser(emailLower);
+        if (localUser != null) {
+          final hash = await _hashPassword(emailLower, password);
+          if (localUser['password_hash'] == hash) {
+            final userJson =
+                jsonDecode(localUser['user_data'] as String) as Map<String, dynamic>;
+            final user = UserModel.fromJson(userJson);
+            await _repo.saveUser(userJson);
+            await _repo.setConnectionMode('cloud');
+            state = AuthState(isAuthenticated: true, isLoading: false, user: user);
+            return true;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // ── 2. Essai API cloud ────────────────────────────────────────────────────
+    try {
+      final token = await _repo.cloudLogin(email.trim(), password);
       final user = token.user != null ? UserModel.fromJson(token.user!) : null;
 
       // Sur web, seul l'admin peut accéder à l'interface de gestion cloud.
-      // Sur Android/desktop, tout utilisateur peut se connecter (caissier, gérant…).
       if (kIsWeb && (user == null || !user.isAdmin)) {
         await _repo.logout();
         state = state.copyWith(
@@ -119,7 +141,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
 
       await _repo.saveToken(token.accessToken);
-      if (token.user != null) await _repo.saveUser(token.user!);
+      if (token.user != null) {
+        await _repo.saveUser(token.user!);
+        // Sauvegarder pour auth hors ligne lors du prochain login sans réseau
+        if (!kIsWeb) {
+          final hash = await _hashPassword(emailLower, password);
+          await LocalDbService.instance.saveLocalUser(
+              emailLower, hash, jsonEncode(token.user!));
+        }
+      }
       await _repo.savePlanWarning(token.planWarning);
       await _repo.setConnectionMode('cloud');
 
@@ -131,23 +161,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       return true;
     } catch (e) {
-      // Sur Android : si erreur réseau ET session précédente en cache → mode hors ligne
-      if (!kIsWeb && !Platform.isIOS && _isNetworkError(e)) {
-        final savedUser = await _repo.getSavedUser();
-        if (savedUser != null) {
-          final cachedEmail = savedUser['email']?.toString() ?? '';
-          if (cachedEmail.toLowerCase() == email.trim().toLowerCase()) {
-            state = AuthState(
-              isAuthenticated: true,
-              isLoading: false,
-              user: UserModel.fromJson(savedUser),
-            );
-            return true;
-          }
-        }
+      if (!kIsWeb && _isNetworkError(e)) {
+        final localExists =
+            await LocalDbService.instance.getLocalUser(emailLower) != null;
         state = state.copyWith(
           isLoading: false,
-          error: 'Pas de connexion. Connectez-vous une première fois avec internet pour accéder hors ligne.',
+          error: localExists
+              ? 'Mot de passe incorrect (mode hors ligne).'
+              : 'Pas de connexion. Connectez-vous une première fois avec internet pour accéder hors ligne.',
         );
         return false;
       }
@@ -165,6 +186,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(isLoading: false, error: msg);
       return false;
     }
+  }
+
+  static Future<String> _hashPassword(String email, String password) async {
+    final sha = Sha256();
+    final hash = await sha.hash(utf8.encode('$email:$password'));
+    return hash.bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
   static bool _isNetworkError(Object e) =>

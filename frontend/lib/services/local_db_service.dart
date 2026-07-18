@@ -39,7 +39,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 5,
+      version: 6,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -67,22 +67,41 @@ class LocalDbService {
     if (oldVersion < 5) {
       try { await db.execute('ALTER TABLE categories ADD COLUMN description TEXT'); } catch (_) {}
     }
+    if (oldVersion < 6) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS local_users (
+          email         TEXT PRIMARY KEY,
+          password_hash TEXT NOT NULL,
+          user_data     TEXT NOT NULL
+        )
+      ''');
+      try { await db.execute('ALTER TABLE products ADD COLUMN description TEXT'); } catch (_) {}
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
     await db.execute('''
       CREATE TABLE products (
-        id            TEXT PRIMARY KEY,
-        name          TEXT NOT NULL,
-        barcode       TEXT,
-        sale_price    REAL NOT NULL DEFAULT 0,
+        id             TEXT PRIMARY KEY,
+        name           TEXT NOT NULL,
+        barcode        TEXT,
+        description    TEXT,
+        sale_price     REAL NOT NULL DEFAULT 0,
         purchase_price REAL NOT NULL DEFAULT 0,
-        alert_stock   INTEGER NOT NULL DEFAULT 0,
-        stock         INTEGER,
-        category_id   TEXT,
-        category_name TEXT,
-        image_url     TEXT,
-        is_active     INTEGER NOT NULL DEFAULT 1
+        alert_stock    INTEGER NOT NULL DEFAULT 0,
+        stock          INTEGER,
+        category_id    TEXT,
+        category_name  TEXT,
+        image_url      TEXT,
+        is_active      INTEGER NOT NULL DEFAULT 1
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE local_users (
+        email         TEXT PRIMARY KEY,
+        password_hash TEXT NOT NULL,
+        user_data     TEXT NOT NULL
       )
     ''');
 
@@ -221,6 +240,7 @@ class LocalDbService {
           'id': p.id,
           'name': p.name,
           'barcode': p.barcode,
+          'description': p.description,
           'sale_price': p.salePrice,
           'purchase_price': p.purchasePrice,
           'alert_stock': p.alertStock,
@@ -297,6 +317,7 @@ class LocalDbService {
         id: row['id'] as String,
         name: row['name'] as String,
         barcode: row['barcode'] as String?,
+        description: row['description'] as String?,
         salePrice: (row['sale_price'] as num).toDouble(),
         purchasePrice: (row['purchase_price'] as num).toDouble(),
         alertStock: row['alert_stock'] as int,
@@ -309,6 +330,30 @@ class LocalDbService {
             : null,
         imageUrl: row['image_url'] as String?,
       );
+
+  // ── Auth hors ligne ───────────────────────────────────────────────────────
+
+  Future<void> saveLocalUser(String email, String passwordHash, String userDataJson) async {
+    final db = _safeDb;
+    if (db == null) return;
+    await db.insert(
+      'local_users',
+      {'email': email, 'password_hash': passwordHash, 'user_data': userDataJson},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getLocalUser(String email) async {
+    final db = _safeDb;
+    if (db == null) return null;
+    final rows = await db.query(
+      'local_users',
+      where: 'email = ?',
+      whereArgs: [email],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
 
   PaginatedResponse<ProductModel> _emptyProducts(int limit) => PaginatedResponse(
         data: const [],
