@@ -40,7 +40,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 6,
+      version: 7,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -77,6 +77,21 @@ class LocalDbService {
         )
       ''');
       try { await db.execute('ALTER TABLE products ADD COLUMN description TEXT'); } catch (_) {}
+    }
+    if (oldVersion < 7) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS cashier_sessions (
+          id               TEXT PRIMARY KEY,
+          cashier_id       TEXT NOT NULL,
+          cashier_name     TEXT,
+          register_name    TEXT,
+          status           TEXT NOT NULL DEFAULT 'open',
+          opening_balance  REAL NOT NULL DEFAULT 0,
+          closing_balance  REAL,
+          opened_at        TEXT,
+          closed_at        TEXT
+        )
+      ''');
     }
   }
 
@@ -224,6 +239,19 @@ class LocalDbService {
       )
     ''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_purchase_items_purchase ON purchase_items (purchase_id)');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS cashier_sessions (
+        id               TEXT PRIMARY KEY,
+        cashier_id       TEXT NOT NULL,
+        cashier_name     TEXT,
+        register_name    TEXT,
+        status           TEXT NOT NULL DEFAULT 'open',
+        opening_balance  REAL NOT NULL DEFAULT 0,
+        closing_balance  REAL,
+        opened_at        TEXT,
+        closed_at        TEXT
+      )
+    ''');
   }
 
   Database? get _safeDb => kIsWeb ? null : _db;
@@ -532,6 +560,43 @@ class LocalDbService {
           isDefault: (r['is_default'] as int) == 1,
           isActive: (r['is_active'] as int) == 1,
         )).toList();
+  }
+
+  // ── Sessions caisse ───────────────────────────────────────────────────────
+
+  Future<void> upsertSessions(List<Map<String, dynamic>> sessions) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final s in sessions) {
+      batch.insert(
+        'cashier_sessions',
+        {
+          'id':              s['id'],
+          'cashier_id':      s['cashier_id'],
+          'cashier_name':    s['cashier_name'],
+          'register_name':   s['register_name'],
+          'status':          s['status'] ?? 'open',
+          'opening_balance': (s['opening_balance'] as num?)?.toDouble() ?? 0.0,
+          'closing_balance': (s['closing_balance'] as num?)?.toDouble(),
+          'opened_at':       s['opened_at']?.toString(),
+          'closed_at':       s['closed_at']?.toString(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Map<String, dynamic>>> getOpenSessions() async {
+    final db = _safeDb;
+    if (db == null) return [];
+    return db.query(
+      'cashier_sessions',
+      where: 'status = ?',
+      whereArgs: ['open'],
+      orderBy: 'opened_at ASC',
+    );
   }
 
   // ── Méta-sync ─────────────────────────────────────────────────────────────

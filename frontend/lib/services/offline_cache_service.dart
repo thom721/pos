@@ -36,6 +36,7 @@ class OfflineCacheService {
         _syncSales(),
         _syncPurchases(),
         _syncUsers(),
+        _syncSessions(),
       ]);
     } catch (e) {
       debugPrint('[OfflineCache] syncAll error: $e');
@@ -216,6 +217,25 @@ class OfflineCacheService {
       debugPrint('[OfflineCache] users: ${items.length} en cache local');
     } catch (e) {
       debugPrint('[OfflineCache] users sync error: $e');
+    }
+  }
+
+  // ── Sessions caisse ───────────────────────────────────────────────────────
+
+  Future<void> _syncSessions() async {
+    try {
+      final res = await dio.get(
+        '/api/sessions/',
+        queryParameters: {'page': 1, 'limit': 100},
+        options: kBackgroundOptions,
+      );
+      final data = res.data as Map<String, dynamic>;
+      final items = (data['data'] as List? ?? []).cast<Map<String, dynamic>>();
+      await LocalDbService.instance.upsertSessions(items);
+      await LocalDbService.instance.setLastSynced('cashier_sessions');
+      debugPrint('[OfflineCache] sessions: ${items.length} mis en cache');
+    } catch (e) {
+      debugPrint('[OfflineCache] sessions sync error: $e');
     }
   }
 }

@@ -34,6 +34,9 @@ final _fmt =
 String _fmtQty(double q) =>
     q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
 
+// null = loading, true = session open, false = confirmed no session
+final _posSessionOpenProvider = StateProvider<bool?>((_) => null);
+
 // ─── Receipt dialog ──────────────────────────────────────────────────────────
 class _ReceiptDialog extends ConsumerStatefulWidget {
   final String saleId;
@@ -629,13 +632,43 @@ class _ProductPanelState extends ConsumerState<_ProductPanel> {
                       crossAxisSpacing: 12,
                       childAspectRatio: 0.85,
                     );
-              return GridView.builder(
+              final sessionOpen = ref.watch(_posSessionOpenProvider);
+              final grid = GridView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 gridDelegate: delegate,
                 itemCount: products.data.length,
                 itemBuilder: (context, i) =>
                     _ProductCard(product: products.data[i]),
               );
+              if (sessionOpen == false) {
+                return Stack(
+                  children: [
+                    IgnorePointer(child: grid),
+                    Container(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      child: const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.lock_clock_rounded,
+                                size: 48, color: Colors.white70),
+                            SizedBox(height: 12),
+                            Text(
+                              'Ouvrez une session caisse\npour commencer à vendre',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return grid;
             },
             loading: () =>
                 const Center(child: CircularProgressIndicator()),
@@ -810,6 +843,11 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
 
   static const _sessionPrefKey = 'pos_caisse_session';
 
+  void _syncSessionProvider() {
+    ref.read(_posSessionOpenProvider.notifier).state =
+        _sessionChecked ? (_session != null) : null;
+  }
+
   Future<void> _cacheSession(Map<String, dynamic>? session) async {
     final prefs = await SharedPreferences.getInstance();
     if (session == null) {
@@ -853,6 +891,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
             _sessionChecked = true;
             _offlineSession = cached['offline'] == true;
           });
+          _syncSessionProvider();
         }
         // Vérification silencieuse en arrière-plan (sans bloquer l'UI)
         _refreshSessionFromServer();
@@ -875,9 +914,11 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       if (!mounted) return;
       setState(() {
         _session = session as Map<String, dynamic>?;
+        _sessionChecked = true;
         _caisseDisabled = disabled;
         _offlineSession = false;
       });
+      _syncSessionProvider();
       // Session fermée sur un autre appareil → proposer de rouvrir
       if (_session == null && !disabled && mounted) _promptOpenSession();
     } catch (_) {
@@ -899,6 +940,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         _caisseDisabled = disabled;
         _offlineSession = false;
       });
+      _syncSessionProvider();
       if (promptIfMissing && _session == null && !disabled && mounted) {
         _promptOpenSession();
       }
@@ -911,6 +953,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         _sessionChecked = true;
         _noSessionPermission = is4xx;
       });
+      _syncSessionProvider();
       if (promptIfMissing && !is4xx) _promptOpenSession();
     }
   }
@@ -926,8 +969,10 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
             _cacheSession(session);
             setState(() {
               _session = session;
+              _sessionChecked = true;
               _offlineSession = session['offline'] == true;
             });
+            _syncSessionProvider();
           }
         },
         onCancelled: () {
@@ -947,6 +992,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
           if (mounted) {
             _cacheSession(null);
             setState(() { _session = null; _offlineSession = false; });
+            _syncSessionProvider();
           }
           _promptOpenSession();
         },
