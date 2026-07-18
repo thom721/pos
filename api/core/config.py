@@ -96,7 +96,7 @@ def load_ini_config() -> dict:
 class Settings(BaseSettings):
     SECRET_KEY: str = "change_me_use_openssl_rand_hex_32"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200  # 30 jours — caissiers Android ne doivent pas être déconnectés en cours de journée
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     DB_TYPE: str = "mysql"       # "mysql" | "sqlite"

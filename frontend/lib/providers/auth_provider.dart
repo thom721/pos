@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -129,11 +131,34 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       return true;
     } catch (e) {
+      // Sur Android : si erreur réseau ET session précédente en cache → mode hors ligne
+      if (!kIsWeb && !Platform.isIOS && _isNetworkError(e)) {
+        final savedUser = await _repo.getSavedUser();
+        if (savedUser != null) {
+          final cachedEmail = savedUser['email']?.toString() ?? '';
+          if (cachedEmail.toLowerCase() == email.trim().toLowerCase()) {
+            state = AuthState(
+              isAuthenticated: true,
+              isLoading: false,
+              user: UserModel.fromJson(savedUser),
+            );
+            return true;
+          }
+        }
+        state = state.copyWith(
+          isLoading: false,
+          error: 'Pas de connexion. Connectez-vous une première fois avec internet pour accéder hors ligne.',
+        );
+        return false;
+      }
+
       String msg;
       if (e.toString().contains('401') || e.toString().contains('400')) {
         msg = 'Email ou mot de passe incorrect';
       } else if (e.toString().contains('403')) {
         msg = 'Abonnement suspendu ou expiré';
+      } else if (e.toString().contains('409')) {
+        msg = 'Limite de caisses atteinte. Fermez une caisse avant de vous connecter.';
       } else {
         msg = 'Impossible de se connecter au cloud. Vérifiez votre connexion.';
       }
@@ -141,6 +166,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return false;
     }
   }
+
+  static bool _isNetworkError(Object e) =>
+      e is SocketException ||
+      (e is DioException &&
+          (e.type == DioExceptionType.connectionError ||
+              e.type == DioExceptionType.connectionTimeout ||
+              e.type == DioExceptionType.sendTimeout ||
+              e.type == DioExceptionType.receiveTimeout ||
+              e.type == DioExceptionType.unknown));
 
   String _loginErrorMsg(Object e) {
     final s = e.toString();
@@ -171,9 +205,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(user: updated);
   }
 
+  /// Déconnexion explicite (bouton "Déconnexion") — efface tout le cache.
   Future<void> logout() async {
-    await _repo.logout();
+    await _repo.logout(explicit: true);
     await LicenseService.clearCache();
+    state = const AuthState(isAuthenticated: false, isLoading: false);
+  }
+
+  /// Déconnexion automatique suite à un 401 sur une requête utilisateur.
+  /// Conserve userKey pour permettre la reprise offline.
+  Future<void> logoutDueToExpiry() async {
+    await _repo.logout(explicit: false);
     state = const AuthState(isAuthenticated: false, isLoading: false);
   }
 }

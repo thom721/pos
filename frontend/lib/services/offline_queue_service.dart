@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:pos_connect/data/api/api_client.dart' show kBackgroundOptions;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -131,7 +132,8 @@ class OfflineQueueService {
         final res = await apiDio.request<dynamic>(
           item.path,
           data: item.data,
-          options: Options(method: item.method),
+          options: Options(method: item.method,
+              extra: kBackgroundOptions.extra),
         );
         replayed++;
         debugPrint('[OfflineQueue] replayed ${item.method} ${item.path}');

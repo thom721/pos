@@ -50,10 +50,9 @@ class OfflineCacheService {
       final all = <ProductModel>[];
       int page = 1;
       while (true) {
-        final res = await dio.get('/api/products/', queryParameters: {
-          'page': page,
-          'per_page': 200,
-        });
+        final res = await dio.get('/api/products/',
+            queryParameters: {'page': page, 'per_page': 200},
+            options: kBackgroundOptions);
         final data = res.data as Map<String, dynamic>;
         final items = (data['data'] as List)
             .map((e) => ProductModel.fromJson(e as Map<String, dynamic>))
@@ -79,10 +78,9 @@ class OfflineCacheService {
       final all = <CustomerModel>[];
       int page = 1;
       while (true) {
-        final res = await dio.get('/api/customers/', queryParameters: {
-          'page': page,
-          'limit': 200,
-        });
+        final res = await dio.get('/api/customers/',
+            queryParameters: {'page': page, 'limit': 200},
+            options: kBackgroundOptions);
         final raw = res.data;
         List items;
         int totalPages = 1;
@@ -114,7 +112,7 @@ class OfflineCacheService {
 
   Future<void> _syncCategories() async {
     try {
-      final res = await dio.get('/api/categories/');
+      final res = await dio.get('/api/categories/', options: kBackgroundOptions);
       final raw = res.data;
       final items = raw is Map
           ? (raw['data'] as List? ?? [])
@@ -137,10 +135,9 @@ class OfflineCacheService {
       final all = <SaleModel>[];
       int page = 1;
       while (true) {
-        final res = await dio.get('/api/sales/', queryParameters: {
-          'page': page,
-          'limit': 100,
-        });
+        final res = await dio.get('/api/sales/',
+            queryParameters: {'page': page, 'limit': 100},
+            options: kBackgroundOptions);
         final raw = res.data as Map<String, dynamic>;
         final items = (raw['data'] as List? ?? [])
             .map((e) => SaleModel.fromJson(e as Map<String, dynamic>))
@@ -165,10 +162,9 @@ class OfflineCacheService {
       final all = <PurchaseModel>[];
       int page = 1;
       while (true) {
-        final res = await dio.get('/api/purchases/', queryParameters: {
-          'page': page,
-          'limit': 100,
-        });
+        final res = await dio.get('/api/purchases/',
+            queryParameters: {'page': page, 'limit': 100},
+            options: kBackgroundOptions);
         final raw = res.data as Map<String, dynamic>;
         final items = (raw['data'] as List? ?? [])
             .map((e) => PurchaseModel.fromJson(e as Map<String, dynamic>))
@@ -190,7 +186,7 @@ class OfflineCacheService {
 
   Future<void> _syncWarehouses() async {
     try {
-      final res = await dio.get('/api/warehouses/');
+      final res = await dio.get('/api/warehouses/', options: kBackgroundOptions);
       final raw = res.data;
       final items = raw is Map
           ? (raw['data'] as List? ?? [])

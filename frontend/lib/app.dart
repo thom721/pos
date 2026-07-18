@@ -38,7 +38,8 @@ class _PosAppState extends ConsumerState<PosApp> {
   void initState() {
     super.initState();
     _authSub = onUnauthorized.listen((_) {
-      ref.read(authProvider.notifier).logout();
+      // Preserve cached user so offline recovery can restore the session
+      ref.read(authProvider.notifier).logoutDueToExpiry();
       _stopAutoSync();
     });
   }
@@ -73,7 +74,11 @@ class _PosAppState extends ConsumerState<PosApp> {
     final deviceId = prefs.getString(AppConstants.deviceIdKey);
     if (deviceId == null) return;
     try {
-      await dio.post('/api/warehouses/registers/heartbeat', data: {'device_id': deviceId});
+      await dio.post(
+        '/api/warehouses/registers/heartbeat',
+        data: {'device_id': deviceId},
+        options: kBackgroundOptions,
+      );
     } catch (_) {
       // Non-fatal: heartbeat failures don't interrupt the user
     }
@@ -87,7 +92,7 @@ class _PosAppState extends ConsumerState<PosApp> {
         debugPrint('[AutoSync] offline queue drained: $replayed opération(s) rejouée(s)');
       }
       // 2. Sync bidirectionnelle avec le cloud
-      await dio.post('/api/sync/run');
+      await dio.post('/api/sync/run', options: kBackgroundOptions);
     } catch (_) {
       // Erreurs de sync serveur non fatales
     }

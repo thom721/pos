@@ -116,8 +116,13 @@ class AuthInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     if (err.response?.statusCode == 401) {
-      await _deleteToken();
-      _unauthorizedCtrl.add(null);
+      // Background requests (sync, heartbeat, cache) carry this flag — skip
+      // auto-logout so a stale sync token doesn't disconnect the active user.
+      final skipLogout = err.requestOptions.extra['skipAutoLogout'] == true;
+      if (!skipLogout) {
+        await _deleteToken();
+        _unauthorizedCtrl.add(null);
+      }
     }
     handler.next(err);
   }
@@ -146,6 +151,11 @@ class OfflineInterceptor extends Interceptor {
 // ── Singleton Dio instance ────────────────────────────────────────────────────
 
 final dio = createDio();
+
+/// Options to pass to background API calls (sync, heartbeat, cache).
+/// A 401 on these requests will NOT trigger auto-logout — the user keeps
+/// their session and the error is silently discarded.
+final kBackgroundOptions = Options(extra: {'skipAutoLogout': true});
 
 // Helper to extract error message
 String extractErrorMessage(DioException e) {

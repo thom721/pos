@@ -125,31 +125,33 @@ class AuthRepository {
     return jsonDecode(raw) as Map<String, dynamic>;
   }
 
-  Future<void> logout() async {
+  /// [explicit] = true  → user pressed "Déconnexion" in the menu: clear all cache.
+  /// [explicit] = false → automatic logout due to token expiry / 401: preserve
+  ///   the cached user so the offline recovery flow can restore the session.
+  Future<void> logout({bool explicit = true}) async {
     final prefs = await _prefs;
     // Free the register slot on the server before clearing the local token.
-    // We read the token and device_id explicitly so this call never depends on
-    // AuthInterceptor timing, and we accept any status code to avoid 401 loops.
     final deviceId = prefs.getString(AppConstants.deviceIdKey);
     final token    = prefs.getString(AppConstants.tokenKey);
-    if (deviceId != null && token != null) {
+    if (explicit && deviceId != null && token != null) {
       try {
         await dio.post(
           '/api/warehouses/registers/logout',
           data: {'device_id': deviceId},
           options: Options(
             headers: {'Authorization': 'Bearer $token'},
-            validateStatus: (_) => true, // never throw — best-effort
+            validateStatus: (_) => true,
           ),
         );
-      } catch (_) {
-        // Offline or server unreachable — slot expires via heartbeat timeout
-      }
+      } catch (_) {}
     }
     await prefs.remove(AppConstants.tokenKey);
-    await prefs.remove(AppConstants.userKey);
-    await prefs.remove(AppConstants.tenantKey);
+    // Keep userKey + tenantKey for offline session recovery on non-explicit logouts
+    if (explicit) {
+      await prefs.remove(AppConstants.userKey);
+      await prefs.remove(AppConstants.tenantKey);
+      await prefs.remove(AppConstants.planWarningKey);
+    }
     await prefs.remove(AppConstants.connectionModeKey);
-    await prefs.remove(AppConstants.planWarningKey);
   }
 }
