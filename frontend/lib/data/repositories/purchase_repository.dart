@@ -33,20 +33,11 @@ class PurchaseRepository {
       if (status != null) 'status': status,
     };
 
+    // Android : source de vérité = SQLite
     if (_isAndroid) {
-      try {
-        final res = await dio.get('/api/purchases/', queryParameters: params);
-        final result = PaginatedResponse.fromJson(res.data, PurchaseModel.fromJson);
-        LocalDbService.instance.upsertPurchases(result.data).ignore();
-        return result;
-      } catch (e) {
-        if (_isOffline(e)) {
-          return LocalDbService.instance.getPurchases(
-            search: search, status: status, page: page, limit: limit,
-          );
-        }
-        rethrow;
-      }
+      return LocalDbService.instance.getPurchases(
+        search: search, status: status, page: page, limit: limit,
+      );
     }
 
     final res = await dio.get('/api/purchases/', queryParameters: params);

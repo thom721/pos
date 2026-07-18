@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/models/product_model.dart';
+import 'package:pos_connect/data/models/purchase_model.dart';
+import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/services/local_db_service.dart';
 
@@ -31,6 +33,8 @@ class OfflineCacheService {
         _syncCustomers(),
         _syncCategories(),
         _syncWarehouses(),
+        _syncSales(),
+        _syncPurchases(),
       ]);
     } catch (e) {
       debugPrint('[OfflineCache] syncAll error: $e');
@@ -123,6 +127,62 @@ class OfflineCacheService {
       debugPrint('[OfflineCache] categories: ${cats.length} mis en cache');
     } catch (e) {
       debugPrint('[OfflineCache] categories sync error: $e');
+    }
+  }
+
+  // ── Ventes ────────────────────────────────────────────────────────────────
+
+  Future<void> _syncSales() async {
+    try {
+      final all = <SaleModel>[];
+      int page = 1;
+      while (true) {
+        final res = await dio.get('/api/sales/', queryParameters: {
+          'page': page,
+          'limit': 100,
+        });
+        final raw = res.data as Map<String, dynamic>;
+        final items = (raw['data'] as List? ?? [])
+            .map((e) => SaleModel.fromJson(e as Map<String, dynamic>))
+            .toList();
+        all.addAll(items);
+        final totalPages = (raw['pages'] ?? raw['meta']?['pages'] ?? 1) as int;
+        if (page >= totalPages) break;
+        page++;
+      }
+      await LocalDbService.instance.upsertSales(all);
+      await LocalDbService.instance.setLastSynced('sales');
+      debugPrint('[OfflineCache] sales: ${all.length} mis en cache');
+    } catch (e) {
+      debugPrint('[OfflineCache] sales sync error: $e');
+    }
+  }
+
+  // ── Achats ────────────────────────────────────────────────────────────────
+
+  Future<void> _syncPurchases() async {
+    try {
+      final all = <PurchaseModel>[];
+      int page = 1;
+      while (true) {
+        final res = await dio.get('/api/purchases/', queryParameters: {
+          'page': page,
+          'limit': 100,
+        });
+        final raw = res.data as Map<String, dynamic>;
+        final items = (raw['data'] as List? ?? [])
+            .map((e) => PurchaseModel.fromJson(e as Map<String, dynamic>))
+            .toList();
+        all.addAll(items);
+        final totalPages = (raw['pages'] ?? raw['meta']?['pages'] ?? 1) as int;
+        if (page >= totalPages) break;
+        page++;
+      }
+      await LocalDbService.instance.upsertPurchases(all);
+      await LocalDbService.instance.setLastSynced('purchases');
+      debugPrint('[OfflineCache] purchases: ${all.length} mis en cache');
+    } catch (e) {
+      debugPrint('[OfflineCache] purchases sync error: $e');
     }
   }
 

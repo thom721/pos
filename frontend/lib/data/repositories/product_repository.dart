@@ -1,17 +1,12 @@
-import 'dart:typed_data';
+import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/services/local_db_service.dart';
 
-bool _isOffline(Object e) =>
-    e is DioException &&
-    (e.type == DioExceptionType.connectionError ||
-        e.type == DioExceptionType.connectionTimeout ||
-        e.type == DioExceptionType.sendTimeout ||
-        e.type == DioExceptionType.receiveTimeout ||
-        e.type == DioExceptionType.unknown);
+bool get _isAndroid => !kIsWeb && Platform.isAndroid;
 
 class ProductRepository {
   Future<PaginatedResponse<ProductModel>> getProducts({
@@ -20,43 +15,33 @@ class ProductRepository {
     String? search,
     String? categoryId,
   }) async {
+    // Android : source de vérité = SQLite
+    if (_isAndroid) {
+      return LocalDbService.instance.getProducts(
+        search: search, page: page, limit: limit, categoryId: categoryId,
+      );
+    }
+
     final params = <String, dynamic>{
       'page': page,
       'per_page': limit,
       if (search != null && search.isNotEmpty) 'search': search,
       if (categoryId != null) 'category_id': categoryId,
     };
-    try {
-      final res = await dio.get('/api/products/', queryParameters: params);
-      final result = PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
-      // Met à jour le cache en arrière-plan
-      LocalDbService.instance.upsertProducts(result.data).ignore();
-      return result;
-    } catch (e) {
-      if (_isOffline(e)) {
-        return LocalDbService.instance.getProducts(
-          search: search, page: page, limit: limit, categoryId: categoryId,
-        );
-      }
-      rethrow;
-    }
+    final res = await dio.get('/api/products/', queryParameters: params);
+    return PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
   }
 
   Future<List<CategoryModel>> getCategories() async {
-    try {
-      final res = await dio.get('/api/categories/');
-      final raw = res.data is Map
-          ? (res.data['data'] as List? ?? [])
-          : (res.data as List? ?? []);
-      final cats = raw
-          .map((e) => CategoryModel.fromJson(e as Map<String, dynamic>))
-          .toList();
-      LocalDbService.instance.upsertCategories(cats).ignore();
-      return cats;
-    } catch (e) {
-      if (_isOffline(e)) return LocalDbService.instance.getCategories();
-      rethrow;
-    }
+    if (_isAndroid) return LocalDbService.instance.getCategories();
+
+    final res = await dio.get('/api/categories/');
+    final raw = res.data is Map
+        ? (res.data['data'] as List? ?? [])
+        : (res.data as List? ?? []);
+    return raw
+        .map((e) => CategoryModel.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<CategoryModel> createCategory(Map<String, dynamic> data) async {
@@ -121,24 +106,18 @@ class ProductRepository {
     int page = 1,
     int perPage = 20,
   }) async {
+    if (_isAndroid) {
+      return LocalDbService.instance.searchForSale(
+        search: search, page: page, perPage: perPage,
+      );
+    }
+
     final params = <String, dynamic>{
       'page': page,
       'per_page': perPage,
       if (search != null && search.isNotEmpty) 'search': search,
     };
-    try {
-      final res =
-          await dio.get('/api/sales/products/search', queryParameters: params);
-      final result = PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
-      LocalDbService.instance.upsertProducts(result.data).ignore();
-      return result;
-    } catch (e) {
-      if (_isOffline(e)) {
-        return LocalDbService.instance.searchForSale(
-          search: search, page: page, perPage: perPage,
-        );
-      }
-      rethrow;
-    }
+    final res = await dio.get('/api/sales/products/search', queryParameters: params);
+    return PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/purchase_model.dart';
 import 'package:pos_connect/data/repositories/purchase_repository.dart';
+import 'package:pos_connect/providers/sync_provider.dart';
 
 final purchaseRepositoryProvider = Provider((ref) => PurchaseRepository());
 
@@ -28,6 +29,7 @@ final purchaseListParamsProvider =
 
 final purchasesProvider =
     FutureProvider.autoDispose<PaginatedResponse<PurchaseModel>>((ref) async {
+  ref.watch(syncEpochProvider); // rebuild après chaque sync SQLite
   final params = ref.watch(purchaseListParamsProvider);
   final repo = ref.read(purchaseRepositoryProvider);
   return repo.getPurchases(

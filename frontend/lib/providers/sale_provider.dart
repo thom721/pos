@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
+import 'package:pos_connect/providers/sync_provider.dart';
 
 final saleRepositoryProvider = Provider((ref) => SaleRepository());
 
@@ -28,6 +29,7 @@ final saleListParamsProvider =
 
 final salesProvider =
     FutureProvider.autoDispose<PaginatedResponse<SaleModel>>((ref) async {
+  ref.watch(syncEpochProvider); // rebuild après chaque sync SQLite
   final params = ref.watch(saleListParamsProvider);
   final repo = ref.read(saleRepositoryProvider);
   return repo.getSales(
@@ -48,12 +50,13 @@ final saleDetailProvider =
 final dashboardSalesProvider =
     FutureProvider.autoDispose.family<PaginatedResponse<SaleModel>, bool>(
         (ref, isCashier) async {
+  ref.watch(syncEpochProvider); // rebuild après chaque sync SQLite
   final repo = ref.read(saleRepositoryProvider);
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   return repo.getSales(
     limit: 50,
-    dateFrom: isCashier ? today : null,
-    dateTo: isCashier ? today.add(const Duration(days: 1)) : null,
+    dateFrom: today,
+    dateTo: today.add(const Duration(days: 1)),
   );
 });

@@ -107,3 +107,7 @@ final syncProvider =
 final pendingOfflineCountProvider = FutureProvider.autoDispose<int>(
   (_) => OfflineQueueService.instance.pendingCount(),
 );
+
+/// Incrémenté après chaque sync SQLite réussie (Android uniquement).
+/// Les providers Android le surveillent pour se rafraîchir automatiquement.
+final syncEpochProvider = StateProvider<int>((ref) => 0);

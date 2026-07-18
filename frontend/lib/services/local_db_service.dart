@@ -596,6 +596,8 @@ class LocalDbService {
     String? status,
     int page = 1,
     int limit = 15,
+    DateTime? dateFrom,
+    DateTime? dateTo,
   }) async {
     final db = _safeDb;
     if (db == null) {
@@ -614,6 +616,14 @@ class LocalDbService {
     if (status != null) {
       where.add('status = ?');
       args.add(status);
+    }
+    if (dateFrom != null) {
+      where.add('created_at >= ?');
+      args.add(dateFrom.toUtc().toIso8601String());
+    }
+    if (dateTo != null) {
+      where.add('created_at < ?');
+      args.add(dateTo.toUtc().toIso8601String());
     }
     final whereStr = where.isEmpty ? null : where.join(' AND ');
 

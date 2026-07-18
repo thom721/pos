@@ -27,6 +27,18 @@ class SaleRepository {
     DateTime? dateFrom,
     DateTime? dateTo,
   }) async {
+    // Android : source de vérité = SQLite (alimenté par OfflineCacheService)
+    if (_isAndroid) {
+      return LocalDbService.instance.getSales(
+        search: search,
+        status: status,
+        page: page,
+        limit: limit,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
+    }
+
     final params = <String, dynamic>{
       'page': page,
       'limit': limit,
@@ -35,25 +47,8 @@ class SaleRepository {
       if (dateFrom != null) 'date_from': dateFrom.toIso8601String(),
       if (dateTo != null) 'date_to': dateTo.toIso8601String(),
     };
-
-    try {
-      final res = await dio.get('/api/sales/', queryParameters: params);
-      final result = PaginatedResponse.fromJson(res.data, SaleModel.fromJson);
-      if (_isAndroid) {
-        LocalDbService.instance.upsertSales(result.data).ignore();
-      }
-      return result;
-    } catch (e) {
-      if (_isAndroid && _isOffline(e)) {
-        return LocalDbService.instance.getSales(
-          search: search,
-          status: status,
-          page: page,
-          limit: limit,
-        );
-      }
-      rethrow;
-    }
+    final res = await dio.get('/api/sales/', queryParameters: params);
+    return PaginatedResponse.fromJson(res.data, SaleModel.fromJson);
   }
 
   Future<SaleModel> getSale(String id) async {
