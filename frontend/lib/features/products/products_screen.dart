@@ -819,6 +819,7 @@ class _CategoryManagerDialogState extends State<_CategoryManagerDialog> {
 
   void _showForm(BuildContext context, [CategoryModel? cat]) {
     final nameCtrl = TextEditingController(text: cat?.name ?? '');
+    final descCtrl = TextEditingController(text: cat?.description ?? '');
     final messenger = ScaffoldMessenger.of(context);
     showDialog(
       context: context,
@@ -826,11 +827,24 @@ class _CategoryManagerDialogState extends State<_CategoryManagerDialog> {
         title: Text(cat == null ? 'Nouvelle catégorie' : 'Modifier'),
         content: SizedBox(
           width: double.maxFinite,
-          child: TextField(
-            controller: nameCtrl,
-            autofocus: true,
-            decoration:
-                const InputDecoration(labelText: 'Nom de la catégorie *'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Nom de la catégorie *'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: descCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Description (optionnel)',
+                  hintText: 'Ex : Boissons gazeuses et jus',
+                ),
+                maxLines: 2,
+              ),
+            ],
           ),
         ),
         actions: [
@@ -841,13 +855,18 @@ class _CategoryManagerDialogState extends State<_CategoryManagerDialog> {
             onPressed: () async {
               final name = nameCtrl.text.trim();
               if (name.isEmpty) return;
+              final desc = descCtrl.text.trim();
               Navigator.pop(ctx);
               try {
                 final repo = ProductRepository();
+                final payload = {
+                  'name': name,
+                  if (desc.isNotEmpty) 'description': desc,
+                };
                 if (cat == null) {
-                  await repo.createCategory({'name': name});
+                  await repo.createCategory(payload);
                 } else {
-                  await repo.updateCategory(cat.id, {'name': name});
+                  await repo.updateCategory(cat.id, payload);
                 }
                 _load();
               } catch (e) {

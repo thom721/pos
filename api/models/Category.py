@@ -11,6 +11,6 @@ class Category(UUIDBase):
     tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     name = Column(String(255), nullable=False)
-    cat_description = Column(String(255) , nullable=True)
+    description = Column(String(255), nullable=True)
 
     products = relationship("Product", back_populates="category")

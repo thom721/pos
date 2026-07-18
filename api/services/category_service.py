@@ -22,7 +22,7 @@ class CategoryService(TenantService):
                 if exists:
                     raise HTTPException(400, f"La catégorie « {payload['name']} » existe déjà")
 
-                category = Category(name=payload["name"])
+                category = Category(name=payload["name"], description=payload.get("description"))
                 self._set_tenant(category)
                 self.db.add(category)
                 categories.append(category)
