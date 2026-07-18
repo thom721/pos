@@ -60,7 +60,7 @@ class ProductModel {
             ? CategoryModel.fromJson(json['category'])
             : null,
         stock: json['stock'] != null
-            ? int.tryParse(json['stock'].toString())
+            ? (json['stock'] as num?)?.toInt()
             : null,
         imageUrl: json['image_url']?.toString(),
         isActive: json['is_active'] != false,

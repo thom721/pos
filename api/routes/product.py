@@ -2,7 +2,7 @@ import uuid
 import os
 import shutil
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional, Union
 from pydantic import BaseModel
 from api.services.product_service import ProductService
@@ -109,7 +109,12 @@ def adjust_stock(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
 ):
-    product = db.get(Product, product_id)
+    product = (
+        db.query(Product)
+        .options(selectinload(Product.stock_movements))
+        .filter(Product.id == product_id)
+        .first()
+    )
     if not product or product.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=404, detail="Product not found")
 

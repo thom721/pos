@@ -57,7 +57,12 @@ class ProductService(TenantService):
         return products[0] if len(products) == 1 else products
 
     def get(self, product_id: str) -> Optional[Product]:
-        return self._q(Product).filter(Product.id == product_id).first()
+        return (
+            self._q(Product)
+            .options(selectinload(Product.stock_movements))
+            .filter(Product.id == product_id)
+            .first()
+        )
 
     def list(self, page: int = 1, per_page: int = 5, search: Optional[str] = None):
         # selectinload pour les collections (évite le problème joinedload + pagination)

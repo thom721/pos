@@ -22,6 +22,7 @@ class ProductCreate(ProductBase):
 class ProductRead(ProductBase):
     id: str
     image_url: Optional[str] = None
+    stock: Optional[float] = None
     category: Optional[CategoryRead] = None
 
     class Config:
