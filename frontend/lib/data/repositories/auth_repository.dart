@@ -127,17 +127,23 @@ class AuthRepository {
 
   Future<void> logout() async {
     final prefs = await _prefs;
-    // Tell the server to free the register slot before clearing the local token,
-    // so the next device can log in immediately without waiting for the 5-min heartbeat timeout.
+    // Free the register slot on the server before clearing the local token.
+    // We read the token and device_id explicitly so this call never depends on
+    // AuthInterceptor timing, and we accept any status code to avoid 401 loops.
     final deviceId = prefs.getString(AppConstants.deviceIdKey);
-    if (deviceId != null) {
+    final token    = prefs.getString(AppConstants.tokenKey);
+    if (deviceId != null && token != null) {
       try {
         await dio.post(
           '/api/warehouses/registers/logout',
           data: {'device_id': deviceId},
+          options: Options(
+            headers: {'Authorization': 'Bearer $token'},
+            validateStatus: (_) => true, // never throw — best-effort
+          ),
         );
       } catch (_) {
-        // Best-effort — slot will expire via heartbeat timeout if offline
+        // Offline or server unreachable — slot expires via heartbeat timeout
       }
     }
     await prefs.remove(AppConstants.tokenKey);
