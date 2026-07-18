@@ -1,8 +1,8 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from api.database import get_db
@@ -76,56 +76,75 @@ def _compute_reconciliation(db: Session, session: CashierSession, closed_at: dat
     }
 
 
+_SLOT_IDLE_MINUTES = 5   # slot considered free after 5 min without heartbeat
+
+
 def _get_or_create_register(
     db: Session, tenant_id: str, device_id: str, name: str, force: bool = False
 ) -> PosRegister | JSONResponse:
+    tenant = db.get(Tenant, tenant_id)
+
+    # 1. Cet appareil possède déjà une caisse → réutiliser
     reg = db.query(PosRegister).filter_by(tenant_id=tenant_id, device_id=device_id).first()
-    if reg and not reg.is_active:
-        return JSONResponse(status_code=403, content={"detail": "caisse_disabled"})
-    if not reg:
-        # Only check limit when actually creating a new register
-        if not force:
-            tenant = db.get(Tenant, tenant_id)
-            if tenant:
-                current_count = db.query(PosRegister).filter_by(
-                    tenant_id=tenant_id, is_active=True
-                ).count()
-                if current_count >= tenant.max_caisses:
-                    cfg = db.query(PlatformConfig).first()
-                    price_htg = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
-                    price_usd = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
-                    return JSONResponse(
-                        status_code=402,
-                        content={
-                            "detail":   "limit_exceeded",
-                            "resource": "caisse",
-                            "current":  current_count,
-                            "max":      tenant.max_caisses,
-                            "price_htg": price_htg,
-                            "price_usd": price_usd,
-                        },
-                    )
-        from api.core.config import settings as _cfg
-        from api.models.Warehouse import Warehouse as _WH
-        wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
-        if wh_id and not db.query(_WH.id).filter_by(id=wh_id, tenant_id=tenant_id).first():
-            wh_id = None
-        reg = PosRegister(tenant_id=tenant_id, device_id=device_id, name=name, warehouse_id=wh_id)
-        db.add(reg)
+    if reg:
+        if not reg.is_active:
+            return JSONResponse(status_code=403, content={"detail": "caisse_disabled"})
+        return reg
+
+    # 2. Chercher une caisse libre (sans session active)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=_SLOT_IDLE_MINUTES)
+    free_slot = db.query(PosRegister).filter(
+        PosRegister.tenant_id == tenant_id,
+        PosRegister.is_active == True,  # noqa: E712
+        or_(PosRegister.last_seen.is_(None), PosRegister.last_seen < cutoff),
+    ).order_by(
+        PosRegister.last_seen.is_(None).desc(),
+        PosRegister.last_seen.asc(),
+    ).first()
+
+    if free_slot:
+        free_slot.device_id = device_id
         db.flush()
+        return free_slot
 
-        # If this creation exceeds the plan limit (force=True path), record the extra
-        if force:
-            tenant = db.get(Tenant, tenant_id)
-            if tenant:
-                existing_count = db.query(PosRegister).filter(
-                    PosRegister.tenant_id == tenant_id,
-                    PosRegister.is_active == True,  # noqa: E712
-                    PosRegister.id != reg.id,
-                ).count()
-                if existing_count >= tenant.max_caisses:
-                    _billing.record_extra(db, tenant_id, "caisse", reg.id)
+    # 3. Aucun slot libre — vérifier la limite
+    active_count = db.query(PosRegister).filter_by(
+        tenant_id=tenant_id, is_active=True
+    ).count()
 
+    if active_count == 0:
+        return JSONResponse(status_code=409, content={
+            "detail":  "no_registers",
+            "message": "Aucune caisse configurée. Contactez l'administrateur.",
+        })
+
+    if not force:
+        cfg = db.query(PlatformConfig).first()
+        price_htg = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
+        price_usd = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
+        return JSONResponse(
+            status_code=402,
+            content={
+                "detail":    "limit_exceeded",
+                "resource":  "caisse",
+                "current":   active_count,
+                "max":       tenant.max_caisses if tenant else active_count,
+                "price_htg": price_htg,
+                "price_usd": price_usd,
+            },
+        )
+
+    # 4. force=True : admin a confirmé → créer une caisse supplémentaire
+    from api.core.config import settings as _cfg
+    from api.models.Warehouse import Warehouse as _WH
+    wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
+    if wh_id and not db.query(_WH.id).filter_by(id=wh_id, tenant_id=tenant_id).first():
+        wh_id = None
+    reg = PosRegister(tenant_id=tenant_id, device_id=device_id, name=name, warehouse_id=wh_id)
+    db.add(reg)
+    db.flush()
+    if tenant:
+        _billing.record_extra(db, tenant_id, "caisse", reg.id)
     return reg
 
 
@@ -236,6 +255,50 @@ def open_session(
     }
 
 
+@router.get("/open-sessions")
+def list_open_sessions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.SESSIONS_READ)),
+):
+    if not any(r in (current_user.roles or []) for r in ("admin", "manager")):
+        raise HTTPException(403, "Accès réservé aux administrateurs")
+
+    sessions = (
+        db.query(CashierSession)
+        .filter_by(tenant_id=current_user.tenant_id, status="open")
+        .order_by(CashierSession.opened_at)
+        .all()
+    )
+
+    user_cache: dict[str, str] = {}
+
+    def _name(uid: str) -> str:
+        if uid not in user_cache:
+            u = db.get(User, uid)
+            user_cache[uid] = f"{u.fname} {u.lname}".strip() if u else uid
+        return user_cache[uid]
+
+    reg_cache: dict[str, str] = {}
+
+    def _reg_name(rid: str) -> str:
+        if rid not in reg_cache:
+            r = db.get(PosRegister, rid)
+            reg_cache[rid] = r.name if r else rid
+        return reg_cache[rid]
+
+    return [
+        {
+            "id":               s.id,
+            "cashier_id":       s.cashier_id,
+            "cashier_name":     _name(s.cashier_id),
+            "register_name":    _reg_name(s.register_id),
+            "opening_balance":  float(s.opening_balance or 0),
+            "opened_at":        s.opened_at.isoformat() if s.opened_at else None,
+        }
+        for s in sessions
+    ]
+
+
 @router.get("/{session_id}/summary")
 def session_summary(
     session_id: str,
@@ -318,6 +381,60 @@ def close_session(
         "expected_closing_balance": float(session.expected_closing_balance or 0),
         "cash_difference":          float(session.cash_difference or 0),
     }
+
+
+@router.post("/{session_id}/force-close")
+def force_close_session(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.SESSIONS_CLOSE)),
+):
+    if not any(r in (current_user.roles or []) for r in ("admin", "manager")):
+        raise HTTPException(403, "Accès réservé aux administrateurs")
+
+    session = db.get(CashierSession, session_id)
+    if not session or session.tenant_id != current_user.tenant_id:
+        raise HTTPException(404, "Session introuvable")
+    if session.status != "open":
+        raise HTTPException(400, "Session déjà fermée")
+
+    closed_at = datetime.now(timezone.utc)
+    recon     = _compute_reconciliation(db, session, closed_at)
+
+    session.closed_at                = closed_at
+    session.closing_balance          = 0
+    session.status                   = "closed"
+    session.total_cash_sales         = recon["total_cash_sales"]
+    session.total_card_sales         = recon["total_card_sales"]
+    session.total_mobile_sales       = recon["total_mobile_sales"]
+    session.total_bank_sales         = recon["total_bank_sales"]
+    session.total_refunds_cash       = recon["total_refunds_cash"]
+    session.expected_closing_balance = recon["expected_closing_balance"]
+    session.cash_difference          = 0 - recon["expected_closing_balance"]
+
+    # Free the register slot — clears JWT sid so the device is kicked out
+    reg = db.get(PosRegister, session.register_id)
+    if reg:
+        reg.session_token = None
+
+    forced_by = f"{current_user.fname} {current_user.lname}".strip() or current_user.username
+
+    audit_service.log(
+        db,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        action="FORCE_CLOSE",
+        resource_type="cashier_session",
+        resource_id=session.id,
+        detail={
+            "forced_by":           forced_by,
+            "forced_at":           closed_at.isoformat(),
+            "original_cashier_id": session.cashier_id,
+        },
+    )
+
+    db.commit()
+    return {"message": "Session fermée de force", "closed_at": closed_at.isoformat()}
 
 
 @router.get("/")

@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/providers/auth_provider.dart';
 
-// ── Provider ──────────────────────────────────────────────────────────────────
+// ── Providers ─────────────────────────────────────────────────────────────────
 
 class _AuditParams {
   final int page;
@@ -35,6 +36,14 @@ final _auditProvider =
   },
 );
 
+final _openSessionsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>(
+  (ref) async {
+    final res = await dio.get('/api/sessions/open-sessions');
+    return (res.data as List).cast<Map<String, dynamic>>();
+  },
+);
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 class AuditScreen extends ConsumerStatefulWidget {
@@ -54,7 +63,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
   ];
 
   static const _actions = [
-    'CREATE', 'UPDATE', 'DELETE', 'CANCEL', 'OPEN', 'CLOSE', 'LOGIN',
+    'CREATE', 'UPDATE', 'DELETE', 'CANCEL', 'OPEN', 'CLOSE', 'FORCE_CLOSE', 'LOGIN',
   ];
 
   void _update({String? resourceType, String? action, int page = 1}) {
@@ -67,6 +76,40 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = ref.watch(authProvider).user;
+    final isAdmin = user?.isAdmin == true || user?.hasRole('manager') == true;
+
+    if (!isAdmin) {
+      return _buildJournal(context);
+    }
+
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          Container(
+            color: AppColors.surface,
+            child: const TabBar(
+              tabs: [
+                Tab(text: 'Journal'),
+                Tab(text: 'Sessions actives'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildJournal(context),
+                const _OpenSessionsTab(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildJournal(BuildContext context) {
     final params = ref.watch(_auditParamsProvider);
     final auditAsync = ref.watch(_auditProvider(params));
 
@@ -237,18 +280,207 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
       };
 
   String _labelAction(String a) => switch (a) {
-        'CREATE' => 'Création',
-        'UPDATE' => 'Modification',
-        'DELETE' => 'Suppression',
-        'CANCEL' => 'Annulation',
-        'OPEN'   => 'Ouverture',
-        'CLOSE'  => 'Fermeture',
-        'LOGIN'  => 'Connexion',
-        _        => a,
+        'CREATE'      => 'Création',
+        'UPDATE'      => 'Modification',
+        'DELETE'      => 'Suppression',
+        'CANCEL'      => 'Annulation',
+        'OPEN'        => 'Ouverture',
+        'CLOSE'       => 'Fermeture',
+        'FORCE_CLOSE' => 'Fermeture forcée',
+        'LOGIN'       => 'Connexion',
+        _             => a,
       };
 }
 
-// ── Single row ────────────────────────────────────────────────────────────────
+// ── Open sessions tab (admin only) ────────────────────────────────────────────
+
+class _OpenSessionsTab extends ConsumerStatefulWidget {
+  const _OpenSessionsTab();
+
+  @override
+  ConsumerState<_OpenSessionsTab> createState() => _OpenSessionsTabState();
+}
+
+class _OpenSessionsTabState extends ConsumerState<_OpenSessionsTab> {
+  final Set<String> _closing = {};
+
+  Future<void> _forceClose(Map<String, dynamic> session) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Fermer la session ?'),
+        content: Text(
+          'Fermer la session de ${session['cashier_name']} '
+          'sur ${session['register_name']} ?\n\n'
+          'Le caissier sera déconnecté immédiatement.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Fermer de force'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final id = session['id'] as String;
+    setState(() => _closing.add(id));
+
+    try {
+      await dio.post('/api/sessions/$id/force-close');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Session fermée')),
+      );
+      // Refresh both the sessions list and the audit journal
+      ref.invalidate(_openSessionsProvider);
+      ref.invalidate(_auditProvider);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur : $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _closing.remove(id));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sessionsAsync = ref.watch(_openSessionsProvider);
+    final dateFmt = DateFormat('dd/MM/yyyy HH:mm', 'fr');
+
+    return sessionsAsync.when(
+      data: (sessions) {
+        if (sessions.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.point_of_sale_rounded,
+                    size: 48, color: AppColors.textSecondary),
+                const SizedBox(height: 12),
+                const Text('Aucune session ouverte',
+                    style: TextStyle(color: AppColors.textSecondary)),
+              ],
+            ),
+          );
+        }
+
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  Text(
+                    '${sessions.length} session${sessions.length > 1 ? 's' : ''} ouverte${sessions.length > 1 ? 's' : ''}',
+                    style: const TextStyle(
+                        fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                    tooltip: 'Actualiser',
+                    onPressed: () => ref.invalidate(_openSessionsProvider),
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                itemCount: sessions.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                itemBuilder: (_, i) {
+                  final s = sessions[i];
+                  final id = s['id'] as String;
+                  final openedAt = s['opened_at'] != null
+                      ? DateTime.tryParse(s['opened_at'].toString())?.toLocal()
+                      : null;
+                  final isClosing = _closing.contains(id);
+
+                  return ListTile(
+                    dense: true,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    leading: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.lock_open_rounded,
+                          color: AppColors.accent, size: 18),
+                    ),
+                    title: Text(
+                      s['cashier_name'] as String? ?? '—',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          s['register_name'] as String? ?? '—',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        if (openedAt != null)
+                          Text(
+                            'Ouvert le ${dateFmt.format(openedAt)}',
+                            style: const TextStyle(
+                                fontSize: 10, color: AppColors.textSecondary),
+                          ),
+                      ],
+                    ),
+                    trailing: isClosing
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : TextButton(
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.error,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              textStyle: const TextStyle(fontSize: 12),
+                            ),
+                            onPressed: () => _forceClose(s),
+                            child: const Text('Fermer'),
+                          ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Text('Erreur : $e',
+            style: const TextStyle(color: AppColors.error)),
+      ),
+    );
+  }
+}
+
+// ── Single audit row ──────────────────────────────────────────────────────────
 
 class _AuditRow extends StatelessWidget {
   final Map<String, dynamic> entry;
@@ -316,35 +548,38 @@ class _AuditRow extends StatelessWidget {
   }
 
   Color _actionColor(String a) => switch (a) {
-        'CREATE' => AppColors.accent,
-        'UPDATE' => AppColors.info,
-        'DELETE' => AppColors.error,
-        'CANCEL' => AppColors.error,
-        'OPEN'   => AppColors.accent,
-        'CLOSE'  => AppColors.warning,
-        _        => AppColors.textSecondary,
+        'CREATE'      => AppColors.accent,
+        'UPDATE'      => AppColors.info,
+        'DELETE'      => AppColors.error,
+        'CANCEL'      => AppColors.error,
+        'OPEN'        => AppColors.accent,
+        'CLOSE'       => AppColors.warning,
+        'FORCE_CLOSE' => AppColors.error,
+        _             => AppColors.textSecondary,
       };
 
   IconData _actionIcon(String a) => switch (a) {
-        'CREATE' => Icons.add_circle_outline_rounded,
-        'UPDATE' => Icons.edit_rounded,
-        'DELETE' => Icons.delete_outline_rounded,
-        'CANCEL' => Icons.cancel_outlined,
-        'OPEN'   => Icons.lock_open_rounded,
-        'CLOSE'  => Icons.lock_rounded,
-        'LOGIN'  => Icons.login_rounded,
-        _        => Icons.info_outline_rounded,
+        'CREATE'      => Icons.add_circle_outline_rounded,
+        'UPDATE'      => Icons.edit_rounded,
+        'DELETE'      => Icons.delete_outline_rounded,
+        'CANCEL'      => Icons.cancel_outlined,
+        'OPEN'        => Icons.lock_open_rounded,
+        'CLOSE'       => Icons.lock_rounded,
+        'FORCE_CLOSE' => Icons.lock_person_rounded,
+        'LOGIN'       => Icons.login_rounded,
+        _             => Icons.info_outline_rounded,
       };
 
   String _labelAction(String a) => switch (a) {
-        'CREATE' => 'Création',
-        'UPDATE' => 'Modification',
-        'DELETE' => 'Suppression',
-        'CANCEL' => 'Annulation',
-        'OPEN'   => 'Ouverture',
-        'CLOSE'  => 'Fermeture',
-        'LOGIN'  => 'Connexion',
-        _        => a,
+        'CREATE'      => 'Création',
+        'UPDATE'      => 'Modification',
+        'DELETE'      => 'Suppression',
+        'CANCEL'      => 'Annulation',
+        'OPEN'        => 'Ouverture',
+        'CLOSE'       => 'Fermeture',
+        'FORCE_CLOSE' => 'Fermeture forcée',
+        'LOGIN'       => 'Connexion',
+        _             => a,
       };
 
   String _labelResource(String t) => switch (t) {
