@@ -1080,6 +1080,40 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     );
   }
 
+  Widget _floatBtn({
+    required VoidCallback onTap,
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        border: Border.all(color: color.withValues(alpha: 0.30)),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 13, color: color),
+              const SizedBox(width: 3),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: color,
+                      fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pos = ref.watch(posProvider);
@@ -1228,74 +1262,25 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
             ),
           ),
 
-        // ── Header ────────────────────────────────────────────────────
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: AppColors.divider)),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                isEdit
-                    ? Icons.edit_rounded
-                    : Icons.shopping_cart_rounded,
-                color: isEdit ? AppColors.info : AppColors.primary,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                isEdit
-                    ? 'Articles (${pos.items.length})'
-                    : 'Panier (${pos.items.length} article${pos.items.length != 1 ? 's' : ''})',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700, fontSize: 15),
-              ),
-              const Spacer(),
-              // Drafts indicator — hidden in edit mode
-              if (!isEdit && drafts.isNotEmpty)
-                Tooltip(
-                  message: 'Ventes en attente',
-                  child: InkWell(
-                    onTap: _showDrafts,
-                    borderRadius: BorderRadius.circular(6),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 4),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Badge(
-                            label: Text('${drafts.length}',
-                                style: const TextStyle(fontSize: 9)),
-                            child: const Icon(
-                                Icons.pause_circle_outline_rounded,
-                                size: 18,
-                                color: AppColors.warning),
-                          ),
-                          const SizedBox(width: 4),
-                          const Text('En attente',
-                              style: TextStyle(
-                                  fontSize: 11, color: AppColors.warning)),
-                        ],
-                      ),
-                    ),
+        // ── Header (edit mode only — the tab shows the cart count) ───
+        if (isEdit)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: AppColors.divider)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.edit_rounded,
+                    color: AppColors.info, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Articles (${pos.items.length})',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                 ),
-              if (pos.items.isNotEmpty) ...[
-                const SizedBox(width: 4),
-                if (!isEdit)
-                  TextButton(
-                    onPressed: _saveAsDraft,
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.primary,
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(0, 0),
-                    ),
-                    child: const Text('Attendre',
-                        style: TextStyle(fontSize: 12)),
-                  ),
-                if (!isEdit) const SizedBox(width: 4),
                 TextButton(
                   onPressed: notifier.clearCart,
                   style: TextButton.styleFrom(
@@ -1303,54 +1288,91 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                     padding: EdgeInsets.zero,
                     minimumSize: const Size(0, 0),
                   ),
-                  child: Text(isEdit ? 'Annuler' : 'Vider',
-                      style: const TextStyle(fontSize: 13)),
+                  child: const Text('Annuler',
+                      style: TextStyle(fontSize: 13)),
                 ),
               ],
-            ],
+            ),
           ),
-        ),
 
-        // ── Cart items ─────────────────────────────────────────────────
+        // ── Cart items — actions float top-right ───────────────────────
         Expanded(
-          child: pos.items.isEmpty
-              ? LayoutBuilder(
-                  builder: (context, c) {
-                    if (c.maxHeight < 40) return const SizedBox.shrink();
-                    final compact = c.maxHeight < 110;
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.add_shopping_cart_rounded,
-                              size: compact ? 24 : 48,
-                              color: AppColors.textSecondary),
-                          if (!compact) ...[
-                            const SizedBox(height: 12),
-                            Text(
-                              'Cliquez sur un produit\npour l\'ajouter',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ],
+          child: Stack(
+            children: [
+              pos.items.isEmpty
+                  ? LayoutBuilder(
+                      builder: (context, c) {
+                        if (c.maxHeight < 40) return const SizedBox.shrink();
+                        final compact = c.maxHeight < 110;
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.add_shopping_cart_rounded,
+                                  size: compact ? 24 : 48,
+                                  color: AppColors.textSecondary),
+                              if (!compact) ...[
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Cliquez sur un produit\npour l\'ajouter',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(0, 38, 0, 8),
+                      itemCount: pos.items.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, i) => _CartItemTile(
+                        item: pos.items[i],
+                        notifier: notifier,
                       ),
-                    );
-                  },
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: pos.items.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (context, i) => _CartItemTile(
-                    item: pos.items[i],
-                    notifier: notifier,
+                    ),
+              // Floating action buttons (normal mode only)
+              if (!isEdit)
+                Positioned(
+                  top: 4,
+                  right: 6,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (drafts.isNotEmpty)
+                        _floatBtn(
+                          onTap: _showDrafts,
+                          icon: Icons.pause_circle_outline_rounded,
+                          label: '${drafts.length} En attente',
+                          color: AppColors.warning,
+                        ),
+                      if (pos.items.isNotEmpty) ...[
+                        if (drafts.isNotEmpty) const SizedBox(width: 4),
+                        _floatBtn(
+                          onTap: _saveAsDraft,
+                          icon: Icons.pause_rounded,
+                          label: 'Attendre',
+                          color: AppColors.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        _floatBtn(
+                          onTap: notifier.clearCart,
+                          icon: Icons.delete_outline_rounded,
+                          label: 'Vider',
+                          color: AppColors.error,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
+            ],
+          ),
         ),
 
         // ── Payment summary — scrollable si trop grand sur petit écran ──

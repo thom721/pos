@@ -58,8 +58,14 @@ def compute_prorated(
     breakdown = []
 
     for extra in extras:
-        active_from = max(extra.started_at, cycle_start)
-        active_to   = min(extra.ended_at or cycle_end, cycle_end)
+        started = extra.started_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        ended = extra.ended_at
+        if ended is not None and ended.tzinfo is None:
+            ended = ended.replace(tzinfo=timezone.utc)
+        active_from = max(started, cycle_start)
+        active_to   = min(ended or cycle_end, cycle_end)
         active_days = max(0, (active_to - active_from).days)
         fraction    = active_days / cycle_days
 
