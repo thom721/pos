@@ -216,9 +216,9 @@ print(get_password_hash('1yqEtzTchOW0yE'))
 cd /Users/kikipllc/development/pos_api/frontend
 flutter build web --release \
   --dart-define=SERVER_SCHEME=https \
-  --dart-define=SERVER_IP=post.institutionlemignon.com \
+  --dart-define=SERVER_IP=pos.infini-software.cloud \
   --dart-define=SERVER_PORT=443 \
-  --dart-define=CLOUD_URL=https://post.institutionlemignon.com
+  --dart-define=CLOUD_URL=https://pos.infini-software.cloud
 
 rm -rf ~/posconnect/  
 rm -rf ~/.local/share/pos_connect/
@@ -234,7 +234,7 @@ secret-tool clear service pos_connect account access_token 2>/dev/null
 
 mkdir -p ~/.local/share/pos_connect
 cat > ~/.local/share/pos_connect/shared_preferences.json << 'EOF'
-{"flutter.server_url":"https://post.institutionlemignon.com"}
+{"flutter.server_url":"https://pos.infini-software.cloud"}
 EOF
 
 sudo apt install libsecret-tools -y
@@ -246,11 +246,47 @@ secret-tool clear service pos_connect account access_token
 
 mkdir -p ~/.local/share/com.kikipllc.posconnect
 cp ~/.local/share/pos_connect/shared_preferences.json ~/.local/share/com.kikipllc.posconnect/ 2>/dev/null || cat > ~/.local/share/com.kikipllc.posconnect/shared_preferences.json << 'EOF'
-{"flutter.server_url":"https://post.institutionlemignon.com"}
+{"flutter.server_url":"https://pos.infini-software.cloud"}
 EOF
 
 # Aussi dans pos_connect au cas où
 cat > ~/.local/share/pos_connect/shared_preferences.json << 'EOF'
-{"flutter.server_url":"https://post.institutionlemignon.com"}
+{"flutter.server_url":"https://pos.infini-software.cloud"}
 EOF
 
+UPDATE sync_state SET last_push_at = NULL, records_pushed = 0;
+
+
+python3 -c "from pwdlib import PasswordHash; print(PasswordHash.recommended().hash('@#Janvier'))"
+
+
+Voici les commandes à exécuter sur le serveur pour installer git et configurer un sparse-checkout (clone partiel — seulement api/, requirements.txt, server_main.py, service_wrapper.py, sans le frontend Flutter qui est lourd).
+
+Étape 1 — Installer git :
+
+
+apt-get update && apt-get install -y git
+Étape 2 — Initialiser le repo avec sparse-checkout dans /opt/post/fastapi/ :
+
+
+cd /opt/post/fastapi
+
+# Initialiser git et pointer vers ton repo GitHub
+git init
+git remote add origin https://github.com/thom721/pos.git
+
+# Activer sparse-checkout (ne télécharger que les dossiers nécessaires)
+git sparse-checkout init --cone
+git sparse-checkout set api requirements.txt server_main.py service_wrapper.py
+
+# Télécharger uniquement ces fichiers depuis main
+git pull origin main
+Étape 3 — Vérifier que les bons fichiers sont là :
+
+
+ls -la
+# Devrait montrer : api/  requirements.txt  server_main.py  service_wrapper.py
+Pour les prochaines mises à jour, une seule commande :
+
+
+cd /opt/post/fastapi && git pull origin main

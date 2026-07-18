@@ -1,0 +1,68 @@
+pos_api/
+├── certificat/
+│   ├── openssl.cnf      ← config SAN (infini-post.local + localhost + 127.0.0.1)
+│   ├── generate.sh      ← génère server.crt et server.key
+│   ├── setup-macos.sh   ← confiance Keychain + /etc/hosts
+│   ├── nginx.conf       ← reverse proxy HTTPS → FastAPI
+│   ├── server.crt       ← (déjà généré, gitignored)
+│   └── server.key       ← (déjà généré, gitignored)
+└── docker-compose.yml   ← nginx service ajouté
+
+
+
+
+
+# 1. Faire confiance au certificat dans macOS
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain \
+  certificat/server.crt
+
+# 2. Ajouter le hostname
+echo "127.0.0.1	infini-post.local" | sudo tee -a /etc/hosts
+
+# 3. Démarrer les services
+docker compose up -d
+
+# 4. Tester
+curl https://infini-post.local/api/public/config
+
+
+Windows : ouvre "Gestionnaire d'identification" (Credential Manager) → Identifiants Windows → cherche git:https://github.com → supprime-le. Au prochain push, Git te demandera le nouveau token.
+Mac : ouvre "Trousseau d'accès" (Keychain Access) → cherche github.com → supprime l'entrée.
+Linux : git credential-cache exit ou modifie le fichier ~/.git-credentials si tu utilises credential.helper store.
+
+
+# Lancer en développement (ce que vous faites maintenant)
+flutter run -d macos
+
+# Build production web (à déployer dans web/ du serveur)
+flutter build web --release \
+  --dart-define=SERVER_SCHEME=https \
+  --dart-define=SERVER_IP=pos.infini-software.cloud \
+  --dart-define=SERVER_PORT=443
+
+# Build production Windows (installeur .exe)
+flutter build windows --release
+
+
+Non, flutter run c'est pour le développement (debug). Voici la différence :
+
+Commande	Usage	Output
+flutter run	Dev — reload à chaud, debug	Selon l'appareil détecté
+flutter run -d chrome	Dev web dans Chrome	—
+flutter run -d macos	Dev macOS desktop	—
+flutter run -d windows	Dev Windows desktop	—
+flutter build web	Production web	build/web/
+flutter build macos	Production macOS	build/macos/
+flutter build windows	Production Windows	build/windows/
+flutter build apk	Production Android	build/app-release.apk
+Pour votre projet POS Connect :
+
+
+git pull && cd .. && docker compose down && docker compose up -d --build
+
+cd /Users/kikipllc/development/pos_api/frontend                                        
+flutter build web --release --dart-define=FLUTTER_WEB_USE_SKIA=false
+
+cd /Users/kikipllc/development/pos_api/frontend
+scp -r build/web/* root@82.29.153.24:/var/www/pos.infini-software.cloud/

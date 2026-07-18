@@ -66,7 +66,7 @@ services:
       # ── CORS — origines autorisées pour le web ─────────────────────────────
       # Plusieurs origines séparées par virgule.
       # Pour autoriser TOUT (dev local seulement) : "*"
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://post.institutionlemignon.com}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://pos.infini-software.cloud}
 
       # ── Flutter web SPA (servi par FastAPI si le dossier "web/" existe) ────
       WEB_DIR: web

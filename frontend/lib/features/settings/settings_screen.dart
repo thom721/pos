@@ -1332,7 +1332,7 @@ class _BillingUrlSectionState extends State<_BillingUrlSection> {
                   keyboardType: TextInputType.url,
                   decoration: const InputDecoration(
                     labelText: 'URL du serveur de facturation',
-                    hintText: 'https://post.institutionlemignon.com',
+                    hintText: 'https://pos.infini-software.cloud',
                     prefixIcon: Icon(Icons.cloud_outlined),
                     isDense: true,
                   ),
