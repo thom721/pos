@@ -66,6 +66,8 @@ class OfflineCacheService {
         page++;
       }
       await LocalDbService.instance.upsertProducts(all);
+      // Supprimer les produits supprimés côté serveur
+      await LocalDbService.instance.deleteStaleProducts(all.map((p) => p.id).toList());
       await LocalDbService.instance.setLastSynced('products');
       debugPrint('[OfflineCache] products: ${all.length} mis en cache');
     } catch (e) {
@@ -103,6 +105,7 @@ class OfflineCacheService {
         page++;
       }
       await LocalDbService.instance.upsertCustomers(all);
+      await LocalDbService.instance.deleteStaleCustomers(all.map((c) => c.id).toList());
       await LocalDbService.instance.setLastSynced('customers');
       debugPrint('[OfflineCache] customers: ${all.length} mis en cache');
     } catch (e) {
@@ -123,6 +126,7 @@ class OfflineCacheService {
           .map((e) => CategoryModel.fromJson(e as Map<String, dynamic>))
           .toList();
       await LocalDbService.instance.upsertCategories(cats);
+      await LocalDbService.instance.deleteStaleCategories(cats.map((c) => c.id).toList());
       await LocalDbService.instance.setLastSynced('categories');
       debugPrint('[OfflineCache] categories: ${cats.length} mis en cache');
     } catch (e) {

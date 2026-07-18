@@ -285,6 +285,15 @@ class LocalDbService {
     await batch.commit(noResult: true);
   }
 
+  /// Supprime les produits locaux dont l'ID n'est plus présent côté serveur.
+  Future<void> deleteStaleProducts(List<String> serverIds) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final placeholders = List.filled(serverIds.length, '?').join(',');
+    await db.delete('products',
+        where: 'id NOT IN ($placeholders)', whereArgs: serverIds);
+  }
+
   Future<PaginatedResponse<ProductModel>> getProducts({
     String? search,
     int page = 1,
@@ -436,6 +445,14 @@ class LocalDbService {
     await batch.commit(noResult: true);
   }
 
+  Future<void> deleteStaleCustomers(List<String> serverIds) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final placeholders = List.filled(serverIds.length, '?').join(',');
+    await db.delete('customers',
+        where: 'id NOT IN ($placeholders)', whereArgs: serverIds);
+  }
+
   Future<PaginatedResponse<CustomerModel>> getCustomers({
     String? search,
     int page = 1,
@@ -508,6 +525,14 @@ class LocalDbService {
       );
     }
     await batch.commit(noResult: true);
+  }
+
+  Future<void> deleteStaleCategories(List<String> serverIds) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final placeholders = List.filled(serverIds.length, '?').join(',');
+    await db.delete('categories',
+        where: 'id NOT IN ($placeholders)', whereArgs: serverIds);
   }
 
   Future<List<CategoryModel>> getCategories() async {
