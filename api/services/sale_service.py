@@ -1,5 +1,6 @@
 import logging
 from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import or_, func
 from fastapi import HTTPException
 from datetime import datetime
@@ -371,7 +372,17 @@ def create_sale(
         if _UUID_RE.match(data.client_id):
             sale.id = data.client_id
     db.add(sale)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        # client_id déjà utilisé → retourner la vente existante (idempotence)
+        if getattr(data, 'client_id', None):
+            existing = db.query(Sale).filter_by(id=data.client_id).first()
+            if existing:
+                db.refresh(existing)
+                return existing
+        raise
 
     # 3️⃣ Items + mouvements stock OUT (réutilise le dict déjà chargé)
     for item in data.items:

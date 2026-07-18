@@ -25,6 +25,13 @@ def store_sale(
     current_user: User = Depends(require_permission(P.SALES_CREATE)),
     _plan: None = Depends(require_active_plan),
 ):
+    if payload.discount and payload.discount > 0:
+        if not _has_perm(
+            getattr(current_user, 'permissions', None) or [],
+            getattr(current_user, 'roles', None) or [],
+            P.SALES_DISCOUNT,
+        ):
+            raise HTTPException(status_code=403, detail="Permission refusée : remise non autorisée")
     sale = create_sale(db, payload, current_user.id, tenant_id=current_user.tenant_id)
     audit_service.log(
         db, user_id=current_user.id, tenant_id=current_user.tenant_id,
@@ -85,6 +92,13 @@ def update_sale_endpoint(
     current_user: User = Depends(require_permission(P.SALES_UPDATE)),
     _plan: None = Depends(require_active_plan),
 ):
+    if payload.discount and payload.discount > 0:
+        if not _has_perm(
+            getattr(current_user, 'permissions', None) or [],
+            getattr(current_user, 'roles', None) or [],
+            P.SALES_DISCOUNT,
+        ):
+            raise HTTPException(status_code=403, detail="Permission refusée : remise non autorisée")
     sale = update_sale(db, sale_id, payload, current_user.id, tenant_id=current_user.tenant_id)
     return {"message": "Vente modifiée avec succès", "sale_id": sale.id}
 

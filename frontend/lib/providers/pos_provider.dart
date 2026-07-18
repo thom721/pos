@@ -154,7 +154,7 @@ class PosNotifier extends StateNotifier<PosState> {
     String? warehouseId,
     String? customerName,
   }) async {
-    if (state.items.isEmpty) return (saleId: null, offline: false);
+    if (state.items.isEmpty || state.isProcessing) return (saleId: null, offline: false);
     state = state.copyWith(isProcessing: true, error: null);
     try {
       final data = await _repo.createSale(
@@ -252,7 +252,7 @@ class PosNotifier extends StateNotifier<PosState> {
 
   Future<String?> modifySale() async {
     final s = state;
-    if (s.editingSale == null || s.items.isEmpty) return null;
+    if (s.editingSale == null || s.items.isEmpty || s.isProcessing) return null;
     state = s.copyWith(isProcessing: true, error: null);
     try {
       final data = await _repo.updateSale(s.editingSale!.id, {

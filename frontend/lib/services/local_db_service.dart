@@ -685,7 +685,7 @@ class LocalDbService {
 
     await db.insert('sales', {
       'id':             saleId,
-      'reference':      'HL-${DateTime.now().millisecondsSinceEpoch}',
+      'reference':      'HL-${const Uuid().v4().substring(0, 8).toUpperCase()}',
       'customer_id':    payload['customer_id'],
       'customer_name':  customerName,
       'warehouse_id':   payload['warehouse_id'],
