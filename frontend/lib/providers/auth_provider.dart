@@ -106,26 +106,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true, error: null);
     final emailLower = email.trim().toLowerCase();
 
-    // ── 1. Auth locale (SQLite) en premier — fonctionne hors ligne ───────────
+    // ── 1. Vérification locale des credentials (préparation mode hors ligne) ──
+    // Ne retourne PAS ici — on essaie toujours l'API cloud pour obtenir un token.
+    bool offlineCredOk = false;
+    Map<String, dynamic>? offlineUserJson;
     if (!kIsWeb) {
       try {
         final localUser = await LocalDbService.instance.getLocalUser(emailLower);
         if (localUser != null) {
           final hash = await _hashPassword(emailLower, password);
           if (localUser['password_hash'] == hash) {
-            final userJson =
+            offlineCredOk = true;
+            offlineUserJson =
                 jsonDecode(localUser['user_data'] as String) as Map<String, dynamic>;
-            final user = UserModel.fromJson(userJson);
-            await _repo.saveUser(userJson);
-            await _repo.setConnectionMode('cloud');
-            state = AuthState(isAuthenticated: true, isLoading: false, user: user);
-            return true;
           }
         }
       } catch (_) {}
     }
 
-    // ── 2. Essai API cloud ────────────────────────────────────────────────────
+    // ── 2. Essai API cloud — toujours, pour obtenir un token JWT frais ────────
     try {
       final token = await _repo.cloudLogin(email.trim(), password);
       final user = token.user != null ? UserModel.fromJson(token.user!) : null;
@@ -143,7 +142,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await _repo.saveToken(token.accessToken);
       if (token.user != null) {
         await _repo.saveUser(token.user!);
-        // Sauvegarder pour auth hors ligne lors du prochain login sans réseau
+        // Mettre à jour le cache hors ligne avec le token frais
         if (!kIsWeb) {
           final hash = await _hashPassword(emailLower, password);
           await LocalDbService.instance.saveLocalUser(
@@ -161,14 +160,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       return true;
     } catch (e) {
+      // ── Réseau inaccessible : utiliser les credentials locaux si disponibles ─
       if (!kIsWeb && _isNetworkError(e)) {
-        final localExists =
-            await LocalDbService.instance.getLocalUser(emailLower) != null;
+        if (offlineCredOk && offlineUserJson != null) {
+          final user = UserModel.fromJson(offlineUserJson);
+          await _repo.saveUser(offlineUserJson);
+          await _repo.setConnectionMode('cloud');
+          state = AuthState(isAuthenticated: true, isLoading: false, user: user);
+          return true;
+        }
         state = state.copyWith(
           isLoading: false,
-          error: localExists
-              ? 'Mot de passe incorrect (mode hors ligne).'
-              : 'Pas de connexion. Connectez-vous une première fois avec internet pour accéder hors ligne.',
+          error: 'Pas de connexion. Connectez-vous une première fois avec internet pour accéder hors ligne.',
         );
         return false;
       }
