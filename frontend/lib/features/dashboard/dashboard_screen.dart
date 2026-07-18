@@ -124,7 +124,7 @@ class DashboardScreen extends ConsumerWidget {
               );
             },
             loading: () => const _StatsSkeletons(),
-            error: (e, _) => _ErrorCard(message: e.toString()),
+            error: (e, _) => _ErrorCard(message: 'Impossible de charger les données. Vérifiez votre connexion.'),
           ),
           const SizedBox(height: 28),
 

@@ -12,10 +12,37 @@ from api.models.AppConfig import AppConfig
 from api.models.PosRegister import PosRegister
 from api.models.Warehouse import Warehouse
 from api.models.PlatformConfig import PlatformConfig
+from api.models.Role import Role
 from api.services.auth import Auth
 from api.core.security import create_access_token
 
 _ONLINE_WINDOW_MINUTES = 5
+
+
+def _expand_permissions(user: User, db: Session) -> list[str]:
+    """Retourne la liste complète des permissions effectives d'un utilisateur.
+
+    Fusionne les permissions individuelles (user.permissions) avec celles
+    définies en DB pour chaque rôle de l'utilisateur.
+    """
+    individual = set(user.permissions or [])
+    if "all" in individual:
+        return ["all"]
+
+    role_perms: set[str] = set()
+    for role_name in (user.roles or []):
+        if role_name == "admin":
+            return ["all"]
+        role = db.query(Role).filter(Role.name == role_name).first()
+        if role and role.permissions:
+            perms = role.permissions if isinstance(role.permissions, list) else []
+            if "all" in perms:
+                return ["all"]
+            role_perms.update(perms)
+
+    # Fusionner rôle + permissions individuelles supplémentaires
+    merged = role_perms | (individual - set(user.roles or []))
+    return list(merged)
 
 
 def _get_trial_days(db: Session) -> int:
@@ -219,7 +246,7 @@ def cloud_login(db: Session, email: str, password: str,
             "lname": user.lname,
             "email": user.email,
             "roles": user.roles,
-            "permissions": user.permissions,
+            "permissions": _expand_permissions(user, db),
             "must_change_password": user.must_change_password,
         },
         "register_id": register_id,
