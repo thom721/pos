@@ -751,26 +751,30 @@ class LocalDbService {
         'synced':         1,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
 
+      // Supprimer d'abord les lignes existantes pour éviter les doublons résiduels
+      batch.delete('sale_items',    where: 'sale_id = ?', whereArgs: [s.id]);
+      batch.delete('sale_payments', where: 'sale_id = ?', whereArgs: [s.id]);
+
       for (final item in s.items) {
         batch.insert('sale_items', {
-          'id':           item.id.isEmpty ? const Uuid().v4() : item.id,
-          'sale_id':      s.id,
-          'product_id':   item.productId,
-          'product_name': item.productName,
-          'quantity':     item.quantity,
-          'unit_price':   item.unitPrice,
+          'id':             item.id.isEmpty ? const Uuid().v4() : item.id,
+          'sale_id':        s.id,
+          'product_id':     item.productId,
+          'product_name':   item.productName,
+          'quantity':       item.quantity,
+          'unit_price':     item.unitPrice,
           'original_price': item.originalPrice,
-          'subtotal':     item.subtotal,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+          'subtotal':       item.subtotal,
+        });
       }
       for (final p in s.payments) {
         batch.insert('sale_payments', {
-          'id':        p.id.isEmpty ? const Uuid().v4() : p.id,
-          'sale_id':   s.id,
-          'amount':    p.amount,
-          'method':    p.method,
+          'id':         p.id.isEmpty ? const Uuid().v4() : p.id,
+          'sale_id':    s.id,
+          'amount':     p.amount,
+          'method':     p.method,
           'created_at': p.createdAt.toUtc().toIso8601String(),
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        });
       }
     }
     await batch.commit(noResult: true);

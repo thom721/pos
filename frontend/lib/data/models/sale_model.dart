@@ -1,3 +1,13 @@
+List<SaleItemModel> _deduplicateById(Iterable<SaleItemModel> items) {
+  final seen = <String>{};
+  return items.where((i) => i.id.isNotEmpty && seen.add(i.id)).toList();
+}
+
+List<SalePaymentModel> _deduplicatePaymentsById(Iterable<SalePaymentModel> payments) {
+  final seen = <String>{};
+  return payments.where((p) => p.id.isNotEmpty && seen.add(p.id)).toList();
+}
+
 class SaleItemModel {
   final String id;
   final String productId;
@@ -119,11 +129,9 @@ class SaleModel {
         userFullName: json['user'] != null
             ? '${json['user']['fname']} ${json['user']['lname']}'
             : null,
-        items: (json['items'] as List? ?? [])
-            .map((e) => SaleItemModel.fromJson(e))
-            .toList(),
-        payments: (json['payments'] as List? ?? [])
-            .map((e) => SalePaymentModel.fromJson(e))
-            .toList(),
+        items: _deduplicateById(
+            (json['items'] as List? ?? []).map((e) => SaleItemModel.fromJson(e as Map<String, dynamic>))),
+        payments: _deduplicatePaymentsById(
+            (json['payments'] as List? ?? []).map((e) => SalePaymentModel.fromJson(e as Map<String, dynamic>))),
       );
 }
