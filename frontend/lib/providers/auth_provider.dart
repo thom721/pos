@@ -52,7 +52,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> _init() async {
     final token = await _repo.getToken();
-    if (token != null) {
+    if (token != null && !_isTokenExpired(token)) {
       final userData = await _repo.getSavedUser();
       final warning  = _refreshWarning(await _repo.getSavedPlanWarning());
       state = AuthState(
@@ -62,7 +62,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
         planWarning: warning,
       );
     } else {
+      // Token absent ou expiré — forcer un nouveau login
+      if (token != null) await _repo.logout();
       state = const AuthState(isAuthenticated: false, isLoading: false);
+    }
+  }
+
+  /// Décode le payload JWT (sans vérification de signature) pour lire l'expiry.
+  static bool _isTokenExpired(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return true;
+      final payload = utf8.decode(
+          base64Url.decode(base64Url.normalize(parts[1])));
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      final exp = data['exp'] as int?;
+      if (exp == null) return false;
+      return DateTime.now().millisecondsSinceEpoch > exp * 1000;
+    } catch (_) {
+      return false;
     }
   }
 

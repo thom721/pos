@@ -14,7 +14,7 @@ import jwt
 router = APIRouter(prefix='/api/auth',tags=["Token"])
 
 
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 jours
 
 
 @router.post("/login")
