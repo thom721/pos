@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -353,6 +354,29 @@ class LocalDbService {
       limit: 1,
     );
     return rows.isEmpty ? null : rows.first;
+  }
+
+  /// Bulk insert depuis le sync — sauvegarde tous les utilisateurs du tenant
+  /// avec leur offline_hash pour permettre l'auth hors ligne.
+  Future<void> upsertLocalUsers(List<Map<String, dynamic>> users) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final u in users) {
+      final email = (u['email'] as String?)?.toLowerCase();
+      final offlineHash = u['offline_hash'] as String?;
+      if (email == null || offlineHash == null) continue;
+      batch.insert(
+        'local_users',
+        {
+          'email': email,
+          'password_hash': offlineHash,
+          'user_data': jsonEncode(u),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
   }
 
   PaginatedResponse<ProductModel> _emptyProducts(int limit) => PaginatedResponse(

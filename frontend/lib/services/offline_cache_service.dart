@@ -35,6 +35,7 @@ class OfflineCacheService {
         _syncWarehouses(),
         _syncSales(),
         _syncPurchases(),
+        _syncUsers(),
       ]);
     } catch (e) {
       debugPrint('[OfflineCache] syncAll error: $e');
@@ -199,6 +200,22 @@ class OfflineCacheService {
       debugPrint('[OfflineCache] warehouses: ${warehouses.length} mis en cache');
     } catch (e) {
       debugPrint('[OfflineCache] warehouses sync error: $e');
+    }
+  }
+
+  // ── Utilisateurs (auth hors ligne) ────────────────────────────────────────
+
+  Future<void> _syncUsers() async {
+    try {
+      final res = await dio.get('/api/users/', options: kBackgroundOptions);
+      final raw = res.data;
+      final items = raw is List
+          ? raw.cast<Map<String, dynamic>>()
+          : ((raw['data'] as List? ?? []).cast<Map<String, dynamic>>());
+      await LocalDbService.instance.upsertLocalUsers(items);
+      debugPrint('[OfflineCache] users: ${items.length} en cache local');
+    } catch (e) {
+      debugPrint('[OfflineCache] users sync error: $e');
     }
   }
 }

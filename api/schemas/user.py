@@ -51,7 +51,11 @@ class UserRead(BaseModel):
     roles: List[str] = []
     permissions: List[str] = []
     must_change_password: bool = True
-    warehouse_id: Optional[List[str]] = None   # tableau de dépôts autorisés
+    warehouse_id: Optional[List[str]] = None
+    offline_hash: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class UserOut(BaseModel):
     id: str

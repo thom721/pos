@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from api.database import get_db
 from api.services.auth import Auth,Token,TokenData
+from api.services.user_service import compute_offline_hash
 from datetime import timedelta
 from typing import Annotated
 from fastapi import Depends, HTTPException, status
@@ -28,6 +29,12 @@ def login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Mise à jour du hash offline pour les utilisateurs existants
+    if not user.offline_hash and user.email:
+        user.offline_hash = compute_offline_hash(user.email, form_data.password)
+        db.commit()
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires

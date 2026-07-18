@@ -1,3 +1,4 @@
+import hashlib
 from typing import List, Optional
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -8,6 +9,10 @@ from api.services.auth import get_password_hash
 from api.services.base_service import TenantService
 
 from api.schemas.user import UserCreate, UserUpdate, UserRead  # Pydantic
+
+
+def compute_offline_hash(email: str, password: str) -> str:
+    return hashlib.sha256(f"{email.lower()}:{password}".encode()).hexdigest()
 
 class UserService(TenantService):
     def __init__(self, db: Session, tenant_id: str | None = None):
@@ -27,6 +32,7 @@ class UserService(TenantService):
                 address=data.address,
                 email=data.email,
                 password=get_password_hash(data.password),
+                offline_hash=compute_offline_hash(data.email, data.password),
                 roles=data.roles or [],
                 permissions=data.permissions or [],
                 must_change_password=True,
@@ -49,6 +55,8 @@ class UserService(TenantService):
         if not user:
             raise HTTPException(status_code=404, detail="Utilisateur introuvable")
         user.password = get_password_hash(new_password)
+        if user.email:
+            user.offline_hash = compute_offline_hash(user.email, new_password)
         user.must_change_password = False
         self.db.commit()
         self.db.refresh(user)
@@ -64,11 +72,15 @@ class UserService(TenantService):
         user = self.get(user_id)
         if not user:
             return None
+        new_password = None
         for field, value in data.dict(exclude_unset=True).items():
             if field == 'password' and value:
                 setattr(user, field, get_password_hash(value))
+                new_password = value
             else:
                 setattr(user, field, value)
+        if new_password and user.email:
+            user.offline_hash = compute_offline_hash(user.email, new_password)
         self.db.commit()
         self.db.refresh(user)
         return user
