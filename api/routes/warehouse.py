@@ -223,6 +223,7 @@ def list_registers(
         .filter(
             PosRegister.warehouse_id == warehouse_id,
             PosRegister.tenant_id == current_user.tenant_id,
+            PosRegister.is_active == True,  # noqa: E712
         )
         .order_by(PosRegister.name)
         .all()
