@@ -31,6 +31,8 @@ class AppSettings {
   // Bluetooth thermal printer
   final String bluetoothPrinterMac;
   final String bluetoothPrinterName;
+  // Paper width in mm — device-specific, stored locally only
+  final int paperWidth; // 80 | 58
 
   const AppSettings({
     this.businessName = 'Mon Commerce',
@@ -52,6 +54,7 @@ class AppSettings {
     this.docAutoPrint = false,
     this.bluetoothPrinterMac = '',
     this.bluetoothPrinterName = '',
+    this.paperWidth = 80,
   });
 
   AppSettings copyWith({
@@ -74,6 +77,7 @@ class AppSettings {
     bool? docAutoPrint,
     String? bluetoothPrinterMac,
     String? bluetoothPrinterName,
+    int? paperWidth,
   }) =>
       AppSettings(
         businessName: businessName ?? this.businessName,
@@ -95,6 +99,7 @@ class AppSettings {
         docAutoPrint: docAutoPrint ?? this.docAutoPrint,
         bluetoothPrinterMac: bluetoothPrinterMac ?? this.bluetoothPrinterMac,
         bluetoothPrinterName: bluetoothPrinterName ?? this.bluetoothPrinterName,
+        paperWidth: paperWidth ?? this.paperWidth,
       );
 
   // Serialize to API (snake_case)
@@ -164,6 +169,7 @@ class AppSettings {
         'docAutoPrint': docAutoPrint,
         'bluetoothPrinterMac': bluetoothPrinterMac,
         'bluetoothPrinterName': bluetoothPrinterName,
+        'paperWidth': paperWidth,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -186,6 +192,7 @@ class AppSettings {
         docAutoPrint: j['docAutoPrint'] as bool? ?? false,
         bluetoothPrinterMac: j['bluetoothPrinterMac'] as String? ?? '',
         bluetoothPrinterName: j['bluetoothPrinterName'] as String? ?? '',
+        paperWidth: (j['paperWidth'] as num?)?.toInt() ?? 80,
       );
 }
 
@@ -224,18 +231,25 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final key = await _cacheKey();
     // Apply local cache first for fast startup
     final raw = await _storage.read(key: key);
+    AppSettings? local;
     if (raw != null) {
       try {
-        state = AppSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        local = AppSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        state = local;
       } catch (_) {}
     }
-    // Sync from API (authoritative — always tenant-filtered via JWT)
+    // Sync from API (authoritative for shared fields only)
     try {
       final res = await dio.get('/api/config/');
       if (res.statusCode == 200) {
         final apiSettings = AppSettings.fromApiJson(res.data as Map<String, dynamic>);
-        state = apiSettings;
-        await _storage.write(key: key, value: jsonEncode(apiSettings.toJson()));
+        // Preserve device-specific fields that the API doesn't know about
+        state = apiSettings.copyWith(
+          bluetoothPrinterMac: local?.bluetoothPrinterMac ?? state.bluetoothPrinterMac,
+          bluetoothPrinterName: local?.bluetoothPrinterName ?? state.bluetoothPrinterName,
+          paperWidth: local?.paperWidth ?? state.paperWidth,
+        );
+        await _storage.write(key: key, value: jsonEncode(state.toJson()));
       }
     } catch (_) {
       // Network unavailable — local cache already applied above

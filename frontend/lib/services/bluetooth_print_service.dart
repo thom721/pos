@@ -1,7 +1,10 @@
 import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 
@@ -9,7 +12,6 @@ class BluetoothPrintService {
   BluetoothPrintService._();
   static final BluetoothPrintService instance = BluetoothPrintService._();
 
-  /// Liste les imprimantes Bluetooth déjà appairées.
   Future<List<BluetoothInfo>> getPairedPrinters() async {
     if (kIsWeb) return [];
     try {
@@ -19,7 +21,6 @@ class BluetoothPrintService {
     }
   }
 
-  /// Connecte à l'imprimante dont le [mac] est mémorisé.
   Future<bool> connect(String mac) async {
     if (mac.isEmpty) return false;
     try {
@@ -43,17 +44,15 @@ class BluetoothPrintService {
     } catch (_) {}
   }
 
-  /// Imprime un reçu de vente.
-  /// Retourne `true` si réussi.
   Future<bool> printReceipt(SaleModel sale, AppSettings settings) async {
     final mac = settings.bluetoothPrinterMac;
     if (mac.isEmpty) return false;
 
-    // Connexion auto
     final connected = await connect(mac);
     if (!connected) return false;
 
-    final bytes = _buildEscPos(sale, settings);
+    final logoBytes = await _logoToEscPos(settings);
+    final bytes = _buildEscPos(sale, settings, logoBytes);
     try {
       return await PrintBluetoothThermal.writeBytes(bytes);
     } catch (_) {
@@ -61,83 +60,198 @@ class BluetoothPrintService {
     }
   }
 
-  /// Génère les octets ESC/POS pour une imprimante 58 mm ou 80 mm.
-  Uint8List _buildEscPos(SaleModel sale, AppSettings settings) {
+  // ── Logo → ESC/POS bitmap ─────────────────────────────────────────────────
+
+  Future<List<int>> _logoToEscPos(AppSettings settings) async {
+    if (settings.logoPath.isEmpty) return [];
+    try {
+      final res = await dio.get(
+        settings.logoPath,
+        options: Options(responseType: ResponseType.bytes),
+      ).timeout(const Duration(seconds: 5));
+      final rawBytes = Uint8List.fromList(res.data as List<int>);
+
+      final decoded = img.decodeImage(rawBytes);
+      if (decoded == null) return [];
+
+      // Target width: ~40% of paper dot width (203 dpi ≈ 8 dots/mm)
+      final targetW = settings.paperWidth == 80 ? 200 : 128;
+      final aspect = decoded.height / decoded.width;
+      final targetH = (targetW * aspect).round();
+      final resized = img.copyResize(decoded, width: targetW, height: targetH,
+          interpolation: img.Interpolation.average);
+
+      final bytesPerRow = (targetW + 7) ~/ 8;
+      final cmd = <int>[];
+
+      // Center the image: left padding in bytes
+      final paperDots = settings.paperWidth == 80 ? 576 : 384;
+      final paddingDots = ((paperDots - targetW) ~/ 2).clamp(0, paperDots);
+      final paddingBytes = paddingDots ~/ 8;
+      // Adjust xL/xH to include padding so the image is centered
+      final totalBytesPerRow = paddingBytes + bytesPerRow;
+
+      // GS v 0 — raster bit image
+      cmd.addAll([
+        0x1D, 0x76, 0x30, 0x00,
+        totalBytesPerRow & 0xFF, (totalBytesPerRow >> 8) & 0xFF,
+        targetH & 0xFF, (targetH >> 8) & 0xFF,
+      ]);
+
+      for (int y = 0; y < targetH; y++) {
+        // Left padding bytes (white = 0)
+        for (int i = 0; i < paddingBytes; i++) {
+          cmd.add(0x00);
+        }
+        // Image bytes
+        for (int bx = 0; bx < bytesPerRow; bx++) {
+          int b = 0;
+          for (int bit = 0; bit < 8; bit++) {
+            final x = bx * 8 + bit;
+            if (x < targetW) {
+              final pixel = resized.getPixel(x, y);
+              final lum = 0.299 * pixel.r.toDouble() +
+                  0.587 * pixel.g.toDouble() +
+                  0.114 * pixel.b.toDouble();
+              if (lum < 128.0) b |= (0x80 >> bit);
+            }
+          }
+          cmd.add(b);
+        }
+      }
+      return cmd;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ── ESC/POS receipt builder ───────────────────────────────────────────────
+
+  Uint8List _buildEscPos(
+      SaleModel sale, AppSettings settings, List<int> logoBytes) {
     final buf = <int>[];
     final numFmt = NumberFormat('#,##0.00', 'fr');
     final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
     final sym = settings.currencySymbol.trim();
 
-    // ── Commandes ESC/POS ──────────────────────────────────────────────────
+    // Column counts for each paper width
+    final cols = settings.paperWidth == 80 ? 48 : 32;
+    final nameW = settings.paperWidth == 80 ? 24 : 16;
+    final qtyW = settings.paperWidth == 80 ? 6 : 4;
+    final totW = cols - nameW - qtyW;
+    final labelW = cols - 16;
+
     void esc(List<int> cmd) => buf.addAll(cmd);
     void text(String t) => buf.addAll(t.codeUnits);
-    void nl([int n = 1]) { for (var i = 0; i < n; i++) { buf.add(10); } }
-    void dash() { text('--------------------------------'); nl(); }
+    void nl([int n = 1]) {
+      for (var i = 0; i < n; i++) {
+        buf.add(10);
+      }
+    }
+    void dash() {
+      text('-' * cols);
+      nl();
+    }
 
-    // Init
+    // Init + code page Latin-1
     esc([0x1B, 0x40]);
-    // Code page Latin-1 pour les accents français
     esc([0x1B, 0x74, 0x02]);
 
+    // ── Logo (si disponible) ───────────────────────────────────────────────
+    if (logoBytes.isNotEmpty) {
+      esc([0x1B, 0x61, 0x01]); // centre
+      buf.addAll(logoBytes);
+      nl();
+      esc([0x1B, 0x61, 0x00]); // gauche
+    }
+
     // ── En-tête ────────────────────────────────────────────────────────────
-    esc([0x1B, 0x61, 0x01]); // centrer
+    esc([0x1B, 0x61, 0x01]);
     esc([0x1D, 0x21, 0x10]); // double hauteur
-    text(settings.businessName); nl();
-    esc([0x1D, 0x21, 0x00]); // normal
-    if (settings.address.isNotEmpty) { text(settings.address); nl(); }
-    if (settings.phone.isNotEmpty)   { text('Tél: ${settings.phone}'); nl(); }
-    esc([0x1B, 0x61, 0x00]); // aligner gauche
+    text(settings.businessName);
+    nl();
+    esc([0x1D, 0x21, 0x00]);
+    if (settings.address.isNotEmpty) {
+      text(settings.address);
+      nl();
+    }
+    if (settings.phone.isNotEmpty) {
+      text('Tél: ${settings.phone}');
+      nl();
+    }
+    esc([0x1B, 0x61, 0x00]);
     nl();
     dash();
 
     // ── Infos vente ────────────────────────────────────────────────────────
-    text('Réf: ${sale.reference}'); nl();
-    text('Date: ${dateFmt.format(sale.createdAt)}'); nl();
-    if (sale.customerName != null) { text('Client: ${sale.customerName}'); nl(); }
-    if (sale.userFullName != null) { text('Caissier: ${sale.userFullName}'); nl(); }
+    text('Réf: ${sale.reference}');
+    nl();
+    text('Date: ${dateFmt.format(sale.createdAt)}');
+    nl();
+    if (sale.customerName != null) {
+      text('Client: ${sale.customerName}');
+      nl();
+    }
+    if (sale.userFullName != null) {
+      text('Caissier: ${sale.userFullName}');
+      nl();
+    }
     dash();
 
     // ── Articles ───────────────────────────────────────────────────────────
     for (final item in sale.items) {
-      final name = (item.productName ?? 'Article').padRight(16).substring(0, 16);
-      final qty  = '${item.quantity.toInt()}x'.padLeft(4);
-      final total = '$sym ${numFmt.format(item.subtotal)}'.padLeft(12);
-      text('$name$qty$total'); nl();
+      final name =
+          (item.productName ?? 'Article').padRight(nameW).substring(0, nameW);
+      final qty = '${item.quantity.toInt()}x'.padLeft(qtyW);
+      final total = '$sym ${numFmt.format(item.subtotal)}'.padLeft(totW);
+      text('$name$qty$total');
+      nl();
     }
     dash();
 
     // ── Totaux ─────────────────────────────────────────────────────────────
     if (sale.discount > 0) {
-      text('Sous-total'.padRight(20) + '$sym ${numFmt.format(sale.totalAmount)}'.padLeft(12)); nl();
-      text('Remise'.padRight(20)     + '-$sym ${numFmt.format(sale.discount)}'.padLeft(11)); nl();
+      text('Sous-total'.padRight(labelW) +
+          '$sym ${numFmt.format(sale.totalAmount)}'.padLeft(16));
+      nl();
+      text('Remise'.padRight(labelW) +
+          '-$sym ${numFmt.format(sale.discount)}'.padLeft(16));
+      nl();
     }
-    esc([0x1B, 0x45, 0x01]); // gras
-    text('TOTAL'.padRight(20) + '$sym ${numFmt.format(sale.finalAmount)}'.padLeft(12)); nl();
-    esc([0x1B, 0x45, 0x00]); // normal
-    text('Payé'.padRight(20)  + '$sym ${numFmt.format(sale.paidAmount)}'.padLeft(12)); nl();
+    esc([0x1B, 0x45, 0x01]);
+    text('TOTAL'.padRight(labelW) +
+        '$sym ${numFmt.format(sale.finalAmount)}'.padLeft(16));
+    nl();
+    esc([0x1B, 0x45, 0x00]);
+    text('Payé'.padRight(labelW) +
+        '$sym ${numFmt.format(sale.paidAmount)}'.padLeft(16));
+    nl();
     if (sale.balance.abs() > 0.01) {
       final label = sale.balance > 0 ? 'Reste' : 'Monnaie';
-      text(label.padRight(20) + '$sym ${numFmt.format(sale.balance.abs())}'.padLeft(12)); nl();
+      text(label.padRight(labelW) +
+          '$sym ${numFmt.format(sale.balance.abs())}'.padLeft(16));
+      nl();
     }
     dash();
 
     // ── Statut ─────────────────────────────────────────────────────────────
-    esc([0x1B, 0x61, 0x01]); // centrer
-    esc([0x1B, 0x45, 0x01]); // gras
+    esc([0x1B, 0x61, 0x01]);
+    esc([0x1B, 0x45, 0x01]);
     final statusLabel = switch (sale.status) {
-      'PAID'    => '*** PAYÉ ***',
+      'PAID' => '*** PAYÉ ***',
       'PARTIAL' => '*** PAIEMENT PARTIEL ***',
-      _         => '*** NON PAYÉ ***',
+      _ => '*** NON PAYÉ ***',
     };
-    text(statusLabel); nl();
+    text(statusLabel);
+    nl();
     esc([0x1B, 0x45, 0x00]);
 
     if (settings.receiptFooter.isNotEmpty) {
       nl();
-      text(settings.receiptFooter); nl();
+      text(settings.receiptFooter);
+      nl();
     }
 
-    // Avancer papier + coupe
     nl(4);
     esc([0x1D, 0x56, 0x42, 0x00]); // coupe partielle
 

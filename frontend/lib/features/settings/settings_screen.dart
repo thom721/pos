@@ -1439,9 +1439,14 @@ class _BluetoothPrinterSectionState extends State<_BluetoothPrinterSection> {
     ));
   }
 
+  Future<void> _setPaperWidth(int width) async {
+    await widget.notifier.save(widget.settings.copyWith(paperWidth: width));
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasPrinter = widget.settings.bluetoothPrinterMac.isNotEmpty;
+    final paperWidth = widget.settings.paperWidth;
 
     return Card(
       child: Padding(
@@ -1490,6 +1495,34 @@ class _BluetoothPrinterSectionState extends State<_BluetoothPrinterSection> {
                 'Appairez d\'abord l\'imprimante dans les paramètres Android.',
                 style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
               ),
+
+            const SizedBox(height: 16),
+
+            // ── Largeur du papier ────────────────────────────────────────
+            const Text('Largeur du papier',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(
+                    value: 58,
+                    label: Text('58 mm'),
+                    icon: Icon(Icons.receipt_long_outlined, size: 16)),
+                ButtonSegment(
+                    value: 80,
+                    label: Text('80 mm'),
+                    icon: Icon(Icons.receipt_outlined, size: 16)),
+              ],
+              selected: {paperWidth},
+              onSelectionChanged: (s) => _setPaperWidth(s.first),
+              style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Détermine la mise en page du reçu (PDF et Bluetooth).',
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
 
             const SizedBox(height: 12),
 
