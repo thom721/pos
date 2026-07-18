@@ -180,7 +180,7 @@ def cloud_login(db: Session, email: str, password: str,
                 PosRegister.tenant_id == tenant.id,
                 PosRegister.is_active == True,   # noqa: E712
                 or_(PosRegister.last_seen.is_(None), PosRegister.last_seen < cutoff),
-            ).order_by(PosRegister.last_seen.asc().nullsfirst()).first()
+            ).order_by(PosRegister.last_seen.is_(None).desc(), PosRegister.last_seen.asc()).first()
 
             if not register:
                 raise HTTPException(
