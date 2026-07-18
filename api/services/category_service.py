@@ -9,43 +9,33 @@ class CategoryService(TenantService):
     def __init__(self, db: Session, tenant_id: str | None = None):
         super().__init__(db, tenant_id)
 
-    def create1(self, data: CategoryCreate):
-        category = Category(**data.dict())
-        self._set_tenant(category)
-        self.db.add(category)
-        self.db.commit()
-        self.db.refresh(category)
-        return category
-
     def create(self, data: Union[CategoryCreate, List[CategoryCreate], dict, List[dict]]):
+        if not isinstance(data, list):
+            data = [data]
+
+        categories = []
         try:
-            if not isinstance(data, list):
-                data = [data]
-
-            categories = []
-
             for item in data:
                 payload = item if isinstance(item, dict) else item.dict()
 
                 exists = self._q(Category).filter(Category.name == payload["name"]).first()
                 if exists:
-                    print(exists)
-                    # continue
-                    raise HTTPException(400, f"Category {payload['name']} already exists")
+                    raise HTTPException(400, f"La catégorie « {payload['name']} » existe déjà")
 
-                category = Category(**payload)
+                category = Category(name=payload["name"])
                 self._set_tenant(category)
                 self.db.add(category)
                 categories.append(category)
 
             self.db.commit()
-
             for category in categories:
-                print("---------------------data-----------------")
                 self.db.refresh(category)
 
             return categories[0] if len(categories) == 1 else categories
 
+        except HTTPException:
+            self.db.rollback()
+            raise
         except Exception as e:
             self.db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
