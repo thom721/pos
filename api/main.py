@@ -376,20 +376,7 @@ def _ensure_cloud_admin(db, local_tid: str) -> None:
     if existing:
         return
 
-    # Si les credentials existaient déjà mais pas l'user → générer un nouveau mdp
-    if not raw_password:
-        raw_password = secrets.token_urlsafe(12)
-        admin_hash   = get_password_hash(raw_password)
-        cfg.admin_password_hash      = admin_hash
-        settings.ADMIN_PASSWORD_HASH = admin_hash
-        db.commit()
-        _log.info("=" * 62)
-        _log.info("  UTILISATEUR ADMIN RECRÉÉ — NOUVEAU MOT DE PASSE")
-        _log.info("  Email    : %s", admin_email)
-        _log.info("  Password : %s", raw_password)
-        _log.info("  → Changez ce mot de passe via le panel /admin")
-        _log.info("=" * 62)
-
+    # Créer le user avec les credentials EXISTANTS — ne jamais régénérer le mot de passe
     try:
         admin_user = User(
             tenant_id=local_tid,
