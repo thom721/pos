@@ -2,13 +2,18 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 
 typedef SyncCallback = void Function();
+
+const _tokenStorage = FlutterSecureStorage(
+  aOptions: AndroidOptions(encryptedSharedPreferences: true),
+);
 
 /// Maintains a persistent WebSocket connection to the cloud API (Android only).
 /// The server pushes {"type": "sync"} after every write mutation, triggering
@@ -48,18 +53,20 @@ class WebSocketService {
   Future<void> _connect() async {
     if (!_active) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(AppConstants.tokenKey);
+    final token = await _tokenStorage.read(key: AppConstants.tokenKey);
     if (token == null) return;
 
     // Convert the current HTTP(S) base URL to its WebSocket equivalent
     final base = dio.options.baseUrl
         .replaceFirst('https://', 'wss://')
         .replaceFirst('http://', 'ws://');
-    final wsUri = Uri.parse('$base/ws?token=${Uri.encodeComponent(token)}');
+    final wsUri = Uri.parse('$base/ws');
 
     try {
-      _channel = WebSocketChannel.connect(wsUri);
+      _channel = IOWebSocketChannel.connect(
+        wsUri,
+        headers: {'Authorization': 'Bearer $token'},
+      );
       await _channel!.ready; // throws if the handshake fails
       _retrySeconds = 1;
       debugPrint('[WS] connected to $base');
@@ -89,6 +96,7 @@ class WebSocketService {
 
   void _scheduleReconnect() {
     if (!_active) return;
+    _channel?.sink.close(); // fermer proprement l'ancien socket
     _channel = null;
     debugPrint('[WS] reconnect in ${_retrySeconds}s');
     _reconnectTimer?.cancel();

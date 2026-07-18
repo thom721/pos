@@ -80,7 +80,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       if (exp == null) return false;
       return DateTime.now().millisecondsSinceEpoch > exp * 1000;
     } catch (_) {
-      return false;
+      return true; // token corrompu → forcer re-login propre
     }
   }
 
