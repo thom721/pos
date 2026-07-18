@@ -12,6 +12,7 @@ import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
+import 'package:pos_connect/services/offline_cache_service.dart';
 
 final _fmt =
     NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
@@ -32,19 +33,45 @@ class ProductsScreen extends ConsumerWidget {
         Expanded(
           child: productsAsync.when(
             data: (products) {
+              final isWide = MediaQuery.sizeOf(context).width >= 700;
+              Future<void> onRefresh() async {
+                await OfflineCacheService.instance.syncAll();
+                ref.invalidate(productsProvider);
+              }
+
               if (products.data.isEmpty) {
+                if (!isWide) {
+                  return RefreshIndicator(
+                    onRefresh: onRefresh,
+                    child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        SizedBox(
+                          height: MediaQuery.sizeOf(context).height * 0.6,
+                          child: const Center(
+                            child: Text('Aucun produit trouvé',
+                                style: TextStyle(color: AppColors.textSecondary)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
                 return const Center(
                     child: Text('Aucun produit trouvé',
                         style: TextStyle(color: AppColors.textSecondary)));
               }
-              final isWide = MediaQuery.sizeOf(context).width >= 700;
               if (isWide) return _ProductTable(products: products.data);
-              return ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: products.data.length,
-                separatorBuilder: (ctx, i) => const SizedBox(height: 8),
-                itemBuilder: (ctx, i) =>
-                    _ProductCard(product: products.data[i]),
+              return RefreshIndicator(
+                onRefresh: onRefresh,
+                child: ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  itemCount: products.data.length,
+                  separatorBuilder: (ctx, i) => const SizedBox(height: 8),
+                  itemBuilder: (ctx, i) =>
+                      _ProductCard(product: products.data[i]),
+                ),
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),

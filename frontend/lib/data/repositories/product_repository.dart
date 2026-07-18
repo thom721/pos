@@ -15,11 +15,26 @@ class ProductRepository {
     String? search,
     String? categoryId,
   }) async {
-    // Android : source de vérité = SQLite
     if (_isAndroid) {
-      return LocalDbService.instance.getProducts(
+      final cached = await LocalDbService.instance.getProducts(
         search: search, page: page, limit: limit, categoryId: categoryId,
       );
+      // Cache vide sans filtre actif → fallback API + peuplement du cache
+      if (cached.data.isEmpty && search == null && categoryId == null) {
+        try {
+          final res = await dio.get('/api/products/',
+              queryParameters: {'page': 1, 'per_page': 500});
+          final raw = res.data is Map ? (res.data['data'] as List? ?? []) : (res.data as List? ?? []);
+          final all = raw.map((e) => ProductModel.fromJson(e as Map<String, dynamic>)).toList();
+          if (all.isNotEmpty) await LocalDbService.instance.upsertProducts(all);
+          return LocalDbService.instance.getProducts(
+            search: search, page: page, limit: limit, categoryId: categoryId,
+          );
+        } catch (_) {
+          return cached;
+        }
+      }
+      return cached;
     }
 
     final params = <String, dynamic>{
