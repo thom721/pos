@@ -726,7 +726,7 @@ class _CategoryManagerDialogState extends State<_CategoryManagerDialog> {
         ],
       ),
       content: SizedBox(
-        width: double.maxFinite,
+        width: 460,
         height: 420,
         child: Column(
           children: [
@@ -826,7 +826,7 @@ class _CategoryManagerDialogState extends State<_CategoryManagerDialog> {
       builder: (ctx) => AlertDialog(
         title: Text(cat == null ? 'Nouvelle catégorie' : 'Modifier'),
         content: SizedBox(
-          width: double.maxFinite,
+          width: 400,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
