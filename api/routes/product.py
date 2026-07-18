@@ -1,7 +1,7 @@
 import uuid
 import os
 import shutil
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional, Union
 from api.services.product_service import ProductService
@@ -13,6 +13,7 @@ from api.core.PaginateHelper import PaginatedResponse
 from api.models.Product import Product
 from api.models.User import User
 from api.services import audit_service
+from api.ws_manager import manager
 
 router = APIRouter(prefix="/api", tags=["Products"])
 
@@ -20,6 +21,7 @@ router = APIRouter(prefix="/api", tags=["Products"])
 @router.post("/products/", response_model=Union[ProductRead, List[ProductRead]])
 def create_product(
     data: Union[ProductCreate, List[ProductCreate]],
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_CREATE)),
 ):
@@ -29,6 +31,7 @@ def create_product(
         audit_service.log(db, user_id=current_user.id, tenant_id=current_user.tenant_id,
                           action="CREATE", resource_type="product", resource_id=pid)
     db.commit()
+    background_tasks.add_task(manager.notify, current_user.tenant_id)
     return result
 
 
@@ -59,6 +62,7 @@ def get_product(
 def update_product(
     product_id: str,
     data: ProductUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
 ):
@@ -69,12 +73,14 @@ def update_product(
                       action="UPDATE", resource_type="product", resource_id=product_id,
                       detail=data.model_dump(exclude_none=True))
     db.commit()
+    background_tasks.add_task(manager.notify, current_user.tenant_id)
     return product
 
 
 @router.delete("/products/{product_id}", response_model=dict)
 def delete_product(
     product_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_DELETE)),
 ):
@@ -84,6 +90,7 @@ def delete_product(
     audit_service.log(db, user_id=current_user.id, tenant_id=current_user.tenant_id,
                       action="DELETE", resource_type="product", resource_id=product_id)
     db.commit()
+    background_tasks.add_task(manager.notify, current_user.tenant_id)
     return {"ok": True}
 
 
