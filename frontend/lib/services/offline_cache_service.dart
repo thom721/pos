@@ -52,7 +52,7 @@ class OfflineCacheService {
       int page = 1;
       while (true) {
         final res = await dio.get('/api/products/',
-            queryParameters: {'page': page, 'per_page': 200},
+            queryParameters: {'page': page, 'per_page': 100},
             options: kBackgroundOptions);
         final data = res.data as Map<String, dynamic>;
         final items = (data['data'] as List)

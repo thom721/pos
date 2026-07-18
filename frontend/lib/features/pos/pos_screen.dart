@@ -11,13 +11,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/data/api/api_client.dart';
-import 'package:pos_connect/shared/widgets/limit_exceeded_dialog.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/user_model.dart';
+import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
+import 'package:pos_connect/shared/widgets/limit_exceeded_dialog.dart';
 import 'package:pos_connect/providers/customer_provider.dart';
 import 'package:pos_connect/providers/draft_provider.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
@@ -836,13 +837,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   }
 
   Future<String> _getDeviceId() async {
-    final prefs = await SharedPreferences.getInstance();
-    var id = prefs.getString('pos_device_id');
-    if (id == null) {
-      id = const Uuid().v4();
-      await prefs.setString('pos_device_id', id);
-    }
-    return id;
+    return AuthRepository().getOrCreateDeviceId();
   }
 
   Future<void> _initSession() async {
@@ -1274,6 +1269,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
           child: pos.items.isEmpty
               ? LayoutBuilder(
                   builder: (context, c) {
+                    if (c.maxHeight < 40) return const SizedBox.shrink();
                     final compact = c.maxHeight < 110;
                     return Center(
                       child: Column(
@@ -1281,17 +1277,19 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.add_shopping_cart_rounded,
-                              size: compact ? 32 : 48,
+                              size: compact ? 24 : 48,
                               color: AppColors.textSecondary),
-                          SizedBox(height: compact ? 6 : 12),
-                          Text(
-                            'Cliquez sur un produit\npour l\'ajouter',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: compact ? 12 : 14,
+                          if (!compact) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              'Cliquez sur un produit\npour l\'ajouter',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 14,
+                              ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     );
@@ -2290,7 +2288,7 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
         return;
       }
 
-      // 402 = new device exceeds caisse limit → warn and let user confirm
+      // 402 = toutes les caisses occupées → admin confirme pour en créer une
       final confirmed = await handleLimitExceeded(context, e);
       if (!mounted) return;
       if (confirmed) { _open(force: true); return; }
@@ -2298,10 +2296,13 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
       String msg;
       if (e is DioException) {
         final detail = e.response?.data?['detail'] as String?;
+        final message = e.response?.data?['message'] as String?;
         if (detail == 'caisse_disabled') {
           msg = 'Cette caisse a été désactivée. Contactez votre administrateur.';
+        } else if (detail == 'no_registers') {
+          msg = message ?? 'Aucune caisse configurée. Contactez l\'administrateur.';
         } else {
-          msg = detail ?? e.response?.data?['message'] as String? ?? 'Erreur réseau';
+          msg = message ?? detail ?? 'Erreur réseau';
         }
       } else {
         msg = e.toString();

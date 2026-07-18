@@ -19,13 +19,21 @@ class ProductRepository {
       final cached = await LocalDbService.instance.getProducts(
         search: search, page: page, limit: limit, categoryId: categoryId,
       );
-      // Cache vide sans filtre actif → fallback API + peuplement du cache
+      // Cache vide sans filtre actif → fallback API avec pagination + peuplement du cache
       if (cached.data.isEmpty && search == null && categoryId == null) {
         try {
-          final res = await dio.get('/api/products/',
-              queryParameters: {'page': 1, 'per_page': 500});
-          final raw = res.data is Map ? (res.data['data'] as List? ?? []) : (res.data as List? ?? []);
-          final all = raw.map((e) => ProductModel.fromJson(e as Map<String, dynamic>)).toList();
+          final all = <ProductModel>[];
+          int p = 1;
+          while (true) {
+            final res = await dio.get('/api/products/',
+                queryParameters: {'page': p, 'per_page': 100});
+            final data = res.data as Map<String, dynamic>;
+            final raw = (data['data'] as List? ?? []);
+            all.addAll(raw.map((e) => ProductModel.fromJson(e as Map<String, dynamic>)));
+            final totalPages = data['pages'] ?? data['meta']?['pages'] ?? 1;
+            if (p >= (totalPages as num).toInt()) break;
+            p++;
+          }
           if (all.isNotEmpty) await LocalDbService.instance.upsertProducts(all);
           return LocalDbService.instance.getProducts(
             search: search, page: page, limit: limit, categoryId: categoryId,

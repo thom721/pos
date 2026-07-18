@@ -225,9 +225,9 @@ def _build_license_payload(tenant: "Tenant", db: Session) -> dict:
 
     return {
         "tenant_id":            tenant.id,
-        "tenant_type":          tenant.type,
-        "self_hosted_url":      tenant.self_hosted_url or None,
-        "can_manage_tenants":   tenant.can_manage_tenants,
+        "tenant_type":          getattr(tenant, "type", "shared"),
+        "self_hosted_url":      getattr(tenant, "self_hosted_url", None) or None,
+        "can_manage_tenants":   getattr(tenant, "can_manage_tenants", False),
         "status":               tenant.status,
         "issued_at":            now.isoformat(),
         "valid_until":          valid_until.isoformat(),
@@ -323,7 +323,11 @@ def get_license(
 
     # ── Direct mode: this IS posconnect.ht ───────────────────────────────────
     tenant = _get_tenant(db, current_user)
-    return _sign_payload(_build_license_payload(tenant, db))
+    try:
+        payload = _build_license_payload(tenant, db)
+    except Exception as exc:
+        raise HTTPException(500, f"Erreur construction licence: {exc}")
+    return _sign_payload(payload)
 
 
 @router.get("/caisse-count")

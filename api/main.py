@@ -36,6 +36,7 @@ from api.models import (  # noqa: F401
     BillingPayment, Proforma, Invoice, InventoryRecord, Role,
     PlatformConfig, SyncState, AuditLog,
 )
+from api.models.BillingExtra import BillingExtra as _BillingExtra  # noqa: F401 — ensures table creation
 from fastapi.staticfiles import StaticFiles
 from fastapi.encoders import jsonable_encoder
 
