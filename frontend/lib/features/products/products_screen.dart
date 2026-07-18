@@ -236,7 +236,7 @@ class _ProductTable extends ConsumerWidget {
               const DataColumn(label: Text('Prix vente'), numeric: true),
               const DataColumn(label: Text('Stock')),
               const DataColumn(label: Text('Seuil alerte'), numeric: true),
-              if (canEdit) const DataColumn(label: Text('')),
+              if (canEdit) const DataColumn(label: Text(''), numeric: true),
             ],
             rows: products.map((p) {
               return DataRow(cells: [
@@ -267,13 +267,27 @@ class _ProductTable extends ConsumerWidget {
                 DataCell(Text('${p.alertStock}',
                     style: const TextStyle(fontSize: 13))),
                 if (canEdit)
-                  DataCell(IconButton(
-                    icon: const Icon(Icons.edit_outlined,
-                        size: 18, color: AppColors.textSecondary),
-                    onPressed: () => showDialog(
-                      context: context,
-                      builder: (_) => _ProductFormDialog(product: p),
-                    ),
+                  DataCell(Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.add_box_outlined,
+                            size: 18, color: AppColors.accent),
+                        tooltip: 'Ajuster stock',
+                        onPressed: () => showDialog(
+                          context: context,
+                          builder: (_) => _AdjustStockDialog(product: p),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined,
+                            size: 18, color: AppColors.textSecondary),
+                        onPressed: () => showDialog(
+                          context: context,
+                          builder: (_) => _ProductFormDialog(product: p),
+                        ),
+                      ),
+                    ],
                   )),
               ]);
             }).toList(),
@@ -336,12 +350,26 @@ class _ProductCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     fontSize: 14)),
             if (product.stock != null)
-              Text('Stock: ${product.stock}',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: product.isLowStock
-                          ? AppColors.error
-                          : AppColors.textSecondary)),
+              GestureDetector(
+                onTap: () => showDialog(
+                  context: context,
+                  builder: (_) => _AdjustStockDialog(product: product),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.edit_rounded, size: 10,
+                        color: product.isLowStock ? AppColors.error : AppColors.textSecondary),
+                    const SizedBox(width: 3),
+                    Text('Stock: ${product.stock}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: product.isLowStock
+                                ? AppColors.error
+                                : AppColors.textSecondary)),
+                  ],
+                ),
+              ),
           ],
         ),
         onTap: () => showDialog(
@@ -964,5 +992,102 @@ class _CategoryManagerDialogState extends State<_CategoryManagerDialog> {
         ],
       ),
     );
+  }
+}
+
+// ─── Adjust Stock Dialog ──────────────────────────────────────────────────────
+
+class _AdjustStockDialog extends ConsumerStatefulWidget {
+  final ProductModel product;
+  const _AdjustStockDialog({required this.product});
+
+  @override
+  ConsumerState<_AdjustStockDialog> createState() => _AdjustStockDialogState();
+}
+
+class _AdjustStockDialogState extends ConsumerState<_AdjustStockDialog> {
+  final _qtyCtrl = TextEditingController();
+  final _reasonCtrl = TextEditingController();
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    _reasonCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final current = widget.product.stock ?? 0;
+    return AlertDialog(
+      title: Text('Ajuster stock — ${widget.product.name}'),
+      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Stock actuel : $current',
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _qtyCtrl,
+              keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Quantité à ajouter / retirer',
+                hintText: 'ex: +10 ou -5',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _reasonCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Raison (optionnel)',
+                hintText: 'Inventaire, correction, perte...',
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
+            ],
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+        ElevatedButton(
+          onPressed: _loading ? null : _submit,
+          child: _loading
+              ? const SizedBox(width: 16, height: 16,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Confirmer'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _submit() async {
+    final qty = double.tryParse(_qtyCtrl.text.replaceAll('+', '').trim());
+    if (qty == null || qty == 0) {
+      setState(() => _error = 'Entrez une quantité valide (ex: 10 ou -5)');
+      return;
+    }
+    setState(() { _loading = true; _error = null; });
+    try {
+      await ProductRepository().adjustStock(
+        widget.product.id, qty, reason: _reasonCtrl.text.trim(),
+      );
+      ref.invalidate(productsProvider);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _error = 'Erreur lors de l\'ajustement. Réessayez.';
+      });
+    }
   }
 }

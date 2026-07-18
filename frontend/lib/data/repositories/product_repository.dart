@@ -124,6 +124,14 @@ class ProductRepository {
     };
   }
 
+  Future<ProductModel> adjustStock(String id, double quantity, {String? reason}) async {
+    final res = await dio.post('/api/products/$id/adjust-stock', data: {
+      'quantity': quantity,
+      if (reason != null && reason.isNotEmpty) 'reason': reason,
+    });
+    return ProductModel.fromJson(res.data);
+  }
+
   Future<PaginatedResponse<ProductModel>> searchForSale({
     String? search,
     int page = 1,

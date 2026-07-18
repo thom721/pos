@@ -12,7 +12,7 @@ class PurchaseItemInput(BaseModel):
     unit_price: float
 
 class PurchaseCreate(BaseModel):
-    supplier_id: UUID
+    supplier_id: Optional[UUID] = None
     paid_amount: float = 0
     total_amount: float = 0
     warehouse_id: Optional[str] = None

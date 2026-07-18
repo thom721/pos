@@ -4,6 +4,7 @@ import shutil
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional, Union
+from pydantic import BaseModel
 from api.services.product_service import ProductService
 from api.schemas.product import ProductCreate, ProductRead, ProductUpdate
 from api.database import get_db
@@ -12,8 +13,14 @@ from api.core.permissions import P
 from api.core.PaginateHelper import PaginatedResponse
 from api.models.Product import Product
 from api.models.User import User
+from api.models.StockMovement import StockMovement, StockType
 from api.services import audit_service
 from api.ws_manager import manager
+
+
+class StockAdjustRequest(BaseModel):
+    quantity: float
+    reason: Optional[str] = None
 
 router = APIRouter(prefix="/api", tags=["Products"])
 
@@ -92,6 +99,41 @@ def delete_product(
     db.commit()
     background_tasks.add_task(manager.notify, current_user.tenant_id)
     return {"ok": True}
+
+
+@router.post("/products/{product_id}/adjust-stock", response_model=ProductRead)
+def adjust_stock(
+    product_id: str,
+    payload: StockAdjustRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
+):
+    product = db.get(Product, product_id)
+    if not product or product.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    qty = payload.quantity
+    if qty == 0:
+        raise HTTPException(status_code=400, detail="La quantité doit être non nulle")
+
+    mv = StockMovement(
+        product_id=product_id,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        type=StockType.in_ if qty > 0 else StockType.out,
+        quantity=qty if qty > 0 else -qty,
+        source_type="adjustment",
+        note=payload.reason,
+    )
+    db.add(mv)
+    audit_service.log(db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+                      action="STOCK_ADJUST", resource_type="product", resource_id=product_id,
+                      detail={"quantity": qty, "reason": payload.reason})
+    db.commit()
+    db.refresh(product)
+    background_tasks.add_task(manager.notify, current_user.tenant_id)
+    return product
 
 
 _ALLOWED_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}

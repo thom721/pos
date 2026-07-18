@@ -323,12 +323,19 @@ class _CreatePurchaseDialogState
               suppliersAsync.when(
                 data: (suppliers) => DropdownButtonFormField<SupplierModel>(
                   value: _supplier,
-                  decoration:
-                      const InputDecoration(labelText: 'Fournisseur *'),
-                  items: suppliers.data
-                      .map((s) => DropdownMenuItem(
-                          value: s, child: Text(s.name)))
-                      .toList(),
+                  decoration: const InputDecoration(
+                    labelText: 'Fournisseur (optionnel)',
+                    hintText: 'Achat informel — sans fournisseur',
+                  ),
+                  items: [
+                    const DropdownMenuItem<SupplierModel>(
+                      value: null,
+                      child: Text('— Aucun fournisseur —',
+                          style: TextStyle(color: AppColors.textSecondary)),
+                    ),
+                    ...suppliers.data.map((s) => DropdownMenuItem(
+                        value: s, child: Text(s.name))),
+                  ],
                   onChanged: (v) => setState(() => _supplier = v),
                 ),
                 loading: () => const LinearProgressIndicator(),
@@ -395,10 +402,6 @@ class _CreatePurchaseDialogState
   }
 
   Future<void> _submit() async {
-    if (_supplier == null) {
-      setState(() => _error = 'Sélectionnez un fournisseur');
-      return;
-    }
     if (_items.isEmpty) {
       setState(() => _error = 'Ajoutez au moins un article');
       return;
@@ -416,7 +419,7 @@ class _CreatePurchaseDialogState
     try {
       final warehouseId = ref.read(activeWarehouseProvider)?.id;
       await PurchaseRepository().createPurchase({
-        'supplier_id': _supplier!.id,
+        if (_supplier != null) 'supplier_id': _supplier!.id,
         'paid_amount': double.tryParse(_paidCtrl.text) ?? 0,
         'items': _items,
         if (warehouseId != null) 'warehouse_id': warehouseId,

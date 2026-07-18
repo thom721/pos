@@ -44,7 +44,7 @@ def list_purchases(
 
     # 🔍 Recherche (reference + supplier)
     if search:
-        query = query.join(Supplier).filter(
+        query = query.outerjoin(Supplier).filter(
             or_(
                 Purchase.reference.ilike(f"%{search}%"),
                 Supplier.name.ilike(f"%{search}%"),
@@ -125,7 +125,7 @@ def create_purchase(db: Session, data, user_id: str, tenant_id: str | None = Non
 
     wh_id = resolve_warehouse_id(db, tenant_id, warehouse_id or data.warehouse_id) if tenant_id else None
     purchase = Purchase(
-        supplier_id=str(data.supplier_id),
+        supplier_id=str(data.supplier_id) if data.supplier_id else None,
         user_id=user_id,
         warehouse_id=wh_id,
         reference=f"PUR-{int(datetime.utcnow().timestamp())}",
