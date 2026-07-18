@@ -278,15 +278,18 @@ def _ensure_default_warehouse(db, tenant_id: str) -> None:
                 WarehouseModel.tenant_id == tenant_id,
                 WarehouseModel.is_default == True,  # noqa: E712
             ).update({"is_default": False})
-            db.add(WarehouseModel(
+            wh = WarehouseModel(
                 id=installer_wh_id,
                 tenant_id=tenant_id,
                 name="Depot principal",
                 is_default=True,
                 is_active=True,
-            ))
+            )
+            db.add(wh)
             db.commit()
             _log.info("Depot installer cree (placeholder) ID=%s", installer_wh_id)
+            from api.services import config_service as _cfg_svc
+            _cfg_svc.create_for_warehouse(db, tenant_id, installer_wh_id)
             return
 
         # Pas d'ID installer — comportement par défaut
@@ -294,14 +297,17 @@ def _ensure_default_warehouse(db, tenant_id: str) -> None:
             WarehouseModel.tenant_id == tenant_id
         ).first()
         if not exists:
-            db.add(WarehouseModel(
+            wh = WarehouseModel(
                 tenant_id=tenant_id,
                 name="Depot principal",
                 is_default=True,
                 is_active=True,
-            ))
+            )
+            db.add(wh)
             db.commit()
             _log.info("Depot par defaut cree pour le tenant %s", tenant_id)
+            from api.services import config_service as _cfg_svc
+            _cfg_svc.create_for_warehouse(db, tenant_id, wh.id)
     except Exception as exc:
         _log.warning("_ensure_default_warehouse: %s", exc)
 

@@ -4,7 +4,8 @@ from .base import UUIDBase
 class AppConfig(UUIDBase):
     """Single-row global config — use config_service.get_or_create() to access."""
     __tablename__ = "app_config"
-    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
+    tenant_id    = Column(String(36), ForeignKey('tenants.id'),    nullable=True, index=True)
+    warehouse_id = Column(String(36), ForeignKey('warehouses.id'), nullable=True, index=True)
 
     # Business identity (shared across devices)
     business_name   = Column(String(200), default='Mon Commerce')

@@ -16,6 +16,7 @@ from api.models.Tenant import Tenant
 from api.models.PlatformConfig import PlatformConfig
 from api.schemas.warehouse import WarehouseCreate, WarehouseUpdate, WarehouseRead
 from api.services import billing_extra_service as _billing
+from api.services import config_service as _config
 
 
 def _pricing(db: Session) -> PlatformConfig | None:
@@ -129,6 +130,10 @@ def create_warehouse(
 
     db.commit()
     db.refresh(wh)
+
+    # Créer automatiquement la config du nouveau dépôt
+    _config.create_for_warehouse(db, current_user.tenant_id, wh.id)
+
     return wh
 
 

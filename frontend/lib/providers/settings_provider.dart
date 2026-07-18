@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
+import 'package:pos_connect/data/models/warehouse_model.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 
 const _kKeyPrefix = 'pos_app_settings';
 
@@ -201,29 +203,46 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   final FlutterSecureStorage _storage;
 
   SettingsNotifier(this._ref, this._storage) : super(const AppSettings()) {
+    // Reload when the authenticated user changes
     _ref.listen<AuthState>(authProvider, (prev, next) {
-      // Reload settings whenever the authenticated user changes
       if (prev?.user?.id != next.user?.id) {
+        _load();
+      }
+    });
+    // Reload when the active warehouse changes (each depot has its own config)
+    _ref.listen<WarehouseModel?>(activeWarehouseProvider, (prev, next) {
+      if (prev?.id != next?.id) {
         _load();
       }
     });
     _load();
   }
 
-  /// Returns a tenant-scoped cache key so different tenants never share local cache.
+  /// Returns a (tenant + warehouse)-scoped cache key so each depot has its own local cache.
   Future<String> _cacheKey() async {
     final prefs = await SharedPreferences.getInstance();
+    final warehouseId = _ref.read(activeWarehouseProvider)?.id;
     final tenantRaw = prefs.getString(AppConstants.tenantKey);
     if (tenantRaw != null) {
       try {
         final tenant = jsonDecode(tenantRaw) as Map<String, dynamic>;
-        final id = tenant['id'] as String?;
-        if (id != null && id.isNotEmpty) return '${_kKeyPrefix}_$id';
+        final tenantId = tenant['id'] as String?;
+        if (tenantId != null && tenantId.isNotEmpty) {
+          if (warehouseId != null && warehouseId.isNotEmpty) {
+            return '${_kKeyPrefix}_${tenantId}_$warehouseId';
+          }
+          return '${_kKeyPrefix}_$tenantId';
+        }
       } catch (_) {}
     }
-    // Local mode or no tenant: use user-scoped key from auth state
+    // Local mode: scope by user + warehouse
     final userId = _ref.read(authProvider).user?.id;
-    if (userId != null && userId.isNotEmpty) return '${_kKeyPrefix}_$userId';
+    if (userId != null && userId.isNotEmpty) {
+      if (warehouseId != null && warehouseId.isNotEmpty) {
+        return '${_kKeyPrefix}_${userId}_$warehouseId';
+      }
+      return '${_kKeyPrefix}_$userId';
+    }
     return _kKeyPrefix;
   }
 
@@ -244,7 +263,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     }
     // Sync from API (authoritative for shared fields only)
     try {
-      final res = await dio.get('/api/config/');
+      final warehouseId = _ref.read(activeWarehouseProvider)?.id;
+      final queryParams = warehouseId != null ? '?warehouse_id=$warehouseId' : '';
+      final res = await dio.get('/api/config/$queryParams');
       if (res.statusCode == 200) {
         final apiSettings = AppSettings.fromApiJson(res.data as Map<String, dynamic>);
         // Preserve device-specific fields that the API doesn't know about
@@ -263,7 +284,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   Future<void> save(AppSettings settings) async {
     state = settings;
     try {
-      await dio.put('/api/config/', data: settings.toApiJson());
+      final warehouseId = _ref.read(activeWarehouseProvider)?.id;
+      final queryParams = warehouseId != null ? '?warehouse_id=$warehouseId' : '';
+      await dio.put('/api/config/$queryParams', data: settings.toApiJson());
     } catch (_) {}
     final key = await _cacheKey();
     try {
