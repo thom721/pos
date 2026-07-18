@@ -122,7 +122,7 @@ def adjust_stock(
         user_id=current_user.id,
         tenant_id=current_user.tenant_id,
         type=StockType.in_ if qty > 0 else StockType.out,
-        quantity=qty if qty > 0 else -qty,
+        quantity=qty,  # positif pour IN, négatif pour OUT (convention globale)
         source_type="adjustment",
         note=payload.reason,
     )
