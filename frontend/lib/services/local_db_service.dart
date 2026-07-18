@@ -40,7 +40,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 8,
+      version: 9,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -96,6 +96,10 @@ class LocalDbService {
     if (oldVersion < 8) {
       try { await db.execute('ALTER TABLE sales ADD COLUMN cashier_name TEXT'); } catch (_) {}
     }
+    if (oldVersion < 9) {
+      try { await db.execute('ALTER TABLE products ADD COLUMN synced INTEGER NOT NULL DEFAULT 1'); } catch (_) {}
+      try { await db.execute('ALTER TABLE categories ADD COLUMN synced INTEGER NOT NULL DEFAULT 1'); } catch (_) {}
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -112,7 +116,8 @@ class LocalDbService {
         category_id    TEXT,
         category_name  TEXT,
         image_url      TEXT,
-        is_active      INTEGER NOT NULL DEFAULT 1
+        is_active      INTEGER NOT NULL DEFAULT 1,
+        synced         INTEGER NOT NULL DEFAULT 1
       )
     ''');
 
@@ -142,7 +147,8 @@ class LocalDbService {
       CREATE TABLE categories (
         id          TEXT PRIMARY KEY,
         name        TEXT NOT NULL,
-        description TEXT
+        description TEXT,
+        synced      INTEGER NOT NULL DEFAULT 1
       )
     ''');
 
@@ -282,6 +288,7 @@ class LocalDbService {
           'category_name': p.category?.name,
           'image_url': p.imageUrl,
           'is_active': p.isActive ? 1 : 0,
+          'synced':    1,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -290,12 +297,13 @@ class LocalDbService {
   }
 
   /// Supprime les produits locaux dont l'ID n'est plus présent côté serveur.
+  /// N'affecte que les enregistrements synced=1 pour préserver les données offline.
   Future<void> deleteStaleProducts(List<String> serverIds) async {
     final db = _safeDb;
     if (db == null || serverIds.isEmpty) return;
     final placeholders = List.filled(serverIds.length, '?').join(',');
     await db.delete('products',
-        where: 'id NOT IN ($placeholders)', whereArgs: serverIds);
+        where: 'id NOT IN ($placeholders) AND synced = 1', whereArgs: serverIds);
   }
 
   Future<PaginatedResponse<ProductModel>> getProducts({
@@ -454,7 +462,7 @@ class LocalDbService {
     if (db == null || serverIds.isEmpty) return;
     final placeholders = List.filled(serverIds.length, '?').join(',');
     await db.delete('customers',
-        where: 'id NOT IN ($placeholders)', whereArgs: serverIds);
+        where: 'id NOT IN ($placeholders) AND synced = 1', whereArgs: serverIds);
   }
 
   Future<PaginatedResponse<CustomerModel>> getCustomers({
@@ -524,7 +532,7 @@ class LocalDbService {
     for (final c in categories) {
       batch.insert(
         'categories',
-        {'id': c.id, 'name': c.name, 'description': c.description},
+        {'id': c.id, 'name': c.name, 'description': c.description, 'synced': 1},
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
@@ -536,7 +544,7 @@ class LocalDbService {
     if (db == null || serverIds.isEmpty) return;
     final placeholders = List.filled(serverIds.length, '?').join(',');
     await db.delete('categories',
-        where: 'id NOT IN ($placeholders)', whereArgs: serverIds);
+        where: 'id NOT IN ($placeholders) AND synced = 1', whereArgs: serverIds);
   }
 
   Future<List<CategoryModel>> getCategories() async {
@@ -651,6 +659,16 @@ class LocalDbService {
     );
     if (rows.isEmpty) return null;
     return DateTime.tryParse(rows.first['last_synced_at'] as String);
+  }
+
+  // ── Transactions ─────────────────────────────────────────────────────────
+
+  /// Exécute [action] dans une transaction SQLite atomique.
+  /// Si la DB n'est pas disponible (web ou non initialisée), ne fait rien.
+  Future<void> runTransaction(Future<void> Function(DatabaseExecutor txn) action) async {
+    final db = _safeDb;
+    if (db == null) return;
+    await db.transaction((txn) => action(txn));
   }
 
   // ── Utilitaires ───────────────────────────────────────────────────────────

@@ -141,7 +141,8 @@ class OfflineInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (_isConnectionError(err) && _isMutation(err.requestOptions.method)) {
+    final skip = err.requestOptions.extra['skipOfflineQueue'] == true;
+    if (!skip && _isConnectionError(err) && _isMutation(err.requestOptions.method)) {
       await OfflineQueueService.instance.enqueue(err.requestOptions);
     }
     handler.next(err);
