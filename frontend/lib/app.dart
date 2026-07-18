@@ -8,6 +8,7 @@ import 'package:pos_connect/core/router.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/services/offline_cache_service.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
@@ -96,15 +97,17 @@ class _PosAppState extends ConsumerState<PosApp> {
     } catch (_) {
       // Erreurs de sync serveur non fatales
     }
-    // 3. Rafraîchir le cache SQLite local
+    // 3. Rafraîchir le cache SQLite local + config dépôt
     if (_isAndroid) {
       // Sur Android : attendre la fin de la sync pour notifier les providers
       await OfflineCacheService.instance.syncAll();
       if (mounted) {
+        ref.read(settingsProvider.notifier).reload().ignore();
         ref.read(syncEpochProvider.notifier).state++;
       }
     } else {
       OfflineCacheService.instance.syncAll().ignore();
+      ref.read(settingsProvider.notifier).reload().ignore();
     }
   }
 

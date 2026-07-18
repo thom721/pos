@@ -281,6 +281,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     }
   }
 
+  /// Recharge la config depuis l'API (appelé par le cycle de sync auto).
+  Future<void> reload() => _load();
+
   Future<void> save(AppSettings settings) async {
     state = settings;
     try {
