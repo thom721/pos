@@ -310,3 +310,21 @@ def register_heartbeat(
         register.last_seen = datetime.now(timezone.utc)
         db.commit()
     return {"ok": True}
+
+
+@router.post("/registers/logout")
+def register_logout(
+    device_id: str = Body(..., embed=True),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Frees the register slot immediately on explicit logout (clears last_seen + session_token)."""
+    register = db.query(PosRegister).filter(
+        PosRegister.tenant_id == current_user.tenant_id,
+        PosRegister.device_id == device_id,
+    ).first()
+    if register:
+        register.last_seen = None
+        register.session_token = None
+        db.commit()
+    return {"ok": True}
