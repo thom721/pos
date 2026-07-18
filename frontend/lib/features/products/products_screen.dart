@@ -341,6 +341,7 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameCtrl;
   late final TextEditingController _barcodeCtrl;
+  late final TextEditingController _descCtrl;
   late final TextEditingController _salePriceCtrl;
   late final TextEditingController _purchasePriceCtrl;
   late final TextEditingController _alertCtrl;
@@ -360,6 +361,8 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
     _nameCtrl = TextEditingController(text: widget.product?.name ?? '');
     _barcodeCtrl =
         TextEditingController(text: widget.product?.barcode ?? '');
+    _descCtrl =
+        TextEditingController(text: widget.product?.description ?? '');
     _salePriceCtrl = TextEditingController(
         text: widget.product?.salePrice.toString() ?? '0');
     _purchasePriceCtrl = TextEditingController(
@@ -396,6 +399,7 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
   void dispose() {
     _nameCtrl.dispose();
     _barcodeCtrl.dispose();
+    _descCtrl.dispose();
     _salePriceCtrl.dispose();
     _purchasePriceCtrl.dispose();
     _alertCtrl.dispose();
@@ -435,6 +439,14 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                 TextFormField(
                   controller: _barcodeCtrl,
                   decoration: const InputDecoration(labelText: 'Code-barres'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _descCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Description (optionnel)',
+                  ),
+                  maxLines: 2,
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
@@ -520,6 +532,9 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
         'barcode': _barcodeCtrl.text.trim().isEmpty
             ? null
             : _barcodeCtrl.text.trim(),
+        'description': _descCtrl.text.trim().isEmpty
+            ? null
+            : _descCtrl.text.trim(),
         'category_id': _categoryId,
         'sale_price': double.tryParse(_salePriceCtrl.text) ?? 0,
         'purchase_price': double.tryParse(_purchasePriceCtrl.text) ?? 0,

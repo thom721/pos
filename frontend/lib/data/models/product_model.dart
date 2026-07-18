@@ -22,6 +22,7 @@ class ProductModel {
   final String id;
   final String name;
   final String? barcode;
+  final String? description;
   final double salePrice;
   final double purchasePrice;
   final int alertStock;
@@ -34,6 +35,7 @@ class ProductModel {
     required this.id,
     required this.name,
     this.barcode,
+    this.description,
     required this.salePrice,
     required this.purchasePrice,
     required this.alertStock,
@@ -49,6 +51,7 @@ class ProductModel {
         id: json['id']?.toString() ?? '',
         name: json['name']?.toString() ?? '',
         barcode: json['barcode']?.toString(),
+        description: json['description']?.toString(),
         salePrice: double.tryParse(json['sale_price']?.toString() ?? '0') ?? 0,
         purchasePrice:
             double.tryParse(json['purchase_price']?.toString() ?? '0') ?? 0,
