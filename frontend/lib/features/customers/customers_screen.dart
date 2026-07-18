@@ -193,55 +193,59 @@ class _CustomerFormDialogState
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(isEdit ? 'Modifier le client' : 'Nouveau client'),
+      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       content: SizedBox(
         width: 560,
         child: Form(
           key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(labelText: 'Nom *'),
-                validator: (v) => v!.isEmpty ? 'Requis' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _nifCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'NIF / CIN',
-                    hintText: 'Numéro d\'identification fiscale ou CIN'),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _phoneCtrl,
-                decoration: const InputDecoration(labelText: 'Téléphone *'),
-                validator: (v) => v!.isEmpty ? 'Requis' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _emailCtrl,
-                decoration: const InputDecoration(labelText: 'Email'),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _addressCtrl,
-                decoration: const InputDecoration(labelText: 'Adresse *'),
-                validator: (v) => v!.isEmpty ? 'Requis' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _limitCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                    labelText: 'Limite de crédit (HTG)'),
-              ),
-              if (_error != null) ...[
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Nom *'),
+                  validator: (v) => v!.isEmpty ? 'Requis' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _nifCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'NIF / CIN',
+                      hintText: 'Numéro d\'identification fiscale ou CIN'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _phoneCtrl,
+                  decoration: const InputDecoration(labelText: 'Téléphone *'),
+                  validator: (v) => v!.isEmpty ? 'Requis' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _emailCtrl,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _addressCtrl,
+                  decoration: const InputDecoration(labelText: 'Adresse *'),
+                  validator: (v) => v!.isEmpty ? 'Requis' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _limitCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                      labelText: 'Limite de crédit (HTG)'),
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(_error!,
+                      style: const TextStyle(color: AppColors.error)),
+                ],
                 const SizedBox(height: 8),
-                Text(_error!,
-                    style: const TextStyle(color: AppColors.error)),
               ],
-            ],
+            ),
           ),
         ),
       ),
