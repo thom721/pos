@@ -1,6 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
-import 'package:dio/dio.dart' show FormData, Options, DioException;
+import 'package:dio/dio.dart' show FormData, Options, DioException, DioExceptionType;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -801,7 +804,30 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   bool _sessionChecked = false;
   bool _noSessionPermission = false; // true si 403 permission sessions.open
   bool _caisseDisabled = false;      // true si caisse/dépôt désactivé
+  bool _offlineSession = false;      // true si session créée/chargée hors-ligne
   String? _deviceId;
+
+  static const _sessionPrefKey = 'pos_caisse_session';
+
+  Future<void> _cacheSession(Map<String, dynamic>? session) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (session == null) {
+      await prefs.remove(_sessionPrefKey);
+    } else {
+      await prefs.setString(_sessionPrefKey, jsonEncode(session));
+    }
+  }
+
+  Future<Map<String, dynamic>?> _loadCachedSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_sessionPrefKey);
+    if (raw == null) return null;
+    try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   void initState() {
@@ -825,21 +851,41 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       final res = await dio.get('/api/sessions/current', queryParameters: {'device_id': _deviceId});
       final session = res.data['session'];
       final disabled = res.data['disabled'] == true;
+      // Mettre en cache la session serveur
+      if (session != null) await _cacheSession(session as Map<String, dynamic>);
       if (mounted) {
         setState(() {
           _session = session as Map<String, dynamic>?;
           _sessionChecked = true;
           _caisseDisabled = disabled;
+          _offlineSession = false;
         });
         if (_session == null && !disabled && mounted) {
           _promptOpenSession();
         }
       }
     } catch (e) {
+      if (!mounted) return;
+      final is4xx = e is DioException &&
+          ((e.response?.statusCode ?? 0) == 401 ||
+           (e.response?.statusCode ?? 0) == 403);
+
+      // Réseau indisponible → utiliser le cache local
+      if (!is4xx && Platform.isAndroid) {
+        final cached = await _loadCachedSession();
+        if (cached != null) {
+          if (mounted) {
+            setState(() {
+              _session = cached;
+              _sessionChecked = true;
+              _offlineSession = true;
+            });
+          }
+          return;
+        }
+      }
+
       if (mounted) {
-        final is4xx = e is DioException &&
-            ((e.response?.statusCode ?? 0) == 401 ||
-             (e.response?.statusCode ?? 0) == 403);
         setState(() {
           _sessionChecked = true;
           _noSessionPermission = is4xx;
@@ -856,7 +902,13 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       builder: (_) => _OpenSessionDialog(
         deviceId: _deviceId!,
         onOpened: (session) {
-          if (mounted) setState(() => _session = session);
+          if (mounted) {
+            _cacheSession(session);
+            setState(() {
+              _session = session;
+              _offlineSession = session['offline'] == true;
+            });
+          }
         },
         onCancelled: () {
           if (mounted) context.go('/dashboard');
@@ -872,7 +924,10 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       builder: (_) => _CloseSessionDialog(
         session: _session!,
         onClosed: () {
-          if (mounted) setState(() => _session = null);
+          if (mounted) {
+            _cacheSession(null);
+            setState(() { _session = null; _offlineSession = false; });
+          }
           _promptOpenSession();
         },
       ),
@@ -1012,17 +1067,27 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            color: AppColors.accent.withValues(alpha: 0.10),
+            color: (_offlineSession ? AppColors.warning : AppColors.accent)
+                .withValues(alpha: 0.10),
             child: Row(
               children: [
-                const Icon(Icons.point_of_sale_rounded,
-                    color: AppColors.accent, size: 14),
+                Icon(
+                  _offlineSession
+                      ? Icons.wifi_off_rounded
+                      : Icons.point_of_sale_rounded,
+                  color: _offlineSession ? AppColors.warning : AppColors.accent,
+                  size: 14,
+                ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'Session ouverte — Fond: ${_fmt.format((_session!['opening_balance'] as num?)?.toDouble() ?? 0)}',
-                    style: const TextStyle(
-                        color: AppColors.accent,
+                    _offlineSession
+                        ? 'Hors-ligne — Fond: ${_fmt.format((_session!['opening_balance'] as num?)?.toDouble() ?? 0)}  (sync auto au retour réseau)'
+                        : 'Session ouverte — Fond: ${_fmt.format((_session!['opening_balance'] as num?)?.toDouble() ?? 0)}',
+                    style: TextStyle(
+                        color: _offlineSession
+                            ? AppColors.warning
+                            : AppColors.accent,
                         fontWeight: FontWeight.w500,
                         fontSize: 11),
                   ),
@@ -1030,14 +1095,20 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                 InkWell(
                   onTap: _showCloseSession,
                   borderRadius: BorderRadius.circular(4),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    child: Text('Fermer caisse',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: AppColors.accent,
-                            decoration: TextDecoration.underline,
-                            decorationColor: AppColors.accent)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    child: Text(
+                      'Fermer caisse',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: _offlineSession
+                              ? AppColors.warning
+                              : AppColors.accent,
+                          decoration: TextDecoration.underline,
+                          decorationColor: _offlineSession
+                              ? AppColors.warning
+                              : AppColors.accent),
+                    ),
                   ),
                 ),
               ],
@@ -2157,11 +2228,12 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
 
   Future<void> _open({bool force = false}) async {
     setState(() { _loading = true; _error = null; });
+    final openingBalance = double.tryParse(_balanceCtrl.text) ?? 0;
     try {
       final res = await dio.post('/api/sessions/open', data: {
         'device_id': widget.deviceId,
         'register_name': 'Caisse',
-        'opening_balance': double.tryParse(_balanceCtrl.text) ?? 0,
+        'opening_balance': openingBalance,
         'force': force,
       });
       final session = res.data['session'] as Map<String, dynamic>;
@@ -2169,6 +2241,30 @@ class _OpenSessionDialogState extends State<_OpenSessionDialog> {
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
+
+      // Réseau indisponible sur Android → session locale
+      final isNetErr = Platform.isAndroid && (
+        e is DioException && (
+          e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.sendTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.unknown
+        ) || e is SocketException
+      );
+      if (isNetErr) {
+        final localSession = <String, dynamic>{
+          'id': const Uuid().v4(),
+          'device_id': widget.deviceId,
+          'opening_balance': openingBalance,
+          'opened_at': DateTime.now().toIso8601String(),
+          'offline': true,
+        };
+        widget.onOpened(localSession);
+        if (mounted) Navigator.of(context).pop();
+        return;
+      }
+
       // 402 = new device exceeds caisse limit → warn and let user confirm
       final confirmed = await handleLimitExceeded(context, e);
       if (!mounted) return;
@@ -2316,6 +2412,14 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
 
   Future<void> _close() async {
     setState(() { _loading = true; _error = null; });
+
+    // Session créée hors-ligne : fermer localement sans appel API
+    if (widget.session['offline'] == true) {
+      widget.onClosed();
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+
     try {
       final sessionId = widget.session['id'] as String;
       await dio.post('/api/sessions/$sessionId/close', data: {
@@ -2324,6 +2428,22 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
       widget.onClosed();
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
+      if (!mounted) return;
+      // Réseau indisponible → fermer localement
+      final isNetErr = Platform.isAndroid && (
+        e is DioException && (
+          e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.sendTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          e.type == DioExceptionType.unknown
+        ) || e is SocketException
+      );
+      if (isNetErr) {
+        widget.onClosed();
+        if (mounted) Navigator.of(context).pop();
+        return;
+      }
       setState(() {
         _loading = false;
         _error = e is DioException

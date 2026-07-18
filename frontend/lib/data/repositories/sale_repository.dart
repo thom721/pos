@@ -57,8 +57,16 @@ class SaleRepository {
   }
 
   Future<SaleModel> getSale(String id) async {
-    final res = await dio.get('/api/sales/$id');
-    return SaleModel.fromJson(res.data);
+    try {
+      final res = await dio.get('/api/sales/$id');
+      return SaleModel.fromJson(res.data);
+    } catch (e) {
+      if (_isAndroid && _isOffline(e)) {
+        final local = await LocalDbService.instance.getLocalSale(id);
+        if (local != null) return local;
+      }
+      rethrow;
+    }
   }
 
   /// Crée une vente.

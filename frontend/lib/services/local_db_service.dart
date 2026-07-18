@@ -695,6 +695,15 @@ class LocalDbService {
     );
   }
 
+  Future<SaleModel?> getLocalSale(String id) async {
+    final db = _safeDb;
+    if (db == null) return null;
+    final rows = await db.query('sales', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (rows.isEmpty) return null;
+    final itemRows = await db.query('sale_items', where: 'sale_id = ?', whereArgs: [id]);
+    return _saleFromRow(rows.first, itemRows);
+  }
+
   Future<void> deleteSale(String saleId) async {
     final db = _safeDb;
     if (db == null) return;
