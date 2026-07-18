@@ -228,6 +228,10 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   }
 
   Future<void> _load() async {
+    // Skip if not authenticated yet — the listener will re-trigger after login.
+    final authState = _ref.read(authProvider);
+    if (authState.user == null) return;
+
     final key = await _cacheKey();
     // Apply local cache first for fast startup
     final raw = await _storage.read(key: key);
