@@ -90,10 +90,11 @@ class SaleRepository {
 
       // 3. Envoi cloud avec l'UUID client
       try {
-        final res = await dio.post('/api/sales/', data: {
-          ...data,
-          'client_id': localId,
-        });
+        final res = await dio.post(
+          '/api/sales/',
+          data: {...data, 'client_id': localId},
+          options: Options(extra: {'skipOfflineQueue': true}),
+        );
         final serverId  = res.data['sale_id']?.toString() ?? localId;
         final reference = res.data['reference']?.toString() ?? '';
         await LocalDbService.instance.markSaleSynced(localId, reference);
@@ -123,16 +124,19 @@ class SaleRepository {
 
   Future<void> _rollbackLocalSale(
       String localId, Map<String, dynamic> data) async {
-    final db = LocalDbService.instance;
-    for (final item in data['items'] as List) {
-      await db.decrementStock(
-        item['product_id'] as String,
-        -((item['quantity'] as num).toDouble()), // remettre le stock
-      );
-    }
-    // Supprimer l'enregistrement local erroné
-    final rawDb = LocalDbService.instance;
-    await rawDb.deleteSale(localId);
+    await LocalDbService.instance.runTransaction((txn) async {
+      // Restaurer le stock pour chaque article
+      for (final item in data['items'] as List) {
+        await txn.rawUpdate(
+          'UPDATE products SET stock = MAX(0, COALESCE(stock, 0) - ?) WHERE id = ?',
+          [-(item['quantity'] as num).toDouble(), item['product_id']],
+        );
+      }
+      // Supprimer la vente locale et ses lignes associées
+      await txn.delete('sale_items',    where: 'sale_id = ?', whereArgs: [localId]);
+      await txn.delete('sale_payments', where: 'sale_id = ?', whereArgs: [localId]);
+      await txn.delete('sales',         where: 'id = ?',      whereArgs: [localId]);
+    });
   }
 
   Future<void> cancelSale(String id) async {
