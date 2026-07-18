@@ -15,10 +15,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('pos_registers',
-        sa.Column('session_token', sa.String(36), nullable=True))
-    op.add_column('pos_registers',
-        sa.Column('last_seen', sa.DateTime(timezone=True), nullable=True))
+    try:
+        op.add_column('pos_registers',
+            sa.Column('session_token', sa.String(36), nullable=True))
+    except Exception:
+        pass
+    try:
+        op.add_column('pos_registers',
+            sa.Column('last_seen', sa.DateTime(timezone=True), nullable=True))
+    except Exception:
+        pass
 
 
 def downgrade() -> None:

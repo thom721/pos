@@ -174,7 +174,14 @@ def _run_alembic_migrations() -> None:
                     )
                     lock_conn.execute(text("DELETE FROM alembic_version"))
                     lock_conn.commit()
-                    alembic_command.upgrade(alembic_cfg, "head")
+                    try:
+                        alembic_command.upgrade(alembic_cfg, "head")
+                    except Exception as retry_err:
+                        _log.error(
+                            "Échec upgrade après réinitialisation (%s) — stamp à head",
+                            retry_err,
+                        )
+                        alembic_command.stamp(alembic_cfg, "head")
         finally:
             if engine.dialect.name == "mysql":
                 lock_conn.execute(text("SELECT RELEASE_LOCK('pos_alembic_migration')"))

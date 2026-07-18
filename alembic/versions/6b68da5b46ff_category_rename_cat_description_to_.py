@@ -19,12 +19,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.alter_column(
-        'categories', 'cat_description',
-        new_column_name='description',
-        existing_type=sa.String(255),
-        existing_nullable=True,
-    )
+    bind = op.get_bind()
+    cols = {c['name'] for c in sa.inspect(bind).get_columns('categories')}
+    if 'cat_description' in cols and 'description' not in cols:
+        op.alter_column(
+            'categories', 'cat_description',
+            new_column_name='description',
+            existing_type=sa.String(255),
+            existing_nullable=True,
+        )
 
 
 def downgrade() -> None:

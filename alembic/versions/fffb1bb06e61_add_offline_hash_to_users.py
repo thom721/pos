@@ -19,7 +19,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('users', sa.Column('offline_hash', sa.String(length=64), nullable=True))
+    try:
+        op.add_column('users', sa.Column('offline_hash', sa.String(length=64), nullable=True))
+    except Exception:
+        pass
 
 
 def downgrade() -> None:

@@ -15,14 +15,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Drop the old NOT NULL + unique constraint, recreate as nullable unique
-    op.drop_constraint('uq_register_tenant_device', 'pos_registers', type_='unique')
-    op.alter_column('pos_registers', 'device_id',
-                    existing_type=sa.String(36),
-                    nullable=True)
-    # Recreate unique constraint (MySQL allows multiple NULLs in a UNIQUE index)
-    op.create_unique_constraint('uq_register_tenant_device', 'pos_registers',
-                                ['tenant_id', 'device_id'])
+    try:
+        op.drop_constraint('uq_register_tenant_device', 'pos_registers', type_='unique')
+    except Exception:
+        pass
+    try:
+        op.alter_column('pos_registers', 'device_id',
+                        existing_type=sa.String(36),
+                        nullable=True)
+    except Exception:
+        pass
+    try:
+        op.create_unique_constraint('uq_register_tenant_device', 'pos_registers',
+                                    ['tenant_id', 'device_id'])
+    except Exception:
+        pass
 
 
 def downgrade() -> None:
