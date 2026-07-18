@@ -61,8 +61,10 @@ Pour votre projet POS Connect :
 
 git pull && cd .. && docker compose down && docker compose up -d --build
 
-cd /Users/kikipllc/development/pos_api/frontend                                        
-flutter build web --release --dart-define=FLUTTER_WEB_USE_SKIA=false
-
 cd /Users/kikipllc/development/pos_api/frontend
+flutter build web --release \
+  --dart-define=SERVER_IP=pos.infini-software.cloud \
+  --dart-define=CLOUD_URL=https://pos.infini-software.cloud \
+  --dart-define=FLUTTER_WEB_USE_SKIA=false
+
 scp -r build/web/* root@82.29.153.24:/var/www/pos.infini-software.cloud/
