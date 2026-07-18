@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:pos_connect/services/local_db_service.dart';
+
 // ── Item ─────────────────────────────────────────────────────────────────────
 
 class OfflineQueueItem {
@@ -126,13 +128,14 @@ class OfflineQueueService {
 
     for (final item in items) {
       try {
-        await apiDio.request<dynamic>(
+        final res = await apiDio.request<dynamic>(
           item.path,
           data: item.data,
           options: Options(method: item.method),
         );
         replayed++;
         debugPrint('[OfflineQueue] replayed ${item.method} ${item.path}');
+        await _handleSyncResponse(item, res.data);
       } catch (e) {
         final next = item.copyWith(retries: item.retries + 1);
         if (next.retries < _maxRetries) {
@@ -145,6 +148,41 @@ class OfflineQueueService {
 
     await _save(remaining);
     return replayed;
+  }
+
+  /// Met à jour le SQLite local après une sync réussie.
+  Future<void> _handleSyncResponse(OfflineQueueItem item, dynamic responseData) async {
+    if (responseData is! Map) return;
+
+    // Vente créée offline → marquer comme synchronisée
+    if (item.method == 'POST' && item.path == '/api/sales/') {
+      final clientId  = (item.data is Map) ? item.data['client_id'] as String? : null;
+      final reference = responseData['reference'] as String?;
+      if (clientId != null && reference != null) {
+        await LocalDbService.instance.markSaleSynced(clientId, reference);
+        debugPrint('[OfflineQueue] sale $clientId synced → $reference');
+      }
+    }
+
+    // Client créé offline → marquer comme synchronisé
+    if (item.method == 'POST' && item.path == '/api/customers/') {
+      final localId  = (item.data is Map) ? item.data['local_id'] as String? : null;
+      final serverId = responseData['id'] as String?;
+      if (localId != null && serverId != null) {
+        await LocalDbService.instance.markCustomerSynced(localId, serverId);
+        debugPrint('[OfflineQueue] customer $localId synced → $serverId');
+      }
+    }
+
+    // Achat créé offline → marquer comme synchronisé
+    if (item.method == 'POST' && item.path == '/api/purchases/') {
+      final clientId  = (item.data is Map) ? item.data['client_id'] as String? : null;
+      final reference = responseData['reference'] as String?;
+      if (clientId != null && reference != null) {
+        await LocalDbService.instance.markPurchaseSynced(clientId, reference);
+        debugPrint('[OfflineQueue] purchase $clientId synced → $reference');
+      }
+    }
   }
 
   Future<void> clear() async {
