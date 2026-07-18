@@ -121,6 +121,14 @@ const _permMatrix = [
     ]
   ),
   (
+    group: 'Sessions caisse',
+    perms: [
+      (label: 'Ouvrir session',  perm: Perm.sessionsOpen),
+      (label: 'Fermer session',  perm: Perm.sessionsClose),
+      (label: 'Voir sessions',   perm: Perm.sessionsRead),
+    ]
+  ),
+  (
     group: 'RH & Paie',
     perms: [
       (label: 'Profils employés', perm: Perm.employeesRead),
