@@ -484,6 +484,19 @@ def on_startup():
     import api.database as _db_module
     db = _db_module.SessionLocal()
     try:
+        # Inline migrations — colonnes ajoutées après create_all, avant toute requête ORM
+        from api.core.config import settings as _s
+        if _s.DB_TYPE != "sqlite":
+            for _sql in [
+                "ALTER TABLE users ADD COLUMN offline_hash VARCHAR(64) NULL",
+                "ALTER TABLE users MODIFY COLUMN phone VARCHAR(255) NULL",
+            ]:
+                try:
+                    db.execute(text(_sql))
+                    db.commit()
+                except Exception:
+                    db.rollback()
+
         # 3. Tenant LOCAL — pour les déploiements en mode local (pas SaaS)
         local_tid = _ensure_local_tenant(db)
         # 4. Superadmin — auto-génère les credentials si absent, crée le user
@@ -507,17 +520,9 @@ def on_startup():
 
         # Load all roles (including custom ones) into ROLE_PERMISSIONS
         load_roles_from_db(db.query(RoleModel).all())
-
-        # Inline migration: make users.phone nullable (safe on MySQL & SQLite)
-        try:
-            from api.core.config import settings as _s
-            if _s.DB_TYPE != "sqlite":
-                db.execute(text(
-                    "ALTER TABLE users MODIFY COLUMN phone VARCHAR(255) NULL"
-                ))
-                db.commit()
-        except Exception:
-            pass  # already nullable or SQLite (no ALTER TABLE MODIFY)
+    except Exception:
+        _log.exception("ERREUR CRITIQUE on_startup — le serveur ne peut pas démarrer")
+        raise
     finally:
         db.close()
 
