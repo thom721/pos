@@ -1,3 +1,6 @@
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/core/permissions.dart';
@@ -320,6 +323,7 @@ class _CompanyFormState extends ConsumerState<_CompanyForm> {
   late final TextEditingController _addressCtrl;
   late final TextEditingController _footerCtrl;
   bool _saving = false;
+  bool _uploadingLogo = false;
 
   @override
   void initState() {
@@ -340,6 +344,52 @@ class _CompanyFormState extends ConsumerState<_CompanyForm> {
     _addressCtrl.dispose();
     _footerCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _uploadLogo() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: kIsWeb,
+    );
+    if (result == null || result.files.isEmpty) return;
+    setState(() => _uploadingLogo = true);
+    try {
+      final file = result.files.first;
+      final FormData form;
+      if (kIsWeb) {
+        form = FormData.fromMap({
+          'file': MultipartFile.fromBytes(file.bytes!, filename: file.name),
+        });
+      } else {
+        form = FormData.fromMap({
+          'file': await MultipartFile.fromFile(file.path!, filename: file.name),
+        });
+      }
+      final res = await dio.post('/api/config/logo', data: form);
+      final logoPath =
+          (res.data as Map<String, dynamic>)['logo_path'] as String? ?? '';
+      await ref.read(settingsProvider.notifier).save(
+            ref.read(settingsProvider).copyWith(logoPath: logoPath),
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Logo mis à jour'),
+              backgroundColor: AppColors.success),
+        );
+      }
+    } on DioException catch (e) {
+      if (mounted) {
+        final msg = (e.response?.data is Map)
+            ? (e.response!.data['detail'] ?? 'Erreur upload').toString()
+            : 'Erreur upload';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingLogo = false);
+    }
   }
 
   Future<void> _save() async {
@@ -410,16 +460,16 @@ class _CompanyFormState extends ConsumerState<_CompanyForm> {
                   ),
                   const SizedBox(height: 8),
                   TextButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                'Upload logo — fonctionnalité à venir')),
-                      );
-                    },
-                    icon: const Icon(Icons.upload_rounded, size: 16),
-                    label: const Text('Changer le logo',
-                        style: TextStyle(fontSize: 13)),
+                    onPressed: _uploadingLogo ? null : _uploadLogo,
+                    icon: _uploadingLogo
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.upload_rounded, size: 16),
+                    label: Text(
+                        _uploadingLogo ? 'Envoi...' : 'Changer le logo',
+                        style: const TextStyle(fontSize: 13)),
                   ),
                 ],
               ),

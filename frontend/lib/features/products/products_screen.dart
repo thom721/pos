@@ -220,6 +220,7 @@ class _ProductTable extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(hasPermissionProvider(Perm.productsUpdate));
+    final canAdjustStock = ref.watch(hasPermissionProvider(Perm.stockAdjust));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -236,7 +237,7 @@ class _ProductTable extends ConsumerWidget {
               const DataColumn(label: Text('Prix vente'), numeric: true),
               const DataColumn(label: Text('Stock')),
               const DataColumn(label: Text('Seuil alerte'), numeric: true),
-              if (canEdit) const DataColumn(label: Text(''), numeric: true),
+              if (canEdit || canAdjustStock) const DataColumn(label: Text(''), numeric: true),
             ],
             rows: products.map((p) {
               return DataRow(cells: [
@@ -266,27 +267,29 @@ class _ProductTable extends ConsumerWidget {
                 DataCell(_StockChip(product: p)),
                 DataCell(Text('${p.alertStock}',
                     style: const TextStyle(fontSize: 13))),
-                if (canEdit)
+                if (canEdit || canAdjustStock)
                   DataCell(Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.add_box_outlined,
-                            size: 18, color: AppColors.accent),
-                        tooltip: 'Ajuster stock',
-                        onPressed: () => showDialog(
-                          context: context,
-                          builder: (_) => _AdjustStockDialog(product: p),
+                      if (canAdjustStock)
+                        IconButton(
+                          icon: const Icon(Icons.add_box_outlined,
+                              size: 18, color: AppColors.accent),
+                          tooltip: 'Ajuster stock',
+                          onPressed: () => showDialog(
+                            context: context,
+                            builder: (_) => _AdjustStockDialog(product: p),
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined,
-                            size: 18, color: AppColors.textSecondary),
-                        onPressed: () => showDialog(
-                          context: context,
-                          builder: (_) => _ProductFormDialog(product: p),
+                      if (canEdit)
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined,
+                              size: 18, color: AppColors.textSecondary),
+                          onPressed: () => showDialog(
+                            context: context,
+                            builder: (_) => _ProductFormDialog(product: p),
+                          ),
                         ),
-                      ),
                     ],
                   )),
               ]);
@@ -324,12 +327,15 @@ class _StockChip extends StatelessWidget {
 
 // ─── Card (mobile) ────────────────────────────────────────────────────────────
 
-class _ProductCard extends StatelessWidget {
+class _ProductCard extends ConsumerWidget {
   final ProductModel product;
   const _ProductCard({required this.product});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canEdit = ref.watch(hasPermissionProvider(Perm.productsUpdate));
+    final canAdjust = ref.watch(hasPermissionProvider(Perm.stockAdjust));
+
     return Card(
       child: ListTile(
         contentPadding:
@@ -350,32 +356,44 @@ class _ProductCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     fontSize: 14)),
             if (product.stock != null)
-              GestureDetector(
-                onTap: () => showDialog(
-                  context: context,
-                  builder: (_) => _AdjustStockDialog(product: product),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.edit_rounded, size: 10,
-                        color: product.isLowStock ? AppColors.error : AppColors.textSecondary),
-                    const SizedBox(width: 3),
-                    Text('Stock: ${product.stock}',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: product.isLowStock
-                                ? AppColors.error
-                                : AppColors.textSecondary)),
-                  ],
-                ),
-              ),
+              canAdjust
+                  ? GestureDetector(
+                      onTap: () => showDialog(
+                        context: context,
+                        builder: (_) => _AdjustStockDialog(product: product),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.edit_rounded,
+                              size: 10,
+                              color: product.isLowStock
+                                  ? AppColors.error
+                                  : AppColors.textSecondary),
+                          const SizedBox(width: 3),
+                          Text('Stock: ${product.stock}',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: product.isLowStock
+                                      ? AppColors.error
+                                      : AppColors.textSecondary)),
+                        ],
+                      ),
+                    )
+                  : Text('Stock: ${product.stock}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: product.isLowStock
+                              ? AppColors.error
+                              : AppColors.textSecondary)),
           ],
         ),
-        onTap: () => showDialog(
-          context: context,
-          builder: (_) => _ProductFormDialog(product: product),
-        ),
+        onTap: canEdit
+            ? () => showDialog(
+                  context: context,
+                  builder: (_) => _ProductFormDialog(product: product),
+                )
+            : null,
       ),
     );
   }
