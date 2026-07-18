@@ -1,5 +1,5 @@
 import logging
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import or_, func
 from fastapi import HTTPException
 from datetime import datetime
@@ -56,8 +56,8 @@ def list_sales(
         .options(
             joinedload(Sale.customer),
             joinedload(Sale.user),
-            joinedload(Sale.items).joinedload(SaleItem.product),
-            joinedload(Sale.payments),
+            selectinload(Sale.items).joinedload(SaleItem.product),
+            selectinload(Sale.payments),
         )
     )
 
@@ -113,8 +113,8 @@ def get_sale(db: Session, sale_id: str, tenant_id: str | None = None):
         .options(
             joinedload(Sale.customer),
             joinedload(Sale.user),
-            joinedload(Sale.items).joinedload(SaleItem.product),
-            joinedload(Sale.payments),
+            selectinload(Sale.items).joinedload(SaleItem.product),
+            selectinload(Sale.payments),
         )
         .filter(Sale.id == sale_id)
     )

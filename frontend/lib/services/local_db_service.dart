@@ -40,7 +40,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 7,
+      version: 8,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -92,6 +92,9 @@ class LocalDbService {
           closed_at        TEXT
         )
       ''');
+    }
+    if (oldVersion < 8) {
+      try { await db.execute('ALTER TABLE sales ADD COLUMN cashier_name TEXT'); } catch (_) {}
     }
   }
 
@@ -185,6 +188,7 @@ class LocalDbService {
         paid_amount    REAL NOT NULL DEFAULT 0,
         payment_method TEXT NOT NULL DEFAULT 'CASH',
         status         TEXT NOT NULL DEFAULT 'UNPAID',
+        cashier_name   TEXT,
         created_at     TEXT NOT NULL,
         synced         INTEGER NOT NULL DEFAULT 0
       )
@@ -742,6 +746,7 @@ class LocalDbService {
         'paid_amount':    s.paidAmount,
         'payment_method': s.payments.isNotEmpty ? s.payments.first.method : 'CASH',
         'status':         s.status,
+        'cashier_name':   s.userFullName,
         'created_at':     s.createdAt.toUtc().toIso8601String(),
         'synced':         1,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -921,8 +926,9 @@ class LocalDbService {
       paidAmount:   (row['paid_amount'] as num).toDouble(),
       status:       row['status'] as String,
       createdAt:    DateTime.parse(row['created_at'] as String).toLocal(),
-      customerName: row['customer_name'] as String?,
-      customerId:   row['customer_id'] as String?,
+      customerName:  row['customer_name'] as String?,
+      customerId:    row['customer_id'] as String?,
+      userFullName:  row['cashier_name'] as String?,
       items: itemRows.map((r) => SaleItemModel(
         id:            r['id'] as String,
         productId:     r['product_id'] as String,

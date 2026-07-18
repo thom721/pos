@@ -28,6 +28,9 @@ class AppSettings {
   final bool posAutoPrint;
   final String docPrinterName;
   final bool docAutoPrint;
+  // Bluetooth thermal printer
+  final String bluetoothPrinterMac;
+  final String bluetoothPrinterName;
 
   const AppSettings({
     this.businessName = 'Mon Commerce',
@@ -47,6 +50,8 @@ class AppSettings {
     this.posAutoPrint = false,
     this.docPrinterName = '',
     this.docAutoPrint = false,
+    this.bluetoothPrinterMac = '',
+    this.bluetoothPrinterName = '',
   });
 
   AppSettings copyWith({
@@ -67,6 +72,8 @@ class AppSettings {
     bool? posAutoPrint,
     String? docPrinterName,
     bool? docAutoPrint,
+    String? bluetoothPrinterMac,
+    String? bluetoothPrinterName,
   }) =>
       AppSettings(
         businessName: businessName ?? this.businessName,
@@ -86,6 +93,8 @@ class AppSettings {
         posAutoPrint: posAutoPrint ?? this.posAutoPrint,
         docPrinterName: docPrinterName ?? this.docPrinterName,
         docAutoPrint: docAutoPrint ?? this.docAutoPrint,
+        bluetoothPrinterMac: bluetoothPrinterMac ?? this.bluetoothPrinterMac,
+        bluetoothPrinterName: bluetoothPrinterName ?? this.bluetoothPrinterName,
       );
 
   // Serialize to API (snake_case)
@@ -107,6 +116,8 @@ class AppSettings {
         'pos_auto_print': posAutoPrint,
         'doc_printer_name': docPrinterName,
         'doc_auto_print': docAutoPrint,
+        'bluetooth_printer_mac': bluetoothPrinterMac,
+        'bluetooth_printer_name': bluetoothPrinterName,
       };
 
   // Parse from API response (snake_case)
@@ -128,6 +139,8 @@ class AppSettings {
         posAutoPrint: j['pos_auto_print'] as bool? ?? false,
         docPrinterName: j['doc_printer_name'] as String? ?? '',
         docAutoPrint: j['doc_auto_print'] as bool? ?? false,
+        bluetoothPrinterMac: j['bluetooth_printer_mac'] as String? ?? '',
+        bluetoothPrinterName: j['bluetooth_printer_name'] as String? ?? '',
       );
 
   // Serialize for local cache (camelCase — backward compat)
@@ -149,6 +162,8 @@ class AppSettings {
         'posAutoPrint': posAutoPrint,
         'docPrinterName': docPrinterName,
         'docAutoPrint': docAutoPrint,
+        'bluetoothPrinterMac': bluetoothPrinterMac,
+        'bluetoothPrinterName': bluetoothPrinterName,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -169,6 +184,8 @@ class AppSettings {
         posAutoPrint: j['posAutoPrint'] as bool? ?? false,
         docPrinterName: j['docPrinterName'] as String? ?? '',
         docAutoPrint: j['docAutoPrint'] as bool? ?? false,
+        bluetoothPrinterMac: j['bluetoothPrinterMac'] as String? ?? '',
+        bluetoothPrinterName: j['bluetoothPrinterName'] as String? ?? '',
       );
 }
 

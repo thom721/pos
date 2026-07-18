@@ -9,6 +9,7 @@ import 'package:pos_connect/data/repositories/return_repository.dart';
 import 'package:pos_connect/providers/pos_provider.dart';
 import 'package:pos_connect/providers/sale_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/services/bluetooth_print_service.dart';
 import 'package:pos_connect/shared/utils/receipt_pdf.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/shared/widgets/status_badge.dart';
@@ -167,13 +168,36 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
 
   Future<void> _print() async {
     setState(() => _printing = true);
+    final settings = ref.read(settingsProvider);
     try {
-      final settings = ref.read(settingsProvider);
-      final bytes = await buildReceiptPdf(widget.sale, settings);
-      await Printing.layoutPdf(
-        onLayout: (_) => bytes,
-        name: 'Recu_${widget.sale.reference}',
-      );
+      // Bluetooth configuré → impression directe ESC/POS sans dialogue
+      if (settings.bluetoothPrinterMac.isNotEmpty) {
+        final ok = await BluetoothPrintService.instance
+            .printReceipt(widget.sale, settings);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(ok
+                ? 'Impression envoyée à ${settings.bluetoothPrinterName}'
+                : 'Impossible de joindre l\'imprimante Bluetooth'),
+            backgroundColor: ok ? AppColors.success : AppColors.error,
+            duration: const Duration(seconds: 3),
+          ));
+        }
+      } else {
+        // Fallback PDF (avec timeout sur les fonts Google → Helvetica offline)
+        final bytes = await buildReceiptPdf(widget.sale, settings);
+        await Printing.layoutPdf(
+          onLayout: (_) => bytes,
+          name: 'Recu_${widget.sale.reference}',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur impression: $e'),
+          backgroundColor: AppColors.error,
+        ));
+      }
     } finally {
       if (mounted) setState(() => _printing = false);
     }

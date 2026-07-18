@@ -12,7 +12,9 @@ import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart' show dio, extractErrorMessage;
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:printing/printing.dart';
+import 'package:pos_connect/services/bluetooth_print_service.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -336,6 +338,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   icon: Icons.print_rounded, title: 'Imprimantes'),
               const SizedBox(height: 16),
               _PrinterConfigSection(settings: settings, notifier: notifier),
+            ],
+
+            // ── Imprimante Bluetooth ──────────────────────────────────────
+            if (!kIsWeb && Platform.isAndroid) ...[
+              const SizedBox(height: 24),
+              _SectionHeader(
+                  icon: Icons.bluetooth_rounded, title: 'Imprimante Bluetooth'),
+              const SizedBox(height: 16),
+              _BluetoothPrinterSection(settings: settings, notifier: notifier),
             ],
 
             // ── Système (Windows uniquement) ─────────────────────────────
@@ -1375,6 +1386,162 @@ class _BillingUrlSectionState extends State<_BillingUrlSection> {
         ),
         const SizedBox(height: 24),
       ],
+    );
+  }
+}
+
+// ── Bluetooth Printer Section ─────────────────────────────────────────────────
+
+class _BluetoothPrinterSection extends StatefulWidget {
+  final AppSettings settings;
+  final SettingsNotifier notifier;
+  const _BluetoothPrinterSection(
+      {required this.settings, required this.notifier});
+
+  @override
+  State<_BluetoothPrinterSection> createState() =>
+      _BluetoothPrinterSectionState();
+}
+
+class _BluetoothPrinterSectionState extends State<_BluetoothPrinterSection> {
+  List<BluetoothInfo> _devices = [];
+  bool _scanning = false;
+  String? _error;
+
+  Future<void> _scan() async {
+    setState(() {
+      _scanning = true;
+      _error = null;
+    });
+    try {
+      final devices =
+          await BluetoothPrintService.instance.getPairedPrinters();
+      if (mounted) setState(() => _devices = devices);
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Erreur Bluetooth: $e');
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
+  }
+
+  Future<void> _select(BluetoothInfo device) async {
+    await widget.notifier.save(widget.settings.copyWith(
+      bluetoothPrinterMac: device.macAdress,
+      bluetoothPrinterName: device.name,
+    ));
+    if (mounted) setState(() => _devices = []);
+  }
+
+  Future<void> _clear() async {
+    await widget.notifier.save(widget.settings.copyWith(
+      bluetoothPrinterMac: '',
+      bluetoothPrinterName: '',
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPrinter = widget.settings.bluetoothPrinterMac.isNotEmpty;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Imprimante sélectionnée
+            if (hasPrinter) ...[
+              Row(
+                children: [
+                  const Icon(Icons.bluetooth_connected_rounded,
+                      color: AppColors.accent, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.settings.bluetoothPrinterName,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 14)),
+                        Text(widget.settings.bluetoothPrinterMac,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.textSecondary)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded,
+                        size: 18, color: AppColors.error),
+                    tooltip: 'Retirer',
+                    onPressed: _clear,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'L\'impression se fera automatiquement sans dialogue.',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 12),
+            ] else
+              const Text(
+                'Aucune imprimante Bluetooth configurée.\n'
+                'Appairez d\'abord l\'imprimante dans les paramètres Android.',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+
+            const SizedBox(height: 12),
+
+            // Bouton scan
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _scanning ? null : _scan,
+                icon: _scanning
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.bluetooth_searching_rounded, size: 18),
+                label: Text(
+                    _scanning ? 'Recherche...' : 'Scanner les appareils appairés'),
+              ),
+            ),
+
+            // Liste des appareils trouvés
+            if (_devices.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text('Sélectionnez votre imprimante :',
+                  style: TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary)),
+              const SizedBox(height: 6),
+              ..._devices.map((d) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.print_rounded,
+                        color: AppColors.primary, size: 20),
+                    title: Text(d.name,
+                        style: const TextStyle(fontSize: 13)),
+                    subtitle: Text(d.macAdress,
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary)),
+                    trailing: const Icon(Icons.chevron_right_rounded,
+                        size: 18, color: AppColors.textSecondary),
+                    onTap: () => _select(d),
+                  )),
+            ],
+
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!,
+                  style: const TextStyle(
+                      color: AppColors.error, fontSize: 12)),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

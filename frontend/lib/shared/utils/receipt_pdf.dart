@@ -11,8 +11,10 @@ import 'package:pos_connect/providers/settings_provider.dart';
 /// Generates an 80mm thermal receipt PDF for [sale].
 Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
   final doc = pw.Document();
-  final font = await PdfGoogleFonts.notoSansRegular();
-  final fontBold = await PdfGoogleFonts.notoSansBold();
+  final font = await PdfGoogleFonts.notoSansRegular()
+      .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helvetica());
+  final fontBold = await PdfGoogleFonts.notoSansBold()
+      .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helveticaBold());
   final numFmt =
       NumberFormat.currency(locale: 'fr_HT', symbol: '', decimalDigits: 2);
   final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
