@@ -62,7 +62,7 @@ class PurchaseRepository {
     // Incrémenter le stock local immédiatement
     for (final item in (data['items'] as List? ?? [])) {
       final productId = item['product_id'] as String?;
-      final qty       = (item['quantity'] as num?)?.toDouble() ?? 0;
+      final qty = ((item['ordered_qty'] ?? item['quantity']) as num?)?.toDouble() ?? 0;
       if (productId != null) {
         await LocalDbService.instance.incrementStock(productId, qty);
       }
@@ -93,7 +93,7 @@ class PurchaseRepository {
       // Erreur serveur : annuler le stock local
       for (final item in (data['items'] as List? ?? [])) {
         final productId = item['product_id'] as String?;
-        final qty       = (item['quantity'] as num?)?.toDouble() ?? 0;
+        final qty = ((item['ordered_qty'] ?? item['quantity']) as num?)?.toDouble() ?? 0;
         if (productId != null) {
           await LocalDbService.instance.decrementStock(productId, qty);
         }

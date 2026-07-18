@@ -39,7 +39,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 3,
+      version: 4,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -60,6 +60,10 @@ class LocalDbService {
     if (oldVersion < 3) {
       await _createSalesTables(db);
     }
+    if (oldVersion < 4) {
+      try { await db.execute("ALTER TABLE purchases ADD COLUMN reference TEXT NOT NULL DEFAULT ''"); } catch (_) {}
+      try { await db.execute('ALTER TABLE products ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1'); } catch (_) {}
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -74,7 +78,8 @@ class LocalDbService {
         stock         INTEGER,
         category_id   TEXT,
         category_name TEXT,
-        image_url     TEXT
+        image_url     TEXT,
+        is_active     INTEGER NOT NULL DEFAULT 1
       )
     ''');
 
@@ -172,6 +177,7 @@ class LocalDbService {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS purchases (
         id            TEXT PRIMARY KEY,
+        reference     TEXT NOT NULL DEFAULT '',
         supplier_id   TEXT,
         supplier_name TEXT,
         warehouse_id  TEXT,
@@ -218,6 +224,7 @@ class LocalDbService {
           'category_id': p.category?.id,
           'category_name': p.category?.name,
           'image_url': p.imageUrl,
+          'is_active': p.isActive ? 1 : 0,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -234,7 +241,7 @@ class LocalDbService {
     final db = _safeDb;
     if (db == null) return _emptyProducts(limit);
 
-    final where = <String>[];
+    final where = <String>['is_active = 1'];
     final args = <dynamic>[];
 
     if (search != null && search.isNotEmpty) {
@@ -587,6 +594,15 @@ class LocalDbService {
           'subtotal':     item.subtotal,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
+      for (final p in s.payments) {
+        batch.insert('sale_payments', {
+          'id':        p.id.isEmpty ? const Uuid().v4() : p.id,
+          'sale_id':   s.id,
+          'amount':    p.amount,
+          'method':    p.method,
+          'created_at': p.createdAt.toUtc().toIso8601String(),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
     }
     await batch.commit(noResult: true);
   }
@@ -774,6 +790,7 @@ class LocalDbService {
 
     await db.insert('purchases', {
       'id':           purchaseId,
+      'reference':    'LOC-${DateTime.now().millisecondsSinceEpoch}',
       'supplier_id':  payload['supplier_id'],
       'supplier_name': payload['supplier_name'],
       'warehouse_id': payload['warehouse_id'],
@@ -791,7 +808,7 @@ class LocalDbService {
         'purchase_id':  purchaseId,
         'product_id':   item['product_id'],
         'product_name': item['product_name'],
-        'quantity':     item['quantity'],
+        'quantity':     item['ordered_qty'] ?? item['quantity'],
         'unit_price':   item['unit_price'],
         'subtotal':     item['subtotal'],
       });
@@ -806,8 +823,8 @@ class LocalDbService {
     final db = _safeDb;
     if (db == null) return;
     await db.rawUpdate(
-      'UPDATE purchases SET synced = 1 WHERE id = ?',
-      [localId],
+      "UPDATE purchases SET synced = 1, reference = ? WHERE id = ?",
+      [reference, localId],
     );
   }
 
@@ -819,6 +836,7 @@ class LocalDbService {
     for (final p in purchases) {
       batch.insert('purchases', {
         'id':           p.id,
+        'reference':    p.reference,
         'supplier_id':  p.supplierId,
         'supplier_name': p.supplierName,
         'total_amount': p.totalAmount,
@@ -860,8 +878,8 @@ class LocalDbService {
     final where = <String>[];
     final args  = <dynamic>[];
     if (search != null && search.isNotEmpty) {
-      where.add('supplier_name LIKE ?');
-      args.add('%$search%');
+      where.add('(supplier_name LIKE ? OR reference LIKE ?)');
+      args.addAll(['%$search%', '%$search%']);
     }
     if (status != null) {
       where.add('status = ?');
@@ -916,7 +934,7 @@ class LocalDbService {
       Map<String, dynamic> row, List<Map<String, dynamic>> itemRows) {
     return PurchaseModel(
       id:           row['id'] as String,
-      reference:    '',
+      reference:    row['reference'] as String? ?? '',
       totalAmount:  (row['total_amount'] as num).toDouble(),
       paidAmount:   (row['paid_amount'] as num).toDouble(),
       status:       row['status'] as String,
