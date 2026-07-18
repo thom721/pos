@@ -1466,29 +1466,54 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                       ('CARD',   Icons.credit_card_rounded),
                       ('BANK',   Icons.account_balance_rounded),
                       ('MOBILE', Icons.phone_android_rounded),
-                    ].map((m) => Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: ChoiceChip(
-                          label: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(m.$2, size: 13),
-                              const SizedBox(width: 3),
-                              Text(m.$1,
-                                  style: const TextStyle(fontSize: 10)),
-                            ],
+                    ].map((m) {
+                      final selected = pos.paymentMethod == m.$1;
+                      return Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: GestureDetector(
+                            onTap: () => notifier.setPaymentMethod(m.$1),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? AppColors.primary.withValues(alpha: 0.12)
+                                    : Colors.transparent,
+                                border: Border.all(
+                                  color: selected
+                                      ? AppColors.primary
+                                      : AppColors.divider,
+                                  width: selected ? 1.5 : 1,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(m.$2,
+                                      size: 15,
+                                      color: selected
+                                          ? AppColors.primary
+                                          : AppColors.textSecondary),
+                                  const SizedBox(height: 2),
+                                  Text(m.$1,
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        color: selected
+                                            ? AppColors.primary
+                                            : AppColors.textSecondary,
+                                        fontWeight: selected
+                                            ? FontWeight.w700
+                                            : FontWeight.w400,
+                                      )),
+                                ],
+                              ),
+                            ),
                           ),
-                          selected: pos.paymentMethod == m.$1,
-                          selectedColor:
-                              AppColors.primary.withValues(alpha: 0.15),
-                          onSelected: (_) => notifier.setPaymentMethod(m.$1),
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
                         ),
-                      ),
-                    )).toList(),
+                      );
+                    }).toList(),
                   ),
                 ],
               ),
