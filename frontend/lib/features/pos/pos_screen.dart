@@ -847,51 +847,76 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
 
   Future<void> _initSession() async {
     _deviceId = await _getDeviceId();
+
+    // Android : afficher le cache immédiatement (réactivité), puis vérifier en arrière-plan
+    if (Platform.isAndroid) {
+      final cached = await _loadCachedSession();
+      if (cached != null) {
+        if (mounted) {
+          setState(() {
+            _session = cached;
+            _sessionChecked = true;
+            _offlineSession = cached['offline'] == true;
+          });
+        }
+        // Vérification silencieuse en arrière-plan (sans bloquer l'UI)
+        _refreshSessionFromServer();
+        return;
+      }
+    }
+
+    // Pas de cache → appel réseau normal (premier lancement ou non-Android)
+    await _fetchSessionFromServer(promptIfMissing: true);
+  }
+
+  /// Vérifie silencieusement l'état de la session côté serveur.
+  /// Appelé en arrière-plan quand le cache est déjà affiché.
+  Future<void> _refreshSessionFromServer() async {
     try {
       final res = await dio.get('/api/sessions/current', queryParameters: {'device_id': _deviceId});
       final session = res.data['session'];
       final disabled = res.data['disabled'] == true;
-      // Mettre en cache la session serveur
       if (session != null) await _cacheSession(session as Map<String, dynamic>);
-      if (mounted) {
-        setState(() {
-          _session = session as Map<String, dynamic>?;
-          _sessionChecked = true;
-          _caisseDisabled = disabled;
-          _offlineSession = false;
-        });
-        if (_session == null && !disabled && mounted) {
-          _promptOpenSession();
-        }
+      if (!mounted) return;
+      setState(() {
+        _session = session as Map<String, dynamic>?;
+        _caisseDisabled = disabled;
+        _offlineSession = false;
+      });
+      // Session fermée sur un autre appareil → proposer de rouvrir
+      if (_session == null && !disabled && mounted) _promptOpenSession();
+    } catch (_) {
+      // Réseau KO → garder la session affichée depuis le cache, rien à faire
+    }
+  }
+
+  /// Appel réseau complet avec indicateur de chargement.
+  Future<void> _fetchSessionFromServer({bool promptIfMissing = false}) async {
+    try {
+      final res = await dio.get('/api/sessions/current', queryParameters: {'device_id': _deviceId});
+      final session = res.data['session'];
+      final disabled = res.data['disabled'] == true;
+      if (session != null) await _cacheSession(session as Map<String, dynamic>);
+      if (!mounted) return;
+      setState(() {
+        _session = session as Map<String, dynamic>?;
+        _sessionChecked = true;
+        _caisseDisabled = disabled;
+        _offlineSession = false;
+      });
+      if (promptIfMissing && _session == null && !disabled && mounted) {
+        _promptOpenSession();
       }
     } catch (e) {
       if (!mounted) return;
       final is4xx = e is DioException &&
           ((e.response?.statusCode ?? 0) == 401 ||
            (e.response?.statusCode ?? 0) == 403);
-
-      // Réseau indisponible → utiliser le cache local
-      if (!is4xx && Platform.isAndroid) {
-        final cached = await _loadCachedSession();
-        if (cached != null) {
-          if (mounted) {
-            setState(() {
-              _session = cached;
-              _sessionChecked = true;
-              _offlineSession = true;
-            });
-          }
-          return;
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _sessionChecked = true;
-          _noSessionPermission = is4xx;
-        });
-        if (!is4xx) _promptOpenSession();
-      }
+      setState(() {
+        _sessionChecked = true;
+        _noSessionPermission = is4xx;
+      });
+      if (promptIfMissing && !is4xx) _promptOpenSession();
     }
   }
 
