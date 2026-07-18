@@ -39,7 +39,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 4,
+      version: 5,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -63,6 +63,9 @@ class LocalDbService {
     if (oldVersion < 4) {
       try { await db.execute("ALTER TABLE purchases ADD COLUMN reference TEXT NOT NULL DEFAULT ''"); } catch (_) {}
       try { await db.execute('ALTER TABLE products ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1'); } catch (_) {}
+    }
+    if (oldVersion < 5) {
+      try { await db.execute('ALTER TABLE categories ADD COLUMN description TEXT'); } catch (_) {}
     }
   }
 
@@ -99,8 +102,9 @@ class LocalDbService {
 
     await db.execute('''
       CREATE TABLE categories (
-        id   TEXT PRIMARY KEY,
-        name TEXT NOT NULL
+        id          TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        description TEXT
       )
     ''');
 
@@ -402,7 +406,7 @@ class LocalDbService {
     for (final c in categories) {
       batch.insert(
         'categories',
-        {'id': c.id, 'name': c.name},
+        {'id': c.id, 'name': c.name, 'description': c.description},
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
@@ -417,6 +421,7 @@ class LocalDbService {
         .map((r) => CategoryModel(
               id: r['id'] as String,
               name: r['name'] as String,
+              description: r['description'] as String?,
             ))
         .toList();
   }
