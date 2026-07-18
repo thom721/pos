@@ -408,7 +408,7 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
       title: Text(isEdit ? 'Modifier le produit' : 'Nouveau produit'),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       content: SizedBox(
-        width: double.maxFinite,
+        width: 500,
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(
