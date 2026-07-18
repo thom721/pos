@@ -1,10 +1,15 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/user_model.dart';
+
+const _tokenStorage = FlutterSecureStorage(
+  aOptions: AndroidOptions(encryptedSharedPreferences: true),
+);
 
 class AuthRepository {
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
@@ -88,8 +93,10 @@ class AuthRepository {
   // ── Persistence ─────────────────────────────────────────────────────────
 
   Future<void> saveToken(String token) async {
+    await _tokenStorage.write(key: AppConstants.tokenKey, value: token);
+    // Supprimer l'éventuelle copie legacy en clair
     final prefs = await _prefs;
-    await prefs.setString(AppConstants.tokenKey, token);
+    await prefs.remove(AppConstants.tokenKey);
   }
 
   Future<void> saveUser(Map<String, dynamic> user) async {
@@ -98,8 +105,7 @@ class AuthRepository {
   }
 
   Future<String?> getToken() async {
-    final prefs = await _prefs;
-    return prefs.getString(AppConstants.tokenKey);
+    return _tokenStorage.read(key: AppConstants.tokenKey);
   }
 
   Future<Map<String, dynamic>?> getSavedUser() async {
@@ -132,7 +138,7 @@ class AuthRepository {
     final prefs = await _prefs;
     // Free the register slot on the server before clearing the local token.
     final deviceId = prefs.getString(AppConstants.deviceIdKey);
-    final token    = prefs.getString(AppConstants.tokenKey);
+    final token    = await _tokenStorage.read(key: AppConstants.tokenKey);
     if (explicit && deviceId != null && token != null) {
       try {
         await dio.post(
@@ -145,6 +151,8 @@ class AuthRepository {
         );
       } catch (_) {}
     }
+    await _tokenStorage.delete(key: AppConstants.tokenKey);
+    // Nettoyage legacy au cas où
     await prefs.remove(AppConstants.tokenKey);
     // Keep userKey + tenantKey for offline session recovery on non-explicit logouts
     if (explicit) {

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from api.services.user_service import UserService
-from api.schemas.user import UserCreate, UserRead, UserUpdate, ChangePasswordRequest
+from api.schemas.user import UserCreate, UserRead, UserPublicRead, UserSyncRead, UserUpdate, ChangePasswordRequest
 from api.database import get_db
 from api.dependencies.auth import require_permission, get_current_user
 from api.core.permissions import P
@@ -25,11 +25,20 @@ def create_user(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/users/", response_model=List[UserRead])
+@router.get("/users/", response_model=List[UserPublicRead])
 def list_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.USERS_READ)),
 ):
+    return UserService(db, tenant_id=current_user.tenant_id).list()
+
+
+@router.get("/users/offline-sync", response_model=List[UserSyncRead])
+def list_users_offline_sync(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.CONFIG_READ)),
+):
+    """Retourne les utilisateurs avec offline_hash pour la sync Android (admin uniquement)."""
     return UserService(db, tenant_id=current_user.tenant_id).list()
 
 

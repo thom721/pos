@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/local_https.dart';
@@ -11,12 +12,24 @@ const _localBaseUrl = 'https://infini-post.local';
 final _unauthorizedCtrl = StreamController<void>.broadcast();
 Stream<void> get onUnauthorized => _unauthorizedCtrl.stream;
 
+const _tokenStorage = FlutterSecureStorage(
+  aOptions: AndroidOptions(encryptedSharedPreferences: true),
+);
+
 Future<String?> _readToken() async {
+  // Migration one-shot depuis SharedPreferences
   final prefs = await SharedPreferences.getInstance();
-  return prefs.getString(AppConstants.tokenKey);
+  final legacy = prefs.getString(AppConstants.tokenKey);
+  if (legacy != null) {
+    await _tokenStorage.write(key: AppConstants.tokenKey, value: legacy);
+    await prefs.remove(AppConstants.tokenKey);
+  }
+  return _tokenStorage.read(key: AppConstants.tokenKey);
 }
 
 Future<void> _deleteToken() async {
+  await _tokenStorage.delete(key: AppConstants.tokenKey);
+  // Nettoyage legacy au cas où
   final prefs = await SharedPreferences.getInstance();
   await prefs.remove(AppConstants.tokenKey);
 }
@@ -89,12 +102,14 @@ Dio createDio() {
 
   dio.interceptors.add(AuthInterceptor(dio));
   dio.interceptors.add(OfflineInterceptor());
-  dio.interceptors.add(LogInterceptor(
-    requestBody: true,
-    responseBody: true,
-    error: true,
-    logPrint: (obj) => debugPrint(obj.toString()),
-  ));
+  if (!kReleaseMode) {
+    dio.interceptors.add(LogInterceptor(
+      requestBody: true,
+      responseBody: true,
+      error: true,
+      logPrint: (obj) => debugPrint(obj.toString()),
+    ));
+  }
 
   return dio;
 }

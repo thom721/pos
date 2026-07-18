@@ -212,7 +212,7 @@ class OfflineCacheService {
 
   Future<void> _syncUsers() async {
     try {
-      final res = await dio.get('/api/users/', options: kBackgroundOptions);
+      final res = await dio.get('/api/users/offline-sync', options: kBackgroundOptions);
       final raw = res.data;
       final items = raw is List
           ? raw.cast<Map<String, dynamic>>()
