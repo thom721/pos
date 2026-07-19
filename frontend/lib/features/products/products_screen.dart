@@ -294,6 +294,7 @@ class _MenuPanelState extends State<_MenuPanel> {
         text: m != null ? m.price.toStringAsFixed(2) : '');
     String? selectedCatId = m?.categoryId;
     bool available = m?.available ?? true;
+    bool sendToKitchen = m?.sendToKitchen ?? true;
 
     // Variants state
     final existingCols = m?.extraColumns ?? [];
@@ -430,6 +431,33 @@ class _MenuPanelState extends State<_MenuPanel> {
                       ],
                     ),
                     if (hasVariants) ...[
+                      const SizedBox(height: 6),
+                      // ── Bandeau orange info prix ──────────────────────────
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.10),
+                          border: Border.all(
+                              color: Colors.orange.withValues(alpha: 0.45)),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Icon(Icons.info_outline_rounded,
+                                size: 14, color: Colors.orange),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Quand une variante est sélectionnée, c\'est son prix qui sera utilisé — le prix de base est ignoré.',
+                                style: TextStyle(
+                                    fontSize: 11, color: Colors.orange),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       Container(
                         decoration: BoxDecoration(
@@ -628,6 +656,66 @@ class _MenuPanelState extends State<_MenuPanel> {
                         ),
                       ],
                     ),
+                    // ── Bandeau violet cuisine ────────────────────────────
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () => setInner(
+                          () => sendToKitchen = !sendToKitchen),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.deepPurple
+                              .withValues(alpha: sendToKitchen ? 0.10 : 0.04),
+                          border: Border.all(
+                            color: Colors.deepPurple.withValues(
+                                alpha: sendToKitchen ? 0.45 : 0.20),
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            Checkbox(
+                              value: sendToKitchen,
+                              onChanged: (v) => setInner(
+                                  () => sendToKitchen = v ?? true),
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                              activeColor: Colors.deepPurple,
+                              side: BorderSide(
+                                color: Colors.deepPurple
+                                    .withValues(alpha: 0.5),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text('Envoyer en cuisine',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.deepPurple)),
+                                  Text(
+                                    sendToKitchen
+                                        ? 'Ce plat sera préparé en cuisine lors d\'une commande'
+                                        : 'Ce plat ne passe pas en cuisine (boisson, emballage…)',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.deepPurple
+                                            .withValues(alpha: 0.7)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 8),
                   ],
                 ),
@@ -670,6 +758,7 @@ class _MenuPanelState extends State<_MenuPanel> {
                         price: price,
                         categoryId: selectedCatId,
                         available: available,
+                        sendToKitchen: sendToKitchen,
                         variants:
                             variantsPayload.isEmpty ? null : variantsPayload,
                       );
@@ -682,6 +771,7 @@ class _MenuPanelState extends State<_MenuPanel> {
                         price: price,
                         categoryId: selectedCatId,
                         available: available,
+                        sendToKitchen: sendToKitchen,
                         variants: variantsPayload,
                       );
                     }

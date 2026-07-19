@@ -13,9 +13,10 @@ class MenuItem(UUIDBase):
     price        = Column(Numeric(10, 2), nullable=False, default=0)
     category_id  = Column(String(36), ForeignKey('categories.id'),  nullable=True, index=True)
     product_id   = Column(String(36), ForeignKey('products.id'),    nullable=True, index=True)
-    available    = Column(Boolean, default=True, nullable=False)
-    image_url    = Column(String(500), nullable=True)
-    variants     = Column(JSON, nullable=True)
+    available        = Column(Boolean, default=True, nullable=False)
+    send_to_kitchen  = Column(Boolean, default=True, nullable=False)
+    image_url        = Column(String(500), nullable=True)
+    variants         = Column(JSON, nullable=True)
 
     category = relationship('Category', lazy='joined')
     product  = relationship('Product',  lazy='joined')

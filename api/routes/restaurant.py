@@ -175,6 +175,7 @@ class MenuItemCreate(BaseModel):
     category_id: Optional[str] = None
     product_id: Optional[str] = None
     available: bool = True
+    send_to_kitchen: bool = True
     variants: Optional[dict] = None
 
 class MenuItemUpdate(BaseModel):
@@ -184,6 +185,7 @@ class MenuItemUpdate(BaseModel):
     category_id: Optional[str] = None
     product_id: Optional[str] = None
     available: Optional[bool] = None
+    send_to_kitchen: Optional[bool] = None
     variants: Optional[dict] = None
 
 
@@ -917,6 +919,7 @@ def _menu_item_dict(m: MenuItem) -> dict:
         'category_name': m.category.name if m.category else None,
         'product_id': m.product_id,
         'available': m.available,
+        'send_to_kitchen': bool(m.send_to_kitchen) if m.send_to_kitchen is not None else True,
         'image_url': m.image_url,
         'variants': m.variants or [],
     }
@@ -956,6 +959,7 @@ def create_menu_item(
         category_id=data.category_id or None,
         product_id=data.product_id or None,
         available=data.available,
+        send_to_kitchen=data.send_to_kitchen,
         variants=data.variants or None,
     )
     db.add(m)
@@ -991,6 +995,8 @@ def update_menu_item(
         m.product_id = data.product_id or None
     if data.available is not None:
         m.available = data.available
+    if data.send_to_kitchen is not None:
+        m.send_to_kitchen = data.send_to_kitchen
     if 'variants' in data.model_fields_set:
         m.variants = data.variants if data.variants else None
     db.commit()

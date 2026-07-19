@@ -7,6 +7,7 @@ class MenuItemModel {
   final String? categoryName;
   final String? productId;
   final bool available;
+  final bool sendToKitchen;
   final String? imageUrl;
   final Map<String, dynamic>? variantsData;
 
@@ -19,6 +20,7 @@ class MenuItemModel {
     this.categoryName,
     this.productId,
     required this.available,
+    this.sendToKitchen = true,
     this.imageUrl,
     this.variantsData,
   });
@@ -49,8 +51,9 @@ class MenuItemModel {
       categoryId:   j['category_id'] as String?,
       categoryName: j['category_name'] as String?,
       productId:    j['product_id'] as String?,
-      available:    j['available'] as bool? ?? true,
-      imageUrl:     j['image_url'] as String?,
+      available:      j['available'] as bool? ?? true,
+      sendToKitchen:  j['send_to_kitchen'] as bool? ?? true,
+      imageUrl:       j['image_url'] as String?,
       variantsData: vd,
     );
   }
