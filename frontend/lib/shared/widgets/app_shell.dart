@@ -16,6 +16,7 @@ import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/license_service.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
 
 class _NavItem {
@@ -64,6 +65,30 @@ const _bottomNavItems = [
   _NavItem('Paramètres', Icons.settings_rounded, '/settings'),
 ];
 
+// ── Restaurant nav ─────────────────────────────────────────────────────────
+const _restaurantMainNavItems = [
+  _NavItem('Tableau de bord', Icons.dashboard_rounded,           '/dashboard'),
+  _NavItem('Tables',          Icons.table_restaurant_rounded,    '/restaurant/tables'),
+  _NavItem('Cuisine',         Icons.restaurant_rounded,          '/restaurant/kitchen'),
+  _NavItem('Ventes',          Icons.receipt_long_rounded,        '/sales'),
+  _NavItem('Produits',        Icons.inventory_2_rounded,         '/products'),
+  _NavItem('Clients',         Icons.people_alt_rounded,          '/customers'),
+  _NavItem('Dettes',          Icons.account_balance_wallet_rounded, '/debts'),
+];
+
+const _restaurantAndroidBottomItems = [
+  _NavItem('Tables',  Icons.table_restaurant_rounded, '/restaurant/tables'),
+  _NavItem('Cuisine', Icons.restaurant_rounded,       '/restaurant/kitchen'),
+  _NavItem('Ventes',  Icons.receipt_long_rounded,     '/sales'),
+  _NavItem('Profil',  Icons.person_rounded,           '/profile'),
+];
+
+List<_NavItem> _resolveMainNav(String businessType) =>
+    businessType == 'restaurant' ? _restaurantMainNavItems : _mainNavItems;
+
+List<_NavItem> _resolveAndroidBottom(String businessType) =>
+    businessType == 'restaurant' ? _restaurantAndroidBottomItems : _androidBottomNavItems;
+
 // ── Android nav (focused cashier workflow) ────────────────────────────────
 const _androidBottomNavItems = [
   _NavItem('Caisse',  Icons.point_of_sale_rounded, '/pos'),
@@ -79,9 +104,10 @@ const _androidDrawerMainItems = [
   _NavItem('Produits', Icons.inventory_2_rounded,   '/products'),
 ];
 
-// All items for title lookup
+// All items for title lookup (includes all business types)
 const _allNavItems = [
   ..._mainNavItems,
+  ..._restaurantMainNavItems,
   ..._analyticsNavItems,
   ..._hrNavItems,
   ..._adminNavItems,
@@ -236,7 +262,7 @@ class _DesktopShell extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     children: [
                       // Operations
-                      ..._mainNavItems
+                      ..._resolveMainNav(ref.watch(settingsProvider).businessType)
                           .where((i) => _canShowItem(i, user))
                           .map((item) => _SidebarItem(
                                 item: item,
@@ -683,9 +709,10 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
     final isAdmin = ref.watch(isAdminProvider);
     final user = ref.watch(authProvider).user;
 
+    final businessType = ref.watch(settingsProvider).businessType;
     final bottomItems = _isAndroid
-        ? _androidBottomNavItems.toList()
-        : _mainNavItems.take(5).toList();
+        ? _resolveAndroidBottom(businessType).toList()
+        : _resolveMainNav(businessType).take(5).toList();
 
     final currentIndex =
         bottomItems.indexWhere((i) => location.startsWith(i.route));
@@ -820,7 +847,8 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 children: _isAndroid
                     ? _buildAndroidDrawerItems(context, location, isAdmin, user)
-                    : _buildFullDrawerItems(context, location, isAdmin, user),
+                    : _buildFullDrawerItems(context, location, isAdmin, user,
+                        ref.watch(settingsProvider).businessType),
               ),
             ),
             ListTile(
@@ -881,6 +909,7 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
     String location,
     bool isAdmin,
     UserModel? user,
+    String businessType,
   ) {
     void go(String route) {
       Navigator.pop(context);
@@ -888,7 +917,7 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
     }
 
     return [
-      ..._mainNavItems
+      ..._resolveMainNav(businessType)
           .where((i) => _canShowItem(i, user))
           .map((item) => _SidebarItem(
                 item: item,

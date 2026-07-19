@@ -117,6 +117,12 @@ class P:
     WAREHOUSES_UPDATE = "warehouses.update"
     WAREHOUSES_DELETE = "warehouses.delete"
 
+    # Restaurant (tables & commandes)
+    TABLES_CREATE = "tables.create"
+    TABLES_READ   = "tables.read"
+    TABLES_UPDATE = "tables.update"
+    TABLES_DELETE = "tables.delete"
+
 
 # ---------------------------------------------------------------------------
 # Role → permissions mapping
@@ -148,6 +154,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.SESSIONS_OPEN, P.SESSIONS_CLOSE, P.SESSIONS_READ,
         P.AUDIT_READ,
         P.WAREHOUSES_CREATE, P.WAREHOUSES_READ, P.WAREHOUSES_UPDATE, P.WAREHOUSES_DELETE,
+        P.TABLES_CREATE, P.TABLES_READ, P.TABLES_UPDATE, P.TABLES_DELETE,
     },
 
     "cashier": {
@@ -164,6 +171,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.CONFIG_READ,
         P.SESSIONS_OPEN, P.SESSIONS_CLOSE,
         P.WAREHOUSES_READ,
+        P.TABLES_CREATE, P.TABLES_READ, P.TABLES_UPDATE,
     },
 
     "stock_manager": {

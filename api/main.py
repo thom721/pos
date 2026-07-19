@@ -28,6 +28,7 @@ from api.routes import audit as audit_router
 from api.routes import warehouse as warehouse_router
 from api.routes import reports as reports_router
 from api.routes import ws as ws_router
+from api.routes import restaurant as restaurant_router
 from api.ws_manager import manager as _ws_manager
 from api.core.security import verify_token as _verify_token
 # Import models so create_all picks them up
@@ -36,6 +37,8 @@ from api.models import (  # noqa: F401
     BillingPayment, Proforma, Invoice, InventoryRecord, Role,
     PlatformConfig, SyncState, AuditLog,
 )
+from api.models.RestaurantTable import RestaurantTable as _RestaurantTable  # noqa: F401
+from api.models.RestaurantOrder import RestaurantOrder as _RestaurantOrder, RestaurantOrderItem as _RestaurantOrderItem  # noqa: F401
 from api.models.BillingExtra import BillingExtra as _BillingExtra  # noqa: F401 — ensures table creation
 from fastapi.staticfiles import StaticFiles
 from fastapi.encoders import jsonable_encoder
@@ -102,6 +105,7 @@ app.include_router(customer.router, prefix="/api")
 app.include_router(sales.router)
 app.include_router(stock.router)
 app.include_router(returns.router, prefix="/api/returns", tags=["Returns"])
+app.include_router(restaurant_router.router, prefix="/api/restaurant", tags=["Restaurant"])
 app.include_router(payments.router)
 app.include_router(debts.router)
 app.include_router(config.router)

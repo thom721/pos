@@ -1,0 +1,425 @@
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from pydantic import BaseModel
+from typing import Optional, List
+from sqlalchemy.orm import Session
+import uuid
+
+from api.database import get_db
+from api.dependencies.auth import require_permission
+from api.core.permissions import P
+from api.models.User import User
+from api.models.RestaurantTable import RestaurantTable
+from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
+from api.models.Product import Product
+from api.ws_manager import manager
+import asyncio
+
+router = APIRouter(tags=["Restaurant"])
+
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
+
+class TableCreate(BaseModel):
+    name: str
+    capacity: int = 4
+
+class TableUpdate(BaseModel):
+    name: Optional[str] = None
+    capacity: Optional[int] = None
+    status: Optional[str] = None  # free | occupied | reserved
+
+class OrderItemAdd(BaseModel):
+    product_id: str
+    quantity: float = 1.0
+    notes: Optional[str] = None
+
+class OrderItemUpdate(BaseModel):
+    quantity: Optional[float] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None  # pending | preparing | ready
+
+class CheckoutPayload(BaseModel):
+    payment_method: str = 'CASH'
+    paid_amount: float
+    customer_id: Optional[str] = None
+    discount: float = 0.0
+
+
+def _notify(tenant_id: str):
+    if tenant_id:
+        asyncio.ensure_future(manager.notify(tenant_id))
+
+
+def _table_dict(t: RestaurantTable) -> dict:
+    return {
+        'id': t.id,
+        'name': t.name,
+        'capacity': t.capacity,
+        'status': t.status,
+        'created_at': t.created_at,
+    }
+
+
+def _item_dict(i: RestaurantOrderItem) -> dict:
+    return {
+        'id': i.id,
+        'product_id': i.product_id,
+        'product_name': i.product.name if i.product else None,
+        'quantity': float(i.quantity),
+        'unit_price': float(i.unit_price),
+        'notes': i.notes,
+        'status': i.status,
+    }
+
+
+def _order_dict(o: RestaurantOrder) -> dict:
+    return {
+        'id': o.id,
+        'table_id': o.table_id,
+        'table_name': o.table.name if o.table else None,
+        'cashier_id': o.cashier_id,
+        'status': o.status,
+        'notes': o.notes,
+        'sale_id': o.sale_id,
+        'items': [_item_dict(i) for i in o.items],
+        'total': sum(float(i.quantity) * float(i.unit_price) for i in o.items),
+        'created_at': o.created_at,
+        'updated_at': o.updated_at,
+    }
+
+
+# ── Tables ────────────────────────────────────────────────────────────────────
+
+@router.get("/tables/")
+def list_tables(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_READ)),
+):
+    q = db.query(RestaurantTable).filter(
+        RestaurantTable.tenant_id == current_user.tenant_id
+    )
+    if current_user.warehouse_id:
+        q = q.filter(RestaurantTable.warehouse_id == current_user.warehouse_id)
+    return [_table_dict(t) for t in q.order_by(RestaurantTable.name).all()]
+
+
+@router.post("/tables/", status_code=201)
+def create_table(
+    data: TableCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_CREATE)),
+):
+    table = RestaurantTable(
+        id=str(uuid.uuid4()),
+        tenant_id=current_user.tenant_id,
+        warehouse_id=current_user.warehouse_id,
+        name=data.name,
+        capacity=data.capacity,
+    )
+    db.add(table)
+    db.commit()
+    db.refresh(table)
+    background_tasks.add_task(_notify, current_user.tenant_id)
+    return _table_dict(table)
+
+
+@router.put("/tables/{table_id}")
+def update_table(
+    table_id: str,
+    data: TableUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    table = db.query(RestaurantTable).filter(
+        RestaurantTable.id == table_id,
+        RestaurantTable.tenant_id == current_user.tenant_id,
+    ).first()
+    if not table:
+        raise HTTPException(404, "Table introuvable")
+    if data.name is not None:
+        table.name = data.name
+    if data.capacity is not None:
+        table.capacity = data.capacity
+    if data.status is not None:
+        table.status = data.status
+    db.commit()
+    db.refresh(table)
+    background_tasks.add_task(_notify, current_user.tenant_id)
+    return _table_dict(table)
+
+
+@router.delete("/tables/{table_id}", status_code=204)
+def delete_table(
+    table_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_DELETE)),
+):
+    table = db.query(RestaurantTable).filter(
+        RestaurantTable.id == table_id,
+        RestaurantTable.tenant_id == current_user.tenant_id,
+    ).first()
+    if not table:
+        raise HTTPException(404, "Table introuvable")
+    open_order = db.query(RestaurantOrder).filter(
+        RestaurantOrder.table_id == table_id,
+        RestaurantOrder.status != 'closed',
+    ).first()
+    if open_order:
+        raise HTTPException(400, "Impossible de supprimer une table avec une commande en cours")
+    db.delete(table)
+    db.commit()
+
+
+# ── Orders ────────────────────────────────────────────────────────────────────
+
+@router.get("/orders/")
+def list_orders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_READ)),
+):
+    q = db.query(RestaurantOrder).filter(
+        RestaurantOrder.tenant_id == current_user.tenant_id,
+        RestaurantOrder.status != 'closed',
+    )
+    return [_order_dict(o) for o in q.all()]
+
+
+@router.get("/orders/table/{table_id}")
+def get_table_order(
+    table_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_READ)),
+):
+    order = db.query(RestaurantOrder).filter(
+        RestaurantOrder.table_id == table_id,
+        RestaurantOrder.tenant_id == current_user.tenant_id,
+        RestaurantOrder.status != 'closed',
+    ).first()
+    if not order:
+        return None
+    return _order_dict(order)
+
+
+@router.post("/orders/", status_code=201)
+def create_order(
+    table_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    existing = db.query(RestaurantOrder).filter(
+        RestaurantOrder.table_id == table_id,
+        RestaurantOrder.status != 'closed',
+    ).first()
+    if existing:
+        return _order_dict(existing)
+
+    order = RestaurantOrder(
+        id=str(uuid.uuid4()),
+        tenant_id=current_user.tenant_id,
+        warehouse_id=current_user.warehouse_id,
+        table_id=table_id,
+        cashier_id=current_user.id,
+    )
+    db.add(order)
+
+    table = db.query(RestaurantTable).filter(RestaurantTable.id == table_id).first()
+    if table:
+        table.status = 'occupied'
+
+    db.commit()
+    db.refresh(order)
+    background_tasks.add_task(_notify, current_user.tenant_id)
+    return _order_dict(order)
+
+
+@router.post("/orders/{order_id}/items", status_code=201)
+def add_item(
+    order_id: str,
+    data: OrderItemAdd,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    order = db.query(RestaurantOrder).filter(
+        RestaurantOrder.id == order_id,
+        RestaurantOrder.tenant_id == current_user.tenant_id,
+    ).first()
+    if not order:
+        raise HTTPException(404, "Commande introuvable")
+    if order.status == 'closed':
+        raise HTTPException(400, "Cette commande est déjà clôturée")
+
+    product = db.query(Product).filter(Product.id == data.product_id).first()
+    if not product:
+        raise HTTPException(404, "Produit introuvable")
+
+    item = RestaurantOrderItem(
+        id=str(uuid.uuid4()),
+        order_id=order_id,
+        product_id=data.product_id,
+        quantity=data.quantity,
+        unit_price=product.sale_price,
+        notes=data.notes,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(order)
+    background_tasks.add_task(_notify, current_user.tenant_id)
+    return _order_dict(order)
+
+
+@router.delete("/orders/{order_id}/items/{item_id}", status_code=204)
+def remove_item(
+    order_id: str,
+    item_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    item = db.query(RestaurantOrderItem).filter(
+        RestaurantOrderItem.id == item_id,
+        RestaurantOrderItem.order_id == order_id,
+    ).first()
+    if not item:
+        raise HTTPException(404, "Article introuvable")
+    db.delete(item)
+    db.commit()
+    background_tasks.add_task(_notify, current_user.tenant_id)
+
+
+@router.put("/orders/{order_id}/kitchen")
+def send_to_kitchen(
+    order_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    order = db.query(RestaurantOrder).filter(
+        RestaurantOrder.id == order_id,
+        RestaurantOrder.tenant_id == current_user.tenant_id,
+    ).first()
+    if not order:
+        raise HTTPException(404, "Commande introuvable")
+    if not order.items:
+        raise HTTPException(400, "Aucun article dans la commande")
+    order.status = 'sent_to_kitchen'
+    db.commit()
+    db.refresh(order)
+    background_tasks.add_task(_notify, current_user.tenant_id)
+    return _order_dict(order)
+
+
+@router.put("/orders/{order_id}/ready")
+def mark_ready(
+    order_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    order = db.query(RestaurantOrder).filter(
+        RestaurantOrder.id == order_id,
+        RestaurantOrder.tenant_id == current_user.tenant_id,
+    ).first()
+    if not order:
+        raise HTTPException(404, "Commande introuvable")
+    order.status = 'ready'
+    db.commit()
+    db.refresh(order)
+    background_tasks.add_task(_notify, current_user.tenant_id)
+    return _order_dict(order)
+
+
+@router.post("/orders/{order_id}/checkout")
+def checkout_order(
+    order_id: str,
+    data: CheckoutPayload,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.SALES_CREATE)),
+):
+    from api.models.Sale import Sale
+    from api.models.SaleItem import SaleItem
+    from api.models.Payment import Payment
+    from api.models.Debt import Debt
+    import random
+
+    order = db.query(RestaurantOrder).filter(
+        RestaurantOrder.id == order_id,
+        RestaurantOrder.tenant_id == current_user.tenant_id,
+    ).first()
+    if not order:
+        raise HTTPException(404, "Commande introuvable")
+    if order.status == 'closed':
+        raise HTTPException(400, "Cette commande est déjà clôturée")
+    if not order.items:
+        raise HTTPException(400, "Aucun article à encaisser")
+
+    total = sum(float(i.quantity) * float(i.unit_price) for i in order.items)
+    discount = min(data.discount, total)
+    final = total - discount
+
+    reference = f"VNT-{random.randint(1000000000, 9999999999)}"
+    sale = Sale(
+        id=str(uuid.uuid4()),
+        tenant_id=current_user.tenant_id,
+        warehouse_id=order.warehouse_id,
+        user_id=current_user.id,
+        customer_id=data.customer_id,
+        reference=reference,
+        total_amount=total,
+        discount=discount,
+        final_amount=final,
+        paid_amount=data.paid_amount,
+        status='PAID' if data.paid_amount >= final else 'PARTIAL',
+    )
+    db.add(sale)
+    db.flush()
+
+    for oi in order.items:
+        db.add(SaleItem(
+            id=str(uuid.uuid4()),
+            sale_id=sale.id,
+            product_id=oi.product_id,
+            quantity=float(oi.quantity),
+            unit_price=float(oi.unit_price),
+            original_price=float(oi.unit_price),
+            subtotal=float(oi.quantity) * float(oi.unit_price),
+        ))
+
+    db.add(Payment(
+        id=str(uuid.uuid4()),
+        sale_id=sale.id,
+        tenant_id=current_user.tenant_id,
+        amount=data.paid_amount,
+        method=data.payment_method,
+    ))
+
+    remaining = final - data.paid_amount
+    if remaining > 0 and data.customer_id:
+        debt = db.query(Debt).filter(
+            Debt.customer_id == data.customer_id,
+            Debt.tenant_id == current_user.tenant_id,
+        ).first()
+        if debt:
+            debt.balance = float(debt.balance) + remaining
+        else:
+            db.add(Debt(
+                id=str(uuid.uuid4()),
+                tenant_id=current_user.tenant_id,
+                customer_id=data.customer_id,
+                balance=remaining,
+            ))
+
+    order.status = 'closed'
+    order.sale_id = sale.id
+
+    table = db.query(RestaurantTable).filter(RestaurantTable.id == order.table_id).first()
+    if table:
+        table.status = 'free'
+
+    db.commit()
+    background_tasks.add_task(_notify, current_user.tenant_id)
+    return {'sale_id': sale.id, 'reference': reference, 'total': final, 'change': max(0, data.paid_amount - final)}
