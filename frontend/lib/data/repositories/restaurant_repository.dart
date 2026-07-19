@@ -161,7 +161,7 @@ class RestaurantRepository {
     String? categoryId,
     String? productId,
     bool available = true,
-    List<Map<String, dynamic>>? variants,
+    Map<String, dynamic>? variants,
   }) async {
     final res = await dio.post('/api/restaurant/menu-items/', data: {
       'name': name,
@@ -183,7 +183,7 @@ class RestaurantRepository {
     String? categoryId,
     String? productId,
     bool? available,
-    List<Map<String, dynamic>>? variants,
+    Map<String, dynamic>? variants,
   }) async {
     final res = await dio.put('/api/restaurant/menu-items/$id', data: {
       if (name != null) 'name': name,

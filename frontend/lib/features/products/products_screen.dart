@@ -132,6 +132,38 @@ class _ProductsBody extends ConsumerWidget {
   }
 }
 
+// ── Variant row state ─────────────────────────────────────────────────────────
+
+class _VRow {
+  bool available;
+  final TextEditingController name;
+  final TextEditingController price;
+  final List<TextEditingController> extra;
+
+  _VRow({
+    this.available = true,
+    String nameText = '',
+    String priceText = '0',
+    List<String> extraTexts = const [],
+  })  : name = TextEditingController(text: nameText),
+        price = TextEditingController(text: priceText),
+        extra = extraTexts.map((t) => TextEditingController(text: t)).toList();
+
+  void dispose() {
+    name.dispose();
+    price.dispose();
+    for (final c in extra) c.dispose();
+  }
+
+  Map<String, dynamic> toMap(List<String> colNames) => {
+        'name': name.text.trim(),
+        'price_delta': double.tryParse(price.text) ?? 0.0,
+        'available': available,
+        for (int i = 0; i < colNames.length && i < extra.length; i++)
+          colNames[i]: extra[i].text.trim(),
+      };
+}
+
 // ── Menu panel (restaurant only) ──────────────────────────────────────────────
 
 class _MenuPanel extends StatefulWidget {
@@ -263,242 +295,422 @@ class _MenuPanelState extends State<_MenuPanel> {
     String? selectedCatId = m?.categoryId;
     bool available = m?.available ?? true;
 
-    // Variants
-    final existing = m?.variants ?? [];
-    bool hasVariants = existing.isNotEmpty;
-    final variantNameCtrls = existing
-        .map((v) => TextEditingController(text: v['name']?.toString() ?? ''))
+    // Variants state
+    final existingCols = m?.extraColumns ?? [];
+    final existingRows = m?.variantRows ?? [];
+    bool hasVariants = existingRows.isNotEmpty;
+    final colCtrls = existingCols
+        .map((c) => TextEditingController(text: c))
         .toList();
-    final variantPriceCtrls = existing
-        .map((v) => TextEditingController(
-            text: (v['price_delta'] ?? 0).toString()))
+    final vRows = existingRows
+        .map((r) => _VRow(
+              available: r['available'] as bool? ?? true,
+              nameText:  r['name']?.toString() ?? '',
+              priceText: (r['price_delta'] ?? 0).toString(),
+              extraTexts: existingCols
+                  .map((c) => r[c]?.toString() ?? '')
+                  .toList(),
+            ))
         .toList();
 
     final messenger = ScaffoldMessenger.of(context);
+    const kNom   = 148.0;
+    const kPrix  = 82.0;
+    const kDispo = 56.0;
+    const kExtra = 118.0;
+    const kDel   = 36.0;
+    const cellPad = EdgeInsets.symmetric(horizontal: 4, vertical: 2);
+    const hdrStyle = TextStyle(
+        fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary);
+    const tfDeco = InputDecoration(
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 7));
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setInner) => AlertDialog(
-          title: Text(m == null ? 'Nouveau plat' : 'Modifier le plat'),
-          content: SizedBox(
-            width: 440,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextField(
-                    controller: nameCtrl,
-                    autofocus: true,
-                    decoration: const InputDecoration(labelText: 'Nom du plat *'),
+        builder: (ctx, setInner) {
+          List<String> colNames() => List.generate(colCtrls.length, (i) {
+                final t = colCtrls[i].text.trim();
+                return t.isEmpty ? 'col_${i + 1}' : t;
+              });
+
+          Widget hdr(String t, double w) => Padding(
+                padding: cellPad,
+                child: SizedBox(
+                    width: w,
+                    child: Text(t, style: hdrStyle, overflow: TextOverflow.ellipsis)),
+              );
+
+          Widget dataTf(double w, TextEditingController c,
+                  {String? hint, TextInputType? kt}) =>
+              Padding(
+                padding: cellPad,
+                child: SizedBox(
+                  width: w,
+                  child: TextField(
+                    controller: c,
+                    keyboardType: kt,
+                    decoration: hint != null
+                        ? tfDeco.copyWith(hintText: hint)
+                        : tfDeco,
+                    style: const TextStyle(fontSize: 13),
                   ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: descCtrl,
-                    maxLines: 2,
-                    decoration: const InputDecoration(
-                        labelText: 'Description (optionnel)'),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: priceCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'Prix de base (HTG) *'),
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String?>(
-                    value: selectedCatId,
-                    decoration: const InputDecoration(
-                        labelText: 'Catégorie (optionnel)'),
-                    items: [
-                      const DropdownMenuItem(
-                          value: null, child: Text('— Aucune —')),
-                      ..._categories.map((c) => DropdownMenuItem(
-                          value: c.id, child: Text(c.name))),
-                    ],
-                    onChanged: (v) => setInner(() => selectedCatId = v),
-                  ),
-                  SwitchListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Disponible',
-                        style: TextStyle(fontSize: 13)),
-                    value: available,
-                    onChanged: (v) => setInner(() => available = v),
-                  ),
-                  const Divider(height: 20),
-                  // ── Variants ──────────────────────────────────────────────
-                  SwitchListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Variantes de prix',
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w600)),
-                    subtitle: const Text(
-                        'Ex: Petit / Normal / Grand avec prix différents',
-                        style: TextStyle(fontSize: 11)),
-                    value: hasVariants,
-                    onChanged: (v) => setInner(() {
-                      hasVariants = v;
-                      if (v && variantNameCtrls.isEmpty) {
-                        variantNameCtrls.add(TextEditingController());
-                        variantPriceCtrls
-                            .add(TextEditingController(text: '0'));
-                      }
-                    }),
-                  ),
-                  if (hasVariants) ...[
-                    const SizedBox(height: 6),
+                ),
+              );
+
+          return AlertDialog(
+            title: Text(m == null ? 'Nouveau plat' : 'Modifier le plat'),
+            contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+            content: SizedBox(
+              width: 700,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Infos de base ─────────────────────────────────────
                     Row(
-                      children: const [
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Expanded(
-                            flex: 3,
-                            child: Text('Nom de la variante',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.textSecondary))),
-                        SizedBox(width: 8),
+                          flex: 3,
+                          child: TextField(
+                            controller: nameCtrl,
+                            autofocus: true,
+                            decoration: const InputDecoration(
+                                labelText: 'Nom du plat *'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
                         Expanded(
-                            flex: 2,
-                            child: Text('Δ Prix (HTG)',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.textSecondary))),
-                        SizedBox(width: 32),
+                          flex: 2,
+                          child: TextField(
+                            controller: priceCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            decoration: const InputDecoration(
+                                labelText: 'Prix de base (HTG) *'),
+                          ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    ...List.generate(variantNameCtrls.length, (i) => Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: TextField(
-                              controller: variantNameCtrls[i],
-                              decoration: const InputDecoration(
-                                hintText: 'Ex: Normal',
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 8),
-                              ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: descCtrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                          labelText: 'Description (optionnel)'),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String?>(
+                            initialValue: selectedCatId,
+                            decoration: const InputDecoration(
+                                labelText: 'Catégorie (optionnel)'),
+                            items: [
+                              const DropdownMenuItem(
+                                  value: null, child: Text('— Aucune —')),
+                              ..._categories.map((c) => DropdownMenuItem(
+                                  value: c.id, child: Text(c.name))),
+                            ],
+                            onChanged: (v) => setInner(() => selectedCatId = v),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Plat disponible',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary)),
+                            Switch(
+                              value: available,
+                              onChanged: (v) => setInner(() => available = v),
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
                             ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 24),
+                    // ── Variantes ─────────────────────────────────────────
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Text('Variantes de prix',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                              Text('Ex: Petit / Normal / Grand avec prix différents',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textSecondary)),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: hasVariants,
+                          onChanged: (v) => setInner(() {
+                            hasVariants = v;
+                            if (v && vRows.isEmpty) {
+                              vRows.add(_VRow(
+                                  extraTexts:
+                                      List.filled(colCtrls.length, '')));
+                            }
+                          }),
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ],
+                    ),
+                    if (hasVariants) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.background,
+                          border: Border.all(color: AppColors.divider),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // ── Header ──────────────────────────────────
+                              Row(
+                                children: [
+                                  hdr('Nom *', kNom),
+                                  hdr('Δ Prix (HTG)', kPrix),
+                                  hdr('Dispo', kDispo),
+                                  ...List.generate(colCtrls.length, (ci) => Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Padding(
+                                        padding: cellPad,
+                                        child: SizedBox(
+                                          width: kExtra,
+                                          child: TextField(
+                                            controller: colCtrls[ci],
+                                            decoration: tfDeco.copyWith(
+                                                hintText: 'Colonne ${ci + 1}'),
+                                            style: const TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600),
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: kDel,
+                                        child: IconButton(
+                                          icon: const Icon(
+                                              Icons.close_rounded,
+                                              size: 13,
+                                              color: AppColors.error),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(
+                                              minWidth: kDel, minHeight: kDel),
+                                          tooltip: 'Supprimer la colonne',
+                                          onPressed: () => setInner(() {
+                                            colCtrls[ci].dispose();
+                                            colCtrls.removeAt(ci);
+                                            for (final r in vRows) {
+                                              if (ci < r.extra.length) {
+                                                r.extra[ci].dispose();
+                                                r.extra.removeAt(ci);
+                                              }
+                                            }
+                                          }),
+                                        ),
+                                      ),
+                                    ],
+                                  )),
+                                  // Placeholder aligning with row-delete btn
+                                  SizedBox(width: kDel),
+                                ],
+                              ),
+                              const Divider(height: 8),
+                              // ── Rows ────────────────────────────────────
+                              ...List.generate(vRows.length, (ri) {
+                                final row = vRows[ri];
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Row(
+                                    children: [
+                                      dataTf(kNom, row.name, hint: 'Ex: Normal'),
+                                      dataTf(kPrix, row.price,
+                                          hint: '0',
+                                          kt: const TextInputType
+                                              .numberWithOptions(
+                                              signed: true, decimal: true)),
+                                      SizedBox(
+                                        width: kDispo,
+                                        child: Switch(
+                                          value: row.available,
+                                          onChanged: (v) => setInner(
+                                              () => row.available = v),
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                      ),
+                                      ...List.generate(
+                                          colCtrls.length,
+                                          (ci) => Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              dataTf(
+                                                kExtra,
+                                                ci < row.extra.length
+                                                    ? row.extra[ci]
+                                                    : TextEditingController(),
+                                              ),
+                                              SizedBox(width: kDel),
+                                            ],
+                                          )),
+                                      // Row delete
+                                      SizedBox(
+                                        width: kDel,
+                                        child: IconButton(
+                                          icon: const Icon(
+                                              Icons.delete_outline_rounded,
+                                              size: 16,
+                                              color: AppColors.error),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(
+                                              minWidth: kDel, minHeight: kDel),
+                                          onPressed: () => setInner(() {
+                                            row.dispose();
+                                            vRows.removeAt(ri);
+                                          }),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      // Buttons: add row + add column
+                      Row(
+                        children: [
+                          TextButton.icon(
+                            onPressed: () => setInner(() {
+                              vRows.add(_VRow(
+                                  extraTexts:
+                                      List.filled(colCtrls.length, '')));
+                            }),
+                            icon: const Icon(Icons.add_rounded, size: 14),
+                            label: const Text('+ Ligne',
+                                style: TextStyle(fontSize: 12)),
+                            style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                minimumSize: const Size(0, 28)),
                           ),
                           const SizedBox(width: 8),
-                          Expanded(
-                            flex: 2,
-                            child: TextField(
-                              controller: variantPriceCtrls[i],
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                      signed: true, decimal: true),
-                              decoration: const InputDecoration(
-                                hintText: '0 ou -50 ou +150',
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 8),
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline_rounded,
-                                size: 16, color: AppColors.error),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                                minWidth: 32, minHeight: 32),
+                          TextButton.icon(
                             onPressed: () => setInner(() {
-                              variantNameCtrls[i].dispose();
-                              variantPriceCtrls[i].dispose();
-                              variantNameCtrls.removeAt(i);
-                              variantPriceCtrls.removeAt(i);
+                              colCtrls.add(TextEditingController());
+                              for (final r in vRows) {
+                                r.extra.add(TextEditingController());
+                              }
                             }),
+                            icon: const Icon(Icons.view_column_rounded,
+                                size: 14),
+                            label: const Text('+ Colonne',
+                                style: TextStyle(fontSize: 12)),
+                            style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                minimumSize: const Size(0, 28)),
                           ),
                         ],
                       ),
-                    )),
-                    TextButton.icon(
-                      onPressed: () => setInner(() {
-                        variantNameCtrls.add(TextEditingController());
-                        variantPriceCtrls
-                            .add(TextEditingController(text: '0'));
-                      }),
-                      icon: const Icon(Icons.add_rounded, size: 14),
-                      label: const Text('Ajouter une variante',
-                          style: TextStyle(fontSize: 12)),
-                      style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(0, 28)),
-                    ),
+                    ],
+                    const SizedBox(height: 8),
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Annuler')),
-            ElevatedButton(
-              onPressed: () async {
-                final name  = nameCtrl.text.trim();
-                final price = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
-                if (name.isEmpty) return;
-                Navigator.pop(ctx);
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Annuler')),
+              ElevatedButton(
+                onPressed: () async {
+                  final name  = nameCtrl.text.trim();
+                  final price = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
+                  if (name.isEmpty) return;
+                  Navigator.pop(ctx);
 
-                final variants = hasVariants
-                    ? List.generate(variantNameCtrls.length, (i) => {
-                          'name': variantNameCtrls[i].text.trim(),
-                          'price_delta':
-                              double.tryParse(variantPriceCtrls[i].text) ??
-                                  0.0,
-                        })
-                        .where((v) =>
-                            (v['name'] as String).isNotEmpty)
-                        .toList()
-                    : <Map<String, dynamic>>[];
-
-                try {
-                  if (m == null) {
-                    await _repo.createMenuItem(
-                      name: name,
-                      description: descCtrl.text.trim().isEmpty
-                          ? null
-                          : descCtrl.text.trim(),
-                      price: price,
-                      categoryId: selectedCatId,
-                      available: available,
-                      variants: variants.isEmpty ? null : variants,
-                    );
+                  final names = colNames();
+                  Map<String, dynamic>? variantsPayload;
+                  if (hasVariants) {
+                    final rows = vRows
+                        .map((r) => r.toMap(names))
+                        .where((r) =>
+                            (r['name'] as String).isNotEmpty)
+                        .toList();
+                    variantsPayload = {
+                      'extra_columns': names,
+                      'rows': rows,
+                    };
                   } else {
-                    await _repo.updateMenuItem(m.id,
-                      name: name,
-                      description: descCtrl.text.trim().isEmpty
-                          ? null
-                          : descCtrl.text.trim(),
-                      price: price,
-                      categoryId: selectedCatId,
-                      available: available,
-                      variants: variants,
-                    );
+                    variantsPayload = {};
                   }
-                  _load();
-                } catch (e) {
-                  if (mounted) {
-                    messenger.showSnackBar(SnackBar(
-                      content: Text('Erreur : $e'),
-                      backgroundColor: AppColors.error,
-                    ));
+
+                  try {
+                    if (m == null) {
+                      await _repo.createMenuItem(
+                        name: name,
+                        description: descCtrl.text.trim().isEmpty
+                            ? null
+                            : descCtrl.text.trim(),
+                        price: price,
+                        categoryId: selectedCatId,
+                        available: available,
+                        variants:
+                            variantsPayload.isEmpty ? null : variantsPayload,
+                      );
+                    } else {
+                      await _repo.updateMenuItem(m.id,
+                        name: name,
+                        description: descCtrl.text.trim().isEmpty
+                            ? null
+                            : descCtrl.text.trim(),
+                        price: price,
+                        categoryId: selectedCatId,
+                        available: available,
+                        variants: variantsPayload,
+                      );
+                    }
+                    _load();
+                  } catch (e) {
+                    if (mounted) {
+                      messenger.showSnackBar(SnackBar(
+                        content: Text('Erreur : $e'),
+                        backgroundColor: AppColors.error,
+                      ));
+                    }
                   }
-                }
-              },
-              child: Text(m == null ? 'Créer' : 'Enregistrer'),
-            ),
-          ],
-        ),
+                },
+                child: Text(m == null ? 'Créer' : 'Enregistrer'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

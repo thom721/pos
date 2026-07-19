@@ -8,7 +8,7 @@ class MenuItemModel {
   final String? productId;
   final bool available;
   final String? imageUrl;
-  final List<Map<String, dynamic>> variants;
+  final Map<String, dynamic>? variantsData;
 
   const MenuItemModel({
     required this.id,
@@ -20,23 +20,40 @@ class MenuItemModel {
     this.productId,
     required this.available,
     this.imageUrl,
-    this.variants = const [],
+    this.variantsData,
   });
 
-  factory MenuItemModel.fromJson(Map<String, dynamic> j) => MenuItemModel(
-        id:           j['id'] as String,
-        name:         j['name'] as String,
-        description:  j['description'] as String?,
-        price:        (j['price'] as num?)?.toDouble() ?? 0.0,
-        categoryId:   j['category_id'] as String?,
-        categoryName: j['category_name'] as String?,
-        productId:    j['product_id'] as String?,
-        available:    j['available'] as bool? ?? true,
-        imageUrl:     j['image_url'] as String?,
-        variants:     (j['variants'] as List<dynamic>? ?? [])
-            .map((v) => Map<String, dynamic>.from(v as Map))
-            .toList(),
-      );
+  List<String> get extraColumns =>
+      (variantsData?['extra_columns'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
+
+  List<Map<String, dynamic>> get variantRows =>
+      (variantsData?['rows'] as List<dynamic>? ?? [])
+          .map((r) => Map<String, dynamic>.from(r as Map))
+          .toList();
+
+  bool get hasVariants => variantRows.isNotEmpty;
+
+  factory MenuItemModel.fromJson(Map<String, dynamic> j) {
+    final raw = j['variants'];
+    Map<String, dynamic>? vd;
+    if (raw is Map) {
+      vd = Map<String, dynamic>.from(raw);
+    }
+    return MenuItemModel(
+      id:           j['id'] as String,
+      name:         j['name'] as String,
+      description:  j['description'] as String?,
+      price:        (j['price'] as num?)?.toDouble() ?? 0.0,
+      categoryId:   j['category_id'] as String?,
+      categoryName: j['category_name'] as String?,
+      productId:    j['product_id'] as String?,
+      available:    j['available'] as bool? ?? true,
+      imageUrl:     j['image_url'] as String?,
+      variantsData: vd,
+    );
+  }
 }
 
 // Kept for backward compat, not actively used in UI
