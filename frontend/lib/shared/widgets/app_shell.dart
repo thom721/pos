@@ -71,6 +71,7 @@ const _restaurantMainNavItems = [
   _NavItem('Commandes',       Icons.receipt_long_rounded,           '/restaurant/commandes'),
   _NavItem('Tables',          Icons.table_restaurant_rounded,       '/restaurant/tables'),
   _NavItem('Cuisine',         Icons.restaurant_rounded,             '/restaurant/kitchen'),
+  _NavItem('Ingrédients',     Icons.egg_outlined,                   '/restaurant/ingredients'),
   _NavItem('Ventes',          Icons.receipt_long_rounded,           '/sales'),
   _NavItem('Produits',        Icons.inventory_2_rounded,            '/products'),
   _NavItem('Clients',         Icons.people_alt_rounded,             '/customers'),

@@ -108,6 +108,14 @@ class RestaurantRepository {
     await dio.delete('/api/restaurant/orders/$orderId/items/$itemId');
   }
 
+  Future<RestaurantOrderModel> updateItemQuantity(
+      String orderId, String itemId, double quantity) async {
+    final res = await dio.put(
+        '/api/restaurant/orders/$orderId/items/$itemId',
+        data: {'quantity': quantity});
+    return RestaurantOrderModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
   Future<RestaurantOrderModel> sendToKitchen(String orderId) async {
     final res = await dio.put('/api/restaurant/orders/$orderId/kitchen');
     return RestaurantOrderModel.fromJson(res.data as Map<String, dynamic>);
@@ -127,6 +135,52 @@ class RestaurantRepository {
     return (data['data'] as List? ?? [])
         .map((e) => ProductModel.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  // ── Ingredients ─────────────────────────────────────────────────────────────
+
+  Future<List<IngredientModel>> getIngredients({
+    String? productId,
+    String? categoryId,
+  }) async {
+    final res = await dio.get('/api/restaurant/ingredients/', queryParameters: {
+      if (productId != null) 'product_id': productId,
+      if (categoryId != null) 'category_id': categoryId,
+    });
+    return (res.data as List)
+        .map((e) => IngredientModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<IngredientModel> createIngredient({
+    required String name,
+    String? productId,
+    String? categoryId,
+  }) async {
+    final res = await dio.post('/api/restaurant/ingredients/', data: {
+      'name': name,
+      if (productId != null) 'product_id': productId,
+      if (categoryId != null) 'category_id': categoryId,
+    });
+    return IngredientModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<IngredientModel> updateIngredient(
+    String id, {
+    String? name,
+    String? productId,
+    String? categoryId,
+  }) async {
+    final res = await dio.put('/api/restaurant/ingredients/$id', data: {
+      if (name != null) 'name': name,
+      'product_id': productId,
+      'category_id': categoryId,
+    });
+    return IngredientModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteIngredient(String id) async {
+    await dio.delete('/api/restaurant/ingredients/$id');
   }
 
   Future<Map<String, dynamic>> checkout(

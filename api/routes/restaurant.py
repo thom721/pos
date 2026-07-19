@@ -11,6 +11,7 @@ from api.core.permissions import has_permission
 from api.models.User import User
 from api.models.RestaurantTable import RestaurantTable
 from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
+from api.models.Ingredient import Ingredient
 from api.models.Product import Product
 from api.services.warehouse_helper import resolve_warehouse_id
 from api.ws_manager import manager
@@ -121,6 +122,19 @@ class CheckoutPayload(BaseModel):
     customer_id: Optional[str] = None
     discount: float = 0.0
     tip: float = 0.0
+
+class OrderItemUpdate(BaseModel):
+    quantity: float
+
+class IngredientCreate(BaseModel):
+    name: str
+    product_id: Optional[str] = None
+    category_id: Optional[str] = None
+
+class IngredientUpdate(BaseModel):
+    name: Optional[str] = None
+    product_id: Optional[str] = None
+    category_id: Optional[str] = None
 
 
 # ── Serveurs (waiters) ────────────────────────────────────────────────────────
@@ -394,6 +408,37 @@ def remove_item(
     background_tasks.add_task(_notify, current_user.tenant_id)
 
 
+@router.put("/orders/{order_id}/items/{item_id}")
+def update_item_quantity(
+    order_id: str,
+    item_id: str,
+    data: OrderItemUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    item = db.query(RestaurantOrderItem).filter(
+        RestaurantOrderItem.id == item_id,
+        RestaurantOrderItem.order_id == order_id,
+    ).first()
+    if not item:
+        raise HTTPException(404, "Article introuvable")
+    if data.quantity <= 0:
+        db.delete(item)
+    else:
+        item.quantity = data.quantity
+    db.commit()
+    order = db.query(RestaurantOrder).filter(
+        RestaurantOrder.id == order_id,
+        RestaurantOrder.tenant_id == current_user.tenant_id,
+    ).first()
+    if not order:
+        raise HTTPException(404, "Commande introuvable")
+    db.refresh(order)
+    background_tasks.add_task(_notify, current_user.tenant_id)
+    return _order_dict(order)
+
+
 @router.put("/orders/{order_id}/kitchen")
 def send_to_kitchen(
     order_id: str,
@@ -541,3 +586,89 @@ def checkout_order(
         'covers': order.covers,
         'table_name': table.name if table else None,
     }
+
+
+# ── Ingredients ───────────────────────────────────────────────────────────────
+
+def _ingredient_dict(i: Ingredient) -> dict:
+    return {
+        'id': i.id,
+        'name': i.name,
+        'product_id': i.product_id,
+        'category_id': i.category_id,
+    }
+
+
+@router.get("/ingredients/")
+def list_ingredients(
+    product_id: Optional[str] = None,
+    category_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_READ)),
+):
+    """Liste les ingrédients du tenant, filtrables par produit ou catégorie."""
+    q = db.query(Ingredient).filter(Ingredient.tenant_id == current_user.tenant_id)
+    if product_id:
+        q = q.filter(Ingredient.product_id == product_id)
+    elif category_id:
+        q = q.filter(Ingredient.category_id == category_id)
+    return [_ingredient_dict(i) for i in q.order_by(Ingredient.name).all()]
+
+
+@router.post("/ingredients/", status_code=201)
+def create_ingredient(
+    data: IngredientCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_CREATE)),
+):
+    ing = Ingredient(
+        id=str(uuid.uuid4()),
+        tenant_id=current_user.tenant_id,
+        name=data.name,
+        product_id=data.product_id or None,
+        category_id=data.category_id or None,
+    )
+    db.add(ing)
+    db.commit()
+    db.refresh(ing)
+    return _ingredient_dict(ing)
+
+
+@router.put("/ingredients/{ingredient_id}")
+def update_ingredient(
+    ingredient_id: str,
+    data: IngredientUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    ing = db.query(Ingredient).filter(
+        Ingredient.id == ingredient_id,
+        Ingredient.tenant_id == current_user.tenant_id,
+    ).first()
+    if not ing:
+        raise HTTPException(404, "Ingrédient introuvable")
+    if data.name is not None:
+        ing.name = data.name
+    if 'product_id' in data.model_fields_set:
+        ing.product_id = data.product_id or None
+    if 'category_id' in data.model_fields_set:
+        ing.category_id = data.category_id or None
+    db.commit()
+    db.refresh(ing)
+    return _ingredient_dict(ing)
+
+
+@router.delete("/ingredients/{ingredient_id}", status_code=204)
+def delete_ingredient(
+    ingredient_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_DELETE)),
+):
+    ing = db.query(Ingredient).filter(
+        Ingredient.id == ingredient_id,
+        Ingredient.tenant_id == current_user.tenant_id,
+    ).first()
+    if not ing:
+        raise HTTPException(404, "Ingrédient introuvable")
+    db.delete(ing)
+    db.commit()

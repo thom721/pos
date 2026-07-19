@@ -1,3 +1,31 @@
+class IngredientModel {
+  final String id;
+  final String name;
+  final String? productId;
+  final String? categoryId;
+
+  const IngredientModel({
+    required this.id,
+    required this.name,
+    this.productId,
+    this.categoryId,
+  });
+
+  factory IngredientModel.fromJson(Map<String, dynamic> j) => IngredientModel(
+        id:         j['id'] as String,
+        name:       j['name'] as String,
+        productId:  j['product_id'] as String?,
+        categoryId: j['category_id'] as String?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        if (productId != null) 'product_id': productId,
+        if (categoryId != null) 'category_id': categoryId,
+      };
+}
+
 class RestaurantWaiterModel {
   final String id;
   final String name;

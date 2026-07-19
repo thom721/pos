@@ -94,6 +94,28 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
     }
   }
 
+  Future<void> _updateQuantity(String itemId, double newQty) async {
+    if (_order == null) return;
+    setState(() => _submitting = true);
+    try {
+      if (newQty <= 0) {
+        await _repo.removeItem(_order!.id, itemId);
+        _order = await _repo.getOrder(widget.orderId);
+      } else {
+        _order = await _repo.updateItemQuantity(_order!.id, itemId, newQty);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(extractAnyError(e)),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   Future<void> _sendToKitchen() async {
     if (_order == null || _order!.items.isEmpty) return;
     setState(() => _submitting = true);
@@ -335,6 +357,7 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
                       submitting: _submitting,
                       onAddItem: _addItem,
                       onRemoveItem: _removeItem,
+                      onUpdateQuantity: _updateQuantity,
                       onKitchen: _sendToKitchen,
                       onCheckout: _checkout,
                     )
@@ -345,6 +368,7 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
                       submitting: _submitting,
                       onAddItem: _addItem,
                       onRemoveItem: _removeItem,
+                      onUpdateQuantity: _updateQuantity,
                       onKitchen: _sendToKitchen,
                       onCheckout: _checkout,
                     ),
@@ -360,6 +384,7 @@ class _DesktopLayout extends StatelessWidget {
   final bool submitting;
   final Future<void> Function(ProductModel, {String? notes}) onAddItem;
   final Future<void> Function(String) onRemoveItem;
+  final Future<void> Function(String, double) onUpdateQuantity;
   final VoidCallback onKitchen;
   final VoidCallback onCheckout;
 
@@ -369,6 +394,7 @@ class _DesktopLayout extends StatelessWidget {
     required this.submitting,
     required this.onAddItem,
     required this.onRemoveItem,
+    required this.onUpdateQuantity,
     required this.onKitchen,
     required this.onCheckout,
   });
@@ -377,7 +403,6 @@ class _DesktopLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        // Left: order / cart panel
         SizedBox(
           width: 360,
           child: _CartColumn(
@@ -385,15 +410,13 @@ class _DesktopLayout extends StatelessWidget {
             symbol: symbol,
             submitting: submitting,
             onRemoveItem: onRemoveItem,
+            onUpdateQuantity: onUpdateQuantity,
             onKitchen: onKitchen,
             onCheckout: onCheckout,
           ),
         ),
         const VerticalDivider(width: 1),
-        // Right: product browser
-        Expanded(
-          child: _ProductBrowser(onAddItem: onAddItem),
-        ),
+        Expanded(child: _ProductBrowser(onAddItem: onAddItem)),
       ],
     );
   }
@@ -408,6 +431,7 @@ class _MobileLayout extends StatelessWidget {
   final bool submitting;
   final Future<void> Function(ProductModel, {String? notes}) onAddItem;
   final Future<void> Function(String) onRemoveItem;
+  final Future<void> Function(String, double) onUpdateQuantity;
   final VoidCallback onKitchen;
   final VoidCallback onCheckout;
 
@@ -418,6 +442,7 @@ class _MobileLayout extends StatelessWidget {
     required this.submitting,
     required this.onAddItem,
     required this.onRemoveItem,
+    required this.onUpdateQuantity,
     required this.onKitchen,
     required this.onCheckout,
   });
@@ -433,6 +458,7 @@ class _MobileLayout extends StatelessWidget {
           symbol: symbol,
           submitting: submitting,
           onRemoveItem: onRemoveItem,
+          onUpdateQuantity: onUpdateQuantity,
           onKitchen: onKitchen,
           onCheckout: onCheckout,
         ),
@@ -448,6 +474,7 @@ class _CartColumn extends StatelessWidget {
   final String symbol;
   final bool submitting;
   final Future<void> Function(String) onRemoveItem;
+  final Future<void> Function(String, double) onUpdateQuantity;
   final VoidCallback onKitchen;
   final VoidCallback onCheckout;
 
@@ -456,6 +483,7 @@ class _CartColumn extends StatelessWidget {
     required this.symbol,
     required this.submitting,
     required this.onRemoveItem,
+    required this.onUpdateQuantity,
     required this.onKitchen,
     required this.onCheckout,
   });
@@ -479,31 +507,31 @@ class _CartColumn extends StatelessWidget {
                         Icon(Icons.receipt_long_rounded,
                             size: 48, color: AppColors.textSecondary),
                         SizedBox(height: 12),
-                        Text(
-                          'Aucun article',
-                          style:
-                              TextStyle(color: AppColors.textSecondary),
-                        ),
+                        Text('Aucun article',
+                            style: TextStyle(color: AppColors.textSecondary)),
                         SizedBox(height: 4),
-                        Text(
-                          'Ajoutez des plats depuis le menu →',
-                          style: TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 12),
-                        ),
+                        Text('Ajoutez des plats depuis le menu →',
+                            style: TextStyle(
+                                color: AppColors.textSecondary, fontSize: 12)),
                       ],
                     ),
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.all(12),
                     itemCount: order.items.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: 8),
-                    itemBuilder: (_, i) => _OrderItemTile(
-                      item: order.items[i],
-                      symbol: symbol,
-                      onRemove: () => onRemoveItem(order.items[i].id),
-                    ),
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) {
+                      final item = order.items[i];
+                      return _OrderItemTile(
+                        item: item,
+                        symbol: symbol,
+                        onRemove: () => onRemoveItem(item.id),
+                        onDecrement: () =>
+                            onUpdateQuantity(item.id, item.quantity - 1),
+                        onIncrement: () =>
+                            onUpdateQuantity(item.id, item.quantity + 1),
+                      );
+                    },
                   ),
           ),
           _BottomBar(
@@ -594,13 +622,31 @@ class _ProductBrowserState extends State<_ProductBrowser> {
   }
 
   Future<void> _tapProduct(ProductModel product) async {
-    final notes = await showDialog<String>(
+    // Charge les ingrédients liés au produit ou à sa catégorie
+    List<IngredientModel> ingredients = [];
+    try {
+      final byProduct = await RestaurantRepository()
+          .getIngredients(productId: product.id);
+      final byCat = product.category != null
+          ? await RestaurantRepository()
+              .getIngredients(categoryId: product.category!.id)
+          : <IngredientModel>[];
+      // Fusionner sans doublons
+      final seen = <String>{};
+      for (final i in [...byProduct, ...byCat]) {
+        if (seen.add(i.id)) ingredients.add(i);
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => _ProductNotesDialog(product: product),
+      builder: (_) =>
+          _IngredientDialog(product: product, ingredients: ingredients),
     );
-    if (notes == null) return; // cancelled (dialog dismissed)
+    if (result == null) return;
     await widget.onAddItem(product,
-        notes: notes.isEmpty ? null : notes);
+        notes: result['notes'] as String?);
   }
 
   @override
@@ -851,18 +897,28 @@ class _ProductPlaceholder extends StatelessWidget {
   }
 }
 
-// ── Product notes / customization dialog ──────────────────────────────────────
+// ── Ingredient / customization dialog ────────────────────────────────────────
+// Retourne Map{'notes': String?} ou null si annulé.
 
-class _ProductNotesDialog extends StatefulWidget {
+class _IngredientDialog extends StatefulWidget {
   final ProductModel product;
-  const _ProductNotesDialog({required this.product});
+  final List<IngredientModel> ingredients;
+  const _IngredientDialog(
+      {required this.product, required this.ingredients});
 
   @override
-  State<_ProductNotesDialog> createState() => _ProductNotesDialogState();
+  State<_IngredientDialog> createState() => _IngredientDialogState();
 }
 
-class _ProductNotesDialogState extends State<_ProductNotesDialog> {
+class _IngredientDialogState extends State<_IngredientDialog> {
+  late final Set<String> _checked;
   final _notesCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _checked = {};
+  }
 
   @override
   void dispose() {
@@ -870,61 +926,113 @@ class _ProductNotesDialogState extends State<_ProductNotesDialog> {
     super.dispose();
   }
 
+  String _buildNotes() {
+    final parts = <String>[];
+    for (final ing in widget.ingredients) {
+      if (_checked.contains(ing.id)) parts.add(ing.name);
+    }
+    final extra = _notesCtrl.text.trim();
+    if (extra.isNotEmpty) parts.add(extra);
+    return parts.join(', ');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasIngredients = widget.ingredients.isNotEmpty;
+
     return AlertDialog(
+      contentPadding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
       title: Row(
         children: [
           const Icon(Icons.restaurant_menu_rounded,
               color: AppColors.primary, size: 20),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(widget.product.name,
-                style: const TextStyle(fontSize: 16)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.product.name,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w700)),
+                if (widget.product.description != null &&
+                    widget.product.description!.isNotEmpty)
+                  Text(widget.product.description!,
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.normal)),
+              ],
+            ),
           ),
         ],
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (widget.product.description != null &&
-              widget.product.description!.isNotEmpty) ...[
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(8),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 480),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (hasIngredients) ...[
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
+                  child: Text('Ingrédients',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: AppColors.textSecondary)),
+                ),
+                ...widget.ingredients.map((ing) => CheckboxListTile(
+                      dense: true,
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 12),
+                      title: Text(ing.name,
+                          style: const TextStyle(fontSize: 13)),
+                      value: _checked.contains(ing.id),
+                      activeColor: AppColors.primary,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      onChanged: (v) => setState(() {
+                        if (v == true) {
+                          _checked.add(ing.id);
+                        } else {
+                          _checked.remove(ing.id);
+                        }
+                      }),
+                    )),
+                const Divider(height: 12),
+              ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hasIngredients
+                          ? 'Remarques supplémentaires'
+                          : 'Instructions / personnalisation',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _notesCtrl,
+                      maxLines: 2,
+                      autofocus: !hasIngredients,
+                      decoration: const InputDecoration(
+                        hintText: 'Ex: sans sel, bien cuit…',
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: Text(
-                widget.product.description!,
-                style: const TextStyle(
-                    fontSize: 13, color: AppColors.textSecondary),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          const Text(
-            'Instructions / personnalisation',
-            style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-                color: AppColors.textSecondary),
+            ],
           ),
-          const SizedBox(height: 6),
-          TextField(
-            controller: _notesCtrl,
-            maxLines: 3,
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'Ex: sans oignons, extra fromage…',
-              border: OutlineInputBorder(),
-              contentPadding:
-                  EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            ),
-          ),
-        ],
+        ),
       ),
       actions: [
         TextButton(
@@ -932,7 +1040,11 @@ class _ProductNotesDialogState extends State<_ProductNotesDialog> {
           child: const Text('Annuler'),
         ),
         FilledButton.icon(
-          onPressed: () => Navigator.pop(context, _notesCtrl.text),
+          onPressed: () {
+            final notes = _buildNotes();
+            Navigator.pop(context,
+                {'notes': notes.isEmpty ? null : notes});
+          },
           icon: const Icon(Icons.add_shopping_cart_rounded, size: 16),
           label: const Text('Ajouter'),
         ),
@@ -1045,9 +1157,16 @@ class _OrderItemTile extends StatelessWidget {
   final RestaurantOrderItemModel item;
   final String symbol;
   final VoidCallback onRemove;
+  final VoidCallback onDecrement;
+  final VoidCallback onIncrement;
 
-  const _OrderItemTile(
-      {required this.item, required this.symbol, required this.onRemove});
+  const _OrderItemTile({
+    required this.item,
+    required this.symbol,
+    required this.onRemove,
+    required this.onDecrement,
+    required this.onIncrement,
+  });
 
   Color get _statusColor {
     if (item.status == 'ready') return AppColors.success;
@@ -1057,8 +1176,13 @@ class _OrderItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final qtyInt = item.quantity == item.quantity.roundToDouble();
+    final qtyLabel = qtyInt
+        ? item.quantity.toInt().toString()
+        : item.quantity.toStringAsFixed(1);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(10),
@@ -1066,34 +1190,75 @@ class _OrderItemTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 30,
-            height: 30,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '${item.quantity.toStringAsFixed(item.quantity == item.quantity.roundToDouble() ? 0 : 1)}x',
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                  fontSize: 11),
-            ),
+          // Quantity stepper
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              InkWell(
+                onTap: onDecrement,
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: item.quantity <= 1
+                        ? AppColors.error.withValues(alpha: 0.1)
+                        : AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Icon(
+                    item.quantity <= 1
+                        ? Icons.delete_outline_rounded
+                        : Icons.remove_rounded,
+                    size: 14,
+                    color: item.quantity <= 1
+                        ? AppColors.error
+                        : AppColors.primary,
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 28,
+                child: Text(
+                  qtyLabel,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                      fontSize: 13),
+                ),
+              ),
+              InkWell(
+                onTap: onIncrement,
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(Icons.add_rounded,
+                      size: 14, color: AppColors.primary),
+                ),
+              ),
+            ],
           ),
           const SizedBox(width: 8),
+          // Product info
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item.productName,
                     style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 13)),
+                        fontWeight: FontWeight.w600, fontSize: 12)),
                 if (item.notes != null && item.notes!.isNotEmpty)
                   Text(item.notes!,
                       style: const TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary)),
+                          fontSize: 10,
+                          color: AppColors.textSecondary,
+                          fontStyle: FontStyle.italic)),
                 Row(
                   children: [
                     Container(
@@ -1109,27 +1274,32 @@ class _OrderItemTile extends StatelessWidget {
                           : item.status == 'preparing'
                               ? 'En préparation'
                               : 'En attente',
-                      style:
-                          TextStyle(fontSize: 10, color: _statusColor),
+                      style: TextStyle(fontSize: 10, color: _statusColor),
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          Text(
-            '$symbol${NumberFormat('#,##0.00').format(item.subtotal)}',
-            style: const TextStyle(
-                fontWeight: FontWeight.bold, fontSize: 12),
-          ),
-          const SizedBox(width: 2),
-          IconButton(
-            icon: const Icon(Icons.remove_circle_outline_rounded,
-                color: AppColors.error, size: 18),
-            onPressed: onRemove,
-            padding: EdgeInsets.zero,
-            constraints:
-                const BoxConstraints(minWidth: 28, minHeight: 28),
+          // Price + delete
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '$symbol${NumberFormat('#,##0.00').format(item.subtotal)}',
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+              InkWell(
+                onTap: onRemove,
+                borderRadius: BorderRadius.circular(4),
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(Icons.close_rounded,
+                      color: AppColors.error, size: 14),
+                ),
+              ),
+            ],
           ),
         ],
       ),
