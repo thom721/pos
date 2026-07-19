@@ -319,12 +319,12 @@ class _MenuPanelState extends State<_MenuPanel> {
     const kDispo = 56.0;
     const kExtra = 118.0;
     const kDel   = 36.0;
-    const cellPad = EdgeInsets.symmetric(horizontal: 4, vertical: 2);
+    const cellPad = EdgeInsets.symmetric(horizontal: 5, vertical: 4);
     const hdrStyle = TextStyle(
         fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary);
     const tfDeco = InputDecoration(
         isDense: true,
-        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 7));
+        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10));
 
     showDialog(
       context: context,
@@ -370,30 +370,10 @@ class _MenuPanelState extends State<_MenuPanel> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // ── Infos de base ─────────────────────────────────────
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: TextField(
-                            controller: nameCtrl,
-                            autofocus: true,
-                            decoration: const InputDecoration(
-                                labelText: 'Nom du plat *'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 2,
-                          child: TextField(
-                            controller: priceCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true),
-                            decoration: const InputDecoration(
-                                labelText: 'Prix de base (HTG) *'),
-                          ),
-                        ),
-                      ],
+                    TextField(
+                      controller: nameCtrl,
+                      autofocus: true,
+                      decoration: const InputDecoration(labelText: 'Nom du plat *'),
                     ),
                     const SizedBox(height: 10),
                     TextField(
@@ -403,40 +383,17 @@ class _MenuPanelState extends State<_MenuPanel> {
                           labelText: 'Description (optionnel)'),
                     ),
                     const SizedBox(height: 10),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String?>(
-                            initialValue: selectedCatId,
-                            decoration: const InputDecoration(
-                                labelText: 'Catégorie (optionnel)'),
-                            items: [
-                              const DropdownMenuItem(
-                                  value: null, child: Text('— Aucune —')),
-                              ..._categories.map((c) => DropdownMenuItem(
-                                  value: c.id, child: Text(c.name))),
-                            ],
-                            onChanged: (v) => setInner(() => selectedCatId = v),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text('Plat disponible',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: AppColors.textSecondary)),
-                            Switch(
-                              value: available,
-                              onChanged: (v) => setInner(() => available = v),
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                            ),
-                          ],
-                        ),
+                    DropdownButtonFormField<String?>(
+                      initialValue: selectedCatId,
+                      decoration: const InputDecoration(
+                          labelText: 'Catégorie (optionnel)'),
+                      items: [
+                        const DropdownMenuItem(
+                            value: null, child: Text('— Aucune —')),
+                        ..._categories.map((c) => DropdownMenuItem(
+                            value: c.id, child: Text(c.name))),
                       ],
+                      onChanged: (v) => setInner(() => selectedCatId = v),
                     ),
                     const Divider(height: 24),
                     // ── Variantes ─────────────────────────────────────────
@@ -639,6 +596,38 @@ class _MenuPanelState extends State<_MenuPanel> {
                         ],
                       ),
                     ],
+                    // ── Prix + Dispo ──────────────────────────────────────
+                    const Divider(height: 24),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: priceCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            decoration: const InputDecoration(
+                                labelText: 'Prix de base (HTG) *'),
+                          ),
+                        ),
+                        const SizedBox(width: 24),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Plat disponible',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary)),
+                            Switch(
+                              value: available,
+                              onChanged: (v) => setInner(() => available = v),
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                   ],
                 ),
