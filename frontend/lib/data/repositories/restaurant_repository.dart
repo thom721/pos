@@ -137,7 +137,77 @@ class RestaurantRepository {
         .toList();
   }
 
-  // ── Ingredients ─────────────────────────────────────────────────────────────
+  // ── Modifier groups ──────────────────────────────────────────────────────────
+
+  Future<List<ModifierGroupModel>> getModifierGroups({
+    String? productId,
+    String? categoryId,
+  }) async {
+    final res =
+        await dio.get('/api/restaurant/modifier-groups/', queryParameters: {
+      if (productId != null) 'product_id': productId,
+      if (categoryId != null) 'category_id': categoryId,
+    });
+    return (res.data as List)
+        .map((e) => ModifierGroupModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<ModifierGroupModel> createModifierGroup({
+    required String name,
+    String? productId,
+    String? categoryId,
+    bool required = false,
+    bool multiSelect = true,
+  }) async {
+    final res = await dio.post('/api/restaurant/modifier-groups/', data: {
+      'name': name,
+      if (productId != null) 'product_id': productId,
+      if (categoryId != null) 'category_id': categoryId,
+      'required': required,
+      'multi_select': multiSelect,
+    });
+    return ModifierGroupModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<ModifierGroupModel> updateModifierGroup(
+    String id, {
+    String? name,
+    String? productId,
+    String? categoryId,
+    bool? required,
+    bool? multiSelect,
+  }) async {
+    final res = await dio.put('/api/restaurant/modifier-groups/$id', data: {
+      if (name != null) 'name': name,
+      'product_id': productId,
+      'category_id': categoryId,
+      if (required != null) 'required': required,
+      if (multiSelect != null) 'multi_select': multiSelect,
+    });
+    return ModifierGroupModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteModifierGroup(String id) async {
+    await dio.delete('/api/restaurant/modifier-groups/$id');
+  }
+
+  Future<ModifierGroupModel> addOption(
+      String groupId, String name, double extraPrice) async {
+    final res = await dio
+        .post('/api/restaurant/modifier-groups/$groupId/options', data: {
+      'name': name,
+      'extra_price': extraPrice,
+    });
+    return ModifierGroupModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteOption(String groupId, String optionId) async {
+    await dio.delete(
+        '/api/restaurant/modifier-groups/$groupId/options/$optionId');
+  }
+
+  // ── Ingredients (legacy, kept for compatibility) ──────────────────────────
 
   Future<List<IngredientModel>> getIngredients({
     String? productId,
@@ -150,37 +220,6 @@ class RestaurantRepository {
     return (res.data as List)
         .map((e) => IngredientModel.fromJson(e as Map<String, dynamic>))
         .toList();
-  }
-
-  Future<IngredientModel> createIngredient({
-    required String name,
-    String? productId,
-    String? categoryId,
-  }) async {
-    final res = await dio.post('/api/restaurant/ingredients/', data: {
-      'name': name,
-      if (productId != null) 'product_id': productId,
-      if (categoryId != null) 'category_id': categoryId,
-    });
-    return IngredientModel.fromJson(res.data as Map<String, dynamic>);
-  }
-
-  Future<IngredientModel> updateIngredient(
-    String id, {
-    String? name,
-    String? productId,
-    String? categoryId,
-  }) async {
-    final res = await dio.put('/api/restaurant/ingredients/$id', data: {
-      if (name != null) 'name': name,
-      'product_id': productId,
-      'category_id': categoryId,
-    });
-    return IngredientModel.fromJson(res.data as Map<String, dynamic>);
-  }
-
-  Future<void> deleteIngredient(String id) async {
-    await dio.delete('/api/restaurant/ingredients/$id');
   }
 
   Future<Map<String, dynamic>> checkout(

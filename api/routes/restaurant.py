@@ -12,6 +12,7 @@ from api.models.User import User
 from api.models.RestaurantTable import RestaurantTable
 from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
 from api.models.Ingredient import Ingredient
+from api.models.ModifierGroup import ModifierGroup, ModifierOption
 from api.models.Product import Product
 from api.services.warehouse_helper import resolve_warehouse_id
 from api.ws_manager import manager
@@ -135,6 +136,24 @@ class IngredientUpdate(BaseModel):
     name: Optional[str] = None
     product_id: Optional[str] = None
     category_id: Optional[str] = None
+
+class ModifierGroupCreate(BaseModel):
+    name: str
+    product_id: Optional[str] = None
+    category_id: Optional[str] = None
+    required: bool = False
+    multi_select: bool = True
+
+class ModifierGroupUpdate(BaseModel):
+    name: Optional[str] = None
+    product_id: Optional[str] = None
+    category_id: Optional[str] = None
+    required: Optional[bool] = None
+    multi_select: Optional[bool] = None
+
+class ModifierOptionCreate(BaseModel):
+    name: str
+    extra_price: float = 0.0
 
 
 # ── Serveurs (waiters) ────────────────────────────────────────────────────────
@@ -671,4 +690,150 @@ def delete_ingredient(
     if not ing:
         raise HTTPException(404, "Ingrédient introuvable")
     db.delete(ing)
+    db.commit()
+
+
+# ── Modifier groups ───────────────────────────────────────────────────────────
+
+def _option_dict(o: ModifierOption) -> dict:
+    return {
+        'id': o.id,
+        'name': o.name,
+        'extra_price': float(o.extra_price or 0),
+    }
+
+
+def _group_dict(g: ModifierGroup) -> dict:
+    return {
+        'id': g.id,
+        'name': g.name,
+        'product_id': g.product_id,
+        'category_id': g.category_id,
+        'required': g.required,
+        'multi_select': g.multi_select,
+        'options': [_option_dict(o) for o in (g.options or [])],
+    }
+
+
+@router.get("/modifier-groups/")
+def list_modifier_groups(
+    product_id: Optional[str] = None,
+    category_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_READ)),
+):
+    q = db.query(ModifierGroup).filter(
+        ModifierGroup.tenant_id == current_user.tenant_id
+    )
+    if product_id:
+        q = q.filter(ModifierGroup.product_id == product_id)
+    elif category_id:
+        q = q.filter(ModifierGroup.category_id == category_id)
+    return [_group_dict(g) for g in q.order_by(ModifierGroup.name).all()]
+
+
+@router.post("/modifier-groups/", status_code=201)
+def create_modifier_group(
+    data: ModifierGroupCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_CREATE)),
+):
+    g = ModifierGroup(
+        id=str(uuid.uuid4()),
+        tenant_id=current_user.tenant_id,
+        name=data.name,
+        product_id=data.product_id or None,
+        category_id=data.category_id or None,
+        required=data.required,
+        multi_select=data.multi_select,
+    )
+    db.add(g)
+    db.commit()
+    db.refresh(g)
+    return _group_dict(g)
+
+
+@router.put("/modifier-groups/{group_id}")
+def update_modifier_group(
+    group_id: str,
+    data: ModifierGroupUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    g = db.query(ModifierGroup).filter(
+        ModifierGroup.id == group_id,
+        ModifierGroup.tenant_id == current_user.tenant_id,
+    ).first()
+    if not g:
+        raise HTTPException(404, "Groupe introuvable")
+    if data.name is not None:
+        g.name = data.name
+    if 'product_id' in data.model_fields_set:
+        g.product_id = data.product_id or None
+    if 'category_id' in data.model_fields_set:
+        g.category_id = data.category_id or None
+    if data.required is not None:
+        g.required = data.required
+    if data.multi_select is not None:
+        g.multi_select = data.multi_select
+    db.commit()
+    db.refresh(g)
+    return _group_dict(g)
+
+
+@router.delete("/modifier-groups/{group_id}", status_code=204)
+def delete_modifier_group(
+    group_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_DELETE)),
+):
+    g = db.query(ModifierGroup).filter(
+        ModifierGroup.id == group_id,
+        ModifierGroup.tenant_id == current_user.tenant_id,
+    ).first()
+    if not g:
+        raise HTTPException(404, "Groupe introuvable")
+    db.delete(g)
+    db.commit()
+
+
+@router.post("/modifier-groups/{group_id}/options", status_code=201)
+def add_modifier_option(
+    group_id: str,
+    data: ModifierOptionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    g = db.query(ModifierGroup).filter(
+        ModifierGroup.id == group_id,
+        ModifierGroup.tenant_id == current_user.tenant_id,
+    ).first()
+    if not g:
+        raise HTTPException(404, "Groupe introuvable")
+    opt = ModifierOption(
+        id=str(uuid.uuid4()),
+        group_id=group_id,
+        name=data.name,
+        extra_price=data.extra_price,
+    )
+    db.add(opt)
+    db.commit()
+    db.refresh(g)
+    return _group_dict(g)
+
+
+@router.delete("/modifier-groups/{group_id}/options/{option_id}", status_code=204)
+def delete_modifier_option(
+    group_id: str,
+    option_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    opt = db.query(ModifierOption).filter(
+        ModifierOption.id == option_id,
+        ModifierOption.group_id == group_id,
+    ).first()
+    if not opt:
+        raise HTTPException(404, "Option introuvable")
+    db.delete(opt)
     db.commit()

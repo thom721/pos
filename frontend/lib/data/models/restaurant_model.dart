@@ -1,29 +1,67 @@
+// Kept for backward compat, not actively used in UI
 class IngredientModel {
   final String id;
   final String name;
   final String? productId;
   final String? categoryId;
+  const IngredientModel(
+      {required this.id,
+      required this.name,
+      this.productId,
+      this.categoryId});
+  factory IngredientModel.fromJson(Map<String, dynamic> j) => IngredientModel(
+      id: j['id'] as String,
+      name: j['name'] as String,
+      productId: j['product_id'] as String?,
+      categoryId: j['category_id'] as String?);
+}
 
-  const IngredientModel({
+class ModifierOptionModel {
+  final String id;
+  final String name;
+  final double extraPrice;
+  const ModifierOptionModel(
+      {required this.id, required this.name, required this.extraPrice});
+  factory ModifierOptionModel.fromJson(Map<String, dynamic> j) =>
+      ModifierOptionModel(
+        id:         j['id'] as String,
+        name:       j['name'] as String,
+        extraPrice: (j['extra_price'] as num?)?.toDouble() ?? 0.0,
+      );
+}
+
+class ModifierGroupModel {
+  final String id;
+  final String name;
+  final String? productId;
+  final String? categoryId;
+  final bool required;
+  final bool multiSelect;
+  final List<ModifierOptionModel> options;
+
+  const ModifierGroupModel({
     required this.id,
     required this.name,
     this.productId,
     this.categoryId,
+    required this.required,
+    required this.multiSelect,
+    required this.options,
   });
 
-  factory IngredientModel.fromJson(Map<String, dynamic> j) => IngredientModel(
-        id:         j['id'] as String,
-        name:       j['name'] as String,
-        productId:  j['product_id'] as String?,
-        categoryId: j['category_id'] as String?,
+  factory ModifierGroupModel.fromJson(Map<String, dynamic> j) =>
+      ModifierGroupModel(
+        id:          j['id'] as String,
+        name:        j['name'] as String,
+        productId:   j['product_id'] as String?,
+        categoryId:  j['category_id'] as String?,
+        required:    j['required'] as bool? ?? false,
+        multiSelect: j['multi_select'] as bool? ?? true,
+        options: (j['options'] as List<dynamic>? ?? [])
+            .map((e) =>
+                ModifierOptionModel.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        if (productId != null) 'product_id': productId,
-        if (categoryId != null) 'category_id': categoryId,
-      };
 }
 
 class RestaurantWaiterModel {

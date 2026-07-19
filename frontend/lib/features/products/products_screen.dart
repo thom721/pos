@@ -12,7 +12,10 @@ import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/services/offline_cache_service.dart';
+import 'package:pos_connect/data/models/restaurant_model.dart';
+import 'package:pos_connect/data/repositories/restaurant_repository.dart';
 
 final _fmt =
     NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
@@ -95,6 +98,8 @@ class _ProductsToolbar extends ConsumerWidget {
     final isMobile = context.isMobile;
     final canCreate = ref.watch(hasPermissionProvider(Perm.productsCreate));
     final canManageCat = ref.watch(hasPermissionProvider(Perm.productsUpdate));
+    final isRestaurant =
+        ref.watch(settingsProvider).businessType == 'restaurant';
 
     final searchField = TextField(
       decoration: const InputDecoration(
@@ -129,6 +134,17 @@ class _ProductsToolbar extends ConsumerWidget {
                         ),
                         const SizedBox(width: 8),
                       ],
+                      if (canManageCat && isRestaurant) ...[
+                        OutlinedButton.icon(
+                          onPressed: () => showDialog(
+                            context: context,
+                            builder: (_) => const _ModifierManagerDialog(),
+                          ),
+                          icon: const Icon(Icons.tune_rounded, size: 18),
+                          label: const Text('Modificateurs'),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       if (canCreate)
                         ElevatedButton.icon(
                           onPressed: () => showDialog(
@@ -155,6 +171,17 @@ class _ProductsToolbar extends ConsumerWidget {
                     ),
                     icon: const Icon(Icons.category_rounded, size: 18),
                     label: const Text('Catégories'),
+                  ),
+                ],
+                if (canManageCat && isRestaurant) ...[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (_) => const _ModifierManagerDialog(),
+                    ),
+                    icon: const Icon(Icons.tune_rounded, size: 18),
+                    label: const Text('Modificateurs'),
                   ),
                 ],
                 if (canCreate) ...[
@@ -1107,5 +1134,462 @@ class _AdjustStockDialogState extends ConsumerState<_AdjustStockDialog> {
         _error = 'Erreur lors de l\'ajustement. Réessayez.';
       });
     }
+  }
+}
+
+// ─── Modifier Manager Dialog ──────────────────────────────────────────────────
+
+class _ModifierManagerDialog extends StatefulWidget {
+  const _ModifierManagerDialog();
+
+  @override
+  State<_ModifierManagerDialog> createState() => _ModifierManagerDialogState();
+}
+
+class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
+  List<ModifierGroupModel> _groups = [];
+  List<CategoryModel> _categories = [];
+  List<ProductModel> _products = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final repo = RestaurantRepository();
+      final prodRepo = ProductRepository();
+      final results = await Future.wait([
+        repo.getModifierGroups(),
+        prodRepo.getCategories(),
+      ]);
+      final groups = results[0] as List<ModifierGroupModel>;
+      final cats = results[1] as List<CategoryModel>;
+      // load products for name display
+      final prodPage = await prodRepo.getProducts(limit: 200);
+      if (mounted) {
+        setState(() {
+          _groups = groups;
+          _categories = cats;
+          _products = prodPage.data;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  String _scopeLabel(ModifierGroupModel g) {
+    if (g.categoryId != null) {
+      final cat = _categories.where((c) => c.id == g.categoryId).firstOrNull;
+      return 'Catégorie: ${cat?.name ?? g.categoryId}';
+    }
+    if (g.productId != null) {
+      final prod = _products.where((p) => p.id == g.productId).firstOrNull;
+      return 'Produit: ${prod?.name ?? g.productId}';
+    }
+    return 'Global';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.tune_rounded, color: AppColors.primary, size: 20),
+          SizedBox(width: 8),
+          Flexible(child: Text('Gérer les modificateurs')),
+        ],
+      ),
+      content: SizedBox(
+        width: 520,
+        height: 480,
+        child: Column(
+          children: [
+            ElevatedButton.icon(
+              onPressed: () => _showGroupForm(context),
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Nouveau groupe'),
+              style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 40)),
+            ),
+            const SizedBox(height: 12),
+            if (_error != null)
+              Text(_error!, style: const TextStyle(color: AppColors.error)),
+            if (_loading)
+              const Expanded(child: Center(child: CircularProgressIndicator()))
+            else
+              Expanded(
+                child: _groups.isEmpty
+                    ? const Center(
+                        child: Text('Aucun groupe de modificateurs',
+                            style: TextStyle(color: AppColors.textSecondary)))
+                    : ListView.separated(
+                        itemCount: _groups.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (ctx, i) {
+                          final g = _groups[i];
+                          return ExpansionTile(
+                            dense: true,
+                            tilePadding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 0),
+                            leading: Icon(
+                              g.multiSelect
+                                  ? Icons.check_box_outlined
+                                  : Icons.radio_button_checked_rounded,
+                              color: AppColors.primary,
+                              size: 18,
+                            ),
+                            title: Text(g.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600, fontSize: 13)),
+                            subtitle: Text(
+                              '${_scopeLabel(g)} · ${g.required ? "Requis" : "Optionnel"} · ${g.multiSelect ? "Multi" : "Un seul"}',
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppColors.textSecondary),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined,
+                                      size: 16,
+                                      color: AppColors.textSecondary),
+                                  tooltip: 'Modifier',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                      minWidth: 32, minHeight: 32),
+                                  onPressed: () => _showGroupForm(context, g),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                      Icons.delete_outline_rounded,
+                                      size: 16,
+                                      color: AppColors.error),
+                                  tooltip: 'Supprimer',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                      minWidth: 32, minHeight: 32),
+                                  onPressed: () =>
+                                      _confirmDeleteGroup(context, g),
+                                ),
+                                const Icon(Icons.expand_more_rounded,
+                                    size: 18,
+                                    color: AppColors.textSecondary),
+                              ],
+                            ),
+                            children: [
+                              // Options list
+                              ...g.options.map((opt) => ListTile(
+                                    dense: true,
+                                    contentPadding:
+                                        const EdgeInsets.only(left: 48, right: 8),
+                                    title: Text(opt.name,
+                                        style:
+                                            const TextStyle(fontSize: 12)),
+                                    subtitle: opt.extraPrice > 0
+                                        ? Text(
+                                            '+${opt.extraPrice.toStringAsFixed(0)} HTG',
+                                            style: const TextStyle(
+                                                fontSize: 11,
+                                                color: AppColors.primary))
+                                        : null,
+                                    trailing: IconButton(
+                                      icon: const Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 14,
+                                          color: AppColors.error),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                          minWidth: 28, minHeight: 28),
+                                      onPressed: () =>
+                                          _deleteOption(g.id, opt.id),
+                                    ),
+                                  )),
+                              // Add option row
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(48, 4, 12, 8),
+                                child: OutlinedButton.icon(
+                                  onPressed: () =>
+                                      _showOptionForm(context, g.id),
+                                  icon: const Icon(Icons.add_rounded, size: 14),
+                                  label: const Text('Ajouter une option',
+                                      style: TextStyle(fontSize: 12)),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 6),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer')),
+      ],
+    );
+  }
+
+  void _showGroupForm(BuildContext context, [ModifierGroupModel? g]) {
+    final nameCtrl = TextEditingController(text: g?.name ?? '');
+    bool required = g?.required ?? false;
+    bool multiSelect = g?.multiSelect ?? true;
+    String? selectedCatId = g?.categoryId;
+    String? selectedProdId = g?.productId;
+    final messenger = ScaffoldMessenger.of(context);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setInner) => AlertDialog(
+          title: Text(g == null ? 'Nouveau groupe' : 'Modifier le groupe'),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    autofocus: true,
+                    decoration:
+                        const InputDecoration(labelText: 'Nom du groupe *'),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Lié à',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: AppColors.textSecondary)),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String?>(
+                    value: selectedCatId,
+                    decoration:
+                        const InputDecoration(labelText: 'Catégorie (optionnel)'),
+                    items: [
+                      const DropdownMenuItem(
+                          value: null, child: Text('— Aucune —')),
+                      ..._categories.map((c) => DropdownMenuItem(
+                          value: c.id, child: Text(c.name))),
+                    ],
+                    onChanged: (v) => setInner(() {
+                      selectedCatId = v;
+                      if (v != null) selectedProdId = null;
+                    }),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String?>(
+                    value: selectedProdId,
+                    decoration:
+                        const InputDecoration(labelText: 'Produit (optionnel)'),
+                    items: [
+                      const DropdownMenuItem(
+                          value: null, child: Text('— Aucun —')),
+                      ..._products.map((p) => DropdownMenuItem(
+                          value: p.id, child: Text(p.name))),
+                    ],
+                    onChanged: (v) => setInner(() {
+                      selectedProdId = v;
+                      if (v != null) selectedCatId = null;
+                    }),
+                  ),
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Obligatoire',
+                        style: TextStyle(fontSize: 13)),
+                    subtitle: const Text('Le client doit faire un choix',
+                        style: TextStyle(fontSize: 11)),
+                    value: required,
+                    onChanged: (v) => setInner(() => required = v),
+                  ),
+                  SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Sélection multiple',
+                        style: TextStyle(fontSize: 13)),
+                    subtitle: const Text(
+                        'Cases à cocher (sinon boutons radio)',
+                        style: TextStyle(fontSize: 11)),
+                    value: multiSelect,
+                    onChanged: (v) => setInner(() => multiSelect = v),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annuler')),
+            ElevatedButton(
+              onPressed: () async {
+                final name = nameCtrl.text.trim();
+                if (name.isEmpty) return;
+                Navigator.pop(ctx);
+                try {
+                  final repo = RestaurantRepository();
+                  if (g == null) {
+                    await repo.createModifierGroup(
+                      name: name,
+                      categoryId: selectedCatId,
+                      productId: selectedProdId,
+                      required: required,
+                      multiSelect: multiSelect,
+                    );
+                  } else {
+                    await repo.updateModifierGroup(g.id,
+                      name: name,
+                      categoryId: selectedCatId,
+                      productId: selectedProdId,
+                      required: required,
+                      multiSelect: multiSelect,
+                    );
+                  }
+                  _load();
+                } catch (e) {
+                  if (mounted) {
+                    messenger.showSnackBar(SnackBar(
+                      content: Text('Erreur : $e'),
+                      backgroundColor: AppColors.error,
+                    ));
+                  }
+                }
+              },
+              child: Text(g == null ? 'Créer' : 'Enregistrer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showOptionForm(BuildContext context, String groupId) {
+    final nameCtrl = TextEditingController();
+    final priceCtrl = TextEditingController(text: '0');
+    final messenger = ScaffoldMessenger.of(context);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nouvelle option'),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Nom *'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: priceCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                    labelText: 'Supplément (HTG)',
+                    hintText: '0'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) return;
+              final price =
+                  double.tryParse(priceCtrl.text.trim()) ?? 0.0;
+              Navigator.pop(ctx);
+              try {
+                await RestaurantRepository().addOption(groupId, name, price);
+                _load();
+              } catch (e) {
+                if (mounted) {
+                  messenger.showSnackBar(SnackBar(
+                    content: Text('Erreur : $e'),
+                    backgroundColor: AppColors.error,
+                  ));
+                }
+              }
+            },
+            child: const Text('Ajouter'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteOption(String groupId, String optionId) async {
+    try {
+      await RestaurantRepository().deleteOption(groupId, optionId);
+      _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : $e'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    }
+  }
+
+  void _confirmDeleteGroup(BuildContext context, ModifierGroupModel g) {
+    final messenger = ScaffoldMessenger.of(context);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer le groupe ?'),
+        content: Text(
+            'Supprimer "${g.name}" et toutes ses options ? Cette action est irréversible.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          ElevatedButton(
+            style:
+                ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await RestaurantRepository().deleteModifierGroup(g.id);
+                _load();
+              } catch (e) {
+                if (mounted) {
+                  messenger.showSnackBar(SnackBar(
+                    content: Text('Erreur : $e'),
+                    backgroundColor: AppColors.error,
+                  ));
+                }
+              }
+            },
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
   }
 }

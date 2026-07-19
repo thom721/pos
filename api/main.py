@@ -41,6 +41,7 @@ from api.models.RestaurantTable import RestaurantTable as _RestaurantTable  # no
 from api.models.RestaurantOrder import RestaurantOrder as _RestaurantOrder, RestaurantOrderItem as _RestaurantOrderItem  # noqa: F401
 from api.models.BillingExtra import BillingExtra as _BillingExtra  # noqa: F401 — ensures table creation
 from api.models.Ingredient import Ingredient as _Ingredient  # noqa: F401 — ensures table creation
+from api.models.ModifierGroup import ModifierGroup as _ModifierGroup, ModifierOption as _ModifierOption  # noqa: F401
 from fastapi.staticfiles import StaticFiles
 from fastapi.encoders import jsonable_encoder
 

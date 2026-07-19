@@ -622,19 +622,21 @@ class _ProductBrowserState extends State<_ProductBrowser> {
   }
 
   Future<void> _tapProduct(ProductModel product) async {
-    // Charge les ingrédients liés au produit ou à sa catégorie
-    List<IngredientModel> ingredients = [];
+    // Charge les groupes de modificateurs liés au produit et/ou à sa catégorie
+    List<ModifierGroupModel> groups = [];
     try {
-      final byProduct = await RestaurantRepository()
-          .getIngredients(productId: product.id);
-      final byCat = product.category != null
-          ? await RestaurantRepository()
-              .getIngredients(categoryId: product.category!.id)
-          : <IngredientModel>[];
-      // Fusionner sans doublons
+      final repo = RestaurantRepository();
+      final futures = <Future<List<ModifierGroupModel>>>[
+        repo.getModifierGroups(productId: product.id),
+        if (product.category != null)
+          repo.getModifierGroups(categoryId: product.category!.id),
+      ];
+      final results = await Future.wait(futures);
       final seen = <String>{};
-      for (final i in [...byProduct, ...byCat]) {
-        if (seen.add(i.id)) ingredients.add(i);
+      for (final list in results) {
+        for (final g in list) {
+          if (seen.add(g.id)) groups.add(g);
+        }
       }
     } catch (_) {}
 
@@ -642,11 +644,10 @@ class _ProductBrowserState extends State<_ProductBrowser> {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) =>
-          _IngredientDialog(product: product, ingredients: ingredients),
+          _ModifierDialog(product: product, groups: groups),
     );
     if (result == null) return;
-    await widget.onAddItem(product,
-        notes: result['notes'] as String?);
+    await widget.onAddItem(product, notes: result['notes'] as String?);
   }
 
   @override
@@ -897,27 +898,30 @@ class _ProductPlaceholder extends StatelessWidget {
   }
 }
 
-// ── Ingredient / customization dialog ────────────────────────────────────────
+// ── Modifier dialog ───────────────────────────────────────────────────────────
 // Retourne Map{'notes': String?} ou null si annulé.
 
-class _IngredientDialog extends StatefulWidget {
+class _ModifierDialog extends StatefulWidget {
   final ProductModel product;
-  final List<IngredientModel> ingredients;
-  const _IngredientDialog(
-      {required this.product, required this.ingredients});
+  final List<ModifierGroupModel> groups;
+  const _ModifierDialog({required this.product, required this.groups});
 
   @override
-  State<_IngredientDialog> createState() => _IngredientDialogState();
+  State<_ModifierDialog> createState() => _ModifierDialogState();
 }
 
-class _IngredientDialogState extends State<_IngredientDialog> {
-  late final Set<String> _checked;
+class _ModifierDialogState extends State<_ModifierDialog> {
+  // groupId → Set of selected optionIds
+  late final Map<String, Set<String>> _selections;
+  // groupId → single selected optionId (for single-select groups)
+  late final Map<String, String?> _singleSelections;
   final _notesCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _checked = {};
+    _selections = {for (final g in widget.groups) g.id: {}};
+    _singleSelections = {for (final g in widget.groups) g.id: null};
   }
 
   @override
@@ -926,20 +930,44 @@ class _IngredientDialogState extends State<_IngredientDialog> {
     super.dispose();
   }
 
+  bool _canConfirm() {
+    for (final g in widget.groups) {
+      if (!g.required) continue;
+      if (g.multiSelect) {
+        if ((_selections[g.id] ?? {}).isEmpty) return false;
+      } else {
+        if (_singleSelections[g.id] == null) return false;
+      }
+    }
+    return true;
+  }
+
   String _buildNotes() {
     final parts = <String>[];
-    for (final ing in widget.ingredients) {
-      if (_checked.contains(ing.id)) parts.add(ing.name);
+    for (final g in widget.groups) {
+      if (g.multiSelect) {
+        final sel = _selections[g.id] ?? {};
+        final names = g.options
+            .where((o) => sel.contains(o.id))
+            .map((o) => o.name)
+            .toList();
+        if (names.isNotEmpty) parts.add('${g.name}: ${names.join(', ')}');
+      } else {
+        final selId = _singleSelections[g.id];
+        if (selId != null) {
+          final opt = g.options.where((o) => o.id == selId).firstOrNull;
+          if (opt != null) parts.add('${g.name}: ${opt.name}');
+        }
+      }
     }
     final extra = _notesCtrl.text.trim();
     if (extra.isNotEmpty) parts.add(extra);
-    return parts.join(', ');
+    return parts.join(' | ');
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasIngredients = widget.ingredients.isNotEmpty;
-
+    final hasGroups = widget.groups.isNotEmpty;
     return AlertDialog(
       contentPadding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
       title: Row(
@@ -967,70 +995,61 @@ class _IngredientDialogState extends State<_IngredientDialog> {
         ],
       ),
       content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 480),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (hasIngredients) ...[
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 8, 20, 4),
-                  child: Text('Ingrédients',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          color: AppColors.textSecondary)),
-                ),
-                ...widget.ingredients.map((ing) => CheckboxListTile(
-                      dense: true,
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 12),
-                      title: Text(ing.name,
-                          style: const TextStyle(fontSize: 13)),
-                      value: _checked.contains(ing.id),
-                      activeColor: AppColors.primary,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      onChanged: (v) => setState(() {
-                        if (v == true) {
-                          _checked.add(ing.id);
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 520),
+        child: StatefulBuilder(
+          builder: (_, setInner) => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ...widget.groups.map((g) => _GroupSection(
+                      group: g,
+                      singleValue: _singleSelections[g.id],
+                      multiValues: _selections[g.id] ?? {},
+                      onSingleChanged: (optId) => setInner(
+                          () => _singleSelections[g.id] = optId),
+                      onMultiChanged: (optId, checked) => setInner(() {
+                        if (checked) {
+                          _selections[g.id]!.add(optId);
                         } else {
-                          _checked.remove(ing.id);
+                          _selections[g.id]!.remove(optId);
                         }
                       }),
                     )),
-                const Divider(height: 12),
-              ],
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      hasIngredients
-                          ? 'Remarques supplémentaires'
-                          : 'Instructions / personnalisation',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          color: AppColors.textSecondary),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _notesCtrl,
-                      maxLines: 2,
-                      autofocus: !hasIngredients,
-                      decoration: const InputDecoration(
-                        hintText: 'Ex: sans sel, bien cuit…',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (hasGroups) const Divider(height: 1),
+                      if (hasGroups) const SizedBox(height: 12),
+                      Text(
+                        hasGroups
+                            ? 'Remarques supplémentaires'
+                            : 'Instructions',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: AppColors.textSecondary),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _notesCtrl,
+                        maxLines: 2,
+                        autofocus: !hasGroups,
+                        onChanged: (_) => setInner(() {}),
+                        decoration: const InputDecoration(
+                          hintText: 'Ex: sans sel, bien cuit…',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1040,14 +1059,115 @@ class _IngredientDialogState extends State<_IngredientDialog> {
           child: const Text('Annuler'),
         ),
         FilledButton.icon(
-          onPressed: () {
-            final notes = _buildNotes();
-            Navigator.pop(context,
-                {'notes': notes.isEmpty ? null : notes});
-          },
+          onPressed: _canConfirm()
+              ? () {
+                  final notes = _buildNotes();
+                  Navigator.pop(
+                      context, {'notes': notes.isEmpty ? null : notes});
+                }
+              : null,
           icon: const Icon(Icons.add_shopping_cart_rounded, size: 16),
           label: const Text('Ajouter'),
         ),
+      ],
+    );
+  }
+}
+
+class _GroupSection extends StatelessWidget {
+  final ModifierGroupModel group;
+  final String? singleValue;
+  final Set<String> multiValues;
+  final ValueChanged<String?> onSingleChanged;
+  final void Function(String optId, bool checked) onMultiChanged;
+
+  const _GroupSection({
+    required this.group,
+    required this.singleValue,
+    required this.multiValues,
+    required this.onSingleChanged,
+    required this.onMultiChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Group header
+        Container(
+          color: AppColors.primary.withValues(alpha: 0.06),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(group.name,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: AppColors.textPrimary)),
+              ),
+              if (group.required)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text('Requis',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: AppColors.error,
+                          fontWeight: FontWeight.w600)),
+                ),
+              if (!group.required)
+                const Text('Optionnel',
+                    style: TextStyle(
+                        fontSize: 11, color: AppColors.textSecondary)),
+            ],
+          ),
+        ),
+        // Options
+        if (group.multiSelect)
+          ...group.options.map((opt) {
+            final label = opt.extraPrice > 0
+                ? '${opt.name}  (+${opt.extraPrice.toStringAsFixed(0)})'
+                : opt.name;
+            return CheckboxListTile(
+              dense: true,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12),
+              title:
+                  Text(label, style: const TextStyle(fontSize: 13)),
+              value: multiValues.contains(opt.id),
+              activeColor: AppColors.primary,
+              controlAffinity: ListTileControlAffinity.leading,
+              onChanged: (v) => onMultiChanged(opt.id, v == true),
+            );
+          })
+        else
+          RadioGroup<String>(
+            groupValue: singleValue,
+            onChanged: onSingleChanged,
+            child: Column(
+              children: group.options.map((opt) {
+                final label = opt.extraPrice > 0
+                    ? '${opt.name}  (+${opt.extraPrice.toStringAsFixed(0)})'
+                    : opt.name;
+                return RadioListTile<String>(
+                  dense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12),
+                  title: Text(label,
+                      style: const TextStyle(fontSize: 13)),
+                  value: opt.id,
+                  activeColor: AppColors.primary,
+                );
+              }).toList(),
+            ),
+          ),
+        const Divider(height: 1),
       ],
     );
   }
