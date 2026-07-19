@@ -918,11 +918,11 @@ class _ModifierDialog extends StatefulWidget {
 }
 
 class _ModifierDialogState extends State<_ModifierDialog> {
-  // groupId → Set of selected optionIds
   late final Map<String, Set<String>> _selections;
-  // groupId → single selected optionId (for single-select groups)
   late final Map<String, String?> _singleSelections;
   final _notesCtrl = TextEditingController();
+  // variant selection: index into variantRows, or -1 = none
+  int _variantIdx = -1;
 
   @override
   void initState() {
@@ -938,6 +938,7 @@ class _ModifierDialogState extends State<_ModifierDialog> {
   }
 
   bool _canConfirm() {
+    if (widget.menuItem.hasVariants && _variantIdx < 0) return false;
     for (final g in widget.groups) {
       if (!g.required) continue;
       if (g.multiSelect) {
@@ -951,6 +952,14 @@ class _ModifierDialogState extends State<_ModifierDialog> {
 
   String _buildNotes() {
     final parts = <String>[];
+    // selected variant name goes first
+    if (_variantIdx >= 0) {
+      final rows = widget.menuItem.variantRows;
+      if (_variantIdx < rows.length) {
+        final name = rows[_variantIdx]['name']?.toString() ?? '';
+        if (name.isNotEmpty) parts.add(name);
+      }
+    }
     for (final g in widget.groups) {
       if (g.multiSelect) {
         final sel = _selections[g.id] ?? {};
@@ -975,6 +984,10 @@ class _ModifierDialogState extends State<_ModifierDialog> {
   @override
   Widget build(BuildContext context) {
     final hasGroups = widget.groups.isNotEmpty;
+    final variants  = widget.menuItem.variantRows;
+    final hasVariants = variants.isNotEmpty;
+    final basePrice = widget.menuItem.price;
+
     return AlertDialog(
       contentPadding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
       title: Row(
@@ -1002,19 +1015,127 @@ class _ModifierDialogState extends State<_ModifierDialog> {
         ],
       ),
       content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 520),
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 560),
         child: StatefulBuilder(
           builder: (_, setInner) => SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ── Variantes ──────────────────────────────────────────────
+                if (hasVariants) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+                    child: Row(
+                      children: [
+                        const Text('Choisir une variante',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 13)),
+                        const SizedBox(width: 4),
+                        Text('*',
+                            style: TextStyle(
+                                color: AppColors.error,
+                                fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ),
+                  ...List.generate(variants.length, (i) {
+                    final row = variants[i];
+                    final name = row['name']?.toString() ?? '';
+                    final delta = (row['price_delta'] as num?)?.toDouble() ?? 0.0;
+                    final available = row['available'] as bool? ?? true;
+                    final finalPrice = basePrice + delta;
+                    final selected = _variantIdx == i;
+                    return InkWell(
+                      onTap: available
+                          ? () => setInner(() => _variantIdx = i)
+                          : null,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? AppColors.primary.withValues(alpha: 0.08)
+                              : AppColors.surface,
+                          border: Border.all(
+                            color: selected
+                                ? AppColors.primary
+                                : AppColors.divider,
+                            width: selected ? 1.5 : 1,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              selected
+                                  ? Icons.radio_button_checked_rounded
+                                  : Icons.radio_button_unchecked_rounded,
+                              size: 18,
+                              color: selected
+                                  ? AppColors.primary
+                                  : available
+                                      ? AppColors.textSecondary
+                                      : AppColors.divider,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                name,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13,
+                                  color: available
+                                      ? null
+                                      : AppColors.textSecondary,
+                                  decoration: available
+                                      ? null
+                                      : TextDecoration.lineThrough,
+                                ),
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  finalPrice.toStringAsFixed(0),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                    color: selected
+                                        ? AppColors.primary
+                                        : null,
+                                  ),
+                                ),
+                                if (delta != 0)
+                                  Text(
+                                    '${delta > 0 ? '+' : ''}${delta.toStringAsFixed(0)}',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: delta > 0
+                                          ? AppColors.success
+                                          : AppColors.error,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                ],
+                // ── Groupes de modificateurs ───────────────────────────────
                 ...widget.groups.map((g) => _GroupSection(
                       group: g,
                       singleValue: _singleSelections[g.id],
                       multiValues: _selections[g.id] ?? {},
-                      onSingleChanged: (optId) => setInner(
-                          () => _singleSelections[g.id] = optId),
+                      onSingleChanged: (optId) =>
+                          setInner(() => _singleSelections[g.id] = optId),
                       onMultiChanged: (optId, checked) => setInner(() {
                         if (checked) {
                           _selections[g.id]!.add(optId);
@@ -1023,38 +1144,39 @@ class _ModifierDialogState extends State<_ModifierDialog> {
                         }
                       }),
                     )),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (hasGroups) const Divider(height: 1),
-                      if (hasGroups) const SizedBox(height: 12),
-                      Text(
-                        hasGroups
-                            ? 'Remarques supplémentaires'
-                            : 'Instructions',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                            color: AppColors.textSecondary),
-                      ),
-                      const SizedBox(height: 6),
-                      TextField(
-                        controller: _notesCtrl,
-                        maxLines: 2,
-                        autofocus: !hasGroups,
-                        onChanged: (_) => setInner(() {}),
-                        decoration: const InputDecoration(
-                          hintText: 'Ex: sans sel, bien cuit…',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
+                // ── Notes / Instructions (masquées si variantes) ───────────
+                if (!hasVariants)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (hasGroups) const Divider(height: 1),
+                        if (hasGroups) const SizedBox(height: 12),
+                        Text(
+                          hasGroups ? 'Remarques supplémentaires' : 'Instructions',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: AppColors.textSecondary),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: _notesCtrl,
+                          maxLines: 2,
+                          autofocus: !hasGroups,
+                          onChanged: (_) => setInner(() {}),
+                          decoration: const InputDecoration(
+                            hintText: 'Ex: sans sel, bien cuit…',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                if (hasVariants) const SizedBox(height: 4),
               ],
             ),
           ),

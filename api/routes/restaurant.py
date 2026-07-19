@@ -174,7 +174,7 @@ class MenuItemCreate(BaseModel):
     category_id: Optional[str] = None
     product_id: Optional[str] = None
     available: bool = True
-    variants: Optional[list] = None
+    variants: Optional[dict] = None
 
 class MenuItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -183,7 +183,7 @@ class MenuItemUpdate(BaseModel):
     category_id: Optional[str] = None
     product_id: Optional[str] = None
     available: Optional[bool] = None
-    variants: Optional[list] = None
+    variants: Optional[dict] = None
 
 
 # ── Serveurs (waiters) ────────────────────────────────────────────────────────
