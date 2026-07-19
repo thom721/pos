@@ -1,7 +1,8 @@
+import asyncio
 import os
 import shutil
 from typing import Optional
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 from api.database import get_db
 from api.models.User import User
@@ -9,6 +10,7 @@ from api.schemas.config import ConfigRead, ConfigUpdate
 from api.services import config_service
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
+from api.ws_manager import manager
 import uuid as _uuid
 
 _LOGOS_DIR = "api/static/logos"
@@ -21,6 +23,12 @@ def _wh_id(current_user: User, warehouse_id: Optional[str]) -> Optional[str]:
     """Resolve the effective warehouse_id:
     prefer the client-supplied value, fall back to the user's own warehouse."""
     return warehouse_id or getattr(current_user, 'warehouse_id', None) or None
+
+
+def _notify(tenant_id: Optional[str]) -> None:
+    """Notifie via WebSocket tous les devices du tenant que la config a changé."""
+    if tenant_id:
+        asyncio.ensure_future(manager.notify(tenant_id))
 
 
 @router.get("/", response_model=ConfigRead)
@@ -39,20 +47,24 @@ def get_config(
 @router.put("/", response_model=ConfigRead)
 def update_config(
     data: ConfigUpdate,
+    background_tasks: BackgroundTasks,
     warehouse_id: Optional[str] = Query(None, description="ID du dépôt actif"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.CONFIG_UPDATE)),
 ):
-    return config_service.update(
+    result = config_service.update(
         db,
         data.model_dump(exclude_none=True),
         tenant_id=current_user.tenant_id,
         warehouse_id=_wh_id(current_user, warehouse_id),
     )
+    background_tasks.add_task(_notify, current_user.tenant_id)
+    return result
 
 
 @router.post("/logo", response_model=ConfigRead)
 async def upload_logo(
+    background_tasks: BackgroundTasks,
     warehouse_id: Optional[str] = Query(None, description="ID du dépôt actif"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -77,9 +89,11 @@ async def upload_logo(
     with open(save_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    return config_service.update(
+    result = config_service.update(
         db,
         {'logo_path': f"/static/logos/{filename}"},
         tenant_id=current_user.tenant_id,
         warehouse_id=wid,
     )
+    background_tasks.add_task(_notify, current_user.tenant_id)
+    return result
