@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
@@ -62,7 +63,38 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     _runSequence();
   }
 
+  // Vérifie si l'utilisateur a déjà une session active (token + setup terminé).
+  // Si oui, on skip l'animation pour ne pas afficher le splash à chaque
+  // redémarrage après kill du process par l'OS.
+  Future<bool> _hasActiveSession() async {
+    try {
+      const storage = FlutterSecureStorage();
+      final token = await storage.read(key: AppConstants.tokenKey);
+      if (token == null || token.isEmpty) return false;
+
+      if (!kIsWeb) {
+        final prefs = await SharedPreferences.getInstance();
+        final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS;
+        if (isMobile) return true;
+        return prefs.getBool(AppConstants.clientSetupDoneKey) ?? false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _runSequence() async {
+    // Fast-path: session active → dashboard immédiatement sans animation
+    final skipAnimation = await _hasActiveSession();
+    if (!mounted) return;
+    if (skipAnimation) {
+      context.go('/dashboard');
+      return;
+    }
+
+    // Premier démarrage / déconnecté → animation complète
     await Future.delayed(const Duration(milliseconds: 150));
     if (!mounted) return;
     _logoCtrl.forward();
@@ -75,7 +107,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     if (!mounted) return;
     _dotsCtrl.forward();
 
-    // minimum total: ~2.4s from start — also check if setup is needed
+    // minimum total: ~2.4s from start — aussi check si setup est nécessaire
     await Future.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
 
@@ -85,12 +117,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           defaultTargetPlatform == TargetPlatform.iOS;
 
       if (isMobile) {
-        // Android/iOS n'ont pas de wizard d'installation — ils se connectent
-        // toujours à un serveur existant. On marque le flag pour éviter la
-        // vérification à chaque démarrage.
         await prefs.setBool(AppConstants.clientSetupDoneKey, true);
       } else {
-        // Desktop : premier démarrage → wizard obligatoire.
         final localSetupDone =
             prefs.getBool(AppConstants.clientSetupDoneKey) ?? false;
         if (!mounted) return;
@@ -100,7 +128,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         }
       }
     } else {
-      // Web: no wizard — check server health for legacy compat, ignore errors.
       try {
         final res = await dio.get('/api/setup/health');
         final setupDone = res.data['setup_done'] as bool? ?? true;
