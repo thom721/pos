@@ -173,17 +173,34 @@ final dio = createDio();
 /// their session and the error is silently discarded.
 final kBackgroundOptions = Options(extra: {'skipAutoLogout': true});
 
-// Helper to extract error message
+/// Traduit une DioException en message lisible pour l'utilisateur.
+/// Priorité : code HTTP connu → message de l'API → fallback générique.
 String extractErrorMessage(DioException e) {
+  final status = e.response?.statusCode;
+  if (status == 403) {
+    return 'Vous n\'avez pas la permission d\'effectuer cette action.';
+  }
+  if (status == 401) {
+    return 'Session expirée. Veuillez vous reconnecter.';
+  }
+  if (status == 503) {
+    return 'Service temporairement indisponible.';
+  }
   try {
     final data = e.response?.data;
     if (data is Map) {
-      return data['detail']?.toString() ??
-          data['message']?.toString() ??
+      return data['message']?.toString() ??
+          data['detail']?.toString() ??
           'Erreur inconnue';
     }
     return e.message ?? 'Erreur de connexion';
   } catch (_) {
     return 'Erreur de connexion';
   }
+}
+
+/// Traduit n'importe quelle exception (DioException ou autre) en message lisible.
+String extractAnyError(Object e) {
+  if (e is DioException) return extractErrorMessage(e);
+  return 'Une erreur inattendue s\'est produite.';
 }

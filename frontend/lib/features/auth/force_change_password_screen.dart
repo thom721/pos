@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/theme.dart';
-import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/data/api/api_client.dart' show dio, extractAnyError;
 import 'package:pos_connect/providers/auth_provider.dart';
 
 class ForceChangePasswordScreen extends ConsumerStatefulWidget {
@@ -43,7 +43,7 @@ class _ForceChangePasswordScreenState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(e.toString()),
+          content: Text(extractAnyError(e)),
           backgroundColor: AppColors.error,
         ));
       }

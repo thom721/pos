@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/theme.dart';
@@ -218,7 +219,7 @@ class _TenantsTab extends ConsumerWidget {
     return tenantsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => _ErrorView(
-        message: e.toString(),
+        message: extractAnyError(e),
         onRetry: () => ref.invalidate(_tenantsProvider),
       ),
       data: (tenants) => RefreshIndicator(
@@ -416,6 +417,16 @@ class _TenantCard extends ConsumerWidget {
                   ),
                 ),
                 IconButton(
+                  onPressed: () => _showRegistersDialog(context, ref, tenant),
+                  icon: const Icon(Icons.point_of_sale_rounded, size: 18),
+                  tooltip: 'Gérer les caisses',
+                  style: IconButton.styleFrom(
+                    foregroundColor: registerCount > maxCaisses
+                        ? AppColors.error
+                        : AppColors.textSecondary,
+                  ),
+                ),
+                IconButton(
                   onPressed: () => _showPurgeDialog(context, ref, tenant),
                   icon: const Icon(Icons.cleaning_services_rounded, size: 18),
                   tooltip: 'Supprimer les dépôts non réclamés',
@@ -439,6 +450,21 @@ class _TenantCard extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _showRegistersDialog(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> tenant) async {
+    final tenantId = tenant['id'] as String;
+    final name = tenant['business_name'] as String? ?? tenantId;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => _RegistersDialog(
+        tenantId: tenantId,
+        tenantName: name,
+      ),
+    );
+    ref.invalidate(_tenantsProvider);
   }
 
   Future<void> _showPurgeDialog(
@@ -785,7 +811,7 @@ class _PaymentsTab extends ConsumerWidget {
     return paymentsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => _ErrorView(
-        message: e.toString(),
+        message: extractAnyError(e),
         onRetry: () => ref.invalidate(_paymentsProvider),
       ),
       data: (payments) => Column(
@@ -1076,7 +1102,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     return configAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => _ErrorView(
-        message: e.toString(),
+        message: extractAnyError(e),
         onRetry: () {
           _loaded = false;
           ref.invalidate(_platformConfigProvider);
@@ -1362,6 +1388,148 @@ class _ErrorView extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Registers management dialog ──────────────────────────────────────────────
+
+class _RegistersDialog extends ConsumerStatefulWidget {
+  final String tenantId;
+  final String tenantName;
+
+  const _RegistersDialog({required this.tenantId, required this.tenantName});
+
+  @override
+  ConsumerState<_RegistersDialog> createState() => _RegistersDialogState();
+}
+
+class _RegistersDialogState extends ConsumerState<_RegistersDialog> {
+  List<Map<String, dynamic>>? _registers;
+  String? _error;
+  bool _loading = true;
+  final Set<String> _toggling = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      final res = await d.get('/api/admin/tenants/${widget.tenantId}/registers');
+      setState(() {
+        _registers = List<Map<String, dynamic>>.from(res.data as List);
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() { _error = extractAnyError(e); _loading = false; });
+    }
+  }
+
+  Future<void> _toggle(String registerId) async {
+    setState(() => _toggling.add(registerId));
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      final res = await d.patch(
+        '/api/admin/tenants/${widget.tenantId}/registers/$registerId',
+      );
+      final updated = res.data as Map<String, dynamic>;
+      setState(() {
+        _registers = _registers!.map((r) {
+          if (r['id'] == registerId) return {...r, 'is_active': updated['is_active']};
+          return r;
+        }).toList();
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : $e'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      setState(() => _toggling.remove(registerId));
+    }
+  }
+
+  String _formatDate(String? iso) {
+    if (iso == null) return 'Jamais';
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return '—';
+    return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} '
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Caisses — ${widget.tenantName}'),
+      contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      content: SizedBox(
+        width: 480,
+        child: _loading
+            ? const Center(child: Padding(
+                padding: EdgeInsets.all(32),
+                child: CircularProgressIndicator(),
+              ))
+            : _error != null
+                ? Text('Erreur : $_error',
+                    style: const TextStyle(color: AppColors.error))
+                : _registers == null || _registers!.isEmpty
+                    ? const Text('Aucune caisse enregistrée.')
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _registers!.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (ctx, i) {
+                          final r = _registers![i];
+                          final id = r['id'] as String;
+                          final isActive = r['is_active'] as bool? ?? true;
+                          final hasSession = r['has_session'] as bool? ?? false;
+                          final lastSeen = _formatDate(r['last_seen'] as String?);
+                          return ListTile(
+                            dense: true,
+                            leading: Icon(
+                              Icons.point_of_sale_rounded,
+                              color: isActive ? AppColors.success : AppColors.textSecondary,
+                              size: 20,
+                            ),
+                            title: Text(r['name'] as String? ?? id,
+                                style: const TextStyle(fontSize: 13)),
+                            subtitle: Text(
+                              'Dernière activité : $lastSeen'
+                              '${hasSession ? '  •  Session ouverte' : ''}',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                            trailing: _toggling.contains(id)
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : Switch(
+                                    value: isActive,
+                                    activeThumbColor: AppColors.success,
+                                    onChanged: (_) => _toggle(id),
+                                  ),
+                          );
+                        },
+                      ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : _load,
+          child: const Text('Actualiser'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Fermer'),
+        ),
+      ],
     );
   }
 }

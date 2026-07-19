@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:dio/dio.dart' show DioException;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,7 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/core/theme.dart';
-import 'package:pos_connect/data/api/api_client.dart' show dio, extractErrorMessage;
+import 'package:pos_connect/data/api/api_client.dart' show dio, extractAnyError;
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
@@ -1311,7 +1310,7 @@ class _BillingUrlSectionState extends State<_BillingUrlSection> {
       await dio.post('/api/sync/configure-billing', data: {'billing_url': url});
       if (mounted) setState(() { _saved = true; _saving = false; });
     } catch (e) {
-      final msg = e is DioException ? extractErrorMessage(e) : e.toString();
+      final msg = extractAnyError(e);
       if (mounted) setState(() { _error = msg; _saving = false; });
     }
   }
