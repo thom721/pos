@@ -597,7 +597,7 @@ class _ProductBrowserState extends State<_ProductBrowser> {
 
   void _selectCategory(String? catId) {
     if (catId == _selectedCategoryId) return;
-    _selectedCategoryId = catId;
+    setState(() => _selectedCategoryId = catId);
     _loadProducts();
   }
 

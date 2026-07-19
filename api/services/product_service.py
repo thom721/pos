@@ -64,7 +64,7 @@ class ProductService(TenantService):
             .first()
         )
 
-    def list(self, page: int = 1, per_page: int = 5, search: Optional[str] = None):
+    def list(self, page: int = 1, per_page: int = 5, search: Optional[str] = None, category_id: Optional[str] = None):
         # selectinload pour les collections (évite le problème joinedload + pagination)
         query = self._q(Product).options(
             joinedload(Product.category),
@@ -78,6 +78,9 @@ class ProductService(TenantService):
                     Product.barcode.ilike(f"%{search}%"),
                 )
             )
+
+        if category_id:
+            query = query.filter(Product.category_id == category_id)
 
         total = query.count()
         items = query.offset((page - 1) * per_page).limit(per_page).all()

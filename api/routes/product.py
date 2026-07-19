@@ -47,10 +47,13 @@ def list_products(
     page: int = Query(1, ge=1),
     per_page: int = Query(5, ge=1, le=100),
     search: str | None = None,
+    category_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_READ)),
 ):
-    return ProductService(db, tenant_id=current_user.tenant_id).list(page=page, per_page=per_page, search=search)
+    return ProductService(db, tenant_id=current_user.tenant_id).list(
+        page=page, per_page=per_page, search=search, category_id=category_id
+    )
 
 
 @router.get("/products/{product_id}", response_model=ProductRead)

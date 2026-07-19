@@ -1170,8 +1170,8 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
       ]);
       final groups = results[0] as List<ModifierGroupModel>;
       final cats = results[1] as List<CategoryModel>;
-      // load products for name display
-      final prodPage = await prodRepo.getProducts(limit: 200);
+      // load products for name display (backend max per_page=100)
+      final prodPage = await prodRepo.getProducts(limit: 100);
       if (mounted) {
         setState(() {
           _groups = groups;
@@ -1398,7 +1398,7 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
                   DropdownButtonFormField<String?>(
                     value: selectedProdId,
                     decoration:
-                        const InputDecoration(labelText: 'Produit (optionnel)'),
+                        const InputDecoration(labelText: 'Menu / Plat (optionnel)'),
                     items: [
                       const DropdownMenuItem(
                           value: null, child: Text('— Aucun —')),
