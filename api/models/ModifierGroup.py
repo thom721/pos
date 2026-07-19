@@ -10,6 +10,7 @@ class ModifierGroup(UUIDBase):
     warehouse_id = Column(String(36), ForeignKey('warehouses.id'),  nullable=True,  index=True)
     name         = Column(String(100), nullable=False)
     product_id   = Column(String(36), ForeignKey('products.id'),    nullable=True, index=True)
+    menu_item_id = Column(String(36), ForeignKey('menu_items.id'),  nullable=True, index=True)
     category_id  = Column(String(36), ForeignKey('categories.id'),  nullable=True, index=True)
     required     = Column(Boolean, default=False, nullable=False)
     multi_select = Column(Boolean, default=True,  nullable=False)

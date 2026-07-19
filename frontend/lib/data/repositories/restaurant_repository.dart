@@ -216,6 +216,7 @@ class RestaurantRepository {
   Future<ModifierGroupModel> createModifierGroup({
     required String name,
     String? productId,
+    String? menuItemId,
     String? categoryId,
     bool required = false,
     bool multiSelect = true,
@@ -223,6 +224,7 @@ class RestaurantRepository {
     final res = await dio.post('/api/restaurant/modifier-groups/', data: {
       'name': name,
       if (productId != null) 'product_id': productId,
+      if (menuItemId != null) 'menu_item_id': menuItemId,
       if (categoryId != null) 'category_id': categoryId,
       'required': required,
       'multi_select': multiSelect,
@@ -234,6 +236,7 @@ class RestaurantRepository {
     String id, {
     String? name,
     String? productId,
+    String? menuItemId,
     String? categoryId,
     bool? required,
     bool? multiSelect,
@@ -241,6 +244,7 @@ class RestaurantRepository {
     final res = await dio.put('/api/restaurant/modifier-groups/$id', data: {
       if (name != null) 'name': name,
       'product_id': productId,
+      'menu_item_id': menuItemId,
       'category_id': categoryId,
       if (required != null) 'required': required,
       if (multiSelect != null) 'multi_select': multiSelect,

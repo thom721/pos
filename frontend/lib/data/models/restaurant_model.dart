@@ -70,6 +70,7 @@ class ModifierGroupModel {
   final String id;
   final String name;
   final String? productId;
+  final String? menuItemId;
   final String? categoryId;
   final bool required;
   final bool multiSelect;
@@ -79,6 +80,7 @@ class ModifierGroupModel {
     required this.id,
     required this.name,
     this.productId,
+    this.menuItemId,
     this.categoryId,
     required this.required,
     required this.multiSelect,
@@ -90,6 +92,7 @@ class ModifierGroupModel {
         id:          j['id'] as String,
         name:        j['name'] as String,
         productId:   j['product_id'] as String?,
+        menuItemId:  j['menu_item_id'] as String?,
         categoryId:  j['category_id'] as String?,
         required:    j['required'] as bool? ?? false,
         multiSelect: j['multi_select'] as bool? ?? true,

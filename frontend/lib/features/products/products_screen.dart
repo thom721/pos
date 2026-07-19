@@ -1624,7 +1624,7 @@ class _ModifierManagerDialog extends StatefulWidget {
 class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
   List<ModifierGroupModel> _groups = [];
   List<CategoryModel> _categories = [];
-  List<ProductModel> _products = [];
+  List<MenuItemModel> _menuItems = [];
   bool _loading = true;
   String? _error;
 
@@ -1642,16 +1642,13 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
       final results = await Future.wait([
         repo.getModifierGroups(),
         prodRepo.getCategories(),
+        repo.getMenuItems(),
       ]);
-      final groups = results[0] as List<ModifierGroupModel>;
-      final cats = results[1] as List<CategoryModel>;
-      // load products for name display (backend max per_page=100)
-      final prodPage = await prodRepo.getProducts(limit: 100);
       if (mounted) {
         setState(() {
-          _groups = groups;
-          _categories = cats;
-          _products = prodPage.data;
+          _groups    = results[0] as List<ModifierGroupModel>;
+          _categories = results[1] as List<CategoryModel>;
+          _menuItems  = results[2] as List<MenuItemModel>;
           _loading = false;
         });
       }
@@ -1665,9 +1662,9 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
       final cat = _categories.where((c) => c.id == g.categoryId).firstOrNull;
       return 'Catégorie: ${cat?.name ?? g.categoryId}';
     }
-    if (g.productId != null) {
-      final prod = _products.where((p) => p.id == g.productId).firstOrNull;
-      return 'Produit: ${prod?.name ?? g.productId}';
+    if (g.menuItemId != null) {
+      final item = _menuItems.where((m) => m.id == g.menuItemId).firstOrNull;
+      return 'Plat: ${item?.name ?? g.menuItemId}';
     }
     return 'Global';
   }
@@ -1826,7 +1823,7 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
     bool required = g?.required ?? false;
     bool multiSelect = g?.multiSelect ?? true;
     String? selectedCatId = g?.categoryId;
-    String? selectedProdId = g?.productId;
+    String? selectedMenuItemId = g?.menuItemId;
     final messenger = ScaffoldMessenger.of(context);
 
     showDialog(
@@ -1866,22 +1863,22 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
                     ],
                     onChanged: (v) => setInner(() {
                       selectedCatId = v;
-                      if (v != null) selectedProdId = null;
+                      if (v != null) selectedMenuItemId = null;
                     }),
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String?>(
-                    value: selectedProdId,
+                    value: selectedMenuItemId,
                     decoration:
                         const InputDecoration(labelText: 'Menu / Plat (optionnel)'),
                     items: [
                       const DropdownMenuItem(
                           value: null, child: Text('— Aucun —')),
-                      ..._products.map((p) => DropdownMenuItem(
-                          value: p.id, child: Text(p.name))),
+                      ..._menuItems.map((m) => DropdownMenuItem(
+                          value: m.id, child: Text(m.name))),
                     ],
                     onChanged: (v) => setInner(() {
-                      selectedProdId = v;
+                      selectedMenuItemId = v;
                       if (v != null) selectedCatId = null;
                     }),
                   ),
@@ -1926,7 +1923,7 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
                     await repo.createModifierGroup(
                       name: name,
                       categoryId: selectedCatId,
-                      productId: selectedProdId,
+                      menuItemId: selectedMenuItemId,
                       required: required,
                       multiSelect: multiSelect,
                     );
@@ -1934,7 +1931,7 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
                     await repo.updateModifierGroup(g.id,
                       name: name,
                       categoryId: selectedCatId,
-                      productId: selectedProdId,
+                      menuItemId: selectedMenuItemId,
                       required: required,
                       multiSelect: multiSelect,
                     );

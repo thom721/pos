@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 import uuid
 
 from api.database import get_db
@@ -149,6 +150,7 @@ class IngredientUpdate(BaseModel):
 class ModifierGroupCreate(BaseModel):
     name: str
     product_id: Optional[str] = None
+    menu_item_id: Optional[str] = None
     category_id: Optional[str] = None
     required: bool = False
     multi_select: bool = True
@@ -156,6 +158,7 @@ class ModifierGroupCreate(BaseModel):
 class ModifierGroupUpdate(BaseModel):
     name: Optional[str] = None
     product_id: Optional[str] = None
+    menu_item_id: Optional[str] = None
     category_id: Optional[str] = None
     required: Optional[bool] = None
     multi_select: Optional[bool] = None
@@ -754,6 +757,7 @@ def _group_dict(g: ModifierGroup) -> dict:
         'id': g.id,
         'name': g.name,
         'product_id': g.product_id,
+        'menu_item_id': g.menu_item_id,
         'category_id': g.category_id,
         'required': g.required,
         'multi_select': g.multi_select,
@@ -764,6 +768,7 @@ def _group_dict(g: ModifierGroup) -> dict:
 @router.get("/modifier-groups/")
 def list_modifier_groups(
     product_id: Optional[str] = None,
+    menu_item_id: Optional[str] = None,
     category_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_READ)),
@@ -771,10 +776,12 @@ def list_modifier_groups(
     wh_id = _resolve_wh(db, current_user)
     q = db.query(ModifierGroup).filter(
         ModifierGroup.tenant_id == current_user.tenant_id,
-        ModifierGroup.warehouse_id == wh_id,
+        or_(ModifierGroup.warehouse_id == wh_id, ModifierGroup.warehouse_id.is_(None)),
     )
     if product_id:
         q = q.filter(ModifierGroup.product_id == product_id)
+    elif menu_item_id:
+        q = q.filter(ModifierGroup.menu_item_id == menu_item_id)
     elif category_id:
         q = q.filter(ModifierGroup.category_id == category_id)
     return [_group_dict(g) for g in q.order_by(ModifierGroup.name).all()]
@@ -792,6 +799,7 @@ def create_modifier_group(
         warehouse_id=_resolve_wh(db, current_user),
         name=data.name,
         product_id=data.product_id or None,
+        menu_item_id=data.menu_item_id or None,
         category_id=data.category_id or None,
         required=data.required,
         multi_select=data.multi_select,
@@ -813,7 +821,7 @@ def update_modifier_group(
     g = db.query(ModifierGroup).filter(
         ModifierGroup.id == group_id,
         ModifierGroup.tenant_id == current_user.tenant_id,
-        ModifierGroup.warehouse_id == wh_id,
+        or_(ModifierGroup.warehouse_id == wh_id, ModifierGroup.warehouse_id.is_(None)),
     ).first()
     if not g:
         raise HTTPException(404, "Groupe introuvable")
@@ -821,6 +829,8 @@ def update_modifier_group(
         g.name = data.name
     if 'product_id' in data.model_fields_set:
         g.product_id = data.product_id or None
+    if 'menu_item_id' in data.model_fields_set:
+        g.menu_item_id = data.menu_item_id or None
     if 'category_id' in data.model_fields_set:
         g.category_id = data.category_id or None
     if data.required is not None:
@@ -842,7 +852,7 @@ def delete_modifier_group(
     g = db.query(ModifierGroup).filter(
         ModifierGroup.id == group_id,
         ModifierGroup.tenant_id == current_user.tenant_id,
-        ModifierGroup.warehouse_id == wh_id,
+        or_(ModifierGroup.warehouse_id == wh_id, ModifierGroup.warehouse_id.is_(None)),
     ).first()
     if not g:
         raise HTTPException(404, "Groupe introuvable")
@@ -916,10 +926,9 @@ def list_menu_items(
     current_user: User = Depends(require_permission(P.TABLES_READ)),
 ):
     wh_id = _resolve_wh(db, current_user)
-    q = db.query(MenuItem).filter(
-        MenuItem.tenant_id == current_user.tenant_id,
-        MenuItem.warehouse_id == wh_id,
-    )
+    q = db.query(MenuItem).filter(MenuItem.tenant_id == current_user.tenant_id)
+    if wh_id:
+        q = q.filter(or_(MenuItem.warehouse_id == wh_id, MenuItem.warehouse_id.is_(None)))
     if category_id:
         q = q.filter(MenuItem.category_id == category_id)
     if available_only:
@@ -961,7 +970,7 @@ def update_menu_item(
     m = db.query(MenuItem).filter(
         MenuItem.id == item_id,
         MenuItem.tenant_id == current_user.tenant_id,
-        MenuItem.warehouse_id == wh_id,
+        or_(MenuItem.warehouse_id == wh_id, MenuItem.warehouse_id.is_(None)),
     ).first()
     if not m:
         raise HTTPException(404, "Plat introuvable")
@@ -992,7 +1001,7 @@ def delete_menu_item(
     m = db.query(MenuItem).filter(
         MenuItem.id == item_id,
         MenuItem.tenant_id == current_user.tenant_id,
-        MenuItem.warehouse_id == wh_id,
+        or_(MenuItem.warehouse_id == wh_id, MenuItem.warehouse_id.is_(None)),
     ).first()
     if not m:
         raise HTTPException(404, "Plat introuvable")
