@@ -648,16 +648,18 @@ class _ProductBrowserState extends State<_ProductBrowser> {
       return;
     }
 
-    final result = await showDialog<Map<String, dynamic>>(
+    final results = await showDialog<List<Map<String, dynamic>>>(
       context: context,
       builder: (_) => _ModifierDialog(menuItem: item, groups: groups),
     );
-    if (result == null) return;
-    await widget.onAddItem(
-      item,
-      notes: result['notes'] as String?,
-      unitPrice: result['unit_price'] as double?,
-    );
+    if (results == null || results.isEmpty) return;
+    for (final r in results) {
+      await widget.onAddItem(
+        item,
+        notes: r['notes'] as String?,
+        unitPrice: r['unit_price'] as double?,
+      );
+    }
   }
 
   @override
@@ -932,8 +934,8 @@ class _ModifierDialogState extends State<_ModifierDialog> {
   late final Map<String, Set<String>> _selections;
   late final Map<String, String?> _singleSelections;
   final _notesCtrl = TextEditingController();
-  // variant selection: index into variantRows, or -1 = none
-  int _variantIdx = -1;
+  // multi-select variant indices
+  final Set<int> _selectedVariants = {};
 
   @override
   void initState() {
@@ -949,7 +951,7 @@ class _ModifierDialogState extends State<_ModifierDialog> {
   }
 
   bool _canConfirm() {
-    if (widget.menuItem.hasVariants && _variantIdx < 0) return false;
+    if (widget.menuItem.hasVariants && _selectedVariants.isEmpty) return false;
     for (final g in widget.groups) {
       if (!g.required) continue;
       if (g.multiSelect) {
@@ -961,16 +963,9 @@ class _ModifierDialogState extends State<_ModifierDialog> {
     return true;
   }
 
-  String _buildNotes() {
+  // Notes for modifier groups + free text (no variant name — handled per-item)
+  String _groupNotes() {
     final parts = <String>[];
-    // selected variant name goes first
-    if (_variantIdx >= 0) {
-      final rows = widget.menuItem.variantRows;
-      if (_variantIdx < rows.length) {
-        final name = rows[_variantIdx]['name']?.toString() ?? '';
-        if (name.isNotEmpty) parts.add(name);
-      }
-    }
     for (final g in widget.groups) {
       if (g.multiSelect) {
         final sel = _selections[g.id] ?? {};
@@ -992,13 +987,13 @@ class _ModifierDialogState extends State<_ModifierDialog> {
     return parts.join(' | ');
   }
 
+  String _buildNotes() => _groupNotes();
+
   @override
   Widget build(BuildContext context) {
     final hasGroups = widget.groups.isNotEmpty;
     final variants  = widget.menuItem.variantRows;
     final hasVariants = variants.isNotEmpty;
-    final basePrice = widget.menuItem.price;
-
     return AlertDialog(
       contentPadding: const EdgeInsets.fromLTRB(0, 8, 0, 0),
       title: Row(
@@ -1026,7 +1021,7 @@ class _ModifierDialogState extends State<_ModifierDialog> {
         ],
       ),
       content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 560),
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 580),
         child: StatefulBuilder(
           builder: (_, setInner) => SingleChildScrollView(
             child: Column(
@@ -1053,11 +1048,9 @@ class _ModifierDialogState extends State<_ModifierDialog> {
                   ...List.generate(variants.length, (i) {
                     final row = variants[i];
                     final name = row['name']?.toString() ?? '';
-                    final delta = (row['price_delta'] as num?)?.toDouble() ?? 0.0;
+                    final price = (row['price_delta'] as num?)?.toDouble() ?? 0.0;
                     final available = row['available'] as bool? ?? true;
-                    final finalPrice = basePrice + delta;
-                    final selected = _variantIdx == i;
-                    // Valeurs des colonnes extra (ex: "Pois rouge · Lalo")
+                    final checked = _selectedVariants.contains(i);
                     final extraCols = widget.menuItem.extraColumns;
                     final extraDesc = extraCols
                         .map((c) => row[c]?.toString() ?? '')
@@ -1065,39 +1058,49 @@ class _ModifierDialogState extends State<_ModifierDialog> {
                         .join(' · ');
                     return InkWell(
                       onTap: available
-                          ? () => setInner(() => _variantIdx = i)
+                          ? () => setInner(() {
+                                if (_selectedVariants.contains(i)) {
+                                  _selectedVariants.remove(i);
+                                } else {
+                                  _selectedVariants.add(i);
+                                }
+                              })
                           : null,
                       child: Container(
                         margin: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 3),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
+                            horizontal: 10, vertical: 8),
                         decoration: BoxDecoration(
-                          color: selected
-                              ? AppColors.primary.withValues(alpha: 0.08)
+                          color: checked
+                              ? AppColors.primary.withValues(alpha: 0.07)
                               : AppColors.surface,
                           border: Border.all(
-                            color: selected
+                            color: checked
                                 ? AppColors.primary
                                 : AppColors.divider,
-                            width: selected ? 1.5 : 1,
+                            width: checked ? 1.5 : 1,
                           ),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
                           children: [
-                            Icon(
-                              selected
-                                  ? Icons.radio_button_checked_rounded
-                                  : Icons.radio_button_unchecked_rounded,
-                              size: 18,
-                              color: selected
-                                  ? AppColors.primary
-                                  : available
-                                      ? AppColors.textSecondary
-                                      : AppColors.divider,
+                            Checkbox(
+                              value: checked,
+                              onChanged: available
+                                  ? (v) => setInner(() {
+                                        if (v == true) {
+                                          _selectedVariants.add(i);
+                                        } else {
+                                          _selectedVariants.remove(i);
+                                        }
+                                      })
+                                  : null,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
                             ),
-                            const SizedBox(width: 10),
+                            const SizedBox(width: 6),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1127,31 +1130,13 @@ class _ModifierDialogState extends State<_ModifierDialog> {
                                 ],
                               ),
                             ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  finalPrice.toStringAsFixed(0),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13,
-                                    color: selected
-                                        ? AppColors.primary
-                                        : null,
-                                  ),
-                                ),
-                                if (delta != 0)
-                                  Text(
-                                    '${delta > 0 ? '+' : ''}${delta.toStringAsFixed(0)}',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: delta > 0
-                                          ? AppColors.success
-                                          : AppColors.error,
-                                    ),
-                                  ),
-                              ],
+                            Text(
+                              price.toStringAsFixed(0),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: checked ? AppColors.primary : null,
+                              ),
                             ),
                           ],
                         ),
@@ -1221,22 +1206,36 @@ class _ModifierDialogState extends State<_ModifierDialog> {
         FilledButton.icon(
           onPressed: _canConfirm()
               ? () {
-                  final notes = _buildNotes();
-                  // Prix de la variante sélectionnée (base + delta)
-                  double? unitPrice;
-                  if (_variantIdx >= 0) {
-                    final rows = widget.menuItem.variantRows;
-                    if (_variantIdx < rows.length) {
-                      final delta = (rows[_variantIdx]['price_delta'] as num?)
-                              ?.toDouble() ??
-                          0.0;
-                      unitPrice = widget.menuItem.price + delta;
+                  final groupExtra = _groupNotes();
+                  final rows = widget.menuItem.variantRows;
+                  final results = <Map<String, dynamic>>[];
+                  if (widget.menuItem.hasVariants) {
+                    for (final i
+                        in _selectedVariants.toList()..sort()) {
+                      if (i >= rows.length) continue;
+                      final row = rows[i];
+                      final variantName =
+                          row['name']?.toString() ?? '';
+                      final price =
+                          (row['price_delta'] as num?)?.toDouble();
+                      final noteParts = [
+                        if (variantName.isNotEmpty) variantName,
+                        if (groupExtra.isNotEmpty) groupExtra,
+                      ];
+                      results.add({
+                        'notes': noteParts.isEmpty
+                            ? null
+                            : noteParts.join(' | '),
+                        if (price != null && price > 0)
+                          'unit_price': price,
+                      });
                     }
+                  } else {
+                    final notes = _buildNotes();
+                    results.add(
+                        {'notes': notes.isEmpty ? null : notes});
                   }
-                  Navigator.pop(context, {
-                    'notes': notes.isEmpty ? null : notes,
-                    if (unitPrice != null) 'unit_price': unitPrice,
-                  });
+                  Navigator.pop(context, results);
                 }
               : null,
           icon: const Icon(Icons.add_shopping_cart_rounded, size: 16),
