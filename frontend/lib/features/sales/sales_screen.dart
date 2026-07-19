@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart' show DioException;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -684,7 +685,17 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) setState(() { _submitting = false; _error = e.toString(); });
+      if (mounted) {
+        String msg;
+        if (e is DioException) {
+          msg = (e.response?.data?['message'] as String?) ??
+              (e.response?.data?['detail'] as String?) ??
+              'Erreur réseau';
+        } else {
+          msg = e.toString();
+        }
+        setState(() { _submitting = false; _error = msg; });
+      }
     }
   }
 
