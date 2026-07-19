@@ -59,11 +59,11 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
     }
   }
 
-  Future<void> _addItem(MenuItemModel menuItem, {String? notes}) async {
+  Future<void> _addItem(MenuItemModel menuItem, {String? notes, double? unitPrice}) async {
     if (_order == null) return;
     setState(() => _submitting = true);
     try {
-      _order = await _repo.addItem(_order!.id, menuItemId: menuItem.id, notes: notes);
+      _order = await _repo.addItem(_order!.id, menuItemId: menuItem.id, notes: notes, unitPrice: unitPrice);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -382,7 +382,7 @@ class _DesktopLayout extends StatelessWidget {
   final RestaurantOrderModel order;
   final String symbol;
   final bool submitting;
-  final Future<void> Function(MenuItemModel, {String? notes}) onAddItem;
+  final Future<void> Function(MenuItemModel, {String? notes, double? unitPrice}) onAddItem;
   final Future<void> Function(String) onRemoveItem;
   final Future<void> Function(String, double) onUpdateQuantity;
   final VoidCallback onKitchen;
@@ -429,7 +429,7 @@ class _MobileLayout extends StatelessWidget {
   final RestaurantOrderModel order;
   final String symbol;
   final bool submitting;
-  final Future<void> Function(MenuItemModel, {String? notes}) onAddItem;
+  final Future<void> Function(MenuItemModel, {String? notes, double? unitPrice}) onAddItem;
   final Future<void> Function(String) onRemoveItem;
   final Future<void> Function(String, double) onUpdateQuantity;
   final VoidCallback onKitchen;
@@ -550,7 +550,7 @@ class _CartColumn extends StatelessWidget {
 // ── Product browser (right panel) ─────────────────────────────────────────────
 
 class _ProductBrowser extends StatefulWidget {
-  final Future<void> Function(MenuItemModel, {String? notes}) onAddItem;
+  final Future<void> Function(MenuItemModel, {String? notes, double? unitPrice}) onAddItem;
 
   const _ProductBrowser({required this.onAddItem});
 
@@ -641,12 +641,23 @@ class _ProductBrowserState extends State<_ProductBrowser> {
     } catch (_) {}
 
     if (!mounted) return;
+
+    // Pas de variantes et pas de groupes → ajout direct sans dialog
+    if (!item.hasVariants && groups.isEmpty) {
+      await widget.onAddItem(item);
+      return;
+    }
+
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => _ModifierDialog(menuItem: item, groups: groups),
     );
     if (result == null) return;
-    await widget.onAddItem(item, notes: result['notes'] as String?);
+    await widget.onAddItem(
+      item,
+      notes: result['notes'] as String?,
+      unitPrice: result['unit_price'] as double?,
+    );
   }
 
   @override
@@ -1046,6 +1057,12 @@ class _ModifierDialogState extends State<_ModifierDialog> {
                     final available = row['available'] as bool? ?? true;
                     final finalPrice = basePrice + delta;
                     final selected = _variantIdx == i;
+                    // Valeurs des colonnes extra (ex: "Pois rouge · Lalo")
+                    final extraCols = widget.menuItem.extraColumns;
+                    final extraDesc = extraCols
+                        .map((c) => row[c]?.toString() ?? '')
+                        .where((v) => v.isNotEmpty)
+                        .join(' · ');
                     return InkWell(
                       onTap: available
                           ? () => setInner(() => _variantIdx = i)
@@ -1082,18 +1099,32 @@ class _ModifierDialogState extends State<_ModifierDialog> {
                             ),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: Text(
-                                name,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 13,
-                                  color: available
-                                      ? null
-                                      : AppColors.textSecondary,
-                                  decoration: available
-                                      ? null
-                                      : TextDecoration.lineThrough,
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 13,
+                                      color: available
+                                          ? null
+                                          : AppColors.textSecondary,
+                                      decoration: available
+                                          ? null
+                                          : TextDecoration.lineThrough,
+                                    ),
+                                  ),
+                                  if (extraDesc.isNotEmpty)
+                                    Text(
+                                      extraDesc,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
                             Column(
@@ -1191,8 +1222,21 @@ class _ModifierDialogState extends State<_ModifierDialog> {
           onPressed: _canConfirm()
               ? () {
                   final notes = _buildNotes();
-                  Navigator.pop(
-                      context, {'notes': notes.isEmpty ? null : notes});
+                  // Prix de la variante sélectionnée (base + delta)
+                  double? unitPrice;
+                  if (_variantIdx >= 0) {
+                    final rows = widget.menuItem.variantRows;
+                    if (_variantIdx < rows.length) {
+                      final delta = (rows[_variantIdx]['price_delta'] as num?)
+                              ?.toDouble() ??
+                          0.0;
+                      unitPrice = widget.menuItem.price + delta;
+                    }
+                  }
+                  Navigator.pop(context, {
+                    'notes': notes.isEmpty ? null : notes,
+                    if (unitPrice != null) 'unit_price': unitPrice,
+                  });
                 }
               : null,
           icon: const Icon(Icons.add_shopping_cart_rounded, size: 16),

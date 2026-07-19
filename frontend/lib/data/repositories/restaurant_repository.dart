@@ -96,12 +96,14 @@ class RestaurantRepository {
     String? menuItemId,
     double quantity = 1.0,
     String? notes,
+    double? unitPrice,
   }) async {
     final res = await dio.post('/api/restaurant/orders/$orderId/items', data: {
       if (productId != null) 'product_id': productId,
       if (menuItemId != null) 'menu_item_id': menuItemId,
       'quantity': quantity,
       if (notes != null && notes.isNotEmpty) 'notes': notes,
+      if (unitPrice != null) 'unit_price': unitPrice,
     });
     return RestaurantOrderModel.fromJson(res.data as Map<String, dynamic>);
   }

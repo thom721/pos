@@ -122,6 +122,7 @@ class OrderItemAdd(BaseModel):
     menu_item_id: Optional[str] = None
     quantity: float = 1.0
     notes: Optional[str] = None
+    unit_price: Optional[float] = None  # override pour variante sélectionnée
 
 class OpenOrderPayload(BaseModel):
     covers: int = 1
@@ -448,7 +449,7 @@ def add_item(
         order_id=order_id,
         product_id=resolved_product_id,
         menu_item_id=resolved_menu_item_id,
-        unit_price=item_price,
+        unit_price=data.unit_price if data.unit_price is not None else item_price,
         quantity=data.quantity,
         notes=data.notes,
     )
