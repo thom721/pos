@@ -8,6 +8,7 @@ class MenuItemModel {
   final String? productId;
   final bool available;
   final String? imageUrl;
+  final List<Map<String, dynamic>> variants;
 
   const MenuItemModel({
     required this.id,
@@ -19,6 +20,7 @@ class MenuItemModel {
     this.productId,
     required this.available,
     this.imageUrl,
+    this.variants = const [],
   });
 
   factory MenuItemModel.fromJson(Map<String, dynamic> j) => MenuItemModel(
@@ -31,6 +33,9 @@ class MenuItemModel {
         productId:    j['product_id'] as String?,
         available:    j['available'] as bool? ?? true,
         imageUrl:     j['image_url'] as String?,
+        variants:     (j['variants'] as List<dynamic>? ?? [])
+            .map((v) => Map<String, dynamic>.from(v as Map))
+            .toList(),
       );
 }
 
@@ -156,7 +161,7 @@ class RestaurantTableModel {
 
 class RestaurantOrderItemModel {
   final String id;
-  final String productId;
+  final String? productId;
   final String productName;
   final double quantity;
   final double unitPrice;
@@ -165,7 +170,7 @@ class RestaurantOrderItemModel {
 
   const RestaurantOrderItemModel({
     required this.id,
-    required this.productId,
+    this.productId,
     required this.productName,
     required this.quantity,
     required this.unitPrice,
@@ -178,7 +183,7 @@ class RestaurantOrderItemModel {
   factory RestaurantOrderItemModel.fromJson(Map<String, dynamic> j) =>
       RestaurantOrderItemModel(
         id:          j['id'] as String,
-        productId:   j['product_id'] as String,
+        productId:   j['product_id'] as String?,
         productName: j['product_name'] as String? ?? '',
         quantity:    (j['quantity'] as num).toDouble(),
         unitPrice:   (j['unit_price'] as num).toDouble(),

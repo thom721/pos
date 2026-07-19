@@ -497,8 +497,9 @@ def on_startup():
                 # menu_item_id sur restaurant_order_items, product_id devient nullable
                 "ALTER TABLE restaurant_order_items ADD COLUMN menu_item_id VARCHAR(36) NULL",
                 "ALTER TABLE restaurant_order_items MODIFY COLUMN product_id VARCHAR(36) NULL",
-                # warehouse_id sur menu_items
+                # warehouse_id + variants sur menu_items
                 "ALTER TABLE menu_items ADD COLUMN warehouse_id VARCHAR(36) NULL",
+                "ALTER TABLE menu_items ADD COLUMN variants JSON NULL",
             ]:
                 try:
                     db.execute(text(_sql))

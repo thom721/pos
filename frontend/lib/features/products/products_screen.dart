@@ -256,12 +256,24 @@ class _MenuPanelState extends State<_MenuPanel> {
   }
 
   void _showForm(BuildContext context, [MenuItemModel? m]) {
-    final nameCtrl = TextEditingController(text: m?.name ?? '');
-    final descCtrl = TextEditingController(text: m?.description ?? '');
-    final priceCtrl =
-        TextEditingController(text: m != null ? m.price.toStringAsFixed(2) : '');
+    final nameCtrl  = TextEditingController(text: m?.name ?? '');
+    final descCtrl  = TextEditingController(text: m?.description ?? '');
+    final priceCtrl = TextEditingController(
+        text: m != null ? m.price.toStringAsFixed(2) : '');
     String? selectedCatId = m?.categoryId;
     bool available = m?.available ?? true;
+
+    // Variants
+    final existing = m?.variants ?? [];
+    bool hasVariants = existing.isNotEmpty;
+    final variantNameCtrls = existing
+        .map((v) => TextEditingController(text: v['name']?.toString() ?? ''))
+        .toList();
+    final variantPriceCtrls = existing
+        .map((v) => TextEditingController(
+            text: (v['price_delta'] ?? 0).toString()))
+        .toList();
+
     final messenger = ScaffoldMessenger.of(context);
 
     showDialog(
@@ -270,10 +282,11 @@ class _MenuPanelState extends State<_MenuPanel> {
         builder: (ctx, setInner) => AlertDialog(
           title: Text(m == null ? 'Nouveau plat' : 'Modifier le plat'),
           content: SizedBox(
-            width: 400,
+            width: 440,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   TextField(
                     controller: nameCtrl,
@@ -284,36 +297,143 @@ class _MenuPanelState extends State<_MenuPanel> {
                   TextField(
                     controller: descCtrl,
                     maxLines: 2,
-                    decoration:
-                        const InputDecoration(labelText: 'Description (optionnel)'),
+                    decoration: const InputDecoration(
+                        labelText: 'Description (optionnel)'),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: priceCtrl,
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'Prix *'),
+                    decoration: const InputDecoration(labelText: 'Prix de base (HTG) *'),
                   ),
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String?>(
                     value: selectedCatId,
-                    decoration:
-                        const InputDecoration(labelText: 'Catégorie (optionnel)'),
+                    decoration: const InputDecoration(
+                        labelText: 'Catégorie (optionnel)'),
                     items: [
                       const DropdownMenuItem(
                           value: null, child: Text('— Aucune —')),
-                      ..._categories.map((c) =>
-                          DropdownMenuItem(value: c.id, child: Text(c.name))),
+                      ..._categories.map((c) => DropdownMenuItem(
+                          value: c.id, child: Text(c.name))),
                     ],
                     onChanged: (v) => setInner(() => selectedCatId = v),
                   ),
                   SwitchListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Disponible', style: TextStyle(fontSize: 13)),
+                    title: const Text('Disponible',
+                        style: TextStyle(fontSize: 13)),
                     value: available,
                     onChanged: (v) => setInner(() => available = v),
                   ),
+                  const Divider(height: 20),
+                  // ── Variants ──────────────────────────────────────────────
+                  SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Variantes de prix',
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600)),
+                    subtitle: const Text(
+                        'Ex: Petit / Normal / Grand avec prix différents',
+                        style: TextStyle(fontSize: 11)),
+                    value: hasVariants,
+                    onChanged: (v) => setInner(() {
+                      hasVariants = v;
+                      if (v && variantNameCtrls.isEmpty) {
+                        variantNameCtrls.add(TextEditingController());
+                        variantPriceCtrls
+                            .add(TextEditingController(text: '0'));
+                      }
+                    }),
+                  ),
+                  if (hasVariants) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: const [
+                        Expanded(
+                            flex: 3,
+                            child: Text('Nom de la variante',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textSecondary))),
+                        SizedBox(width: 8),
+                        Expanded(
+                            flex: 2,
+                            child: Text('Δ Prix (HTG)',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textSecondary))),
+                        SizedBox(width: 32),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ...List.generate(variantNameCtrls.length, (i) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: TextField(
+                              controller: variantNameCtrls[i],
+                              decoration: const InputDecoration(
+                                hintText: 'Ex: Normal',
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 8),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 2,
+                            child: TextField(
+                              controller: variantPriceCtrls[i],
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      signed: true, decimal: true),
+                              decoration: const InputDecoration(
+                                hintText: '0 ou -50 ou +150',
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 8),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline_rounded,
+                                size: 16, color: AppColors.error),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                                minWidth: 32, minHeight: 32),
+                            onPressed: () => setInner(() {
+                              variantNameCtrls[i].dispose();
+                              variantPriceCtrls[i].dispose();
+                              variantNameCtrls.removeAt(i);
+                              variantPriceCtrls.removeAt(i);
+                            }),
+                          ),
+                        ],
+                      ),
+                    )),
+                    TextButton.icon(
+                      onPressed: () => setInner(() {
+                        variantNameCtrls.add(TextEditingController());
+                        variantPriceCtrls
+                            .add(TextEditingController(text: '0'));
+                      }),
+                      icon: const Icon(Icons.add_rounded, size: 14),
+                      label: const Text('Ajouter une variante',
+                          style: TextStyle(fontSize: 12)),
+                      style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 28)),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -324,19 +444,34 @@ class _MenuPanelState extends State<_MenuPanel> {
                 child: const Text('Annuler')),
             ElevatedButton(
               onPressed: () async {
-                final name = nameCtrl.text.trim();
+                final name  = nameCtrl.text.trim();
                 final price = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
                 if (name.isEmpty) return;
                 Navigator.pop(ctx);
+
+                final variants = hasVariants
+                    ? List.generate(variantNameCtrls.length, (i) => {
+                          'name': variantNameCtrls[i].text.trim(),
+                          'price_delta':
+                              double.tryParse(variantPriceCtrls[i].text) ??
+                                  0.0,
+                        })
+                        .where((v) =>
+                            (v['name'] as String).isNotEmpty)
+                        .toList()
+                    : <Map<String, dynamic>>[];
+
                 try {
                   if (m == null) {
                     await _repo.createMenuItem(
                       name: name,
-                      description:
-                          descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+                      description: descCtrl.text.trim().isEmpty
+                          ? null
+                          : descCtrl.text.trim(),
                       price: price,
                       categoryId: selectedCatId,
                       available: available,
+                      variants: variants.isEmpty ? null : variants,
                     );
                   } else {
                     await _repo.updateMenuItem(m.id,
@@ -347,6 +482,7 @@ class _MenuPanelState extends State<_MenuPanel> {
                       price: price,
                       categoryId: selectedCatId,
                       available: available,
+                      variants: variants,
                     );
                   }
                   _load();

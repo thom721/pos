@@ -174,6 +174,7 @@ class MenuItemCreate(BaseModel):
     category_id: Optional[str] = None
     product_id: Optional[str] = None
     available: bool = True
+    variants: Optional[list] = None
 
 class MenuItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -182,6 +183,7 @@ class MenuItemUpdate(BaseModel):
     category_id: Optional[str] = None
     product_id: Optional[str] = None
     available: Optional[bool] = None
+    variants: Optional[list] = None
 
 
 # ── Serveurs (waiters) ────────────────────────────────────────────────────────
@@ -915,6 +917,7 @@ def _menu_item_dict(m: MenuItem) -> dict:
         'product_id': m.product_id,
         'available': m.available,
         'image_url': m.image_url,
+        'variants': m.variants or [],
     }
 
 
@@ -952,6 +955,7 @@ def create_menu_item(
         category_id=data.category_id or None,
         product_id=data.product_id or None,
         available=data.available,
+        variants=data.variants or None,
     )
     db.add(m)
     db.commit()
@@ -986,6 +990,8 @@ def update_menu_item(
         m.product_id = data.product_id or None
     if data.available is not None:
         m.available = data.available
+    if 'variants' in data.model_fields_set:
+        m.variants = data.variants if data.variants else None
     db.commit()
     db.refresh(m)
     return _menu_item_dict(m)

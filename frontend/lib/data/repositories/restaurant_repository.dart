@@ -161,6 +161,7 @@ class RestaurantRepository {
     String? categoryId,
     String? productId,
     bool available = true,
+    List<Map<String, dynamic>>? variants,
   }) async {
     final res = await dio.post('/api/restaurant/menu-items/', data: {
       'name': name,
@@ -169,6 +170,7 @@ class RestaurantRepository {
       if (categoryId != null) 'category_id': categoryId,
       if (productId != null) 'product_id': productId,
       'available': available,
+      if (variants != null) 'variants': variants,
     });
     return MenuItemModel.fromJson(res.data as Map<String, dynamic>);
   }
@@ -181,6 +183,7 @@ class RestaurantRepository {
     String? categoryId,
     String? productId,
     bool? available,
+    List<Map<String, dynamic>>? variants,
   }) async {
     final res = await dio.put('/api/restaurant/menu-items/$id', data: {
       if (name != null) 'name': name,
@@ -189,6 +192,7 @@ class RestaurantRepository {
       'category_id': categoryId,
       'product_id': productId,
       if (available != null) 'available': available,
+      if (variants != null) 'variants': variants,
     });
     return MenuItemModel.fromJson(res.data as Map<String, dynamic>);
   }

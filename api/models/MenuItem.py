@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Numeric, Text, ForeignKey
+from sqlalchemy import Column, String, Boolean, Numeric, Text, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
@@ -15,6 +15,7 @@ class MenuItem(UUIDBase):
     product_id   = Column(String(36), ForeignKey('products.id'),    nullable=True, index=True)
     available    = Column(Boolean, default=True, nullable=False)
     image_url    = Column(String(500), nullable=True)
+    variants     = Column(JSON, nullable=True)
 
     category = relationship('Category', lazy='joined')
     product  = relationship('Product',  lazy='joined')
