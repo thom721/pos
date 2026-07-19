@@ -134,7 +134,11 @@ def list_waiters(
     users = db.query(User).filter(
         User.tenant_id == current_user.tenant_id,
     ).order_by(User.fname).all()
-    return [{'id': u.id, 'name': f"{u.fname} {u.lname}".strip(), 'username': u.username} for u in users]
+    return [
+        {'id': u.id, 'name': f"{u.fname} {u.lname}".strip(), 'username': u.username}
+        for u in users
+        if 'serveur' in (u.roles or [])
+    ]
 
 
 # ── Tables ────────────────────────────────────────────────────────────────────

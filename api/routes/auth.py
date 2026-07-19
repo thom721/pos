@@ -30,6 +30,14 @@ def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Les utilisateurs ayant uniquement le rôle "serveur" n'accèdent pas à l'interface
+    roles = set(user.roles or [])
+    if roles and roles <= {'serveur'}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ce compte est réservé au service en salle et n'a pas accès à l'interface.",
+        )
+
     # Mise à jour du hash offline pour les utilisateurs existants
     if not user.offline_hash and user.email:
         user.offline_hash = compute_offline_hash(user.email, form_data.password)
