@@ -485,28 +485,6 @@ def on_startup():
     import api.database as _db_module
     db = _db_module.SessionLocal()
     try:
-        # Inline migrations — colonnes ajoutées après create_all, avant toute requête ORM
-        from api.core.config import settings as _s
-        if _s.DB_TYPE != "sqlite":
-            for _sql in [
-                "ALTER TABLE users ADD COLUMN offline_hash VARCHAR(64) NULL",
-                "ALTER TABLE users MODIFY COLUMN phone VARCHAR(255) NULL",
-                # menu_item_id sur modifier_groups + warehouse_id
-                "ALTER TABLE modifier_groups ADD COLUMN menu_item_id VARCHAR(36) NULL",
-                "ALTER TABLE modifier_groups ADD COLUMN warehouse_id VARCHAR(36) NULL",
-                # menu_item_id sur restaurant_order_items, product_id devient nullable
-                "ALTER TABLE restaurant_order_items ADD COLUMN menu_item_id VARCHAR(36) NULL",
-                "ALTER TABLE restaurant_order_items MODIFY COLUMN product_id VARCHAR(36) NULL",
-                # warehouse_id + variants sur menu_items
-                "ALTER TABLE menu_items ADD COLUMN warehouse_id VARCHAR(36) NULL",
-                "ALTER TABLE menu_items ADD COLUMN variants JSON NULL",
-            ]:
-                try:
-                    db.execute(text(_sql))
-                    db.commit()
-                except Exception:
-                    db.rollback()
-
         # 3. Tenant LOCAL — pour les déploiements en mode local (pas SaaS)
         local_tid = _ensure_local_tenant(db)
         # 4. Superadmin — auto-génère les credentials si absent, crée le user
