@@ -68,10 +68,14 @@ def _item_dict(i: RestaurantOrderItem) -> dict:
 def _order_dict(o: RestaurantOrder) -> dict:
     subtotal = sum(float(i.quantity) * float(i.unit_price) for i in o.items)
     tip = float(o.tip or 0)
+    waiter_name = None
+    if o.table and o.table.waiter:
+        waiter_name = f"{o.table.waiter.fname} {o.table.waiter.lname}".strip()
     return {
         'id': o.id,
         'table_id': o.table_id,
         'table_name': o.table.name if o.table else None,
+        'waiter_name': waiter_name,
         'cashier_id': o.cashier_id,
         'covers': o.covers,
         'status': o.status,
@@ -281,37 +285,54 @@ def get_table_order(
 
 @router.post("/orders/", status_code=201)
 def create_order(
-    table_id: str,
     payload: OpenOrderPayload,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+    table_id: Optional[str] = None,
 ):
-    existing = db.query(RestaurantOrder).filter(
-        RestaurantOrder.table_id == table_id,
-        RestaurantOrder.status != 'closed',
-    ).first()
-    if existing:
-        return _order_dict(existing)
+    if table_id:
+        existing = db.query(RestaurantOrder).filter(
+            RestaurantOrder.table_id == table_id,
+            RestaurantOrder.status != 'closed',
+        ).first()
+        if existing:
+            return _order_dict(existing)
 
     order = RestaurantOrder(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
         warehouse_id=_resolve_wh(db, current_user),
-        table_id=table_id,
+        table_id=table_id or None,
         cashier_id=current_user.id,
         covers=payload.covers,
         notes=payload.notes,
     )
     db.add(order)
 
-    table = db.query(RestaurantTable).filter(RestaurantTable.id == table_id).first()
-    if table:
-        table.status = 'occupied'
+    if table_id:
+        table = db.query(RestaurantTable).filter(RestaurantTable.id == table_id).first()
+        if table:
+            table.status = 'occupied'
 
     db.commit()
     db.refresh(order)
     background_tasks.add_task(_notify, current_user.tenant_id)
+    return _order_dict(order)
+
+
+@router.get("/orders/{order_id}")
+def get_order(
+    order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_READ)),
+):
+    order = db.query(RestaurantOrder).filter(
+        RestaurantOrder.id == order_id,
+        RestaurantOrder.tenant_id == current_user.tenant_id,
+    ).first()
+    if not order:
+        raise HTTPException(404, "Commande introuvable")
     return _order_dict(order)
 
 

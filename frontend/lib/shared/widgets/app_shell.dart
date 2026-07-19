@@ -68,8 +68,8 @@ const _bottomNavItems = [
 // ── Restaurant nav ─────────────────────────────────────────────────────────
 const _restaurantMainNavItems = [
   _NavItem('Tableau de bord', Icons.dashboard_rounded,              '/dashboard'),
+  _NavItem('Commandes',       Icons.receipt_long_rounded,           '/restaurant/commandes'),
   _NavItem('Tables',          Icons.table_restaurant_rounded,       '/restaurant/tables'),
-  _NavItem('Caisse',          Icons.point_of_sale_rounded,          '/pos'),
   _NavItem('Cuisine',         Icons.restaurant_rounded,             '/restaurant/kitchen'),
   _NavItem('Ventes',          Icons.receipt_long_rounded,           '/sales'),
   _NavItem('Produits',        Icons.inventory_2_rounded,            '/products'),
@@ -78,10 +78,10 @@ const _restaurantMainNavItems = [
 ];
 
 const _restaurantAndroidBottomItems = [
-  _NavItem('Tables',  Icons.table_restaurant_rounded, '/restaurant/tables'),
-  _NavItem('Caisse',  Icons.point_of_sale_rounded,    '/pos'),
-  _NavItem('Cuisine', Icons.restaurant_rounded,       '/restaurant/kitchen'),
-  _NavItem('Ventes',  Icons.receipt_long_rounded,     '/sales'),
+  _NavItem('Commandes', Icons.receipt_long_rounded,     '/restaurant/commandes'),
+  _NavItem('Tables',    Icons.table_restaurant_rounded, '/restaurant/tables'),
+  _NavItem('Cuisine',   Icons.restaurant_rounded,       '/restaurant/kitchen'),
+  _NavItem('Ventes',    Icons.receipt_long_rounded,     '/sales'),
 ];
 
 List<_NavItem> _resolveMainNav(String businessType) =>

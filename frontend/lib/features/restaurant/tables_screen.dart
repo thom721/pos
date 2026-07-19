@@ -204,7 +204,7 @@ class _TableCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: () => context.push('/restaurant/table/${table.id}'),
+      onTap: () => _openOrder(context),
       onLongPress: () => _showOptions(context, ref),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -279,6 +279,21 @@ class _TableCard extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openOrder(BuildContext context) async {
+    if (table.isOccupied) {
+      try {
+        final order = await RestaurantRepository().getTableOrder(table.id);
+        if (order != null && context.mounted) {
+          context.push('/restaurant/commande/${order.id}');
+          return;
+        }
+      } catch (_) {}
+    }
+    if (context.mounted) {
+      context.push('/restaurant/commandes', extra: table.id);
+    }
   }
 
   Future<void> _showOptions(BuildContext context, WidgetRef ref) async {

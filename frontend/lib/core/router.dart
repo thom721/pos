@@ -33,6 +33,8 @@ import 'package:pos_connect/features/reports/depot_reports_screen.dart';
 import 'package:pos_connect/features/restaurant/tables_screen.dart';
 import 'package:pos_connect/features/restaurant/table_order_screen.dart';
 import 'package:pos_connect/features/restaurant/kitchen_screen.dart';
+import 'package:pos_connect/features/restaurant/commandes_screen.dart';
+import 'package:pos_connect/features/restaurant/commande_screen.dart';
 import 'package:pos_connect/shared/widgets/app_shell.dart';
 
 // Notifies GoRouter when auth state changes, without recreating the router.
@@ -201,6 +203,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/restaurant/kitchen',
             builder: (context, state) => const KitchenScreen(),
+          ),
+          GoRoute(
+            path: '/restaurant/commandes',
+            builder: (context, state) => CommandesScreen(
+              autoTableId: state.extra as String?,
+            ),
+          ),
+          GoRoute(
+            path: '/restaurant/commande/:orderId',
+            builder: (context, state) => CommandeScreen(
+              orderId: state.pathParameters['orderId']!,
+            ),
           ),
         ],
       ),

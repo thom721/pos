@@ -72,14 +72,19 @@ class RestaurantRepository {
     return RestaurantOrderModel.fromJson(res.data as Map<String, dynamic>);
   }
 
-  Future<RestaurantOrderModel> openOrder(
-    String tableId, {
+  Future<RestaurantOrderModel> getOrder(String orderId) async {
+    final res = await dio.get('/api/restaurant/orders/$orderId');
+    return RestaurantOrderModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<RestaurantOrderModel> openOrder({
+    String? tableId,
     int covers = 1,
     String? notes,
   }) async {
     final res = await dio.post(
       '/api/restaurant/orders/',
-      queryParameters: {'table_id': tableId},
+      queryParameters: {if (tableId != null) 'table_id': tableId},
       data: {'covers': covers, if (notes != null) 'notes': notes},
     );
     return RestaurantOrderModel.fromJson(res.data as Map<String, dynamic>);

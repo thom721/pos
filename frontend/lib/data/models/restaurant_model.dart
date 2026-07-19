@@ -84,8 +84,9 @@ class RestaurantOrderItemModel {
 
 class RestaurantOrderModel {
   final String id;
-  final String tableId;
+  final String? tableId;
   final String? tableName;
+  final String? waiterName;
   final String status; // open | sent_to_kitchen | ready | closed
   final List<RestaurantOrderItemModel> items;
   final double subtotal;
@@ -93,11 +94,13 @@ class RestaurantOrderModel {
   final double total;
   final int covers;
   final String? notes;
+  final DateTime? createdAt;
 
   const RestaurantOrderModel({
     required this.id,
-    required this.tableId,
+    this.tableId,
     this.tableName,
+    this.waiterName,
     required this.status,
     required this.items,
     required this.subtotal,
@@ -105,22 +108,28 @@ class RestaurantOrderModel {
     required this.total,
     required this.covers,
     this.notes,
+    this.createdAt,
   });
 
   bool get sentToKitchen => status == 'sent_to_kitchen';
   bool get isReady       => status == 'ready';
+  bool get hasTable      => tableId != null && tableId!.isNotEmpty;
 
   factory RestaurantOrderModel.fromJson(Map<String, dynamic> j) =>
       RestaurantOrderModel(
-        id:       j['id'] as String,
-        tableId:  j['table_id'] as String,
-        tableName: j['table_name'] as String?,
-        status:   j['status'] as String? ?? 'open',
-        subtotal: (j['subtotal'] as num?)?.toDouble() ?? 0.0,
-        tip:      (j['tip'] as num?)?.toDouble() ?? 0.0,
-        total:    (j['total'] as num?)?.toDouble() ?? 0.0,
-        covers:   j['covers'] as int? ?? 1,
-        notes:    j['notes'] as String?,
+        id:          j['id'] as String,
+        tableId:     j['table_id'] as String?,
+        tableName:   j['table_name'] as String?,
+        waiterName:  j['waiter_name'] as String?,
+        status:      j['status'] as String? ?? 'open',
+        subtotal:    (j['subtotal'] as num?)?.toDouble() ?? 0.0,
+        tip:         (j['tip'] as num?)?.toDouble() ?? 0.0,
+        total:       (j['total'] as num?)?.toDouble() ?? 0.0,
+        covers:      j['covers'] as int? ?? 1,
+        notes:       j['notes'] as String?,
+        createdAt:   j['created_at'] != null
+            ? DateTime.tryParse(j['created_at'].toString())
+            : null,
         items: (j['items'] as List<dynamic>? ?? [])
             .map((e) => RestaurantOrderItemModel.fromJson(e as Map<String, dynamic>))
             .toList(),
