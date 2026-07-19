@@ -1020,8 +1020,8 @@ class _ModifierDialogState extends State<_ModifierDialog> {
           ),
         ],
       ),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 580),
+      content: SizedBox(
+        width: 520,
         child: StatefulBuilder(
           builder: (_, setInner) => SingleChildScrollView(
             child: Column(
@@ -1058,7 +1058,7 @@ class _ModifierDialogState extends State<_ModifierDialog> {
                         .join(' · ');
                     return InkWell(
                       onTap: available
-                          ? () => setInner(() {
+                          ? () => setState(() {
                                 if (_selectedVariants.contains(i)) {
                                   _selectedVariants.remove(i);
                                 } else {
@@ -1088,7 +1088,7 @@ class _ModifierDialogState extends State<_ModifierDialog> {
                             Checkbox(
                               value: checked,
                               onChanged: available
-                                  ? (v) => setInner(() {
+                                  ? (v) => setState(() {
                                         if (v == true) {
                                           _selectedVariants.add(i);
                                         } else {
