@@ -133,7 +133,6 @@ def list_waiters(
     """Liste les utilisateurs actifs du tenant pouvant être assignés comme serveurs."""
     users = db.query(User).filter(
         User.tenant_id == current_user.tenant_id,
-        User.is_active == True,  # noqa: E712
     ).order_by(User.fname).all()
     return [{'id': u.id, 'name': f"{u.fname} {u.lname}".strip(), 'username': u.username} for u in users]
 

@@ -8,7 +8,7 @@ class RestaurantOrder(UUIDBase):
 
     tenant_id    = Column(String(36), ForeignKey('tenants.id'),           nullable=False, index=True)
     warehouse_id = Column(String(36), ForeignKey('warehouses.id'),        nullable=True,  index=True)
-    table_id     = Column(String(36), ForeignKey('restaurant_tables.id'), nullable=False, index=True)
+    table_id     = Column(String(36), ForeignKey('restaurant_tables.id'), nullable=True,  index=True)
     cashier_id   = Column(String(36), ForeignKey('users.id'),             nullable=True)
     status       = Column(
         SAEnum('open', 'sent_to_kitchen', 'ready', 'closed', name='restaurant_order_status'),
