@@ -92,12 +92,14 @@ class RestaurantRepository {
 
   Future<RestaurantOrderModel> addItem(
     String orderId, {
-    required String productId,
+    String? productId,
+    String? menuItemId,
     double quantity = 1.0,
     String? notes,
   }) async {
     final res = await dio.post('/api/restaurant/orders/$orderId/items', data: {
-      'product_id': productId,
+      if (productId != null) 'product_id': productId,
+      if (menuItemId != null) 'menu_item_id': menuItemId,
       'quantity': quantity,
       if (notes != null && notes.isNotEmpty) 'notes': notes,
     });
@@ -135,6 +137,64 @@ class RestaurantRepository {
     return (data['data'] as List? ?? [])
         .map((e) => ProductModel.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  // ── Menu items ───────────────────────────────────────────────────────────────
+
+  Future<List<MenuItemModel>> getMenuItems({
+    String? categoryId,
+    bool availableOnly = false,
+  }) async {
+    final res = await dio.get('/api/restaurant/menu-items/', queryParameters: {
+      if (categoryId != null) 'category_id': categoryId,
+      if (availableOnly) 'available_only': true,
+    });
+    return (res.data as List)
+        .map((e) => MenuItemModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<MenuItemModel> createMenuItem({
+    required String name,
+    String? description,
+    required double price,
+    String? categoryId,
+    String? productId,
+    bool available = true,
+  }) async {
+    final res = await dio.post('/api/restaurant/menu-items/', data: {
+      'name': name,
+      if (description != null) 'description': description,
+      'price': price,
+      if (categoryId != null) 'category_id': categoryId,
+      if (productId != null) 'product_id': productId,
+      'available': available,
+    });
+    return MenuItemModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<MenuItemModel> updateMenuItem(
+    String id, {
+    String? name,
+    String? description,
+    double? price,
+    String? categoryId,
+    String? productId,
+    bool? available,
+  }) async {
+    final res = await dio.put('/api/restaurant/menu-items/$id', data: {
+      if (name != null) 'name': name,
+      'description': description,
+      if (price != null) 'price': price,
+      'category_id': categoryId,
+      'product_id': productId,
+      if (available != null) 'available': available,
+    });
+    return MenuItemModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteMenuItem(String id) async {
+    await dio.delete('/api/restaurant/menu-items/$id');
   }
 
   // ── Modifier groups ──────────────────────────────────────────────────────────

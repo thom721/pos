@@ -72,7 +72,7 @@ const _restaurantMainNavItems = [
   _NavItem('Tables',          Icons.table_restaurant_rounded,       '/restaurant/tables'),
   _NavItem('Cuisine',         Icons.restaurant_rounded,             '/restaurant/kitchen'),
   _NavItem('Ventes',          Icons.receipt_long_rounded,           '/sales'),
-  _NavItem('Produits',        Icons.inventory_2_rounded,            '/products'),
+  _NavItem('Produits / Menu', Icons.inventory_2_rounded,            '/products'),
   _NavItem('Clients',         Icons.people_alt_rounded,             '/customers'),
   _NavItem('Dettes',          Icons.account_balance_wallet_rounded, '/debts'),
 ];

@@ -27,65 +27,540 @@ class ProductsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final productsAsync = ref.watch(productsProvider);
+    final isRestaurant =
+        ref.watch(settingsProvider).businessType == 'restaurant';
+
+    if (isRestaurant) {
+      return DefaultTabController(
+        length: 2,
+        child: Column(
+          children: [
+            const _ProductsToolbar(),
+            const Divider(height: 1),
+            Container(
+              color: AppColors.surface,
+              child: const TabBar(
+                labelColor: AppColors.primary,
+                unselectedLabelColor: AppColors.textSecondary,
+                indicatorColor: AppColors.primary,
+                tabs: [
+                  Tab(text: 'Produits / Stock'),
+                  Tab(text: 'Menu / Plats'),
+                ],
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _ProductsBody(),
+                  _MenuPanel(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Column(
       children: [
         const _ProductsToolbar(),
         const Divider(height: 1),
-        Expanded(
-          child: productsAsync.when(
-            data: (products) {
-              final isWide = MediaQuery.sizeOf(context).width >= 700;
-              Future<void> onRefresh() async {
-                await OfflineCacheService.instance.syncAll();
-                ref.invalidate(productsProvider);
-              }
-
-              if (products.data.isEmpty) {
-                if (!isWide) {
-                  return RefreshIndicator(
-                    onRefresh: onRefresh,
-                    child: ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: [
-                        SizedBox(
-                          height: MediaQuery.sizeOf(context).height * 0.6,
-                          child: const Center(
-                            child: Text('Aucun produit trouvé',
-                                style: TextStyle(color: AppColors.textSecondary)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                return const Center(
-                    child: Text('Aucun produit trouvé',
-                        style: TextStyle(color: AppColors.textSecondary)));
-              }
-              if (isWide) return _ProductTable(products: products.data);
-              return RefreshIndicator(
-                onRefresh: onRefresh,
-                child: ListView.separated(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  itemCount: products.data.length,
-                  separatorBuilder: (ctx, i) => const SizedBox(height: 8),
-                  itemBuilder: (ctx, i) =>
-                      _ProductCard(product: products.data[i]),
-                ),
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(
-                child: Text('Erreur: $e',
-                    style: const TextStyle(color: AppColors.error))),
-          ),
-        ),
+        const Expanded(child: _ProductsBody()),
       ],
     );
   }
+}
+
+// ── Products body (extracted for reuse in tabs) ───────────────────────────────
+
+class _ProductsBody extends ConsumerWidget {
+  const _ProductsBody();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final productsAsync = ref.watch(productsProvider);
+
+    return productsAsync.when(
+      data: (products) {
+        final isWide = MediaQuery.sizeOf(context).width >= 700;
+        Future<void> onRefresh() async {
+          await OfflineCacheService.instance.syncAll();
+          ref.invalidate(productsProvider);
+        }
+
+        if (products.data.isEmpty) {
+          if (!isWide) {
+            return RefreshIndicator(
+              onRefresh: onRefresh,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  SizedBox(
+                    height: MediaQuery.sizeOf(context).height * 0.6,
+                    child: const Center(
+                      child: Text('Aucun produit trouvé',
+                          style: TextStyle(color: AppColors.textSecondary)),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+          return const Center(
+              child: Text('Aucun produit trouvé',
+                  style: TextStyle(color: AppColors.textSecondary)));
+        }
+        if (isWide) return _ProductTable(products: products.data);
+        return RefreshIndicator(
+          onRefresh: onRefresh,
+          child: ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            itemCount: products.data.length,
+            separatorBuilder: (ctx, i) => const SizedBox(height: 8),
+            itemBuilder: (ctx, i) =>
+                _ProductCard(product: products.data[i]),
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+          child: Text('Erreur: $e',
+              style: const TextStyle(color: AppColors.error))),
+    );
+  }
+}
+
+// ── Menu panel (restaurant only) ──────────────────────────────────────────────
+
+class _MenuPanel extends StatefulWidget {
+  const _MenuPanel();
+  @override
+  State<_MenuPanel> createState() => _MenuPanelState();
+}
+
+class _MenuPanelState extends State<_MenuPanel> {
+  final _repo = RestaurantRepository();
+  final _prodRepo = ProductRepository();
+  List<MenuItemModel> _items = [];
+  List<CategoryModel> _categories = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final results = await Future.wait([
+        _repo.getMenuItems(),
+        _prodRepo.getCategories(),
+      ]);
+      if (mounted) {
+        setState(() {
+          _items = results[0] as List<MenuItemModel>;
+          _categories = results[1] as List<CategoryModel>;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.sizeOf(context).width >= 700;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${_items.length} plat${_items.length != 1 ? 's' : ''}',
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.textSecondary),
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _showForm(context),
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('Nouveau plat'),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(_error!,
+                style: const TextStyle(color: AppColors.error)),
+          ),
+        if (_loading)
+          const Expanded(child: Center(child: CircularProgressIndicator()))
+        else if (_items.isEmpty)
+          const Expanded(
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.restaurant_menu_rounded,
+                      size: 48, color: AppColors.textSecondary),
+                  SizedBox(height: 12),
+                  Text('Aucun plat dans le menu',
+                      style: TextStyle(color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+          )
+        else if (isWide)
+          Expanded(child: _MenuTable(items: _items, onEdit: (m) => _showForm(context, m), onDelete: (m) => _confirmDelete(context, m), onToggle: _toggleAvailable))
+        else
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.all(12),
+              itemCount: _items.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (_, i) => _MenuItemTile(
+                item: _items[i],
+                onEdit: () => _showForm(context, _items[i]),
+                onDelete: () => _confirmDelete(context, _items[i]),
+                onToggle: () => _toggleAvailable(_items[i]),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _toggleAvailable(MenuItemModel m) async {
+    try {
+      await _repo.updateMenuItem(m.id, available: !m.available);
+      _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : $e'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    }
+  }
+
+  void _showForm(BuildContext context, [MenuItemModel? m]) {
+    final nameCtrl = TextEditingController(text: m?.name ?? '');
+    final descCtrl = TextEditingController(text: m?.description ?? '');
+    final priceCtrl =
+        TextEditingController(text: m != null ? m.price.toStringAsFixed(2) : '');
+    String? selectedCatId = m?.categoryId;
+    bool available = m?.available ?? true;
+    final messenger = ScaffoldMessenger.of(context);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setInner) => AlertDialog(
+          title: Text(m == null ? 'Nouveau plat' : 'Modifier le plat'),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    autofocus: true,
+                    decoration: const InputDecoration(labelText: 'Nom du plat *'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: descCtrl,
+                    maxLines: 2,
+                    decoration:
+                        const InputDecoration(labelText: 'Description (optionnel)'),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: priceCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Prix *'),
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String?>(
+                    value: selectedCatId,
+                    decoration:
+                        const InputDecoration(labelText: 'Catégorie (optionnel)'),
+                    items: [
+                      const DropdownMenuItem(
+                          value: null, child: Text('— Aucune —')),
+                      ..._categories.map((c) =>
+                          DropdownMenuItem(value: c.id, child: Text(c.name))),
+                    ],
+                    onChanged: (v) => setInner(() => selectedCatId = v),
+                  ),
+                  SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Disponible', style: TextStyle(fontSize: 13)),
+                    value: available,
+                    onChanged: (v) => setInner(() => available = v),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annuler')),
+            ElevatedButton(
+              onPressed: () async {
+                final name = nameCtrl.text.trim();
+                final price = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
+                if (name.isEmpty) return;
+                Navigator.pop(ctx);
+                try {
+                  if (m == null) {
+                    await _repo.createMenuItem(
+                      name: name,
+                      description:
+                          descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+                      price: price,
+                      categoryId: selectedCatId,
+                      available: available,
+                    );
+                  } else {
+                    await _repo.updateMenuItem(m.id,
+                      name: name,
+                      description: descCtrl.text.trim().isEmpty
+                          ? null
+                          : descCtrl.text.trim(),
+                      price: price,
+                      categoryId: selectedCatId,
+                      available: available,
+                    );
+                  }
+                  _load();
+                } catch (e) {
+                  if (mounted) {
+                    messenger.showSnackBar(SnackBar(
+                      content: Text('Erreur : $e'),
+                      backgroundColor: AppColors.error,
+                    ));
+                  }
+                }
+              },
+              child: Text(m == null ? 'Créer' : 'Enregistrer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmDelete(BuildContext context, MenuItemModel m) {
+    final messenger = ScaffoldMessenger.of(context);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer le plat ?'),
+        content: Text('Supprimer "${m.name}" du menu ?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          ElevatedButton(
+            style:
+                ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await _repo.deleteMenuItem(m.id);
+                _load();
+              } catch (e) {
+                if (mounted) {
+                  messenger.showSnackBar(SnackBar(
+                    content: Text('Erreur : $e'),
+                    backgroundColor: AppColors.error,
+                  ));
+                }
+              }
+            },
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MenuTable extends StatelessWidget {
+  final List<MenuItemModel> items;
+  final void Function(MenuItemModel) onEdit;
+  final void Function(MenuItemModel) onDelete;
+  final void Function(MenuItemModel) onToggle;
+  const _MenuTable({required this.items, required this.onEdit, required this.onDelete, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = NumberFormat('#,##0.00');
+    return SingleChildScrollView(
+      child: Table(
+        columnWidths: const {
+          0: FlexColumnWidth(3),
+          1: FlexColumnWidth(2),
+          2: FlexColumnWidth(1.5),
+          3: FixedColumnWidth(80),
+          4: FixedColumnWidth(96),
+        },
+        children: [
+          TableRow(
+            decoration:
+                BoxDecoration(color: AppColors.primary.withValues(alpha: 0.06)),
+            children: const [
+              _TH('Nom'),
+              _TH('Catégorie'),
+              _TH('Prix'),
+              _TH('Dispo'),
+              _TH(''),
+            ],
+          ),
+          ...items.map((m) => TableRow(
+                decoration: BoxDecoration(
+                    border: Border(
+                        bottom: BorderSide(color: AppColors.divider))),
+                children: [
+                  _TD(m.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  _TD(m.categoryName ?? '—'),
+                  _TD(fmt.format(m.price),
+                      style: const TextStyle(color: AppColors.primary)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Switch(
+                      value: m.available,
+                      onChanged: (_) => onToggle(m),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined,
+                            size: 16, color: AppColors.textSecondary),
+                        onPressed: () => onEdit(m),
+                        padding: EdgeInsets.zero,
+                        constraints:
+                            const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded,
+                            size: 16, color: AppColors.error),
+                        onPressed: () => onDelete(m),
+                        padding: EdgeInsets.zero,
+                        constraints:
+                            const BoxConstraints(minWidth: 32, minHeight: 32),
+                      ),
+                    ],
+                  ),
+                ],
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+class _MenuItemTile extends StatelessWidget {
+  final MenuItemModel item;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final VoidCallback onToggle;
+  const _MenuItemTile({required this.item, required this.onEdit, required this.onDelete, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ListTile(
+        dense: true,
+        leading: CircleAvatar(
+          backgroundColor:
+              (item.available ? AppColors.primary : AppColors.textSecondary)
+                  .withValues(alpha: 0.12),
+          child: Icon(Icons.restaurant_menu_rounded,
+              size: 18,
+              color: item.available
+                  ? AppColors.primary
+                  : AppColors.textSecondary),
+        ),
+        title: Text(item.name,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        subtitle: Text(
+            '${item.categoryName ?? '—'} · ${NumberFormat('#,##0.00').format(item.price)} HTG',
+            style:
+                const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Switch(value: item.available, onChanged: (_) => onToggle(),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            IconButton(
+              icon: const Icon(Icons.edit_outlined,
+                  size: 16, color: AppColors.textSecondary),
+              onPressed: onEdit,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded,
+                  size: 16, color: AppColors.error),
+              onPressed: onDelete,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TH extends StatelessWidget {
+  final String text;
+  const _TH(this.text);
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Text(text,
+            style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+                color: AppColors.textSecondary)),
+      );
+}
+
+class _TD extends StatelessWidget {
+  final String text;
+  final TextStyle? style;
+  const _TD(this.text, {this.style});
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Text(text,
+            style: style ?? const TextStyle(fontSize: 13),
+            overflow: TextOverflow.ellipsis),
+      );
 }
 
 // ─── Toolbar ─────────────────────────────────────────────────────────────────

@@ -28,16 +28,18 @@ class RestaurantOrder(UUIDBase):
 class RestaurantOrderItem(UUIDBase):
     __tablename__ = "restaurant_order_items"
 
-    order_id   = Column(String(36), ForeignKey('restaurant_orders.id'), nullable=False, index=True)
-    product_id = Column(String(36), ForeignKey('products.id'),          nullable=False)
-    quantity   = Column(Numeric(10, 2), default=1, nullable=False)
-    unit_price = Column(Numeric(10, 2), nullable=False)
-    notes      = Column(String(255), nullable=True)
-    status     = Column(
+    order_id      = Column(String(36), ForeignKey('restaurant_orders.id'), nullable=False, index=True)
+    product_id    = Column(String(36), ForeignKey('products.id'),          nullable=True)
+    menu_item_id  = Column(String(36), ForeignKey('menu_items.id'),        nullable=True)
+    quantity      = Column(Numeric(10, 2), default=1, nullable=False)
+    unit_price    = Column(Numeric(10, 2), nullable=False)
+    notes         = Column(String(255), nullable=True)
+    status        = Column(
         SAEnum('pending', 'preparing', 'ready', name='restaurant_item_status'),
         default='pending',
         nullable=False,
     )
 
-    order   = relationship('RestaurantOrder', back_populates='items')
-    product = relationship('Product', lazy='joined')
+    order     = relationship('RestaurantOrder', back_populates='items')
+    product   = relationship('Product',  lazy='joined', foreign_keys=[product_id])
+    menu_item = relationship('MenuItem', lazy='joined', foreign_keys=[menu_item_id])

@@ -1,3 +1,39 @@
+class MenuItemModel {
+  final String id;
+  final String name;
+  final String? description;
+  final double price;
+  final String? categoryId;
+  final String? categoryName;
+  final String? productId;
+  final bool available;
+  final String? imageUrl;
+
+  const MenuItemModel({
+    required this.id,
+    required this.name,
+    this.description,
+    required this.price,
+    this.categoryId,
+    this.categoryName,
+    this.productId,
+    required this.available,
+    this.imageUrl,
+  });
+
+  factory MenuItemModel.fromJson(Map<String, dynamic> j) => MenuItemModel(
+        id:           j['id'] as String,
+        name:         j['name'] as String,
+        description:  j['description'] as String?,
+        price:        (j['price'] as num?)?.toDouble() ?? 0.0,
+        categoryId:   j['category_id'] as String?,
+        categoryName: j['category_name'] as String?,
+        productId:    j['product_id'] as String?,
+        available:    j['available'] as bool? ?? true,
+        imageUrl:     j['image_url'] as String?,
+      );
+}
+
 // Kept for backward compat, not actively used in UI
 class IngredientModel {
   final String id;

@@ -42,6 +42,7 @@ from api.models.RestaurantOrder import RestaurantOrder as _RestaurantOrder, Rest
 from api.models.BillingExtra import BillingExtra as _BillingExtra  # noqa: F401 — ensures table creation
 from api.models.Ingredient import Ingredient as _Ingredient  # noqa: F401 — ensures table creation
 from api.models.ModifierGroup import ModifierGroup as _ModifierGroup, ModifierOption as _ModifierOption  # noqa: F401
+from api.models.MenuItem import MenuItem as _MenuItem  # noqa: F401
 from fastapi.staticfiles import StaticFiles
 from fastapi.encoders import jsonable_encoder
 
@@ -490,6 +491,11 @@ def on_startup():
             for _sql in [
                 "ALTER TABLE users ADD COLUMN offline_hash VARCHAR(64) NULL",
                 "ALTER TABLE users MODIFY COLUMN phone VARCHAR(255) NULL",
+                # menu_item_id sur modifier_groups
+                "ALTER TABLE modifier_groups ADD COLUMN menu_item_id VARCHAR(36) NULL",
+                # menu_item_id sur restaurant_order_items, product_id devient nullable
+                "ALTER TABLE restaurant_order_items ADD COLUMN menu_item_id VARCHAR(36) NULL",
+                "ALTER TABLE restaurant_order_items MODIFY COLUMN product_id VARCHAR(36) NULL",
             ]:
                 try:
                     db.execute(text(_sql))

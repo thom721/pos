@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart' show DioException;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
+import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:pos_connect/data/repositories/return_repository.dart';
 import 'package:pos_connect/providers/pos_provider.dart';
 import 'package:pos_connect/providers/sale_provider.dart';
@@ -685,17 +685,7 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) {
-        String msg;
-        if (e is DioException) {
-          msg = (e.response?.data?['message'] as String?) ??
-              (e.response?.data?['detail'] as String?) ??
-              'Erreur réseau';
-        } else {
-          msg = e.toString();
-        }
-        setState(() { _submitting = false; _error = msg; });
-      }
+      if (mounted) setState(() { _submitting = false; _error = extractAnyError(e); });
     }
   }
 

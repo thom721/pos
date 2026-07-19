@@ -13,6 +13,7 @@ from api.models.RestaurantTable import RestaurantTable
 from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
 from api.models.Ingredient import Ingredient
 from api.models.ModifierGroup import ModifierGroup, ModifierOption
+from api.models.MenuItem import MenuItem
 from api.models.Product import Product
 from api.services.warehouse_helper import resolve_warehouse_id
 from api.ws_manager import manager
@@ -56,10 +57,17 @@ def _table_dict(t: RestaurantTable) -> dict:
 
 
 def _item_dict(i: RestaurantOrderItem) -> dict:
+    if i.menu_item_id and hasattr(i, 'menu_item') and i.menu_item:
+        name = i.menu_item.name
+    elif i.product:
+        name = i.product.name
+    else:
+        name = '—'
     return {
         'id': i.id,
         'product_id': i.product_id,
-        'product_name': i.product.name if i.product else None,
+        'menu_item_id': i.menu_item_id,
+        'product_name': name,
         'quantity': float(i.quantity),
         'unit_price': float(i.unit_price),
         'notes': i.notes,
@@ -109,7 +117,8 @@ class TableAssign(BaseModel):
     waiter_id: Optional[str] = None  # None = désassigner
 
 class OrderItemAdd(BaseModel):
-    product_id: str
+    product_id: Optional[str] = None
+    menu_item_id: Optional[str] = None
     quantity: float = 1.0
     notes: Optional[str] = None
 
@@ -154,6 +163,22 @@ class ModifierGroupUpdate(BaseModel):
 class ModifierOptionCreate(BaseModel):
     name: str
     extra_price: float = 0.0
+
+class MenuItemCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float = 0.0
+    category_id: Optional[str] = None
+    product_id: Optional[str] = None
+    available: bool = True
+
+class MenuItemUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    category_id: Optional[str] = None
+    product_id: Optional[str] = None
+    available: Optional[bool] = None
 
 
 # ── Serveurs (waiters) ────────────────────────────────────────────────────────
@@ -389,16 +414,37 @@ def add_item(
     if order.status == 'closed':
         raise HTTPException(400, "Cette commande est déjà clôturée")
 
-    product = db.query(Product).filter(Product.id == data.product_id).first()
-    if not product:
-        raise HTTPException(404, "Produit introuvable")
+    if not data.product_id and not data.menu_item_id:
+        raise HTTPException(400, "product_id ou menu_item_id requis")
+
+    item_name: str
+    item_price: float
+    resolved_product_id = data.product_id
+    resolved_menu_item_id = data.menu_item_id
+
+    if data.menu_item_id:
+        mi = db.query(MenuItem).filter(
+            MenuItem.id == data.menu_item_id,
+            MenuItem.tenant_id == current_user.tenant_id,
+        ).first()
+        if not mi:
+            raise HTTPException(404, "Plat introuvable")
+        item_name = mi.name
+        item_price = float(mi.price)
+    else:
+        product = db.query(Product).filter(Product.id == data.product_id).first()
+        if not product:
+            raise HTTPException(404, "Produit introuvable")
+        item_name = product.name
+        item_price = float(product.sale_price)
 
     item = RestaurantOrderItem(
         id=str(uuid.uuid4()),
         order_id=order_id,
-        product_id=data.product_id,
+        product_id=resolved_product_id,
+        menu_item_id=resolved_menu_item_id,
+        unit_price=item_price,
         quantity=data.quantity,
-        unit_price=product.sale_price,
         notes=data.notes,
     )
     db.add(item)
@@ -836,4 +882,103 @@ def delete_modifier_option(
     if not opt:
         raise HTTPException(404, "Option introuvable")
     db.delete(opt)
+    db.commit()
+
+
+# ── Menu items ────────────────────────────────────────────────────────────────
+
+def _menu_item_dict(m: MenuItem) -> dict:
+    return {
+        'id': m.id,
+        'name': m.name,
+        'description': m.description,
+        'price': float(m.price or 0),
+        'category_id': m.category_id,
+        'category_name': m.category.name if m.category else None,
+        'product_id': m.product_id,
+        'available': m.available,
+        'image_url': m.image_url,
+    }
+
+
+@router.get("/menu-items/")
+def list_menu_items(
+    category_id: Optional[str] = None,
+    available_only: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_READ)),
+):
+    q = db.query(MenuItem).filter(MenuItem.tenant_id == current_user.tenant_id)
+    if category_id:
+        q = q.filter(MenuItem.category_id == category_id)
+    if available_only:
+        q = q.filter(MenuItem.available.is_(True))
+    return [_menu_item_dict(m) for m in q.order_by(MenuItem.name).all()]
+
+
+@router.post("/menu-items/", status_code=201)
+def create_menu_item(
+    data: MenuItemCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_CREATE)),
+):
+    m = MenuItem(
+        id=str(uuid.uuid4()),
+        tenant_id=current_user.tenant_id,
+        name=data.name,
+        description=data.description,
+        price=data.price,
+        category_id=data.category_id or None,
+        product_id=data.product_id or None,
+        available=data.available,
+    )
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return _menu_item_dict(m)
+
+
+@router.put("/menu-items/{item_id}")
+def update_menu_item(
+    item_id: str,
+    data: MenuItemUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    m = db.query(MenuItem).filter(
+        MenuItem.id == item_id,
+        MenuItem.tenant_id == current_user.tenant_id,
+    ).first()
+    if not m:
+        raise HTTPException(404, "Plat introuvable")
+    if data.name is not None:
+        m.name = data.name
+    if data.description is not None:
+        m.description = data.description
+    if data.price is not None:
+        m.price = data.price
+    if data.category_id is not None:
+        m.category_id = data.category_id or None
+    if data.product_id is not None:
+        m.product_id = data.product_id or None
+    if data.available is not None:
+        m.available = data.available
+    db.commit()
+    db.refresh(m)
+    return _menu_item_dict(m)
+
+
+@router.delete("/menu-items/{item_id}", status_code=204)
+def delete_menu_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_DELETE)),
+):
+    m = db.query(MenuItem).filter(
+        MenuItem.id == item_id,
+        MenuItem.tenant_id == current_user.tenant_id,
+    ).first()
+    if not m:
+        raise HTTPException(404, "Plat introuvable")
+    db.delete(m)
     db.commit()

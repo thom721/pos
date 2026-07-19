@@ -379,10 +379,21 @@ def create_tenant(
         is_claimed=False,
     )
     db.add(default_warehouse)
+    db.flush()
+
+    # Caisse par défaut — 1 par tenant, l'admin ou le tenant en créé d'autres jusqu'à max_caisses
+    default_register = PosRegister(
+        tenant_id=tenant.id,
+        warehouse_id=default_warehouse.id,
+        name="Caisse 1",
+        is_active=True,
+    )
+    db.add(default_register)
     db.commit()
     db.refresh(tenant)
 
-    _log.info("Tenant créé: %s (%s) type=%s, warehouse=%s", tenant.slug, tenant.id, tenant.type, default_warehouse.id)
+    _log.info("Tenant créé: %s (%s) type=%s, warehouse=%s, register=%s",
+              tenant.slug, tenant.id, tenant.type, default_warehouse.id, default_register.id)
 
     return {
         "id":                  tenant.id,
@@ -476,7 +487,23 @@ def patch_tenant(
     if body.max_caisses is not None:
         if body.max_caisses < 1:
             raise HTTPException(status_code=400, detail="max_caisses doit être >= 1")
+        old_max = t.max_caisses
         t.max_caisses = body.max_caisses
+        # Créer les caisses manquantes si le quota augmente
+        if body.max_caisses > old_max:
+            existing = db.query(PosRegister).filter_by(
+                tenant_id=t.id, is_active=True
+            ).count()
+            default_wh = db.query(Warehouse).filter_by(
+                tenant_id=t.id, is_default=True
+            ).first()
+            for i in range(existing + 1, body.max_caisses + 1):
+                db.add(PosRegister(
+                    tenant_id=t.id,
+                    warehouse_id=default_wh.id if default_wh else None,
+                    name=f"Caisse {i}",
+                    is_active=True,
+                ))
 
     if body.max_depots is not None:
         if body.max_depots < 1:
@@ -591,6 +618,47 @@ def purge_unclaimed_warehouses(
         db.delete(wh)
     db.commit()
     return {"deleted": len(rows)}
+
+
+# ── Register management (per tenant) ────────────────────────────────────────
+
+@router.get("/tenants/{tenant_id}/registers")
+def list_tenant_registers(
+    tenant_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """List all POS registers for a tenant."""
+    regs = db.query(PosRegister).filter_by(tenant_id=tenant_id).order_by(PosRegister.name).all()
+    return [
+        {
+            "id":           r.id,
+            "name":         r.name,
+            "device_id":    r.device_id,
+            "is_active":    r.is_active,
+            "last_seen":    r.last_seen.isoformat() if r.last_seen else None,
+            "has_session":  bool(r.session_token),
+        }
+        for r in regs
+    ]
+
+
+@router.patch("/tenants/{tenant_id}/registers/{register_id}")
+def toggle_tenant_register(
+    tenant_id: str,
+    register_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """Enable or disable a specific register."""
+    reg = db.query(PosRegister).filter_by(id=register_id, tenant_id=tenant_id).first()
+    if not reg:
+        raise HTTPException(status_code=404, detail="Caisse introuvable")
+    reg.is_active = not reg.is_active
+    if not reg.is_active:
+        reg.session_token = None
+    db.commit()
+    return {"id": reg.id, "is_active": reg.is_active}
 
 
 # ── Confirm pending payment ──────────────────────────────────────────────────

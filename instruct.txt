@@ -260,6 +260,38 @@ UPDATE sync_state SET last_push_at = NULL, records_pushed = 0;
 python3 -c "from pwdlib import PasswordHash; print(PasswordHash.recommended().hash('@#Janvier'))"
 
 
+docker exec post_api python3 -c "
+import os, pymysql
+from pwdlib import PasswordHash
+
+ph = PasswordHash.recommended()
+NEW_PASSWORD = '@#Janvier21@'
+h = ph.hash(NEW_PASSWORD)
+print('Self-verify:', ph.verify(NEW_PASSWORD, h))
+
+conn = pymysql.connect(
+    host=os.environ['DB_HOST'],
+    user=os.environ['DB_USER'],
+    password=os.environ['DB_PASSWORD'],
+    database=os.environ['DB_NAME'],
+    charset='utf8mb4'
+)
+with conn:
+    with conn.cursor() as cur:
+        cur.execute(
+            \"UPDATE platform_config SET admin_email='admin@posconnect.ht', admin_password_hash=%s\",
+            (h,)
+        )
+    conn.commit()
+    with conn.cursor() as cur:
+        cur.execute('SELECT admin_password_hash FROM platform_config LIMIT 1')
+        stored = cur.fetchone()[0]
+    ok = ph.verify(NEW_PASSWORD, stored)
+    print('Hash en DB:', stored[:40], '...')
+    print('Verification DB:', ok)
+"
+
+
 Voici les commandes à exécuter sur le serveur pour installer git et configurer un sparse-checkout (clone partiel — seulement api/, requirements.txt, server_main.py, service_wrapper.py, sans le frontend Flutter qui est lourd).
 
 Étape 1 — Installer git :
@@ -290,3 +322,11 @@ Pour les prochaines mises à jour, une seule commande :
 
 
 cd /opt/post/fastapi && git pull origin main
+
+cd fastapi/ && git pull && cd .. && docker compose down && docker compose up -d --build
+
+
+cd /Users/kikipllc/development/pos_api/frontend
+flutter build apk --release
+
+build/app/outputs/flutter-apk/app-release.apk

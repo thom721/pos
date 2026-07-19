@@ -68,3 +68,6 @@ flutter build web --release \
   --dart-define=FLUTTER_WEB_USE_SKIA=false
 
 scp -r build/web/* root@82.29.153.24:/var/www/pos.infini-software.cloud/
+
+ssh root@82.29.153.24 "mkdir -p /var/www/pos.infini-software.cloud"
+scp -r build/web/* root@82.29.153.24:/var/www/pos.infini-software.cloud/

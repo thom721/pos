@@ -59,11 +59,11 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
     }
   }
 
-  Future<void> _addItem(ProductModel product, {String? notes}) async {
+  Future<void> _addItem(MenuItemModel menuItem, {String? notes}) async {
     if (_order == null) return;
     setState(() => _submitting = true);
     try {
-      _order = await _repo.addItem(_order!.id, productId: product.id, notes: notes);
+      _order = await _repo.addItem(_order!.id, menuItemId: menuItem.id, notes: notes);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -382,7 +382,7 @@ class _DesktopLayout extends StatelessWidget {
   final RestaurantOrderModel order;
   final String symbol;
   final bool submitting;
-  final Future<void> Function(ProductModel, {String? notes}) onAddItem;
+  final Future<void> Function(MenuItemModel, {String? notes}) onAddItem;
   final Future<void> Function(String) onRemoveItem;
   final Future<void> Function(String, double) onUpdateQuantity;
   final VoidCallback onKitchen;
@@ -429,7 +429,7 @@ class _MobileLayout extends StatelessWidget {
   final RestaurantOrderModel order;
   final String symbol;
   final bool submitting;
-  final Future<void> Function(ProductModel, {String? notes}) onAddItem;
+  final Future<void> Function(MenuItemModel, {String? notes}) onAddItem;
   final Future<void> Function(String) onRemoveItem;
   final Future<void> Function(String, double) onUpdateQuantity;
   final VoidCallback onKitchen;
@@ -550,7 +550,7 @@ class _CartColumn extends StatelessWidget {
 // ── Product browser (right panel) ─────────────────────────────────────────────
 
 class _ProductBrowser extends StatefulWidget {
-  final Future<void> Function(ProductModel, {String? notes}) onAddItem;
+  final Future<void> Function(MenuItemModel, {String? notes}) onAddItem;
 
   const _ProductBrowser({required this.onAddItem});
 
@@ -559,12 +559,13 @@ class _ProductBrowser extends StatefulWidget {
 }
 
 class _ProductBrowserState extends State<_ProductBrowser> {
-  final _repo = ProductRepository();
+  final _menuRepo = RestaurantRepository();
+  final _prodRepo = ProductRepository();
   List<CategoryModel> _categories = [];
-  List<ProductModel> _products = [];
-  String? _selectedCategoryId; // null = "Tous"
+  List<MenuItemModel> _items = [];
+  String? _selectedCategoryId;
   bool _loadingCats = true;
-  bool _loadingProds = false;
+  bool _loadingItems = false;
   String _search = '';
   final _searchCtrl = TextEditingController();
 
@@ -580,36 +581,16 @@ class _ProductBrowserState extends State<_ProductBrowser> {
     super.dispose();
   }
 
-  // Mots-clés non-restaurant à masquer, comparés après normalisation
-  static const _hiddenKeywords = [
-    'electronique', 'cosmetique', 'beaute', 'hygiene', 'hygienne',
-  ];
-
-  static String _normalize(String s) => s
-      .toLowerCase()
-      .replaceAll(RegExp(r'[éèêë]'), 'e')
-      .replaceAll(RegExp(r'[àâä]'), 'a')
-      .replaceAll(RegExp(r'[îï]'), 'i')
-      .replaceAll(RegExp(r'[ôö]'), 'o')
-      .replaceAll(RegExp(r'[ûùü]'), 'u')
-      .replaceAll('ç', 'c')
-      .replaceAll(RegExp(r'[^a-z]'), '');
-
-  static bool _isRestaurantCategory(CategoryModel c) {
-    final n = _normalize(c.name);
-    return !_hiddenKeywords.any((kw) => n.contains(kw));
-  }
-
   Future<void> _loadCategories() async {
     setState(() => _loadingCats = true);
     try {
-      final cats = await _repo.getCategories();
+      final cats = await _prodRepo.getCategories();
       if (!mounted) return;
       setState(() {
-        _categories = cats.where(_isRestaurantCategory).toList();
+        _categories = cats;
         _loadingCats = false;
       });
-      _loadProducts();
+      _loadItems();
     } catch (e) {
       if (mounted) setState(() => _loadingCats = false);
     }
@@ -618,44 +599,43 @@ class _ProductBrowserState extends State<_ProductBrowser> {
   void _selectCategory(String? catId) {
     if (catId == _selectedCategoryId) return;
     setState(() => _selectedCategoryId = catId);
-    _loadProducts();
+    _loadItems();
   }
 
-  Future<void> _loadProducts() async {
-    setState(() => _loadingProds = true);
+  Future<void> _loadItems() async {
+    setState(() => _loadingItems = true);
     try {
-      final result = await _repo.getProducts(
-        categoryId: _selectedCategoryId,
-        search: _search.isEmpty ? null : _search,
-        limit: 60,
-      );
-      if (mounted) setState(() => _products = result.data);
+      final all = await _menuRepo.getMenuItems(categoryId: _selectedCategoryId);
+      final q = _search.toLowerCase();
+      final filtered = q.isEmpty
+          ? all
+          : all.where((m) => m.name.toLowerCase().contains(q)).toList();
+      if (mounted) setState(() => _items = filtered);
     } catch (_) {
     } finally {
-      if (mounted) setState(() => _loadingProds = false);
+      if (mounted) setState(() => _loadingItems = false);
     }
   }
 
   void _onSearchChanged(String v) {
     _search = v;
-    _loadProducts();
+    _loadItems();
   }
 
-  Future<void> _tapProduct(ProductModel product) async {
-    // Charge les groupes de modificateurs liés au produit et/ou à sa catégorie
+  Future<void> _tapItem(MenuItemModel item) async {
     List<ModifierGroupModel> groups = [];
     try {
-      final repo = RestaurantRepository();
       final futures = <Future<List<ModifierGroupModel>>>[
-        repo.getModifierGroups(productId: product.id),
-        if (product.category != null)
-          repo.getModifierGroups(categoryId: product.category!.id),
+        if (item.categoryId != null)
+          _menuRepo.getModifierGroups(categoryId: item.categoryId),
       ];
-      final results = await Future.wait(futures);
-      final seen = <String>{};
-      for (final list in results) {
-        for (final g in list) {
-          if (seen.add(g.id)) groups.add(g);
+      if (futures.isNotEmpty) {
+        final results = await Future.wait(futures);
+        final seen = <String>{};
+        for (final list in results) {
+          for (final g in list) {
+            if (seen.add(g.id)) groups.add(g);
+          }
         }
       }
     } catch (_) {}
@@ -663,11 +643,10 @@ class _ProductBrowserState extends State<_ProductBrowser> {
     if (!mounted) return;
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) =>
-          _ModifierDialog(product: product, groups: groups),
+      builder: (_) => _ModifierDialog(menuItem: item, groups: groups),
     );
     if (result == null) return;
-    await widget.onAddItem(product, notes: result['notes'] as String?);
+    await widget.onAddItem(item, notes: result['notes'] as String?);
   }
 
   @override
@@ -730,11 +709,11 @@ class _ProductBrowserState extends State<_ProductBrowser> {
             ),
           ),
 
-        // Product grid
+        // Menu item grid
         Expanded(
-          child: _loadingProds
+          child: _loadingItems
               ? const Center(child: CircularProgressIndicator())
-              : _products.isEmpty
+              : _items.isEmpty
                   ? const Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -742,7 +721,7 @@ class _ProductBrowserState extends State<_ProductBrowser> {
                           Icon(Icons.search_off_rounded,
                               size: 48, color: AppColors.textSecondary),
                           SizedBox(height: 12),
-                          Text('Aucun produit trouvé',
+                          Text('Aucun plat trouvé',
                               style: TextStyle(
                                   color: AppColors.textSecondary)),
                         ],
@@ -757,10 +736,10 @@ class _ProductBrowserState extends State<_ProductBrowser> {
                         crossAxisSpacing: 10,
                         childAspectRatio: 0.82,
                       ),
-                      itemCount: _products.length,
-                      itemBuilder: (_, i) => _ProductCard(
-                        product: _products[i],
-                        onTap: () => _tapProduct(_products[i]),
+                      itemCount: _items.length,
+                      itemBuilder: (_, i) => _MenuItemCard(
+                        item: _items[i],
+                        onTap: () => _tapItem(_items[i]),
                       ),
                     ),
         ),
@@ -803,108 +782,116 @@ class _CategoryChip extends StatelessWidget {
   }
 }
 
-// ── Product card ──────────────────────────────────────────────────────────────
+// ── Menu item card ────────────────────────────────────────────────────────────
 
-class _ProductCard extends StatelessWidget {
-  final ProductModel product;
+class _MenuItemCard extends StatelessWidget {
+  final MenuItemModel item;
   final VoidCallback onTap;
 
-  const _ProductCard({required this.product, required this.onTap});
+  const _MenuItemCard({required this.item, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.divider),
-          boxShadow: const [
-            BoxShadow(
-                color: Color(0x08000000),
-                blurRadius: 4,
-                offset: Offset(0, 2)),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(10)),
-              child: SizedBox(
-                height: 80,
-                width: double.infinity,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (product.imageUrl != null &&
-                        product.imageUrl!.isNotEmpty)
-                      CachedNetworkImage(
-                        imageUrl:
-                            '${dio.options.baseUrl}${product.imageUrl}',
-                        fit: BoxFit.cover,
-                        placeholder: (_, __) =>
-                            _ProductPlaceholder(product: product),
-                        errorWidget: (_, __, ___) =>
-                            _ProductPlaceholder(product: product),
-                      )
-                    else
-                      _ProductPlaceholder(product: product),
-                    if (product.description != null &&
-                        product.description!.isNotEmpty)
-                      Positioned(
-                        top: 6,
-                        right: 6,
-                        child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: const BoxDecoration(
-                            color: AppColors.primary,
-                            shape: BoxShape.circle,
+      onTap: item.available ? onTap : null,
+      child: Opacity(
+        opacity: item.available ? 1.0 : 0.5,
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.divider),
+            boxShadow: const [
+              BoxShadow(
+                  color: Color(0x08000000),
+                  blurRadius: 4,
+                  offset: Offset(0, 2)),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(10)),
+                child: SizedBox(
+                  height: 80,
+                  width: double.infinity,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (item.imageUrl != null && item.imageUrl!.isNotEmpty)
+                        CachedNetworkImage(
+                          imageUrl: '${dio.options.baseUrl}${item.imageUrl}',
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => _MenuItemPlaceholder(),
+                          errorWidget: (_, __, ___) => _MenuItemPlaceholder(),
+                        )
+                      else
+                        _MenuItemPlaceholder(),
+                      if (item.description != null &&
+                          item.description!.isNotEmpty)
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: const BoxDecoration(
+                              color: AppColors.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.tune_rounded,
+                                color: Colors.white, size: 10),
                           ),
-                          child: const Icon(Icons.tune_rounded,
-                              color: Colors.white, size: 10),
                         ),
+                      if (!item.available)
+                        Container(
+                          color: Colors.black38,
+                          alignment: Alignment.center,
+                          child: const Text('Indisponible',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(9),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 12),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      NumberFormat('#,##0.00').format(item.price),
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
                       ),
+                    ),
                   ],
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(9),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product.name,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 12),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    NumberFormat('#,##0.00').format(product.salePrice),
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _ProductPlaceholder extends StatelessWidget {
-  final ProductModel product;
-  const _ProductPlaceholder({required this.product});
+class _MenuItemPlaceholder extends StatelessWidget {
+  const _MenuItemPlaceholder();
 
   @override
   Widget build(BuildContext context) {
@@ -922,9 +909,9 @@ class _ProductPlaceholder extends StatelessWidget {
 // Retourne Map{'notes': String?} ou null si annulé.
 
 class _ModifierDialog extends StatefulWidget {
-  final ProductModel product;
+  final MenuItemModel menuItem;
   final List<ModifierGroupModel> groups;
-  const _ModifierDialog({required this.product, required this.groups});
+  const _ModifierDialog({required this.menuItem, required this.groups});
 
   @override
   State<_ModifierDialog> createState() => _ModifierDialogState();
@@ -999,12 +986,12 @@ class _ModifierDialogState extends State<_ModifierDialog> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.product.name,
+                Text(widget.menuItem.name,
                     style: const TextStyle(
                         fontSize: 15, fontWeight: FontWeight.w700)),
-                if (widget.product.description != null &&
-                    widget.product.description!.isNotEmpty)
-                  Text(widget.product.description!,
+                if (widget.menuItem.description != null &&
+                    widget.menuItem.description!.isNotEmpty)
+                  Text(widget.menuItem.description!,
                       style: const TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,

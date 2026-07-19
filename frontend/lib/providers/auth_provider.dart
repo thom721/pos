@@ -200,7 +200,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       } else if (e.toString().contains('403')) {
         msg = 'Abonnement suspendu ou expiré';
       } else if (e.toString().contains('409')) {
-        msg = 'Limite de caisses atteinte. Fermez une caisse avant de vous connecter.';
+        msg = 'Erreur de connexion. Veuillez réessayer.';
       } else {
         msg = 'Impossible de se connecter au cloud. Vérifiez votre connexion.';
       }

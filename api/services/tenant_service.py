@@ -187,43 +187,24 @@ def cloud_login(db: Session, email: str, password: str,
         ).first()
 
         if not register:
-            # 2. All active slots have live sessions → block
-            online_count = db.query(PosRegister).filter(
-                PosRegister.tenant_id == tenant.id,
-                PosRegister.is_active == True,   # noqa: E712
-                PosRegister.last_seen >= cutoff,
-            ).count()
-            if online_count >= tenant.max_caisses:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=(
-                        f"Limite de caisses atteinte ({tenant.max_caisses}). "
-                        "Une caisse est déjà ouverte — fermez-la avant d'en ouvrir une autre."
-                    ),
-                )
-
-            # 3. Claim a free slot (session expired or never used)
+            # 2. Claim a free slot if available — login is NEVER blocked by caisse limit
             register = db.query(PosRegister).filter(
                 PosRegister.tenant_id == tenant.id,
                 PosRegister.is_active == True,   # noqa: E712
                 or_(PosRegister.last_seen.is_(None), PosRegister.last_seen < cutoff),
             ).order_by(PosRegister.last_seen.is_(None).desc(), PosRegister.last_seen.asc()).first()
 
-            if not register:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Aucun slot de caisse disponible pour ce tenant.",
-                )
+            if register:
+                register.device_id = device_id
 
-            register.device_id = device_id
-
-        # Rotate session token and stamp last_seen on every login
-        session_token = str(uuid.uuid4())
-        register.session_token = session_token
-        register.last_seen = datetime.now(timezone.utc)
-        db.commit()
-        db.refresh(register)
-        register_id = register.id
+        if register:
+            # Rotate session token and stamp last_seen on every login
+            session_token = str(uuid.uuid4())
+            register.session_token = session_token
+            register.last_seen = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(register)
+            register_id = register.id
 
     token_data = {
         "sub": user.username,
