@@ -491,11 +491,14 @@ def on_startup():
             for _sql in [
                 "ALTER TABLE users ADD COLUMN offline_hash VARCHAR(64) NULL",
                 "ALTER TABLE users MODIFY COLUMN phone VARCHAR(255) NULL",
-                # menu_item_id sur modifier_groups
+                # menu_item_id sur modifier_groups + warehouse_id
                 "ALTER TABLE modifier_groups ADD COLUMN menu_item_id VARCHAR(36) NULL",
+                "ALTER TABLE modifier_groups ADD COLUMN warehouse_id VARCHAR(36) NULL",
                 # menu_item_id sur restaurant_order_items, product_id devient nullable
                 "ALTER TABLE restaurant_order_items ADD COLUMN menu_item_id VARCHAR(36) NULL",
                 "ALTER TABLE restaurant_order_items MODIFY COLUMN product_id VARCHAR(36) NULL",
+                # warehouse_id sur menu_items
+                "ALTER TABLE menu_items ADD COLUMN warehouse_id VARCHAR(36) NULL",
             ]:
                 try:
                     db.execute(text(_sql))

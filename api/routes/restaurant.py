@@ -768,8 +768,10 @@ def list_modifier_groups(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_READ)),
 ):
+    wh_id = _resolve_wh(db, current_user)
     q = db.query(ModifierGroup).filter(
-        ModifierGroup.tenant_id == current_user.tenant_id
+        ModifierGroup.tenant_id == current_user.tenant_id,
+        ModifierGroup.warehouse_id == wh_id,
     )
     if product_id:
         q = q.filter(ModifierGroup.product_id == product_id)
@@ -787,6 +789,7 @@ def create_modifier_group(
     g = ModifierGroup(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
+        warehouse_id=_resolve_wh(db, current_user),
         name=data.name,
         product_id=data.product_id or None,
         category_id=data.category_id or None,
@@ -806,9 +809,11 @@ def update_modifier_group(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
 ):
+    wh_id = _resolve_wh(db, current_user)
     g = db.query(ModifierGroup).filter(
         ModifierGroup.id == group_id,
         ModifierGroup.tenant_id == current_user.tenant_id,
+        ModifierGroup.warehouse_id == wh_id,
     ).first()
     if not g:
         raise HTTPException(404, "Groupe introuvable")
@@ -833,9 +838,11 @@ def delete_modifier_group(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_DELETE)),
 ):
+    wh_id = _resolve_wh(db, current_user)
     g = db.query(ModifierGroup).filter(
         ModifierGroup.id == group_id,
         ModifierGroup.tenant_id == current_user.tenant_id,
+        ModifierGroup.warehouse_id == wh_id,
     ).first()
     if not g:
         raise HTTPException(404, "Groupe introuvable")
@@ -908,7 +915,11 @@ def list_menu_items(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_READ)),
 ):
-    q = db.query(MenuItem).filter(MenuItem.tenant_id == current_user.tenant_id)
+    wh_id = _resolve_wh(db, current_user)
+    q = db.query(MenuItem).filter(
+        MenuItem.tenant_id == current_user.tenant_id,
+        MenuItem.warehouse_id == wh_id,
+    )
     if category_id:
         q = q.filter(MenuItem.category_id == category_id)
     if available_only:
@@ -925,6 +936,7 @@ def create_menu_item(
     m = MenuItem(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
+        warehouse_id=_resolve_wh(db, current_user),
         name=data.name,
         description=data.description,
         price=data.price,
@@ -945,9 +957,11 @@ def update_menu_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
 ):
+    wh_id = _resolve_wh(db, current_user)
     m = db.query(MenuItem).filter(
         MenuItem.id == item_id,
         MenuItem.tenant_id == current_user.tenant_id,
+        MenuItem.warehouse_id == wh_id,
     ).first()
     if not m:
         raise HTTPException(404, "Plat introuvable")
@@ -974,9 +988,11 @@ def delete_menu_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_DELETE)),
 ):
+    wh_id = _resolve_wh(db, current_user)
     m = db.query(MenuItem).filter(
         MenuItem.id == item_id,
         MenuItem.tenant_id == current_user.tenant_id,
+        MenuItem.warehouse_id == wh_id,
     ).first()
     if not m:
         raise HTTPException(404, "Plat introuvable")
