@@ -6,7 +6,6 @@ import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart' show dio, extractAnyError;
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
-import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
 import 'package:pos_connect/providers/restaurant_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
@@ -560,7 +559,7 @@ class _ProductBrowser extends StatefulWidget {
 
 class _ProductBrowserState extends State<_ProductBrowser> {
   final _menuRepo = RestaurantRepository();
-  final _prodRepo = ProductRepository();
+
   List<CategoryModel> _categories = [];
   List<MenuItemModel> _items = [];
   String? _selectedCategoryId;
@@ -584,13 +583,24 @@ class _ProductBrowserState extends State<_ProductBrowser> {
   Future<void> _loadCategories() async {
     setState(() => _loadingCats = true);
     try {
-      final cats = await _prodRepo.getCategories();
+      final all = await _menuRepo.getMenuItems();
       if (!mounted) return;
+      final seen = <String>{};
+      final cats = <CategoryModel>[];
+      for (final item in all) {
+        if (item.categoryId != null &&
+            item.categoryName != null &&
+            seen.add(item.categoryId!)) {
+          cats.add(CategoryModel(
+              id: item.categoryId!, name: item.categoryName!));
+        }
+      }
       setState(() {
         _categories = cats;
+        _items = all;
         _loadingCats = false;
+        _loadingItems = false;
       });
-      _loadItems();
     } catch (e) {
       if (mounted) setState(() => _loadingCats = false);
     }
