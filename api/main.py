@@ -166,12 +166,12 @@ def _run_alembic_migrations() -> None:
         try:
             has_alembic_table = engine.dialect.has_table(lock_conn, "alembic_version")
             if not has_alembic_table:
-                _log.info("Nouveau déploiement — stamp Alembic à 'head'")
-                alembic_command.stamp(alembic_cfg, "head")
+                _log.info("Nouveau déploiement — stamp Alembic à 'heads'")
+                alembic_command.stamp(alembic_cfg, "heads")
             else:
-                _log.info("Déploiement existant — alembic upgrade head")
+                _log.info("Déploiement existant — alembic upgrade heads")
                 try:
-                    alembic_command.upgrade(alembic_cfg, "head")
+                    alembic_command.upgrade(alembic_cfg, "heads")
                 except Exception as rev_err:
                     # La révision courante dans alembic_version appartient à une
                     # ancienne chaîne de migrations (ex: top-level alembic/).
@@ -183,13 +183,13 @@ def _run_alembic_migrations() -> None:
                     lock_conn.execute(text("DELETE FROM alembic_version"))
                     lock_conn.commit()
                     try:
-                        alembic_command.upgrade(alembic_cfg, "head")
+                        alembic_command.upgrade(alembic_cfg, "heads")
                     except Exception as retry_err:
                         _log.error(
-                            "Échec upgrade après réinitialisation (%s) — stamp à head",
+                            "Échec upgrade après réinitialisation (%s) — stamp à heads",
                             retry_err,
                         )
-                        alembic_command.stamp(alembic_cfg, "head")
+                        alembic_command.stamp(alembic_cfg, "heads")
         finally:
             if engine.dialect.name == "mysql":
                 lock_conn.execute(text("SELECT RELEASE_LOCK('pos_alembic_migration')"))
