@@ -1,13 +1,17 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/theme.dart';
-import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
+import 'package:pos_connect/data/api/api_client.dart' show dio, extractAnyError;
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
+import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
 import 'package:pos_connect/providers/restaurant_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+
+final _fmt = NumberFormat('#,##0.00');
 
 class CommandeScreen extends ConsumerStatefulWidget {
   final String orderId;
@@ -17,26 +21,25 @@ class CommandeScreen extends ConsumerStatefulWidget {
   ConsumerState<CommandeScreen> createState() => _CommandeScreenState();
 }
 
-class _CommandeScreenState extends ConsumerState<CommandeScreen> {
+class _CommandeScreenState extends ConsumerState<CommandeScreen>
+    with SingleTickerProviderStateMixin {
   RestaurantOrderModel? _order;
   bool _loading = true;
   bool _submitting = false;
-  final _searchCtrl = TextEditingController();
-  List<ProductModel> _searchResults = [];
-  bool _searching = false;
 
   final _repo = RestaurantRepository();
-  final _fmt = NumberFormat('#,##0.00');
+  late final TabController _tabCtrl;
 
   @override
   void initState() {
     super.initState();
+    _tabCtrl = TabController(length: 2, vsync: this);
     _loadOrder();
   }
 
   @override
   void dispose() {
-    _searchCtrl.dispose();
+    _tabCtrl.dispose();
     super.dispose();
   }
 
@@ -60,10 +63,7 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen> {
     if (_order == null) return;
     setState(() => _submitting = true);
     try {
-      _order = await _repo.addItem(_order!.id,
-          productId: product.id, notes: notes);
-      _searchCtrl.clear();
-      setState(() => _searchResults = []);
+      _order = await _repo.addItem(_order!.id, productId: product.id, notes: notes);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -183,7 +183,8 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen> {
                 if (change > 0) ...[
                   const SizedBox(height: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: AppColors.success.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
@@ -224,44 +225,35 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen> {
     }
   }
 
-  Widget _receiptRow(String label, String value, {bool bold = false}) => Padding(
+  Widget _receiptRow(String label, String value, {bool bold = false}) =>
+      Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label,
                 style: TextStyle(
-                    color: bold ? AppColors.textPrimary : AppColors.textSecondary)),
+                    color:
+                        bold ? AppColors.textPrimary : AppColors.textSecondary)),
             Text(value,
                 style: TextStyle(
-                    fontWeight: bold ? FontWeight.bold : FontWeight.normal)),
+                    fontWeight:
+                        bold ? FontWeight.bold : FontWeight.normal)),
           ],
         ),
       );
-
-  Future<void> _onSearch(String query) async {
-    if (query.trim().length < 2) {
-      setState(() => _searchResults = []);
-      return;
-    }
-    setState(() => _searching = true);
-    try {
-      final res = await ref.read(restaurantRepositoryProvider).searchProducts(query);
-      if (mounted) setState(() => _searchResults = res);
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _searching = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final symbol = settings.currencySymbol;
+    final isWide = MediaQuery.sizeOf(context).width >= 800;
 
     final tableLabel = _order == null
         ? ''
-        : (_order!.hasTable ? (_order!.tableName ?? 'Table') : 'Comptoir / Bar');
+        : (_order!.hasTable
+            ? (_order!.tableName ?? 'Table')
+            : 'Comptoir / Bar');
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -269,15 +261,47 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen> {
         backgroundColor: AppColors.surface,
         title: _loading
             ? const Text('Chargement…')
-            : Text(
-                tableLabel,
+            : Text(tableLabel,
                 style: const TextStyle(
-                    fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-              ),
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary)),
+        bottom: !isWide && !_loading && _order != null
+            ? TabBar(
+                controller: _tabCtrl,
+                labelColor: AppColors.primary,
+                unselectedLabelColor: AppColors.textSecondary,
+                indicatorColor: AppColors.primary,
+                tabs: [
+                  Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.grid_view_rounded, size: 16),
+                        const SizedBox(width: 6),
+                        const Text('Produits'),
+                      ],
+                    ),
+                  ),
+                  Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.receipt_long_rounded, size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Commande (${_order?.items.length ?? 0})',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            : null,
         actions: [
           if (_order != null && _order!.status != 'closed')
             IconButton(
-              icon: const Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
+              icon: const Icon(Icons.refresh_rounded,
+                  color: AppColors.textSecondary),
               onPressed: _loadOrder,
             ),
         ],
@@ -293,7 +317,8 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen> {
                           color: AppColors.error, size: 48),
                       const SizedBox(height: 12),
                       const Text('Commande introuvable',
-                          style: TextStyle(color: AppColors.textSecondary)),
+                          style:
+                              TextStyle(color: AppColors.textSecondary)),
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: _loadOrder,
@@ -303,57 +328,615 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen> {
                     ],
                   ),
                 )
-              : Column(
-                  children: [
-                    // Order header
-                    _OrderHeader(order: _order!),
-
-                    // Status banner
-                    if (_order!.sentToKitchen || _order!.isReady)
-                      _StatusBanner(status: _order!.status),
-
-                    // Product search
-                    _ProductSearch(
-                      controller: _searchCtrl,
-                      results: _searchResults,
-                      searching: _searching,
-                      onSearch: _onSearch,
-                      onAdd: _addItem,
-                    ),
-
-                    // Items list
-                    Expanded(
-                      child: _order!.items.isEmpty
-                          ? const Center(
-                              child: Text(
-                                'Aucun article — cherchez un plat ci-dessus',
-                                style: TextStyle(color: AppColors.textSecondary),
-                              ),
-                            )
-                          : ListView.separated(
-                              padding: const EdgeInsets.all(12),
-                              itemCount: _order!.items.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 8),
-                              itemBuilder: (_, i) => _OrderItemTile(
-                                item: _order!.items[i],
-                                symbol: symbol,
-                                onRemove: () =>
-                                    _removeItem(_order!.items[i].id),
-                              ),
-                            ),
-                    ),
-
-                    // Total + actions
-                    _BottomBar(
+              : isWide
+                  ? _DesktopLayout(
                       order: _order!,
                       symbol: symbol,
                       submitting: _submitting,
+                      onAddItem: _addItem,
+                      onRemoveItem: _removeItem,
+                      onKitchen: _sendToKitchen,
+                      onCheckout: _checkout,
+                    )
+                  : _MobileLayout(
+                      tabCtrl: _tabCtrl,
+                      order: _order!,
+                      symbol: symbol,
+                      submitting: _submitting,
+                      onAddItem: _addItem,
+                      onRemoveItem: _removeItem,
                       onKitchen: _sendToKitchen,
                       onCheckout: _checkout,
                     ),
+    );
+  }
+}
+
+// ── Desktop two-panel layout ──────────────────────────────────────────────────
+
+class _DesktopLayout extends StatelessWidget {
+  final RestaurantOrderModel order;
+  final String symbol;
+  final bool submitting;
+  final Future<void> Function(ProductModel, {String? notes}) onAddItem;
+  final Future<void> Function(String) onRemoveItem;
+  final VoidCallback onKitchen;
+  final VoidCallback onCheckout;
+
+  const _DesktopLayout({
+    required this.order,
+    required this.symbol,
+    required this.submitting,
+    required this.onAddItem,
+    required this.onRemoveItem,
+    required this.onKitchen,
+    required this.onCheckout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        // Left: order / cart panel
+        SizedBox(
+          width: 360,
+          child: _CartColumn(
+            order: order,
+            symbol: symbol,
+            submitting: submitting,
+            onRemoveItem: onRemoveItem,
+            onKitchen: onKitchen,
+            onCheckout: onCheckout,
+          ),
+        ),
+        const VerticalDivider(width: 1),
+        // Right: product browser
+        Expanded(
+          child: _ProductBrowser(onAddItem: onAddItem),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Mobile layout (tabs) ──────────────────────────────────────────────────────
+
+class _MobileLayout extends StatelessWidget {
+  final TabController tabCtrl;
+  final RestaurantOrderModel order;
+  final String symbol;
+  final bool submitting;
+  final Future<void> Function(ProductModel, {String? notes}) onAddItem;
+  final Future<void> Function(String) onRemoveItem;
+  final VoidCallback onKitchen;
+  final VoidCallback onCheckout;
+
+  const _MobileLayout({
+    required this.tabCtrl,
+    required this.order,
+    required this.symbol,
+    required this.submitting,
+    required this.onAddItem,
+    required this.onRemoveItem,
+    required this.onKitchen,
+    required this.onCheckout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TabBarView(
+      controller: tabCtrl,
+      children: [
+        _ProductBrowser(onAddItem: onAddItem),
+        _CartColumn(
+          order: order,
+          symbol: symbol,
+          submitting: submitting,
+          onRemoveItem: onRemoveItem,
+          onKitchen: onKitchen,
+          onCheckout: onCheckout,
+        ),
+      ],
+    );
+  }
+}
+
+// ── Cart column (left on desktop, tab on mobile) ──────────────────────────────
+
+class _CartColumn extends StatelessWidget {
+  final RestaurantOrderModel order;
+  final String symbol;
+  final bool submitting;
+  final Future<void> Function(String) onRemoveItem;
+  final VoidCallback onKitchen;
+  final VoidCallback onCheckout;
+
+  const _CartColumn({
+    required this.order,
+    required this.symbol,
+    required this.submitting,
+    required this.onRemoveItem,
+    required this.onKitchen,
+    required this.onCheckout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.surface,
+      child: Column(
+        children: [
+          _OrderHeader(order: order),
+          if (order.sentToKitchen || order.isReady)
+            _StatusBanner(status: order.status),
+          const Divider(height: 1),
+          Expanded(
+            child: order.items.isEmpty
+                ? const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.receipt_long_rounded,
+                            size: 48, color: AppColors.textSecondary),
+                        SizedBox(height: 12),
+                        Text(
+                          'Aucun article',
+                          style:
+                              TextStyle(color: AppColors.textSecondary),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Ajoutez des plats depuis le menu →',
+                          style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: order.items.length,
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: 8),
+                    itemBuilder: (_, i) => _OrderItemTile(
+                      item: order.items[i],
+                      symbol: symbol,
+                      onRemove: () => onRemoveItem(order.items[i].id),
+                    ),
+                  ),
+          ),
+          _BottomBar(
+            order: order,
+            symbol: symbol,
+            submitting: submitting,
+            onKitchen: onKitchen,
+            onCheckout: onCheckout,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Product browser (right panel) ─────────────────────────────────────────────
+
+class _ProductBrowser extends StatefulWidget {
+  final Future<void> Function(ProductModel, {String? notes}) onAddItem;
+
+  const _ProductBrowser({required this.onAddItem});
+
+  @override
+  State<_ProductBrowser> createState() => _ProductBrowserState();
+}
+
+class _ProductBrowserState extends State<_ProductBrowser> {
+  final _repo = ProductRepository();
+  List<CategoryModel> _categories = [];
+  List<ProductModel> _products = [];
+  String? _selectedCategoryId; // null = "Tous"
+  bool _loadingCats = true;
+  bool _loadingProds = false;
+  String _search = '';
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadCategories() async {
+    setState(() => _loadingCats = true);
+    try {
+      final cats = await _repo.getCategories();
+      if (!mounted) return;
+      setState(() {
+        _categories = cats;
+        _loadingCats = false;
+      });
+      _loadProducts();
+    } catch (e) {
+      if (mounted) setState(() => _loadingCats = false);
+    }
+  }
+
+  void _selectCategory(String? catId) {
+    if (catId == _selectedCategoryId) return;
+    _selectedCategoryId = catId;
+    _loadProducts();
+  }
+
+  Future<void> _loadProducts() async {
+    setState(() => _loadingProds = true);
+    try {
+      final result = await _repo.getProducts(
+        categoryId: _selectedCategoryId,
+        search: _search.isEmpty ? null : _search,
+        limit: 60,
+      );
+      if (mounted) setState(() => _products = result.data);
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _loadingProds = false);
+    }
+  }
+
+  void _onSearchChanged(String v) {
+    _search = v;
+    _loadProducts();
+  }
+
+  Future<void> _tapProduct(ProductModel product) async {
+    final notes = await showDialog<String>(
+      context: context,
+      builder: (_) => _ProductNotesDialog(product: product),
+    );
+    if (notes == null) return; // cancelled (dialog dismissed)
+    await widget.onAddItem(product,
+        notes: notes.isEmpty ? null : notes);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loadingCats) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Column(
+      children: [
+        // Search bar
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          child: TextField(
+            controller: _searchCtrl,
+            onChanged: _onSearchChanged,
+            decoration: InputDecoration(
+              hintText: 'Rechercher un plat ou une boisson…',
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _searchCtrl.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear_rounded),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        _onSearchChanged('');
+                      },
+                    )
+                  : null,
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+        ),
+
+        // Category filter chips
+        if (_categories.isNotEmpty)
+          Container(
+            height: 44,
+            color: AppColors.surface,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              children: [
+                _CategoryChip(
+                  label: 'Tous',
+                  selected: _selectedCategoryId == null,
+                  onTap: () => _selectCategory(null),
+                ),
+                ..._categories.map((c) => Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: _CategoryChip(
+                        label: c.name,
+                        selected: _selectedCategoryId == c.id,
+                        onTap: () => _selectCategory(c.id),
+                      ),
+                    )),
+              ],
+            ),
+          ),
+
+        // Product grid
+        Expanded(
+          child: _loadingProds
+              ? const Center(child: CircularProgressIndicator())
+              : _products.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.search_off_rounded,
+                              size: 48, color: AppColors.textSecondary),
+                          SizedBox(height: 12),
+                          Text('Aucun produit trouvé',
+                              style: TextStyle(
+                                  color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    )
+                  : GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 180,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        childAspectRatio: 0.82,
+                      ),
+                      itemCount: _products.length,
+                      itemBuilder: (_, i) => _ProductCard(
+                        product: _products[i],
+                        onTap: () => _tapProduct(_products[i]),
+                      ),
+                    ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CategoryChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CategoryChip(
+      {required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primary
+              : AppColors.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : AppColors.primary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Product card ──────────────────────────────────────────────────────────────
+
+class _ProductCard extends StatelessWidget {
+  final ProductModel product;
+  final VoidCallback onTap;
+
+  const _ProductCard({required this.product, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.divider),
+          boxShadow: const [
+            BoxShadow(
+                color: Color(0x08000000),
+                blurRadius: 4,
+                offset: Offset(0, 2)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(10)),
+              child: SizedBox(
+                height: 80,
+                width: double.infinity,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (product.imageUrl != null &&
+                        product.imageUrl!.isNotEmpty)
+                      CachedNetworkImage(
+                        imageUrl:
+                            '${dio.options.baseUrl}${product.imageUrl}',
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) =>
+                            _ProductPlaceholder(product: product),
+                        errorWidget: (_, __, ___) =>
+                            _ProductPlaceholder(product: product),
+                      )
+                    else
+                      _ProductPlaceholder(product: product),
+                    if (product.description != null &&
+                        product.description!.isNotEmpty)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(
+                            color: AppColors.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.tune_rounded,
+                              color: Colors.white, size: 10),
+                        ),
+                      ),
                   ],
                 ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(9),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.name,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 12),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    NumberFormat('#,##0.00').format(product.salePrice),
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductPlaceholder extends StatelessWidget {
+  final ProductModel product;
+  const _ProductPlaceholder({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.primary.withValues(alpha: 0.08),
+      child: const Center(
+        child: Icon(Icons.restaurant_menu_rounded,
+            size: 32, color: AppColors.primary),
+      ),
+    );
+  }
+}
+
+// ── Product notes / customization dialog ──────────────────────────────────────
+
+class _ProductNotesDialog extends StatefulWidget {
+  final ProductModel product;
+  const _ProductNotesDialog({required this.product});
+
+  @override
+  State<_ProductNotesDialog> createState() => _ProductNotesDialogState();
+}
+
+class _ProductNotesDialogState extends State<_ProductNotesDialog> {
+  final _notesCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _notesCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          const Icon(Icons.restaurant_menu_rounded,
+              color: AppColors.primary, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(widget.product.name,
+                style: const TextStyle(fontSize: 16)),
+          ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.product.description != null &&
+              widget.product.description!.isNotEmpty) ...[
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                widget.product.description!,
+                style: const TextStyle(
+                    fontSize: 13, color: AppColors.textSecondary),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          const Text(
+            'Instructions / personnalisation',
+            style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _notesCtrl,
+            maxLines: 3,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'Ex: sans oignons, extra fromage…',
+              border: OutlineInputBorder(),
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Annuler'),
+        ),
+        FilledButton.icon(
+          onPressed: () => Navigator.pop(context, _notesCtrl.text),
+          icon: const Icon(Icons.add_shopping_cart_rounded, size: 16),
+          label: const Text('Ajouter'),
+        ),
+      ],
     );
   }
 }
@@ -371,8 +954,10 @@ class _OrderHeader extends StatelessWidget {
 
     return Container(
       color: AppColors.surface,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
         children: [
           _InfoChip(
             icon: order.hasTable
@@ -380,18 +965,16 @@ class _OrderHeader extends StatelessWidget {
                 : Icons.countertops_rounded,
             label: tableLabel,
           ),
-          const SizedBox(width: 8),
           _InfoChip(
             icon: Icons.people_outline_rounded,
-            label: '${order.covers} couvert${order.covers > 1 ? 's' : ''}',
+            label:
+                '${order.covers} couvert${order.covers > 1 ? 's' : ''}',
           ),
-          if (order.waiterName != null) ...[
-            const SizedBox(width: 8),
+          if (order.waiterName != null)
             _InfoChip(
               icon: Icons.person_outline_rounded,
               label: order.waiterName!,
             ),
-          ],
         ],
       ),
     );
@@ -416,13 +999,11 @@ class _InfoChip extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: AppColors.primary),
           const SizedBox(width: 5),
-          Text(
-            label,
-            style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.primary,
-                fontWeight: FontWeight.w600),
-          ),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -439,105 +1020,21 @@ class _StatusBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final isReady = status == 'ready';
     final color = isReady ? AppColors.success : AppColors.warning;
-    final icon = isReady ? Icons.check_circle_rounded : Icons.restaurant_rounded;
+    final icon =
+        isReady ? Icons.check_circle_rounded : Icons.restaurant_rounded;
     final label = isReady ? 'Commande prête à servir' : 'En cuisine…';
 
     return Container(
       color: color.withValues(alpha: 0.1),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 18),
+          Icon(icon, color: color, size: 16),
           const SizedBox(width: 8),
           Text(label,
               style: TextStyle(color: color, fontWeight: FontWeight.w600)),
         ],
       ),
-    );
-  }
-}
-
-// ── Product search ─────────────────────────────────────────────────────────────
-
-class _ProductSearch extends StatelessWidget {
-  final TextEditingController controller;
-  final List<ProductModel> results;
-  final bool searching;
-  final void Function(String) onSearch;
-  final void Function(ProductModel, {String? notes}) onAdd;
-
-  const _ProductSearch({
-    required this.controller,
-    required this.results,
-    required this.searching,
-    required this.onSearch,
-    required this.onAdd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-          child: TextField(
-            controller: controller,
-            onChanged: onSearch,
-            decoration: InputDecoration(
-              hintText: 'Chercher un plat ou une boisson…',
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: searching
-                  ? const Padding(
-                      padding: EdgeInsets.all(12),
-                      child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child:
-                              CircularProgressIndicator(strokeWidth: 2)),
-                    )
-                  : controller.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear_rounded),
-                          onPressed: () {
-                            controller.clear();
-                            onSearch('');
-                          },
-                        )
-                      : null,
-              border:
-                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            ),
-          ),
-        ),
-        if (results.isNotEmpty)
-          Container(
-            margin: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.divider),
-            ),
-            constraints: const BoxConstraints(maxHeight: 220),
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: results.length,
-              itemBuilder: (_, i) {
-                final p = results[i];
-                return ListTile(
-                  dense: true,
-                  title: Text(p.name),
-                  trailing: Text(p.salePrice.toStringAsFixed(0),
-                      style: const TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.bold)),
-                  onTap: () => onAdd(p),
-                );
-              },
-            ),
-          ),
-      ],
     );
   }
 }
@@ -561,17 +1058,17 @@ class _OrderItemTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.background,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.divider),
       ),
       child: Row(
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 30,
+            height: 30,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: AppColors.primary.withValues(alpha: 0.1),
@@ -582,16 +1079,17 @@ class _OrderItemTile extends StatelessWidget {
               style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   color: AppColors.primary,
-                  fontSize: 12),
+                  fontSize: 11),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item.productName,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13)),
                 if (item.notes != null && item.notes!.isNotEmpty)
                   Text(item.notes!,
                       style: const TextStyle(
@@ -599,8 +1097,8 @@ class _OrderItemTile extends StatelessWidget {
                 Row(
                   children: [
                     Container(
-                      width: 6,
-                      height: 6,
+                      width: 5,
+                      height: 5,
                       margin: const EdgeInsets.only(right: 4),
                       decoration: BoxDecoration(
                           color: _statusColor, shape: BoxShape.circle),
@@ -612,22 +1110,26 @@ class _OrderItemTile extends StatelessWidget {
                               ? 'En préparation'
                               : 'En attente',
                       style:
-                          TextStyle(fontSize: 11, color: _statusColor),
+                          TextStyle(fontSize: 10, color: _statusColor),
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          Text('$symbol${NumberFormat('#,##0.00').format(item.subtotal)}',
-              style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(width: 4),
+          Text(
+            '$symbol${NumberFormat('#,##0.00').format(item.subtotal)}',
+            style: const TextStyle(
+                fontWeight: FontWeight.bold, fontSize: 12),
+          ),
+          const SizedBox(width: 2),
           IconButton(
             icon: const Icon(Icons.remove_circle_outline_rounded,
-                color: AppColors.error, size: 20),
+                color: AppColors.error, size: 18),
             onPressed: onRemove,
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            constraints:
+                const BoxConstraints(minWidth: 28, minHeight: 28),
           ),
         ],
       ),
@@ -655,13 +1157,13 @@ class _BottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.surface,
         border: const Border(top: BorderSide(color: AppColors.divider)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 8,
               offset: const Offset(0, -2))
         ],
@@ -673,8 +1175,8 @@ class _BottomBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Total',
-                  style:
-                      TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 15)),
               Text(
                 '$symbol${NumberFormat('#,##0.00').format(order.total)}',
                 style: const TextStyle(
@@ -684,34 +1186,39 @@ class _BottomBar extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Row(
             children: [
               if (!order.sentToKitchen && !order.isReady)
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed:
-                        submitting || order.items.isEmpty ? null : onKitchen,
-                    icon: const Icon(Icons.restaurant_rounded),
-                    label: const Text('Envoyer en cuisine'),
+                    onPressed: submitting || order.items.isEmpty
+                        ? null
+                        : onKitchen,
+                    icon: const Icon(Icons.restaurant_rounded, size: 16),
+                    label: const Text('Cuisine',
+                        style: TextStyle(fontSize: 13)),
                   ),
                 ),
               if (!order.sentToKitchen && !order.isReady)
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
               Expanded(
                 child: FilledButton.icon(
-                  onPressed:
-                      submitting || order.items.isEmpty ? null : onCheckout,
+                  onPressed: submitting || order.items.isEmpty
+                      ? null
+                      : onCheckout,
                   style: FilledButton.styleFrom(
                       backgroundColor: AppColors.success),
                   icon: submitting
                       ? const SizedBox(
-                          width: 16,
-                          height: 16,
+                          width: 14,
+                          height: 14,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.point_of_sale_rounded),
-                  label: const Text('Encaisser'),
+                      : const Icon(Icons.point_of_sale_rounded,
+                          size: 16),
+                  label: const Text('Encaisser',
+                      style: TextStyle(fontSize: 13)),
                 ),
               ),
             ],
@@ -779,7 +1286,8 @@ class _CheckoutDialogState extends State<_CheckoutDialog> {
                   const SizedBox(width: 6),
                   Text(
                       '${widget.covers} couvert${widget.covers > 1 ? 's' : ''}',
-                      style: const TextStyle(color: AppColors.textSecondary)),
+                      style: const TextStyle(
+                          color: AppColors.textSecondary)),
                 ],
               ),
               const SizedBox(height: 12),
@@ -820,7 +1328,8 @@ class _CheckoutDialogState extends State<_CheckoutDialog> {
                   labelText: 'Pourboire',
                   prefixText: widget.symbol,
                   prefixIcon: const Icon(
-                      Icons.volunteer_activism_rounded, size: 18),
+                      Icons.volunteer_activism_rounded,
+                      size: 18),
                 ),
                 onChanged: (_) => setState(() {}),
               ),
@@ -831,7 +1340,8 @@ class _CheckoutDialogState extends State<_CheckoutDialog> {
                   const Text('Total net :'),
                   Text('${widget.symbol}${fmt.format(_finalAmount)}',
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16)),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16)),
                 ],
               ),
               const SizedBox(height: 10),
@@ -840,7 +1350,8 @@ class _CheckoutDialogState extends State<_CheckoutDialog> {
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
-                    labelText: 'Montant reçu', prefixText: widget.symbol),
+                    labelText: 'Montant reçu',
+                    prefixText: widget.symbol),
                 onChanged: (_) => setState(() {}),
               ),
               if (_change > 0) ...[
