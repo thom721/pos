@@ -1,7 +1,7 @@
 # POS Connect — Système de Caisse Multi-Plateforme
 
 Système de point de vente complet : **backend FastAPI** + **frontend Flutter** multi-plateforme.
-Architecture **SaaS multi-tenant** avec support des déploiements **self-hosted** (données hébergées chez le client).
+Architecture **SaaS multi-tenant** avec support des déploiements **self-hosted** et **mode restaurant**.
 
 ---
 
@@ -11,37 +11,69 @@ Architecture **SaaS multi-tenant** avec support des déploiements **self-hosted*
 |-----------|-------------|
 | Backend | FastAPI · SQLAlchemy · MySQL / SQLite · Uvicorn |
 | Frontend | Flutter 3.x · Riverpod · go_router · Dio |
-| Auth | JWT Bearer (python-jose) |
+| Auth | JWT Bearer (python-jose) + FlutterSecureStorage |
 | Config | `pos_server.ini` auto-généré + `.env` fallback |
 | CI/CD | GitHub Actions |
 | Plateformes | Linux · Windows · macOS · Android · Web |
 
 ---
 
+## Fonctionnalités
+
+### Commerce (tous types)
+- Catalogue produits (catégories, fournisseurs, barcode, images)
+- Caisse POS : ventes, retours, paiements partiels, dettes automatiques
+- Achats fournisseurs avec réceptions partielles
+- Stock calculé en temps réel (StockMovement)
+- Gestion clients et dettes
+
+### Restaurant
+- Plan de salle : tables avec statut (libre / occupée / réservée)
+- Assignation serveur à une ou plusieurs tables
+- Prise de commande par table : recherche plats, notes par article
+- Envoi en cuisine, vue cuisine temps réel
+- Encaissement avec couverts, remise et pourboire
+- Reçu détaillé à la fermeture de table
+
+### Administration SaaS
+- Multi-tenant : shared (données sur posconnect.ht) ou self-hosted (données chez le client)
+- Panel admin : créer/modifier tenants, configurer plans, numéros de paiement
+- Facturation : essai gratuit → grace period → suspendu → actif
+- Synchronisation cloud bidirectionnelle (catalogue) + push (transactions)
+- Cache de licence offline Ed25519 (7 jours sans internet)
+
+---
+
 ## Démarrage rapide
 
-### 1. Serveur (première installation)
+### 1. Première installation (serveur)
 
 ```bash
 cd ~/posconnect
 ./pos_connect      # Wizard d'installation intégré
 ```
 
-Le wizard guide pas à pas :
+Le wizard guide :
 - Choix du mode (Serveur / Client / Les deux)
 - Configuration MySQL ou SQLite
 - Vérification d'identité Ed25519 du serveur cloud
-- Connexion au compte tenant posconnect.ht (shared ou self-hosted)
-- Génération automatique de `pos_server.ini` avec `cloud_sync_url` et `billing_url`
+- Connexion au compte tenant posconnect.ht
 
 ### 2. Lancer le backend manuellement
 
 ```bash
-cd ~/posconnect
 ./pos_api          # FastAPI sur http://0.0.0.0:8002
+# Documentation : http://localhost:8002/docs
 ```
 
-### 3. Client sur une autre machine
+### 3. Docker (production)
+
+```bash
+docker compose up -d --build
+docker exec pos_api alembic upgrade head
+```
+
+### 4. Client sur une autre machine
 
 ```bash
 ./pos_connect      # → Mode "Client uniquement" → entrer l'URL du serveur
@@ -58,70 +90,97 @@ pos_api/
 │   ├── database.py              # Connexion SQLAlchemy + get_db
 │   ├── core/
 │   │   ├── config.py            # pos_server.ini + .env → Settings
+│   │   ├── permissions.py       # Matrice de permissions par rôle
 │   │   └── security.py          # JWT create/verify
-│   ├── models/                  # SQLAlchemy ORM (19 modèles)
-│   ├── schemas/                 # Pydantic v2
+│   ├── models/                  # SQLAlchemy ORM (22 modèles)
+│   │   ├── RestaurantTable.py
+│   │   ├── RestaurantOrder.py   # + RestaurantOrderItem
+│   │   └── ...
 │   ├── routes/
-│   │   ├── setup.py             # Wizard API (health, test-db, create-db, init)
-│   │   ├── auth.py
+│   │   ├── restaurant.py        # Tables, commandes, checkout
 │   │   ├── sales.py
 │   │   ├── purchases.py
 │   │   └── ...
-│   └── services/
-├── frontend/                    # Application Flutter (pos_connect)
+│   └── alembic/versions/        # Migrations DB
+├── frontend/
 │   └── lib/
-│       ├── main.dart
 │       ├── core/
-│       │   ├── constants.dart   # AppConstants (baseUrl défaut)
-│       │   └── router.dart      # go_router
-│       ├── data/api/
-│       │   └── api_client.dart  # Dio singleton + initServerUrl()
-│       └── features/
-│           ├── installer/       # Wizard d'installation complet
-│           ├── splash/          # Détection setup_done
-│           ├── auth/
-│           ├── pos/
-│           ├── products/
-│           └── ...
-├── pos_server.ini               # Config générée par le wizard
+│       │   ├── constants.dart   # AppConstants (baseUrl, clé publique Ed25519)
+│       │   └── router.dart      # go_router (routes restaurant incluses)
+│       ├── data/
+│       │   ├── api/api_client.dart      # Dio singleton + extractAnyError
+│       │   ├── models/restaurant_model.dart
+│       │   └── repositories/restaurant_repository.dart
+│       ├── features/
+│       │   ├── restaurant/
+│       │   │   ├── tables_screen.dart        # Plan de salle
+│       │   │   ├── table_order_screen.dart   # Commande + encaissement
+│       │   │   └── kitchen_screen.dart       # Vue cuisine
+│       │   ├── installer/        # Wizard d'installation
+│       │   ├── splash/           # Fast-path si JWT valide
+│       │   ├── auth/
+│       │   ├── pos/              # Caisse (mode commerce)
+│       │   ├── sales/            # Historique ventes + retours
+│       │   └── ...
+│       ├── providers/
+│       │   ├── restaurant_provider.dart
+│       │   └── settings_provider.dart   # business_type → navigation adaptative
+│       └── shared/widgets/app_shell.dart  # Navigation adaptative par type commerce
+├── pos_server.ini               # Config générée par le wizard (non versionné)
 ├── pos_server.ini.example       # Template de référence
-├── requirements.txt
-└── seed_user.py                 # Créer un utilisateur admin manuellement
+└── requirements.txt
 ```
 
 ---
 
 ## Endpoints API principaux
 
+### Setup & Auth
 | Méthode | URL | Description |
 |---------|-----|-------------|
 | GET | `/api/setup/health` | État du serveur + `setup_done` |
 | POST | `/api/setup/test-db` | Test credentials DB → écrit `pos_server.ini` |
 | POST | `/api/setup/create-db` | Crée la base + tables |
-| POST | `/api/setup/connect-tenant` | Lie l'installation à un compte tenant cloud |
-| GET | `/api/public/identity?nonce=` | Signature Ed25519 du serveur (vérification identité) |
+| GET | `/api/public/identity?nonce=` | Signature Ed25519 (vérification identité serveur) |
 | POST | `/api/auth/login` | JWT token |
+
+### Métier
+| Méthode | URL | Description |
+|---------|-----|-------------|
 | GET/POST | `/api/products/` | CRUD produits |
 | GET/POST | `/api/sales/` | CRUD ventes |
 | GET/POST | `/api/purchases/` | CRUD achats |
 | GET/POST | `/api/customers/` | CRUD clients |
 | GET/POST | `/api/debts/` | Dettes clients/fournisseurs |
 | GET | `/api/stock/` | Mouvements de stock |
+
+### Restaurant
+| Méthode | URL | Description |
+|---------|-----|-------------|
+| GET | `/api/restaurant/waiters/` | Liste serveurs disponibles |
+| GET/POST | `/api/restaurant/tables/` | Tables (filtrées par rôle) |
+| PUT | `/api/restaurant/tables/{id}/assign` | Assigner un serveur |
+| GET | `/api/restaurant/orders/table/{id}` | Commande active d'une table |
+| POST | `/api/restaurant/orders/` | Ouvrir commande (avec couverts) |
+| POST | `/api/restaurant/orders/{id}/checkout` | Encaisser (remise + pourboire) |
+
+### SaaS & Billing
+| Méthode | URL | Description |
+|---------|-----|-------------|
 | GET | `/api/billing/license` | Blob de licence signé Ed25519 (cache offline 7j) |
 | GET | `/api/billing/caisse-count` | Caisses actives vs plan |
 | POST | `/api/sync/token` | Échange credentials → sync token (365j) |
-| POST | `/api/admin/tenants` | Créer un tenant (shared ou selfhosted) |
-| PATCH | `/api/admin/tenants/{id}` | Modifier statut, type, max_caisses |
+| POST | `/api/admin/tenants` | Créer un tenant (admin) |
 
 ---
 
 ## Configuration
 
-### pos_server.ini (généré automatiquement)
+### pos_server.ini
 
 ```ini
 [database]
-type     = mysql
+type     = mysql          # mysql | sqlite
 host     = localhost
 port     = 3306
 name     = pos_db
@@ -129,31 +188,31 @@ user     = root
 password = votre_mot_de_passe
 
 [server]
-host                 = 0.0.0.0
-port                 = 8002
-secret_key           = <généré automatiquement>
-token_expire_minutes = 480
-# Rempli par le wizard lors de la connexion tenant
-cloud_sync_url       = https://self-hosted-ou-cloud.example.com
-cloud_sync_token     = <sync JWT 365j>
-cloud_sync_enabled   = true
-billing_url          = https://posconnect.ht   # toujours posconnect.ht
-# Sur posconnect.ht uniquement — identité Ed25519
-identity_private_key =
+host                  = 0.0.0.0
+port                  = 8002
+secret_key            = <généré automatiquement>
+token_expire_minutes  = 480
+cloud_sync_url        = https://votre-serveur-sync.com
+cloud_sync_token      = <sync JWT 365j>
+cloud_sync_enabled    = true
+billing_url           = https://posconnect.ht
 ```
 
-### Créer un admin manuellement (sans wizard)
+### Créer un admin manuellement
 
 ```bash
 python seed_user.py
 # Crée : username=admin / password=Admin@1234
 ```
 
+### Activer le mode restaurant
+
+Dans l'interface Paramètres > Type de commerce → choisir "Restaurant".
+La navigation bascule automatiquement vers : Tables · Cuisine · Ventes · Produits.
+
 ---
 
 ## Build et distribution
-
-Les binaires sont construits automatiquement via GitHub Actions sur chaque push :
 
 | Plateforme | Artefact |
 |------------|----------|
@@ -161,6 +220,20 @@ Les binaires sont construits automatiquement via GitHub Actions sur chaque push 
 | Windows | `pos_connect-windows.zip` |
 | macOS | `pos_connect-macos.zip` |
 | Android | `pos_connect-android.apk` |
+
+Builds automatiques via GitHub Actions sur chaque push vers `main`.
+
+```bash
+# Build APK Android manuellement
+cd frontend && flutter build apk --release
+# → build/app/outputs/flutter-apk/app-release.apk
+
+# Build web
+cd frontend && flutter build web --release \
+  --dart-define=SERVER_SCHEME=https \
+  --dart-define=SERVER_IP=votre-api.example.com \
+  --dart-define=SERVER_PORT=443
+```
 
 ---
 
@@ -176,4 +249,8 @@ cd frontend && flutter run -d linux
 
 # Frontend web
 cd frontend && flutter run -d chrome
+
+# Migrations
+alembic upgrade head
+alembic revision --autogenerate -m "description"
 ```
