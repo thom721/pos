@@ -222,7 +222,7 @@ class _MenuPanelState extends State<_MenuPanel> {
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () => _showForm(context),
+                onPressed: () => _showForm(),
                 icon: const Icon(Icons.add_rounded, size: 16),
                 label: const Text('Nouveau plat'),
               ),
@@ -254,7 +254,7 @@ class _MenuPanelState extends State<_MenuPanel> {
             ),
           )
         else if (isWide)
-          Expanded(child: _MenuTable(items: _items, onEdit: (m) => _showForm(context, m), onDelete: (m) => _confirmDelete(context, m), onToggle: _toggleAvailable))
+          Expanded(child: _MenuTable(items: _items, onEdit: (m) => _showForm(m), onDelete: (m) => _confirmDelete(context, m), onToggle: _toggleAvailable))
         else
           Expanded(
             child: ListView.separated(
@@ -263,7 +263,7 @@ class _MenuPanelState extends State<_MenuPanel> {
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (_, i) => _MenuItemTile(
                 item: _items[i],
-                onEdit: () => _showForm(context, _items[i]),
+                onEdit: () => _showForm(_items[i]),
                 onDelete: () => _confirmDelete(context, _items[i]),
                 onToggle: () => _toggleAvailable(_items[i]),
               ),
@@ -287,7 +287,13 @@ class _MenuPanelState extends State<_MenuPanel> {
     }
   }
 
-  void _showForm(BuildContext context, [MenuItemModel? m]) {
+  Future<void> _showForm([MenuItemModel? m]) async {
+    // Recharge les catégories au cas où elles auraient été créées/supprimées
+    try {
+      final cats = await ProductRepository().getCategories();
+      if (mounted) setState(() => _categories = cats);
+    } catch (_) {}
+    if (!mounted) return;
     final nameCtrl  = TextEditingController(text: m?.name ?? '');
     final descCtrl  = TextEditingController(text: m?.description ?? '');
     final priceCtrl = TextEditingController(
