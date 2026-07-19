@@ -9,6 +9,8 @@ import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
 import 'package:pos_connect/providers/restaurant_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/shared/utils/restaurant_bill_pdf.dart';
+import 'package:printing/printing.dart';
 
 final _fmt = NumberFormat('#,##0.00');
 
@@ -225,6 +227,16 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
               ],
             ),
             actions: [
+              TextButton.icon(
+                onPressed: () => _printBill(
+                  reference: data['reference'] as String?,
+                  discount: result['discount'] as double,
+                  paidAmount: result['paid'] as double,
+                  paymentMethod: result['method'] as String?,
+                ),
+                icon: const Icon(Icons.print_rounded, size: 16),
+                label: const Text('Imprimer'),
+              ),
               FilledButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Terminer'),
@@ -243,6 +255,96 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  // ── Impression addition / reçu ────────────────────────────────────────────
+
+  Future<void> _printBill({
+    String? reference,
+    double discount = 0,
+    double paidAmount = 0,
+    String? paymentMethod,
+  }) async {
+    if (_order == null || _order!.items.isEmpty) return;
+    final settings = ref.read(settingsProvider);
+    final hasPOS = settings.posPrinterName.isNotEmpty;
+    final hasDoc = settings.docPrinterName.isNotEmpty;
+
+    String? chosenUrl;
+    if (hasPOS && hasDoc) {
+      // Laisser l'utilisateur choisir
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (_) => SimpleDialog(
+          title: const Text('Choisir une imprimante'),
+          children: [
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, settings.posPrinterName),
+              child: const ListTile(
+                leading: Icon(Icons.receipt_long_rounded),
+                title: Text('Imprimante tickets (POS)'),
+              ),
+            ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, settings.docPrinterName),
+              child: const ListTile(
+                leading: Icon(Icons.print_rounded),
+                title: Text('Imprimante documents'),
+              ),
+            ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, '__preview__'),
+              child: const ListTile(
+                leading: Icon(Icons.preview_rounded),
+                title: Text('Aperçu / Impression système'),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (choice == null || !mounted) return;
+      chosenUrl = choice == '__preview__' ? null : choice;
+    } else {
+      chosenUrl = hasPOS ? settings.posPrinterName : (hasDoc ? settings.docPrinterName : null);
+    }
+
+    try {
+      final bytes = await buildRestaurantBillPdf(
+        _order!,
+        settings,
+        reference: reference,
+        discount: discount,
+        paidAmount: paidAmount,
+        paymentMethod: paymentMethod,
+      );
+
+      if (chosenUrl != null && chosenUrl.isNotEmpty) {
+        final printers = await Printing.listPrinters();
+        final printer = printers.cast<Printer?>().firstWhere(
+          (p) => p?.url == chosenUrl,
+          orElse: () => null,
+        );
+        if (printer != null) {
+          await Printing.directPrintPdf(
+            printer: printer,
+            onLayout: (_) => bytes,
+            name: reference != null ? 'Recu_$reference' : 'Addition',
+          );
+          return;
+        }
+      }
+      await Printing.layoutPdf(
+        onLayout: (_) => bytes,
+        name: reference != null ? 'Recu_$reference' : 'Addition',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur impression: ${extractAnyError(e)}'),
+          backgroundColor: AppColors.error,
+        ));
+      }
     }
   }
 
@@ -359,6 +461,7 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
                       onUpdateQuantity: _updateQuantity,
                       onKitchen: _sendToKitchen,
                       onCheckout: _checkout,
+                      onPrint: _printBill,
                     )
                   : _MobileLayout(
                       tabCtrl: _tabCtrl,
@@ -370,6 +473,7 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
                       onUpdateQuantity: _updateQuantity,
                       onKitchen: _sendToKitchen,
                       onCheckout: _checkout,
+                      onPrint: _printBill,
                     ),
     );
   }
@@ -386,6 +490,7 @@ class _DesktopLayout extends StatelessWidget {
   final Future<void> Function(String, double) onUpdateQuantity;
   final VoidCallback onKitchen;
   final VoidCallback onCheckout;
+  final VoidCallback onPrint;
 
   const _DesktopLayout({
     required this.order,
@@ -396,6 +501,7 @@ class _DesktopLayout extends StatelessWidget {
     required this.onUpdateQuantity,
     required this.onKitchen,
     required this.onCheckout,
+    required this.onPrint,
   });
 
   @override
@@ -412,6 +518,7 @@ class _DesktopLayout extends StatelessWidget {
             onUpdateQuantity: onUpdateQuantity,
             onKitchen: onKitchen,
             onCheckout: onCheckout,
+            onPrint: onPrint,
           ),
         ),
         const VerticalDivider(width: 1),
@@ -433,6 +540,7 @@ class _MobileLayout extends StatelessWidget {
   final Future<void> Function(String, double) onUpdateQuantity;
   final VoidCallback onKitchen;
   final VoidCallback onCheckout;
+  final VoidCallback onPrint;
 
   const _MobileLayout({
     required this.tabCtrl,
@@ -444,6 +552,7 @@ class _MobileLayout extends StatelessWidget {
     required this.onUpdateQuantity,
     required this.onKitchen,
     required this.onCheckout,
+    required this.onPrint,
   });
 
   @override
@@ -460,6 +569,7 @@ class _MobileLayout extends StatelessWidget {
           onUpdateQuantity: onUpdateQuantity,
           onKitchen: onKitchen,
           onCheckout: onCheckout,
+          onPrint: onPrint,
         ),
       ],
     );
@@ -476,6 +586,7 @@ class _CartColumn extends StatelessWidget {
   final Future<void> Function(String, double) onUpdateQuantity;
   final VoidCallback onKitchen;
   final VoidCallback onCheckout;
+  final VoidCallback onPrint;
 
   const _CartColumn({
     required this.order,
@@ -485,6 +596,7 @@ class _CartColumn extends StatelessWidget {
     required this.onUpdateQuantity,
     required this.onKitchen,
     required this.onCheckout,
+    required this.onPrint,
   });
 
   @override
@@ -539,6 +651,7 @@ class _CartColumn extends StatelessWidget {
             submitting: submitting,
             onKitchen: onKitchen,
             onCheckout: onCheckout,
+            onPrint: onPrint,
           ),
         ],
       ),
@@ -1617,6 +1730,7 @@ class _BottomBar extends StatelessWidget {
   final bool submitting;
   final VoidCallback onKitchen;
   final VoidCallback onCheckout;
+  final VoidCallback onPrint;
 
   const _BottomBar({
     required this.order,
@@ -1624,6 +1738,7 @@ class _BottomBar extends StatelessWidget {
     required this.submitting,
     required this.onKitchen,
     required this.onCheckout,
+    required this.onPrint,
   });
 
   @override
@@ -1674,6 +1789,16 @@ class _BottomBar extends StatelessWidget {
                 ),
               if (!order.sentToKitchen && !order.isReady)
                 const SizedBox(width: 8),
+              // Bouton impression addition (avant paiement)
+              OutlinedButton(
+                onPressed: order.items.isEmpty ? null : onPrint,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(44, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                ),
+                child: const Icon(Icons.print_rounded, size: 18),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: FilledButton.icon(
                   onPressed: submitting || order.items.isEmpty
