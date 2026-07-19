@@ -447,8 +447,6 @@ class _MenuPanelState extends State<_MenuPanel> {
                               Row(
                                 children: [
                                   hdr('Nom *', kNom),
-                                  hdr('Δ Prix (HTG)', kPrix),
-                                  hdr('Dispo', kDispo),
                                   ...List.generate(colCtrls.length, (ci) => Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
@@ -491,6 +489,8 @@ class _MenuPanelState extends State<_MenuPanel> {
                                       ),
                                     ],
                                   )),
+                                  hdr('Δ Prix (HTG)', kPrix),
+                                  hdr('Dispo', kDispo),
                                   // Placeholder aligning with row-delete btn
                                   SizedBox(width: kDel),
                                 ],
@@ -504,6 +504,20 @@ class _MenuPanelState extends State<_MenuPanel> {
                                   child: Row(
                                     children: [
                                       dataTf(kNom, row.name, hint: 'Ex: Normal'),
+                                      ...List.generate(
+                                          colCtrls.length,
+                                          (ci) => Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              dataTf(
+                                                kExtra,
+                                                ci < row.extra.length
+                                                    ? row.extra[ci]
+                                                    : TextEditingController(),
+                                              ),
+                                              SizedBox(width: kDel),
+                                            ],
+                                          )),
                                       dataTf(kPrix, row.price,
                                           hint: '0',
                                           kt: const TextInputType
@@ -519,20 +533,6 @@ class _MenuPanelState extends State<_MenuPanel> {
                                               MaterialTapTargetSize.shrinkWrap,
                                         ),
                                       ),
-                                      ...List.generate(
-                                          colCtrls.length,
-                                          (ci) => Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              dataTf(
-                                                kExtra,
-                                                ci < row.extra.length
-                                                    ? row.extra[ci]
-                                                    : TextEditingController(),
-                                              ),
-                                              SizedBox(width: kDel),
-                                            ],
-                                          )),
                                       // Row delete
                                       SizedBox(
                                         width: kDel,
