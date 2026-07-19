@@ -528,7 +528,8 @@ class _WarehouseSelector extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final warehouses = ref.watch(warehouseListProvider).valueOrNull ?? [];
-    final active = ref.watch(activeWarehouseProvider);
+    final active    = ref.watch(activeWarehouseProvider);
+    final canSwitch = ref.watch(hasPermissionProvider(Perm.configUpdate));
 
     // Init default selection when list loads
     if (warehouses.isNotEmpty) {
@@ -536,26 +537,67 @@ class _WarehouseSelector extends ConsumerWidget {
           ref.read(activeWarehouseProvider.notifier).initFromList(warehouses));
     }
 
-    // Only show selector when there are multiple depots
-    if (warehouses.length <= 1) return const SizedBox.shrink();
+    // Toujours résoudre le dépôt courant (fallback sur défaut ou premier)
+    final current = warehouses.isEmpty
+        ? null
+        : warehouses.firstWhere(
+            (w) => w.id == (active?.id ?? ''),
+            orElse: () => warehouses.firstWhere(
+              (w) => w.isDefault,
+              orElse: () => warehouses.first,
+            ),
+          );
 
-    // Toujours utiliser une instance issue de warehouses pour que == fonctionne
-    final current = warehouses.firstWhere(
-      (w) => w.id == (active?.id ?? ''),
-      orElse: () => warehouses.firstWhere(
-        (w) => w.isDefault,
-        orElse: () => warehouses.first,
-      ),
+    // Afficher toujours le nom du dépôt courant (même s'il n'y en a qu'un)
+    final label = current?.name ?? active?.name ?? 'Dépôt';
+    final isDefault = current?.isDefault ?? false;
+
+    final canChange = canSwitch && warehouses.length > 1;
+
+    final decoration = BoxDecoration(
+      border: Border.all(color: AppColors.divider),
+      borderRadius: BorderRadius.circular(8),
+      color: AppColors.background,
     );
 
+    // Badge « défaut »
+    Widget defaultBadge() => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: const Text('défaut',
+              style: TextStyle(fontSize: 10, color: AppColors.primary)),
+        );
+
+    // Version lecture seule (1 dépôt ou pas permission)
+    if (!canChange) {
+      return Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: decoration,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.warehouse_outlined, size: 14, color: AppColors.textSecondary),
+            const SizedBox(width: 6),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textPrimary)),
+            if (isDefault) ...[const SizedBox(width: 4), defaultBadge()],
+          ],
+        ),
+      );
+    }
+
+    // Version dropdown (multi-dépôts + permission)
     return Container(
       height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppColors.divider),
-        borderRadius: BorderRadius.circular(8),
-        color: AppColors.background,
-      ),
+      decoration: decoration,
       child: DropdownButtonHideUnderline(
         child: DropdownButton<WarehouseModel>(
           value: current,
@@ -574,20 +616,7 @@ class _WarehouseSelector extends ConsumerWidget {
                 const Icon(Icons.warehouse_outlined, size: 14, color: AppColors.textSecondary),
                 const SizedBox(width: 6),
                 Text(w.name),
-                if (w.isDefault) ...[
-                  const SizedBox(width: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'défaut',
-                      style: TextStyle(fontSize: 10, color: AppColors.primary),
-                    ),
-                  ),
-                ],
+                if (w.isDefault) ...[const SizedBox(width: 4), defaultBadge()],
               ],
             ),
           )).toList(),
@@ -686,53 +715,58 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
           ),
         ),
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
-        actions: _isAndroid
-            ? [
-                if (_isSyncing)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.accent),
-                    ),
-                  )
-                else if (pendingCount > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: TextButton.icon(
-                      onPressed: _syncNow,
-                      icon: const Icon(Icons.sync_rounded, size: 16),
-                      label: Text('$pendingCount en attente'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.orange,
-                        textStyle: const TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.circle,
-                            size: 8, color: AppColors.accent),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Connecté',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.accent,
-                              fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
+        actions: [
+          // Indicateur dépôt actif — visible sur web (pas sur Android natif)
+          if (!_isAndroid)
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Center(child: _WarehouseSelector()),
+            ),
+          // Actions Android : sync + connecté
+          if (_isAndroid)
+            if (_isSyncing)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: AppColors.accent),
+                ),
+              )
+            else if (pendingCount > 0)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: TextButton.icon(
+                  onPressed: _syncNow,
+                  icon: const Icon(Icons.sync_rounded, size: 16),
+                  label: Text('$pendingCount en attente'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.orange,
+                    textStyle: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600),
                   ),
-              ]
-            : null,
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.circle, size: 8, color: AppColors.accent),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Connecté',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.accent,
+                          fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+        ],
         bottom: const PreferredSize(
           preferredSize: Size.fromHeight(1),
           child: Divider(height: 1, color: AppColors.divider),
