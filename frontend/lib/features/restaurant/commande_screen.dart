@@ -580,13 +580,33 @@ class _ProductBrowserState extends State<_ProductBrowser> {
     super.dispose();
   }
 
+  // Mots-clés non-restaurant à masquer, comparés après normalisation
+  static const _hiddenKeywords = [
+    'electronique', 'cosmetique', 'beaute', 'hygiene', 'hygienne',
+  ];
+
+  static String _normalize(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp(r'[éèêë]'), 'e')
+      .replaceAll(RegExp(r'[àâä]'), 'a')
+      .replaceAll(RegExp(r'[îï]'), 'i')
+      .replaceAll(RegExp(r'[ôö]'), 'o')
+      .replaceAll(RegExp(r'[ûùü]'), 'u')
+      .replaceAll('ç', 'c')
+      .replaceAll(RegExp(r'[^a-z]'), '');
+
+  static bool _isRestaurantCategory(CategoryModel c) {
+    final n = _normalize(c.name);
+    return !_hiddenKeywords.any((kw) => n.contains(kw));
+  }
+
   Future<void> _loadCategories() async {
     setState(() => _loadingCats = true);
     try {
       final cats = await _repo.getCategories();
       if (!mounted) return;
       setState(() {
-        _categories = cats;
+        _categories = cats.where(_isRestaurantCategory).toList();
         _loadingCats = false;
       });
       _loadProducts();
