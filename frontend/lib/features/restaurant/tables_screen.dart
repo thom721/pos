@@ -71,61 +71,86 @@ class TablesScreen extends ConsumerWidget {
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Nouvelle table'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Nom de la table',
-                  hintText: 'Table 1, Terrasse A…',
-                ),
-                autofocus: true,
-              ),
-              const SizedBox(height: 16),
-              Row(
+        builder: (ctx, setState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 420, maxWidth: 520),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Capacité : '),
-                  IconButton(
-                    icon: const Icon(Icons.remove_rounded),
-                    onPressed: () => setState(() { if (capacity > 1) capacity--; }),
+                  const Text('Nouvelle table',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Nom de la table',
+                      hintText: 'Table 1, Terrasse A…',
+                      border: OutlineInputBorder(),
+                    ),
+                    autofocus: true,
                   ),
-                  Text('$capacity', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  IconButton(
-                    icon: const Icon(Icons.add_rounded),
-                    onPressed: () => setState(() => capacity++),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      const Icon(Icons.people_outline_rounded, color: AppColors.textSecondary),
+                      const SizedBox(width: 8),
+                      const Text('Capacité :', style: TextStyle(fontSize: 15)),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle_outline_rounded),
+                        onPressed: () => setState(() { if (capacity > 1) capacity--; }),
+                        color: AppColors.primary,
+                      ),
+                      SizedBox(
+                        width: 36,
+                        child: Text('$capacity',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add_circle_outline_rounded),
+                        onPressed: () => setState(() => capacity++),
+                        color: AppColors.primary,
+                      ),
+                    ],
                   ),
-                  const Icon(Icons.people_outline_rounded, color: AppColors.textSecondary),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () async {
+                          if (nameCtrl.text.trim().isEmpty) return;
+                          Navigator.pop(ctx);
+                          try {
+                            await RestaurantRepository().createTable(
+                              name: nameCtrl.text.trim(),
+                              capacity: capacity,
+                            );
+                            ref.invalidate(tablesProvider);
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: Text(extractAnyError(e)),
+                                backgroundColor: AppColors.error,
+                              ));
+                            }
+                          }
+                        },
+                        child: const Text('Créer'),
+                      ),
+                    ],
+                  ),
                 ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
-            FilledButton(
-              onPressed: () async {
-                if (nameCtrl.text.trim().isEmpty) return;
-                Navigator.pop(ctx);
-                try {
-                  await RestaurantRepository().createTable(
-                    name: nameCtrl.text.trim(),
-                    capacity: capacity,
-                  );
-                  ref.invalidate(tablesProvider);
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(extractAnyError(e)),
-                      backgroundColor: AppColors.error,
-                    ));
-                  }
-                }
-              },
-              child: const Text('Créer'),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -413,55 +438,83 @@ class _TableCard extends ConsumerWidget {
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Modifier la table'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'Nom'),
-              ),
-              const SizedBox(height: 16),
-              Row(
+        builder: (ctx, setState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 420, maxWidth: 520),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Capacité : '),
-                  IconButton(
-                    icon: const Icon(Icons.remove_rounded),
-                    onPressed: () => setState(() { if (capacity > 1) capacity--; }),
+                  const Text('Modifier la table',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Nom de la table',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
-                  Text('$capacity', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  IconButton(
-                    icon: const Icon(Icons.add_rounded),
-                    onPressed: () => setState(() => capacity++),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      const Icon(Icons.people_outline_rounded, color: AppColors.textSecondary),
+                      const SizedBox(width: 8),
+                      const Text('Capacité :', style: TextStyle(fontSize: 15)),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle_outline_rounded),
+                        onPressed: () => setState(() { if (capacity > 1) capacity--; }),
+                        color: AppColors.primary,
+                      ),
+                      SizedBox(
+                        width: 36,
+                        child: Text('$capacity',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add_circle_outline_rounded),
+                        onPressed: () => setState(() => capacity++),
+                        color: AppColors.primary,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () async {
+                          Navigator.pop(ctx);
+                          try {
+                            await RestaurantRepository().updateTable(
+                              table.id,
+                              name: nameCtrl.text.trim(),
+                              capacity: capacity,
+                            );
+                            ref.invalidate(tablesProvider);
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text(extractAnyError(e)), backgroundColor: AppColors.error),
+                              );
+                            }
+                          }
+                        },
+                        child: const Text('Enregistrer'),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
-            FilledButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                try {
-                  await RestaurantRepository().updateTable(
-                    table.id,
-                    name: nameCtrl.text.trim(),
-                    capacity: capacity,
-                  );
-                  ref.invalidate(tablesProvider);
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(extractAnyError(e)), backgroundColor: AppColors.error),
-                    );
-                  }
-                }
-              },
-              child: const Text('Enregistrer'),
             ),
-          ],
+          ),
         ),
       ),
     );
