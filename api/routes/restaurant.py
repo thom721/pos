@@ -12,6 +12,7 @@ from api.models.User import User
 from api.models.RestaurantTable import RestaurantTable
 from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
 from api.models.Product import Product
+from api.services.warehouse_helper import resolve_warehouse_id
 from api.ws_manager import manager
 import asyncio
 
@@ -28,6 +29,16 @@ def _notify(tenant_id: str):
 def _is_manager(user: User) -> bool:
     roles = user.roles or []
     return 'admin' in roles or 'manager' in roles
+
+
+def _resolve_wh(db: Session, user: User) -> str | None:
+    """Retourne le warehouse_id à utiliser (JSON list → premier élément, sinon défaut du tenant)."""
+    wh = user.warehouse_id
+    if wh:
+        first = wh[0] if isinstance(wh, list) else str(wh)
+        if first:
+            return first
+    return resolve_warehouse_id(db, user.tenant_id)
 
 
 def _table_dict(t: RestaurantTable) -> dict:
@@ -130,11 +141,12 @@ def list_tables(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_READ)),
 ):
+    wh_id = _resolve_wh(db, current_user)
     q = db.query(RestaurantTable).filter(
         RestaurantTable.tenant_id == current_user.tenant_id
     )
-    if current_user.warehouse_id:
-        q = q.filter(RestaurantTable.warehouse_id == current_user.warehouse_id)
+    if wh_id:
+        q = q.filter(RestaurantTable.warehouse_id == wh_id)
     # Un serveur (cashier) ne voit que ses tables assignées
     if not _is_manager(current_user):
         q = q.filter(RestaurantTable.waiter_id == current_user.id)
@@ -151,7 +163,7 @@ def create_table(
     table = RestaurantTable(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
-        warehouse_id=current_user.warehouse_id,
+        warehouse_id=_resolve_wh(db, current_user),
         name=data.name,
         capacity=data.capacity,
         waiter_id=data.waiter_id or None,
@@ -285,7 +297,7 @@ def create_order(
     order = RestaurantOrder(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
-        warehouse_id=current_user.warehouse_id,
+        warehouse_id=_resolve_wh(db, current_user),
         table_id=table_id,
         cashier_id=current_user.id,
         covers=payload.covers,
