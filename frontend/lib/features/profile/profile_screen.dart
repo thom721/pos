@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 
 // ── Providers ──────────────────────────────────────────────────────────────
 
@@ -329,11 +331,20 @@ class _CompanyFormState extends ConsumerState<_CompanyForm> {
   void initState() {
     super.initState();
     final s = ref.read(settingsProvider);
-    _nameCtrl = TextEditingController(text: s.businessName);
-    _emailCtrl = TextEditingController(text: s.email);
-    _phoneCtrl = TextEditingController(text: s.phone);
+    _nameCtrl    = TextEditingController(text: s.businessName);
+    _emailCtrl   = TextEditingController(text: s.email);
+    _phoneCtrl   = TextEditingController(text: s.phone);
     _addressCtrl = TextEditingController(text: s.address);
-    _footerCtrl = TextEditingController(text: s.receiptFooter);
+    _footerCtrl  = TextEditingController(text: s.receiptFooter);
+  }
+
+  /// Met à jour les contrôleurs quand la config change (changement de dépôt).
+  void _applySettings(AppSettings s) {
+    _nameCtrl.text    = s.businessName;
+    _emailCtrl.text   = s.email;
+    _phoneCtrl.text   = s.phone;
+    _addressCtrl.text = s.address;
+    _footerCtrl.text  = s.receiptFooter;
   }
 
   @override
@@ -417,7 +428,19 @@ class _CompanyFormState extends ConsumerState<_CompanyForm> {
 
   @override
   Widget build(BuildContext context) {
+    // Mettre à jour les contrôleurs quand le dépôt actif change
+    ref.listen<AppSettings>(settingsProvider, (prev, next) {
+      if (prev?.businessName != next.businessName ||
+          prev?.address != next.address ||
+          prev?.phone != next.phone) {
+        _applySettings(next);
+      }
+    });
+
     final settings = ref.watch(settingsProvider);
+    final warehouses = ref.watch(warehouseListProvider).valueOrNull ?? [];
+    final activeWarehouse = ref.watch(activeWarehouseProvider);
+
     final typeLabel = switch (settings.businessType) {
       'restaurant' => 'Restaurant / Snack',
       'depot' => 'Dépôt / Grossiste',
@@ -436,6 +459,69 @@ class _CompanyFormState extends ConsumerState<_CompanyForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Sélecteur de dépôt ──────────────────────────────────────
+            if (warehouses.length > 1) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warehouse_outlined, size: 18, color: AppColors.primary),
+                    const SizedBox(width: 10),
+                    const Text('Dépôt :', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<WarehouseModel>(
+                          value: warehouses.firstWhere(
+                            (w) => w.id == (activeWarehouse?.id ?? ''),
+                            orElse: () => warehouses.firstWhere(
+                              (w) => w.isDefault,
+                              orElse: () => warehouses.first,
+                            ),
+                          ),
+                          isDense: true,
+                          isExpanded: true,
+                          icon: const Icon(Icons.expand_more, size: 16, color: AppColors.textSecondary),
+                          style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                          items: warehouses.map((w) => DropdownMenuItem(
+                            value: w,
+                            child: Row(
+                              children: [
+                                Text(w.name, overflow: TextOverflow.ellipsis),
+                                if (w.isDefault) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text('défaut',
+                                        style: TextStyle(fontSize: 10, color: AppColors.primary)),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          )).toList(),
+                          onChanged: (w) {
+                            if (w != null) {
+                              ref.read(activeWarehouseProvider.notifier).setWarehouse(w);
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+
             // Logo placeholder
             Center(
               child: Column(

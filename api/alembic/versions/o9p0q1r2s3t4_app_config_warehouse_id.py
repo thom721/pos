@@ -14,13 +14,20 @@ depends_on = None
 
 
 def upgrade():
+    # Colonne sans index=True pour éviter le double index avec create_index
     op.add_column('app_config',
-        sa.Column('warehouse_id', sa.String(36), sa.ForeignKey('warehouses.id'), nullable=True, index=True)
+        sa.Column('warehouse_id', sa.String(36), nullable=True)
+    )
+    # FK séparée (plus robuste sur MySQL)
+    op.create_foreign_key(
+        'fk_app_config_warehouse_id',
+        'app_config', 'warehouses',
+        ['warehouse_id'], ['id'],
+        ondelete='SET NULL',
     )
     op.create_index('ix_app_config_warehouse_id', 'app_config', ['warehouse_id'])
 
-    # Data migration: associer chaque ligne app_config existante au depot
-    # par defaut de son tenant (ou laisser NULL si pas de tenant/warehouse).
+    # Data migration: associer les rows existants au dépôt par défaut du tenant
     bind = op.get_bind()
     bind.execute(sa.text("""
         UPDATE app_config ac
@@ -31,5 +38,6 @@ def upgrade():
 
 
 def downgrade():
+    op.drop_constraint('fk_app_config_warehouse_id', 'app_config', type_='foreignkey')
     op.drop_index('ix_app_config_warehouse_id', 'app_config')
     op.drop_column('app_config', 'warehouse_id')
