@@ -232,6 +232,24 @@ class _TableCard extends ConsumerWidget {
                     style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
               ],
             ),
+            if (table.waiterName != null) ...[
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.person_outline_rounded, size: 11, color: AppColors.primary),
+                  const SizedBox(width: 2),
+                  Flexible(
+                    child: Text(
+                      table.waiterName!,
+                      style: const TextStyle(fontSize: 10, color: AppColors.primary),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -251,6 +269,17 @@ class _TableCard extends ConsumerWidget {
               onTap: () async {
                 Navigator.pop(context);
                 await _showEditDialog(context, ref);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_pin_rounded, color: AppColors.info),
+              title: const Text('Assigner un serveur'),
+              subtitle: table.waiterName != null
+                  ? Text(table.waiterName!, style: const TextStyle(color: AppColors.primary))
+                  : const Text('Aucun serveur assigné'),
+              onTap: () async {
+                Navigator.pop(context);
+                await _showAssignWaiterDialog(context, ref);
               },
             ),
             if (table.isFree) ListTile(
@@ -302,6 +331,74 @@ class _TableCard extends ConsumerWidget {
                   }
                 }
               },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAssignWaiterDialog(BuildContext context, WidgetRef ref) async {
+    List<RestaurantWaiterModel>? waiters;
+    try {
+      waiters = await RestaurantRepository().getWaiters();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(extractAnyError(e)), backgroundColor: AppColors.error),
+        );
+      }
+      return;
+    }
+    if (!context.mounted) return;
+
+    String? selectedId = table.waiterId;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: Text('Serveur — ${table.name}'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ignore: deprecated_member_use
+                RadioListTile<String?>(
+                  value: null,
+                  groupValue: selectedId,
+                  title: const Text('Aucun serveur'),
+                  onChanged: (v) => setState(() => selectedId = v),
+                ),
+                // ignore: deprecated_member_use
+                ...waiters!.map((w) => RadioListTile<String?>(
+                  value: w.id,
+                  groupValue: selectedId,
+                  title: Text(w.name.isNotEmpty ? w.name : w.username),
+                  subtitle: w.name.isNotEmpty ? Text(w.username) : null,
+                  onChanged: (v) => setState(() => selectedId = v),
+                )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                try {
+                  await RestaurantRepository().assignWaiter(table.id, selectedId);
+                  ref.invalidate(tablesProvider);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(extractAnyError(e)), backgroundColor: AppColors.error),
+                    );
+                  }
+                }
+              },
+              child: const Text('Confirmer'),
             ),
           ],
         ),

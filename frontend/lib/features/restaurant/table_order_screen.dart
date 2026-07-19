@@ -56,10 +56,47 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
     }
   }
 
-  Future<void> _openOrder() async {
+  Future<void> _confirmOpen() async {
+    int covers = 2;
+    final confirmed = await showDialog<int>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Ouvrir une commande'),
+          content: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('Couverts : ', style: TextStyle(fontSize: 15)),
+              IconButton(
+                icon: const Icon(Icons.remove_rounded),
+                onPressed: () => setState(() { if (covers > 1) covers--; }),
+              ),
+              Text('$covers', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              IconButton(
+                icon: const Icon(Icons.add_rounded),
+                onPressed: () => setState(() => covers++),
+              ),
+              const Icon(Icons.people_outline_rounded, color: AppColors.textSecondary),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, covers),
+              child: const Text('Ouvrir'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed == null) return;
+    await _openOrder(covers: confirmed);
+  }
+
+  Future<void> _openOrder({int covers = 2}) async {
     setState(() => _submitting = true);
     try {
-      _order = await _repo.openOrder(widget.tableId);
+      _order = await _repo.openOrder(widget.tableId, covers: covers);
       ref.invalidate(tablesProvider);
     } catch (e) {
       if (mounted) {
@@ -141,7 +178,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => _CheckoutDialog(total: total, symbol: symbol),
+      builder: (_) => _CheckoutDialog(total: total, symbol: symbol, covers: _order!.covers),
     );
     if (result == null) return;
 
@@ -152,25 +189,56 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
         paidAmount: result['paid'] as double,
         paymentMethod: result['method'] as String,
         discount: result['discount'] as double,
+        tip: result['tip'] as double,
       );
       ref.invalidate(tablesProvider);
       if (mounted) {
-        final change = (data['change'] as num?)?.toDouble() ?? 0.0;
+        final change    = (data['change']   as num?)?.toDouble() ?? 0.0;
+        final tip       = (data['tip']      as num?)?.toDouble() ?? 0.0;
+        final subtotal  = (data['subtotal'] as num?)?.toDouble() ?? 0.0;
+        final total     = (data['total']    as num?)?.toDouble() ?? 0.0;
+        final covers    = data['covers']    as int? ?? 1;
+        final tableName = data['table_name'] as String? ?? '';
         await showDialog<void>(
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('Paiement reçu'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 56),
+                const Center(child: Icon(Icons.check_circle_rounded, color: AppColors.success, size: 56)),
                 const SizedBox(height: 12),
-                Text('Réf: ${data['reference']}',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                Center(
+                  child: Text('Réf: ${data['reference']}',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 16),
+                if (tableName.isNotEmpty) _receiptRow('Table', tableName),
+                _receiptRow('Couverts', '$covers'),
+                _receiptRow('Sous-total', '$symbol${_fmt.format(subtotal)}'),
+                if ((result['discount'] as double) > 0)
+                  _receiptRow('Remise', '-$symbol${_fmt.format(result['discount'] as double)}'),
+                if (tip > 0) _receiptRow('Pourboire', '+$symbol${_fmt.format(tip)}'),
+                const Divider(),
+                _receiptRow('Total', '$symbol${_fmt.format(total)}', bold: true),
                 if (change > 0) ...[
                   const SizedBox(height: 8),
-                  Text('Monnaie à rendre : $symbol${_fmt.format(change)}',
-                      style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.success.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Monnaie à rendre :'),
+                        Text('$symbol${_fmt.format(change)}',
+                            style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -222,7 +290,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _order == null
-              ? _NoOrderView(onOpen: _openOrder, submitting: _submitting)
+              ? _NoOrderView(onOpen: _confirmOpen, submitting: _submitting)
               : Column(
                   children: [
                     // Statut de la commande
@@ -268,6 +336,17 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
                 ),
     );
   }
+
+  Widget _receiptRow(String label, String value, {bool bold = false}) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(color: bold ? AppColors.textPrimary : AppColors.textSecondary)),
+        Text(value, style: TextStyle(fontWeight: bold ? FontWeight.bold : FontWeight.normal)),
+      ],
+    ),
+  );
 
   Future<void> _onSearch(String query) async {
     if (query.trim().length < 2) {
@@ -554,21 +633,24 @@ class _BottomBar extends StatelessWidget {
 class _CheckoutDialog extends StatefulWidget {
   final double total;
   final String symbol;
-  const _CheckoutDialog({required this.total, required this.symbol});
+  final int covers;
+  const _CheckoutDialog({required this.total, required this.symbol, required this.covers});
 
   @override
   State<_CheckoutDialog> createState() => _CheckoutDialogState();
 }
 
 class _CheckoutDialogState extends State<_CheckoutDialog> {
-  final _paidCtrl = TextEditingController();
+  final _paidCtrl     = TextEditingController();
   final _discountCtrl = TextEditingController(text: '0');
+  final _tipCtrl      = TextEditingController(text: '0');
   String _method = 'CASH';
 
-  double get _discount => double.tryParse(_discountCtrl.text) ?? 0.0;
-  double get _finalAmount => (widget.total - _discount).clamp(0, double.infinity);
-  double get _paid => double.tryParse(_paidCtrl.text) ?? 0.0;
-  double get _change => (_paid - _finalAmount).clamp(0, double.infinity);
+  double get _discount    => double.tryParse(_discountCtrl.text) ?? 0.0;
+  double get _tip         => double.tryParse(_tipCtrl.text) ?? 0.0;
+  double get _finalAmount => (widget.total - _discount + _tip).clamp(0, double.infinity);
+  double get _paid        => double.tryParse(_paidCtrl.text) ?? 0.0;
+  double get _change      => (_paid - _finalAmount).clamp(0, double.infinity);
 
   @override
   void initState() {
@@ -580,6 +662,7 @@ class _CheckoutDialogState extends State<_CheckoutDialog> {
   void dispose() {
     _paidCtrl.dispose();
     _discountCtrl.dispose();
+    _tipCtrl.dispose();
     super.dispose();
   }
 
@@ -589,74 +672,94 @@ class _CheckoutDialogState extends State<_CheckoutDialog> {
     return AlertDialog(
       title: const Text('Encaissement'),
       content: StatefulBuilder(
-        builder: (_, setState) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Méthode de paiement
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'CASH', label: Text('Espèces'), icon: Icon(Icons.payments_rounded)),
-                ButtonSegment(value: 'CARD', label: Text('Carte'), icon: Icon(Icons.credit_card_rounded)),
-                ButtonSegment(value: 'TRANSFER', label: Text('Virement'), icon: Icon(Icons.account_balance_rounded)),
-              ],
-              selected: {_method},
-              onSelectionChanged: (s) => setState(() => _method = s.first),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _discountCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Remise',
-                prefixText: widget.symbol,
+        builder: (_, setState) => SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.people_outline_rounded, size: 16, color: AppColors.textSecondary),
+                  const SizedBox(width: 6),
+                  Text('${widget.covers} couvert${widget.covers > 1 ? 's' : ''}',
+                      style: const TextStyle(color: AppColors.textSecondary)),
+                ],
               ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Total net :'),
-                Text('${widget.symbol}${fmt.format(_finalAmount)}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _paidCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Montant reçu',
-                prefixText: widget.symbol,
+              const SizedBox(height: 12),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'CASH', label: Text('Espèces'), icon: Icon(Icons.payments_rounded)),
+                  ButtonSegment(value: 'CARD', label: Text('Carte'), icon: Icon(Icons.credit_card_rounded)),
+                  ButtonSegment(value: 'TRANSFER', label: Text('Virement'), icon: Icon(Icons.account_balance_rounded)),
+                ],
+                selected: {_method},
+                onSelectionChanged: (s) => setState(() => _method = s.first),
               ),
-              onChanged: (_) => setState(() {}),
-            ),
-            if (_change > 0) ...[
+              const SizedBox(height: 16),
+              TextField(
+                controller: _discountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: 'Remise', prefixText: widget.symbol),
+                onChanged: (_) => setState(() {}),
+              ),
               const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
+              TextField(
+                controller: _tipCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Pourboire',
+                  prefixText: widget.symbol,
+                  prefixIcon: const Icon(Icons.volunteer_activism_rounded, size: 18),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Monnaie à rendre :'),
-                    Text('${widget.symbol}${fmt.format(_change)}',
-                        style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold)),
-                  ],
-                ),
+                onChanged: (_) => setState(() {}),
               ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Total net :'),
+                  Text('${widget.symbol}${fmt.format(_finalAmount)}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _paidCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: 'Montant reçu', prefixText: widget.symbol),
+                onChanged: (_) => setState(() {}),
+              ),
+              if (_change > 0) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Monnaie à rendre :'),
+                      Text('${widget.symbol}${fmt.format(_change)}',
+                          style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
         FilledButton(
           onPressed: _paid >= _finalAmount
-              ? () => Navigator.pop(context, {'paid': _paid, 'method': _method, 'discount': _discount})
+              ? () => Navigator.pop(context, {
+                    'paid': _paid,
+                    'method': _method,
+                    'discount': _discount,
+                    'tip': _tip,
+                  })
               : null,
           child: const Text('Confirmer'),
         ),

@@ -3,6 +3,22 @@ import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 
 class RestaurantRepository {
+  // ── Waiters ─────────────────────────────────────────────────────────────────
+
+  Future<List<RestaurantWaiterModel>> getWaiters() async {
+    final res = await dio.get('/api/restaurant/waiters/');
+    return (res.data as List)
+        .map((e) => RestaurantWaiterModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<RestaurantTableModel> assignWaiter(String tableId, String? waiterId) async {
+    final res = await dio.put('/api/restaurant/tables/$tableId/assign', data: {
+      'waiter_id': waiterId,
+    });
+    return RestaurantTableModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
   // ── Tables ──────────────────────────────────────────────────────────────────
 
   Future<List<RestaurantTableModel>> getTables() async {
@@ -56,10 +72,15 @@ class RestaurantRepository {
     return RestaurantOrderModel.fromJson(res.data as Map<String, dynamic>);
   }
 
-  Future<RestaurantOrderModel> openOrder(String tableId) async {
+  Future<RestaurantOrderModel> openOrder(
+    String tableId, {
+    int covers = 1,
+    String? notes,
+  }) async {
     final res = await dio.post(
       '/api/restaurant/orders/',
       queryParameters: {'table_id': tableId},
+      data: {'covers': covers, if (notes != null) 'notes': notes},
     );
     return RestaurantOrderModel.fromJson(res.data as Map<String, dynamic>);
   }
@@ -109,12 +130,14 @@ class RestaurantRepository {
     String paymentMethod = 'CASH',
     String? customerId,
     double discount = 0.0,
+    double tip = 0.0,
   }) async {
     final res = await dio.post('/api/restaurant/orders/$orderId/checkout', data: {
       'paid_amount': paidAmount,
       'payment_method': paymentMethod,
       if (customerId != null) 'customer_id': customerId,
       'discount': discount,
+      'tip': tip,
     });
     return res.data as Map<String, dynamic>;
   }

@@ -1,14 +1,37 @@
+class RestaurantWaiterModel {
+  final String id;
+  final String name;
+  final String username;
+
+  const RestaurantWaiterModel({
+    required this.id,
+    required this.name,
+    required this.username,
+  });
+
+  factory RestaurantWaiterModel.fromJson(Map<String, dynamic> j) =>
+      RestaurantWaiterModel(
+        id:       j['id'] as String,
+        name:     j['name'] as String? ?? '',
+        username: j['username'] as String? ?? '',
+      );
+}
+
 class RestaurantTableModel {
   final String id;
   final String name;
   final int capacity;
   final String status; // free | occupied | reserved
+  final String? waiterId;
+  final String? waiterName;
 
   const RestaurantTableModel({
     required this.id,
     required this.name,
     required this.capacity,
     required this.status,
+    this.waiterId,
+    this.waiterName,
   });
 
   bool get isFree     => status == 'free';
@@ -17,10 +40,12 @@ class RestaurantTableModel {
 
   factory RestaurantTableModel.fromJson(Map<String, dynamic> j) =>
       RestaurantTableModel(
-        id:       j['id'] as String,
-        name:     j['name'] as String,
-        capacity: j['capacity'] as int? ?? 4,
-        status:   j['status'] as String? ?? 'free',
+        id:         j['id'] as String,
+        name:       j['name'] as String,
+        capacity:   j['capacity'] as int? ?? 4,
+        status:     j['status'] as String? ?? 'free',
+        waiterId:   j['waiter_id'] as String?,
+        waiterName: j['waiter_name'] as String?,
       );
 }
 
@@ -63,7 +88,10 @@ class RestaurantOrderModel {
   final String? tableName;
   final String status; // open | sent_to_kitchen | ready | closed
   final List<RestaurantOrderItemModel> items;
+  final double subtotal;
+  final double tip;
   final double total;
+  final int covers;
   final String? notes;
 
   const RestaurantOrderModel({
@@ -72,7 +100,10 @@ class RestaurantOrderModel {
     this.tableName,
     required this.status,
     required this.items,
+    required this.subtotal,
+    required this.tip,
     required this.total,
+    required this.covers,
     this.notes,
   });
 
@@ -81,12 +112,15 @@ class RestaurantOrderModel {
 
   factory RestaurantOrderModel.fromJson(Map<String, dynamic> j) =>
       RestaurantOrderModel(
-        id:        j['id'] as String,
-        tableId:   j['table_id'] as String,
+        id:       j['id'] as String,
+        tableId:  j['table_id'] as String,
         tableName: j['table_name'] as String?,
-        status:    j['status'] as String? ?? 'open',
-        total:     (j['total'] as num?)?.toDouble() ?? 0.0,
-        notes:     j['notes'] as String?,
+        status:   j['status'] as String? ?? 'open',
+        subtotal: (j['subtotal'] as num?)?.toDouble() ?? 0.0,
+        tip:      (j['tip'] as num?)?.toDouble() ?? 0.0,
+        total:    (j['total'] as num?)?.toDouble() ?? 0.0,
+        covers:   j['covers'] as int? ?? 1,
+        notes:    j['notes'] as String?,
         items: (j['items'] as List<dynamic>? ?? [])
             .map((e) => RestaurantOrderItemModel.fromJson(e as Map<String, dynamic>))
             .toList(),

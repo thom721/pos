@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 from sqlalchemy.orm import Session
 import uuid
 
 from api.database import get_db
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
+from api.core.permissions import has_permission
 from api.models.User import User
 from api.models.RestaurantTable import RestaurantTable
 from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
@@ -17,37 +18,16 @@ import asyncio
 router = APIRouter(tags=["Restaurant"])
 
 
-# ── Schemas ───────────────────────────────────────────────────────────────────
-
-class TableCreate(BaseModel):
-    name: str
-    capacity: int = 4
-
-class TableUpdate(BaseModel):
-    name: Optional[str] = None
-    capacity: Optional[int] = None
-    status: Optional[str] = None  # free | occupied | reserved
-
-class OrderItemAdd(BaseModel):
-    product_id: str
-    quantity: float = 1.0
-    notes: Optional[str] = None
-
-class OrderItemUpdate(BaseModel):
-    quantity: Optional[float] = None
-    notes: Optional[str] = None
-    status: Optional[str] = None  # pending | preparing | ready
-
-class CheckoutPayload(BaseModel):
-    payment_method: str = 'CASH'
-    paid_amount: float
-    customer_id: Optional[str] = None
-    discount: float = 0.0
-
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _notify(tenant_id: str):
     if tenant_id:
         asyncio.ensure_future(manager.notify(tenant_id))
+
+
+def _is_manager(user: User) -> bool:
+    roles = user.roles or []
+    return 'admin' in roles or 'manager' in roles
 
 
 def _table_dict(t: RestaurantTable) -> dict:
@@ -56,6 +36,8 @@ def _table_dict(t: RestaurantTable) -> dict:
         'name': t.name,
         'capacity': t.capacity,
         'status': t.status,
+        'waiter_id': t.waiter_id,
+        'waiter_name': f"{t.waiter.fname} {t.waiter.lname}".strip() if t.waiter else None,
         'created_at': t.created_at,
     }
 
@@ -73,19 +55,72 @@ def _item_dict(i: RestaurantOrderItem) -> dict:
 
 
 def _order_dict(o: RestaurantOrder) -> dict:
+    subtotal = sum(float(i.quantity) * float(i.unit_price) for i in o.items)
+    tip = float(o.tip or 0)
     return {
         'id': o.id,
         'table_id': o.table_id,
         'table_name': o.table.name if o.table else None,
         'cashier_id': o.cashier_id,
+        'covers': o.covers,
         'status': o.status,
         'notes': o.notes,
+        'tip': tip,
         'sale_id': o.sale_id,
         'items': [_item_dict(i) for i in o.items],
-        'total': sum(float(i.quantity) * float(i.unit_price) for i in o.items),
+        'subtotal': subtotal,
+        'total': subtotal + tip,
         'created_at': o.created_at,
         'updated_at': o.updated_at,
     }
+
+
+# ── Schemas ────────────────────────────────────────────────────────────────────
+
+class TableCreate(BaseModel):
+    name: str
+    capacity: int = 4
+    waiter_id: Optional[str] = None
+
+class TableUpdate(BaseModel):
+    name: Optional[str] = None
+    capacity: Optional[int] = None
+    status: Optional[str] = None
+    waiter_id: Optional[str] = None  # '' = désassigner
+
+class TableAssign(BaseModel):
+    waiter_id: Optional[str] = None  # None = désassigner
+
+class OrderItemAdd(BaseModel):
+    product_id: str
+    quantity: float = 1.0
+    notes: Optional[str] = None
+
+class OpenOrderPayload(BaseModel):
+    covers: int = 1
+    notes: Optional[str] = None
+
+class CheckoutPayload(BaseModel):
+    payment_method: str = 'CASH'
+    paid_amount: float
+    customer_id: Optional[str] = None
+    discount: float = 0.0
+    tip: float = 0.0
+
+
+# ── Serveurs (waiters) ────────────────────────────────────────────────────────
+
+@router.get("/waiters/")
+def list_waiters(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_READ)),
+):
+    """Liste les utilisateurs actifs du tenant pouvant être assignés comme serveurs."""
+    users = db.query(User).filter(
+        User.tenant_id == current_user.tenant_id,
+        User.is_active == True,  # noqa: E712
+    ).order_by(User.fname).all()
+    return [{'id': u.id, 'name': f"{u.fname} {u.lname}".strip(), 'username': u.username} for u in users]
 
 
 # ── Tables ────────────────────────────────────────────────────────────────────
@@ -100,6 +135,9 @@ def list_tables(
     )
     if current_user.warehouse_id:
         q = q.filter(RestaurantTable.warehouse_id == current_user.warehouse_id)
+    # Un serveur (cashier) ne voit que ses tables assignées
+    if not _is_manager(current_user):
+        q = q.filter(RestaurantTable.waiter_id == current_user.id)
     return [_table_dict(t) for t in q.order_by(RestaurantTable.name).all()]
 
 
@@ -116,6 +154,7 @@ def create_table(
         warehouse_id=current_user.warehouse_id,
         name=data.name,
         capacity=data.capacity,
+        waiter_id=data.waiter_id or None,
     )
     db.add(table)
     db.commit()
@@ -144,6 +183,32 @@ def update_table(
         table.capacity = data.capacity
     if data.status is not None:
         table.status = data.status
+    if 'waiter_id' in data.model_fields_set:
+        table.waiter_id = data.waiter_id or None
+    db.commit()
+    db.refresh(table)
+    background_tasks.add_task(_notify, current_user.tenant_id)
+    return _table_dict(table)
+
+
+@router.put("/tables/{table_id}/assign")
+def assign_waiter(
+    table_id: str,
+    data: TableAssign,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    """Assigne (ou désassigne) un serveur à une table."""
+    if not _is_manager(current_user):
+        raise HTTPException(403, "Seul un manager peut assigner les serveurs")
+    table = db.query(RestaurantTable).filter(
+        RestaurantTable.id == table_id,
+        RestaurantTable.tenant_id == current_user.tenant_id,
+    ).first()
+    if not table:
+        raise HTTPException(404, "Table introuvable")
+    table.waiter_id = data.waiter_id or None
     db.commit()
     db.refresh(table)
     background_tasks.add_task(_notify, current_user.tenant_id)
@@ -205,6 +270,7 @@ def get_table_order(
 @router.post("/orders/", status_code=201)
 def create_order(
     table_id: str,
+    payload: OpenOrderPayload,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
@@ -222,6 +288,8 @@ def create_order(
         warehouse_id=current_user.warehouse_id,
         table_id=table_id,
         cashier_id=current_user.id,
+        covers=payload.covers,
+        notes=payload.notes,
     )
     db.add(order)
 
@@ -357,9 +425,10 @@ def checkout_order(
     if not order.items:
         raise HTTPException(400, "Aucun article à encaisser")
 
-    total = sum(float(i.quantity) * float(i.unit_price) for i in order.items)
-    discount = min(data.discount, total)
-    final = total - discount
+    subtotal = sum(float(i.quantity) * float(i.unit_price) for i in order.items)
+    tip = max(0.0, data.tip)
+    discount = min(data.discount, subtotal)
+    final = subtotal - discount + tip
 
     reference = f"VNT-{random.randint(1000000000, 9999999999)}"
     sale = Sale(
@@ -369,7 +438,7 @@ def checkout_order(
         user_id=current_user.id,
         customer_id=data.customer_id,
         reference=reference,
-        total_amount=total,
+        total_amount=subtotal,
         discount=discount,
         final_amount=final,
         paid_amount=data.paid_amount,
@@ -413,6 +482,8 @@ def checkout_order(
                 balance=remaining,
             ))
 
+    # Enregistrer le pourboire sur la commande
+    order.tip = tip
     order.status = 'closed'
     order.sale_id = sale.id
 
@@ -422,4 +493,15 @@ def checkout_order(
 
     db.commit()
     background_tasks.add_task(_notify, current_user.tenant_id)
-    return {'sale_id': sale.id, 'reference': reference, 'total': final, 'change': max(0, data.paid_amount - final)}
+    return {
+        'sale_id': sale.id,
+        'reference': reference,
+        'subtotal': subtotal,
+        'discount': discount,
+        'tip': tip,
+        'total': final,
+        'paid': data.paid_amount,
+        'change': max(0.0, data.paid_amount - final),
+        'covers': order.covers,
+        'table_name': table.name if table else None,
+    }

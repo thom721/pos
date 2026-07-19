@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, Enum as SAEnum, ForeignKey, Text
+from sqlalchemy import Column, String, Numeric, Integer, Enum as SAEnum, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
@@ -15,7 +15,9 @@ class RestaurantOrder(UUIDBase):
         default='open',
         nullable=False,
     )
+    covers  = Column(Integer, default=1, nullable=False)
     notes   = Column(Text, nullable=True)
+    tip     = Column(Numeric(10, 2), default=0, nullable=False)
     sale_id = Column(String(36), ForeignKey('sales.id'), nullable=True)
 
     items = relationship('RestaurantOrderItem', back_populates='order',
