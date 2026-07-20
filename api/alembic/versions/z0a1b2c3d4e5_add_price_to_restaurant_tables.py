@@ -1,22 +1,23 @@
 """add price to restaurant_tables
 
-Revision ID: r3s4t5u6v7w8
-Revises: fffb1bb06e61
+Revision ID: z0a1b2c3d4e5
+Revises: y9z0a1b2c3d4
 Create Date: 2026-07-20 00:00:00.000000
 """
 from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = 'r3s4t5u6v7w8'
-down_revision: Union[str, None] = 'fffb1bb06e61'
+revision: str = 'z0a1b2c3d4e5'
+down_revision: Union[str, None] = 'y9z0a1b2c3d4'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('restaurant_tables',
-        sa.Column('price', sa.Numeric(12, 2), nullable=True, server_default='0')
+    op.execute(
+        "ALTER TABLE restaurant_tables "
+        "ADD COLUMN IF NOT EXISTS price DECIMAL(12,2) NULL DEFAULT 0"
     )
 
 
