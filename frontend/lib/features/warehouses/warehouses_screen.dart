@@ -7,6 +7,7 @@ import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/repositories/warehouse_repository.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/shared/widgets/limit_exceeded_dialog.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
@@ -334,7 +335,7 @@ class _WarehouseSection extends ConsumerWidget {
             ),
             error: (e, _) => Padding(
               padding: const EdgeInsets.all(12),
-              child: Text('Erreur caisses : $e',
+              child: Text('Erreur caisses : ${extractAnyError(e)}',
                   style: const TextStyle(
                       fontSize: 12, color: AppColors.error)),
             ),

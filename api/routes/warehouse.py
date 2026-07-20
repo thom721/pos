@@ -47,7 +47,7 @@ def _limit_response(resource: str, current: int, max_: int, cfg: PlatformConfig 
 class RegisterRead(BaseModel):
     id: str
     name: str
-    device_id: str
+    device_id: Optional[str] = None
     is_active: bool
     warehouse_id: Optional[str] = None
 
