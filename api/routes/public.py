@@ -76,8 +76,11 @@ def register(payload: TenantRegister, db: Session = Depends(get_db)):
         password=payload.password,
         phone=payload.phone,
     )
+    from api.models.PlatformConfig import PlatformConfig as _PC
+    cfg = db.query(_PC).first()
+    trial_days = cfg.trial_days if cfg else 30
     return {
-        "message": "Compte créé avec succès. Période d'essai de 30 jours activée.",
+        "message": f"Compte créé avec succès. Période d'essai de {trial_days} jours activée.",
         "tenant_id": tenant.id,
         "slug": tenant.slug,
         "trial_ends_at": tenant.trial_ends_at,
@@ -98,6 +101,31 @@ def login(payload: CloudLogin, db: Session = Depends(get_db)):
         device_id=payload.device_id,
         register_name=payload.register_name,
     )
+
+
+@router.get("/pricing")
+def get_pricing(db: Session = Depends(get_db)):
+    """
+    Returns public pricing info from platform_config (no auth required).
+    Used by the public landing page to display up-to-date prices and trial days.
+    """
+    from api.models.PlatformConfig import PlatformConfig
+    cfg = db.query(PlatformConfig).first()
+    if not cfg:
+        return {
+            "monthly_price_htg": 2500.00,
+            "monthly_price_usd": 20.00,
+            "trial_days": 30,
+            "price_per_extra_caisse_htg": 500.00,
+            "price_per_extra_caisse_usd": 4.00,
+        }
+    return {
+        "monthly_price_htg":         float(cfg.monthly_price_htg),
+        "monthly_price_usd":         float(cfg.monthly_price_usd),
+        "trial_days":                cfg.trial_days,
+        "price_per_extra_caisse_htg": float(cfg.price_per_extra_caisse_htg),
+        "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
+    }
 
 
 @router.get("/tenant/{tenant_id}", response_model=TenantRead)

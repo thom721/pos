@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pos_connect/providers/pricing_provider.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -447,12 +449,32 @@ class _RestaurantText extends StatelessWidget {
 
 // ── Pricing ───────────────────────────────────────────────────────────────────
 
-class _Pricing extends StatelessWidget {
+String _fmtHtg(double v) {
+  final n = v.round();
+  if (n >= 1000) {
+    final thousands = n ~/ 1000;
+    final remainder = n % 1000;
+    return remainder == 0 ? '$thousands 000 HTG' : '$thousands ${remainder.toString().padLeft(3, '0')} HTG';
+  }
+  return '$n HTG';
+}
+
+String _fmtUsd(double v) => '${v % 1 == 0 ? v.round() : v} USD';
+
+class _Pricing extends ConsumerWidget {
   const _Pricing();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isWide = MediaQuery.sizeOf(context).width >= 900;
+    final pricing = ref.watch(pricingProvider);
+    final p = pricing.valueOrNull ?? PricingInfo.fallback;
+
+    final proHtg = _fmtHtg(p.monthlyPriceHtg);
+    final proUsd = _fmtUsd(p.monthlyPriceUsd);
+    final extraLabel = '+ ${_fmtHtg(p.extraCaisseHtg)} / ${_fmtUsd(p.extraCaisseUsd)} par caisse supplémentaire';
+    final trialLabel = p.trialDays > 0 ? 'Essai gratuit ${p.trialDays} jours  •  ' : '';
+
     return Container(
       color: _bg,
       padding: EdgeInsets.symmetric(horizontal: isWide ? 80 : 24, vertical: 72),
@@ -466,29 +488,29 @@ class _Pricing extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'Paiement en HTG ou USD  •  Sans engagement  •  Support inclus',
+          '${trialLabel}Paiement en HTG ou USD  •  Support inclus',
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF718096)),
         ),
         const SizedBox(height: 48),
         if (isWide)
           IntrinsicHeight(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: const [
-              Expanded(child: _PriceCard(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Expanded(child: _PriceCard(
                 plan: 'Starter', priceHtg: 'Gratuit', priceUsd: '',
                 period: 'pour toujours', subtitle: 'Pour démarrer',
                 highlighted: false,
                 features: ['1 dépôt', '1 caisse', 'Ventes & encaissements', 'Gestion clients', 'Rapports de base', 'Support email'],
               )),
-              SizedBox(width: 20),
+              const SizedBox(width: 20),
               Expanded(child: _PriceCard(
-                plan: 'Pro', priceHtg: '2 500 HTG', priceUsd: '20 USD',
+                plan: 'Pro', priceHtg: proHtg, priceUsd: proUsd,
                 period: 'par mois', subtitle: 'Pour les commerces actifs',
                 highlighted: true,
                 features: ['3 dépôts', '3 caisses incluses', 'Mode restaurant', 'Sync cloud temps réel', 'Rapports avancés', 'Multi-plateformes', 'Support prioritaire'],
               )),
-              SizedBox(width: 20),
-              Expanded(child: _PriceCard(
+              const SizedBox(width: 20),
+              const Expanded(child: _PriceCard(
                 plan: 'Enterprise', priceHtg: 'Sur devis', priceUsd: '',
                 period: '', subtitle: 'Pour les grandes enseignes',
                 highlighted: false,
@@ -497,19 +519,20 @@ class _Pricing extends StatelessWidget {
             ]),
           )
         else
-          Column(children: const [
-            _PriceCard(plan: 'Starter', priceHtg: 'Gratuit', priceUsd: '', period: 'pour toujours', subtitle: 'Pour démarrer', highlighted: false,
+          Column(children: [
+            const _PriceCard(plan: 'Starter', priceHtg: 'Gratuit', priceUsd: '', period: 'pour toujours', subtitle: 'Pour démarrer', highlighted: false,
               features: ['1 dépôt', '1 caisse', 'Ventes & encaissements', 'Gestion clients', 'Rapports de base']),
-            SizedBox(height: 20),
-            _PriceCard(plan: 'Pro', priceHtg: '2 500 HTG', priceUsd: '20 USD', period: 'par mois', subtitle: 'Pour les commerces actifs', highlighted: true,
-              features: ['3 dépôts', '3 caisses incluses', 'Mode restaurant', 'Sync cloud', 'Rapports avancés']),
-            SizedBox(height: 20),
-            _PriceCard(plan: 'Enterprise', priceHtg: 'Sur devis', priceUsd: '', period: '', subtitle: 'Pour les grandes enseignes', highlighted: false,
+            const SizedBox(height: 20),
+            _PriceCard(plan: 'Pro', priceHtg: proHtg, priceUsd: proUsd, period: 'par mois', subtitle: 'Pour les commerces actifs', highlighted: true,
+              features: const ['3 dépôts', '3 caisses incluses', 'Mode restaurant', 'Sync cloud', 'Rapports avancés']),
+            const SizedBox(height: 20),
+            const _PriceCard(plan: 'Enterprise', priceHtg: 'Sur devis', priceUsd: '', period: '', subtitle: 'Pour les grandes enseignes', highlighted: false,
               features: ['Dépôts illimités', 'Caisses illimitées', 'API REST', 'White label', 'Support dédié']),
           ]),
         const SizedBox(height: 20),
-        Text('+ 500 HTG / 4 USD par caisse supplémentaire',
-            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096))),
+        pricing.isLoading
+            ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            : Text(extraLabel, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096))),
       ]),
     );
   }

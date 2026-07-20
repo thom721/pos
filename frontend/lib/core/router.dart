@@ -73,7 +73,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         // Public pages — redirect logged-in users straight to the app
         return isLoggedIn ? '/dashboard' : null;
       }
-      if (!isLoggedIn && location != '/login') return '/login';
+      // Web: unauthenticated users see the public landing page, not login
+      if (!isLoggedIn && location != '/login') return kIsWeb ? '/home' : '/login';
       if (isLoggedIn && location == '/login') {
         return mustChange ? '/change-password' : '/dashboard';
       }
