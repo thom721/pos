@@ -45,20 +45,24 @@ class WarehousesScreen extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
             child: Row(
               children: [
-                const Text(
-                  'Dépôts & Caisses',
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary),
+                const Flexible(
+                  child: Text(
+                    'Dépôts & Caisses',
+                    style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                const Spacer(),
-                if (canCreate)
+                if (canCreate) ...[
+                  const SizedBox(width: 8),
                   FilledButton.icon(
                     onPressed: () => _showWarehouseDialog(context, ref),
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Nouveau dépôt'),
                   ),
+                ],
               ],
             ),
           ),
