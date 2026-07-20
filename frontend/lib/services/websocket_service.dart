@@ -60,13 +60,11 @@ class WebSocketService {
     final base = dio.options.baseUrl
         .replaceFirst('https://', 'wss://')
         .replaceFirst('http://', 'ws://');
-    final wsUri = Uri.parse('$base/ws');
+    // Backend expects token as ?token= query param (FastAPI Query dependency)
+    final wsUri = Uri.parse('$base/ws?token=$token');
 
     try {
-      _channel = IOWebSocketChannel.connect(
-        wsUri,
-        headers: {'Authorization': 'Bearer $token'},
-      );
+      _channel = IOWebSocketChannel.connect(wsUri);
       await _channel!.ready; // throws if the handshake fails
       _retrySeconds = 1;
       debugPrint('[WS] connected to $base');

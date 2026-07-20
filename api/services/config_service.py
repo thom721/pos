@@ -1,4 +1,5 @@
 import copy
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from api.models.AppConfig import AppConfig
 
@@ -37,9 +38,20 @@ def get_or_create(
             for field, value in _copy_fields(fallback).items():
                 setattr(config, field, value)
         db.add(config)
-        db.commit()
-        db.refresh(config)
-        return config
+        try:
+            db.commit()
+            db.refresh(config)
+            return config
+        except IntegrityError:
+            # warehouse_id doesn't exist in DB (deleted or stale) — use global config
+            db.rollback()
+            if fallback:
+                return fallback
+            global_cfg = AppConfig(tenant_id=tenant_id, warehouse_id=None)
+            db.add(global_cfg)
+            db.commit()
+            db.refresh(global_cfg)
+            return global_cfg
 
     elif tenant_id:
         # Local mode (no warehouse_id): use the tenant-global NULL-warehouse row
