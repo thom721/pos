@@ -35,6 +35,9 @@ import 'package:pos_connect/features/restaurant/table_order_screen.dart';
 import 'package:pos_connect/features/restaurant/kitchen_screen.dart';
 import 'package:pos_connect/features/restaurant/commandes_screen.dart';
 import 'package:pos_connect/features/restaurant/commande_screen.dart';
+import 'package:pos_connect/features/public/home_screen.dart';
+import 'package:pos_connect/features/public/contact_screen.dart';
+import 'package:pos_connect/features/public/terms_screen.dart';
 import 'package:pos_connect/shared/widgets/app_shell.dart';
 
 // Notifies GoRouter when auth state changes, without recreating the router.
@@ -64,8 +67,12 @@ final routerProvider = Provider<GoRouter>((ref) {
                 defaultTargetPlatform == TargetPlatform.iOS);
         return isMobile ? '/login' : null;
       }
-      if (location == '/register') return null; // always accessible
-      if (location == '/admin') return null; // super-admin panel — has its own auth
+      if (location == '/register') return null;
+      if (location == '/admin') return null;
+      if (location == '/home' || location == '/contact' || location == '/terms') {
+        // Public pages — redirect logged-in users straight to the app
+        return isLoggedIn ? '/dashboard' : null;
+      }
       if (!isLoggedIn && location != '/login') return '/login';
       if (isLoggedIn && location == '/login') {
         return mustChange ? '/change-password' : '/dashboard';
@@ -102,6 +109,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/admin',
         builder: (context, state) => const AdminScreen(),
+      ),
+      GoRoute(
+        path: '/home',
+        builder: (context, state) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: '/contact',
+        builder: (context, state) => const ContactScreen(),
+      ),
+      GoRoute(
+        path: '/terms',
+        builder: (context, state) => const TermsScreen(),
       ),
       ShellRoute(
         builder: (context, state, child) => AppShell(child: child),

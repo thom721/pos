@@ -1,0 +1,757 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+// ── Palette ───────────────────────────────────────────────────────────────────
+
+const _navy   = Color(0xFF1B2A3B);
+const _blue   = Color(0xFF0077C5);
+const _green  = Color(0xFF2CA01C);
+const _bg     = Color(0xFFF0F2F5);
+const _white  = Colors.white;
+
+// ── Screen ────────────────────────────────────────────────────────────────────
+
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _white,
+      body: SingleChildScrollView(
+        child: Column(children: const [
+          _NavBar(),
+          _Hero(),
+          _Features(),
+          _RestaurantBand(),
+          _Pricing(),
+          _CtaBand(),
+          _Footer(),
+        ]),
+      ),
+    );
+  }
+}
+
+// ── NavBar ────────────────────────────────────────────────────────────────────
+
+class _NavBar extends StatelessWidget {
+  const _NavBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final isNarrow = MediaQuery.sizeOf(context).width < 700;
+    return Material(
+      elevation: 1,
+      color: _white,
+      child: SizedBox(
+        height: 64,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Row(children: [
+            const _Logo(),
+            const Spacer(),
+            if (!isNarrow) ...[
+              _NavLink('Accueil',     '/home'),
+              _NavLink('Contact',    '/contact'),
+              _NavLink('Conditions', '/terms'),
+              const SizedBox(width: 16),
+            ],
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _blue, side: const BorderSide(color: _blue),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              ),
+              onPressed: () => context.go('/login'),
+              child: const Text('Se connecter'),
+            ),
+            const SizedBox(width: 10),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: _blue,
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              ),
+              onPressed: () => context.go('/register'),
+              child: const Text('Créer un compte'),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _Logo extends StatelessWidget {
+  const _Logo();
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    Container(
+      width: 36, height: 36,
+      decoration: BoxDecoration(color: _blue, borderRadius: BorderRadius.circular(10)),
+      child: const Icon(Icons.point_of_sale_rounded, color: _white, size: 20),
+    ),
+    const SizedBox(width: 10),
+    Text('POS Connect', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
+  ]);
+}
+
+class _NavLink extends StatelessWidget {
+  final String label;
+  final String route;
+  const _NavLink(this.label, this.route);
+  @override
+  Widget build(BuildContext context) => TextButton(
+    onPressed: () => context.go(route),
+    child: Text(label, style: GoogleFonts.inter(fontSize: 14, color: _navy)),
+  );
+}
+
+// ── Hero ──────────────────────────────────────────────────────────────────────
+
+class _Hero extends StatelessWidget {
+  const _Hero();
+
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.sizeOf(context).width >= 900;
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [Color(0xFF0A1929), Color(0xFF1B2A3B), Color(0xFF0D3B6E)],
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: isWide ? 80 : 24, vertical: isWide ? 80 : 48),
+        child: isWide
+            ? Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                Expanded(child: _HeroText()),
+                const SizedBox(width: 64),
+                Expanded(child: const _HeroImage()),
+              ])
+            : Column(children: [_HeroText(), const SizedBox(height: 40), const _HeroImage()]),
+      ),
+    );
+  }
+}
+
+class _HeroText extends StatelessWidget {
+  const _HeroText();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: _blue.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _blue.withValues(alpha: 0.4)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 7, height: 7, decoration: const BoxDecoration(color: _green, shape: BoxShape.circle)),
+          const SizedBox(width: 8),
+          Text('Solution POS #1 en Haïti',
+              style: GoogleFonts.inter(fontSize: 13, color: _white, fontWeight: FontWeight.w500)),
+        ]),
+      ),
+      const SizedBox(height: 24),
+      Text(
+        'Gérez votre commerce.\nPartout. Toujours.',
+        style: GoogleFonts.inter(
+          fontSize: 46, fontWeight: FontWeight.w800,
+          color: _white, height: 1.15, letterSpacing: -0.5,
+        ),
+      ),
+      const SizedBox(height: 20),
+      Text(
+        'POS Connect est la solution tout-en-un pour les commerces et restaurants haïtiens — caisse, inventaire, rapports et synchronisation cloud sur mobile, desktop et web.',
+        style: GoogleFonts.inter(fontSize: 16, color: const Color(0xFFB0C4D8), height: 1.6),
+      ),
+      const SizedBox(height: 36),
+      Wrap(spacing: 14, runSpacing: 12, children: [
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: _blue,
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+            textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+          icon: const Icon(Icons.rocket_launch_rounded, size: 18),
+          label: const Text('Commencer gratuitement'),
+          onPressed: () => context.go('/register'),
+        ),
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _white,
+            side: BorderSide(color: _white.withValues(alpha: 0.4)),
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+            textStyle: GoogleFonts.inter(fontSize: 15),
+          ),
+          icon: const Icon(Icons.contact_support_outlined, size: 18),
+          label: const Text('Parler à un expert'),
+          onPressed: () => context.go('/contact'),
+        ),
+      ]),
+      const SizedBox(height: 40),
+      // Stats row
+      Row(children: [
+        _Stat('500+', 'Commerces actifs'),
+        _divider(),
+        _Stat('10k+', 'Transactions/jour'),
+        _divider(),
+        _Stat('99.9%', 'Disponibilité'),
+      ]),
+    ]);
+  }
+
+  Widget _divider() => Container(
+    width: 1, height: 36, margin: const EdgeInsets.symmetric(horizontal: 20),
+    color: _white.withValues(alpha: 0.2),
+  );
+}
+
+class _Stat extends StatelessWidget {
+  final String value;
+  final String label;
+  const _Stat(this.value, this.label);
+  @override
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Text(value, style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800, color: _white)),
+    Text(label, style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF90A4BE))),
+  ]);
+}
+
+class _HeroImage extends StatelessWidget {
+  const _HeroImage();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 40, offset: const Offset(0, 20))],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(children: [
+        Image.network(
+          'https://images.unsplash.com/photo-1556740758-90de374c12ad?w=700&q=80',
+          fit: BoxFit.cover, height: 400, width: double.infinity,
+          loadingBuilder: (_, child, progress) =>
+              progress == null ? child : Container(height: 400, color: const Color(0xFF1A3A5C)),
+          errorBuilder: (_, __, ___) => Container(
+            height: 400, color: const Color(0xFF1A3A5C),
+            child: const Center(child: Icon(Icons.point_of_sale_rounded, color: _blue, size: 80)),
+          ),
+        ),
+        Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter, end: Alignment.bottomCenter,
+            colors: [Colors.transparent, Colors.black.withValues(alpha: 0.4)],
+          ),
+        ))),
+        Positioned(bottom: 16, left: 16, child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(color: _green, borderRadius: BorderRadius.circular(8)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.check_circle_rounded, color: _white, size: 16),
+            const SizedBox(width: 6),
+            Text('Sync en temps réel',
+                style: GoogleFonts.inter(color: _white, fontSize: 13, fontWeight: FontWeight.w600)),
+          ]),
+        )),
+      ]),
+    );
+  }
+}
+
+// ── Features ──────────────────────────────────────────────────────────────────
+
+class _Features extends StatelessWidget {
+  const _Features();
+
+  static const _items = [
+    (Icons.devices_rounded,              _blue,               'Multi-plateforme',    'Mobile Android, desktop macOS/Windows et application web — un seul compte, partout.'),
+    (Icons.restaurant_menu_rounded,      Color(0xFFE67E22),   'Mode restaurant',     'Gestion des tables, commandes en cuisine, pourboires et couverts intégrés.'),
+    (Icons.wifi_off_rounded,             _green,              'Hors ligne',          'Continuez à encaisser même sans internet. Les données se synchronisent à la reconnexion.'),
+    (Icons.store_mall_directory_rounded, Color(0xFF8E44AD),   'Multi-dépôts',        'Gérez plusieurs points de vente depuis un tableau de bord centralisé.'),
+    (Icons.cloud_sync_rounded,           Color(0xFF2980B9),   'Sync cloud',          'Toutes vos données synchronisées automatiquement entre tous vos appareils.'),
+    (Icons.bar_chart_rounded,            Color(0xFF16A085),   'Rapports avancés',    'Statistiques de ventes, rapports par dépôt, analyse des performances en temps réel.'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.sizeOf(context).width >= 700;
+    return Container(
+      color: _bg,
+      padding: EdgeInsets.symmetric(horizontal: isWide ? 80 : 24, vertical: 72),
+      child: Column(children: [
+        const _SectionLabel('Fonctionnalités'),
+        const SizedBox(height: 12),
+        Text(
+          'Tout ce dont vous avez besoin pour gérer votre commerce',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(fontSize: isWide ? 32 : 22, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
+        ),
+        const SizedBox(height: 48),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: isWide ? 3 : 1,
+            crossAxisSpacing: 20, mainAxisSpacing: 20,
+            childAspectRatio: isWide ? 1.35 : 3.5,
+          ),
+          itemCount: _items.length,
+          itemBuilder: (_, i) => _FeatureCard(
+            icon: _items[i].$1, color: _items[i].$2,
+            title: _items[i].$3, desc: _items[i].$4,
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+class _FeatureCard extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String desc;
+  const _FeatureCard({required this.icon, required this.color, required this.title, required this.desc});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: _white, borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 48, height: 48,
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+          child: Icon(icon, color: color, size: 24),
+        ),
+        const SizedBox(height: 16),
+        Text(title, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
+        const SizedBox(height: 8),
+        Text(desc, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5)),
+      ]),
+    );
+  }
+}
+
+// ── Restaurant showcase ───────────────────────────────────────────────────────
+
+class _RestaurantBand extends StatelessWidget {
+  const _RestaurantBand();
+
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.sizeOf(context).width >= 900;
+    return Container(
+      color: _white,
+      padding: EdgeInsets.symmetric(horizontal: isWide ? 80 : 24, vertical: 72),
+      child: isWide
+          ? Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              const Expanded(child: _RestaurantImage()),
+              const SizedBox(width: 64),
+              const Expanded(child: _RestaurantText()),
+            ])
+          : const Column(children: [
+              _RestaurantImage(),
+              SizedBox(height: 40),
+              _RestaurantText(),
+            ]),
+    );
+  }
+}
+
+class _RestaurantImage extends StatelessWidget {
+  const _RestaurantImage();
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Stack(children: [
+        Image.network(
+          'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=700&q=80',
+          height: 400, width: double.infinity, fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            height: 400, color: const Color(0xFFFFF3E0),
+            child: const Center(child: Icon(Icons.restaurant_rounded, size: 80, color: Color(0xFFE67E22))),
+          ),
+        ),
+        Positioned(top: 16, right: 16, child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(color: const Color(0xFFE67E22), borderRadius: BorderRadius.circular(8)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.restaurant_rounded, color: _white, size: 14),
+            const SizedBox(width: 6),
+            Text('Mode Restaurant', style: GoogleFonts.inter(color: _white, fontSize: 12, fontWeight: FontWeight.w600)),
+          ]),
+        )),
+      ]),
+    );
+  }
+}
+
+class _RestaurantText extends StatelessWidget {
+  const _RestaurantText();
+
+  static const _points = [
+    ('Tables interactives',  'Plan de salle visuel avec statut en temps réel'),
+    ('Bons de cuisine',      'Impression automatique ou affichage en cuisine'),
+    ('Pourboires & couverts','Calcul automatique configurable par table'),
+    ('Commandes multiples',  'Gérez plusieurs tables et commandes simultanément'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const _SectionLabel('Pour les restaurants'),
+      const SizedBox(height: 12),
+      Text(
+        'Un POS pensé pour la restauration haïtienne',
+        style: GoogleFonts.inter(fontSize: 30, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
+      ),
+      const SizedBox(height: 16),
+      Text(
+        'Gérez vos tables, prenez les commandes en salle, envoyez les bons en cuisine et calculez automatiquement les pourboires. Tout en temps réel.',
+        style: GoogleFonts.inter(fontSize: 15, color: const Color(0xFF718096), height: 1.6),
+      ),
+      const SizedBox(height: 28),
+      ..._points.map((e) => Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 28, height: 28, margin: const EdgeInsets.only(top: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE67E22).withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.check_rounded, color: Color(0xFFE67E22), size: 16),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(e.$1, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+            Text(e.$2, style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096))),
+          ])),
+        ]),
+      )),
+    ]);
+  }
+}
+
+// ── Pricing ───────────────────────────────────────────────────────────────────
+
+class _Pricing extends StatelessWidget {
+  const _Pricing();
+
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.sizeOf(context).width >= 900;
+    return Container(
+      color: _bg,
+      padding: EdgeInsets.symmetric(horizontal: isWide ? 80 : 24, vertical: 72),
+      child: Column(children: [
+        const _SectionLabel('Tarification'),
+        const SizedBox(height: 12),
+        Text(
+          'Des tarifs adaptés à chaque commerce',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(fontSize: isWide ? 32 : 22, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Paiement en HTG ou USD  •  Sans engagement  •  Support inclus',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF718096)),
+        ),
+        const SizedBox(height: 48),
+        if (isWide)
+          IntrinsicHeight(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: const [
+              Expanded(child: _PriceCard(
+                plan: 'Starter', priceHtg: 'Gratuit', priceUsd: '',
+                period: 'pour toujours', subtitle: 'Pour démarrer',
+                highlighted: false,
+                features: ['1 dépôt', '1 caisse', 'Ventes & encaissements', 'Gestion clients', 'Rapports de base', 'Support email'],
+              )),
+              SizedBox(width: 20),
+              Expanded(child: _PriceCard(
+                plan: 'Pro', priceHtg: '2 500 HTG', priceUsd: '20 USD',
+                period: 'par mois', subtitle: 'Pour les commerces actifs',
+                highlighted: true,
+                features: ['3 dépôts', '3 caisses incluses', 'Mode restaurant', 'Sync cloud temps réel', 'Rapports avancés', 'Multi-plateformes', 'Support prioritaire'],
+              )),
+              SizedBox(width: 20),
+              Expanded(child: _PriceCard(
+                plan: 'Enterprise', priceHtg: 'Sur devis', priceUsd: '',
+                period: '', subtitle: 'Pour les grandes enseignes',
+                highlighted: false,
+                features: ['Dépôts illimités', 'Caisses illimitées', 'API REST complète', 'White label', 'Formation sur site', 'Gestionnaire dédié', 'SLA 99.9%'],
+              )),
+            ]),
+          )
+        else
+          Column(children: const [
+            _PriceCard(plan: 'Starter', priceHtg: 'Gratuit', priceUsd: '', period: 'pour toujours', subtitle: 'Pour démarrer', highlighted: false,
+              features: ['1 dépôt', '1 caisse', 'Ventes & encaissements', 'Gestion clients', 'Rapports de base']),
+            SizedBox(height: 20),
+            _PriceCard(plan: 'Pro', priceHtg: '2 500 HTG', priceUsd: '20 USD', period: 'par mois', subtitle: 'Pour les commerces actifs', highlighted: true,
+              features: ['3 dépôts', '3 caisses incluses', 'Mode restaurant', 'Sync cloud', 'Rapports avancés']),
+            SizedBox(height: 20),
+            _PriceCard(plan: 'Enterprise', priceHtg: 'Sur devis', priceUsd: '', period: '', subtitle: 'Pour les grandes enseignes', highlighted: false,
+              features: ['Dépôts illimités', 'Caisses illimitées', 'API REST', 'White label', 'Support dédié']),
+          ]),
+        const SizedBox(height: 20),
+        Text('+ 500 HTG / 4 USD par caisse supplémentaire',
+            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096))),
+      ]),
+    );
+  }
+}
+
+class _PriceCard extends StatelessWidget {
+  final String plan, priceHtg, priceUsd, period, subtitle;
+  final bool highlighted;
+  final List<String> features;
+
+  const _PriceCard({
+    required this.plan, required this.priceHtg, required this.priceUsd,
+    required this.period, required this.subtitle,
+    required this.highlighted, required this.features,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textDim = highlighted ? const Color(0xFF90A4BE) : const Color(0xFF718096);
+    final textMain = highlighted ? _white : _navy;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: highlighted ? _navy : _white,
+        borderRadius: BorderRadius.circular(20),
+        border: highlighted ? null : Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+        boxShadow: highlighted
+            ? [BoxShadow(color: _navy.withValues(alpha: 0.3), blurRadius: 32, offset: const Offset(0, 8))]
+            : [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12)],
+      ),
+      child: Stack(children: [
+        if (highlighted)
+          Positioned(top: 0, left: 0, right: 0, child: Container(
+            height: 4,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(colors: [_blue, _green]),
+              borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+            ),
+          )),
+        Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (highlighted)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [_blue, _green]),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text('Recommandé', style: GoogleFonts.inter(color: _white, fontSize: 12, fontWeight: FontWeight.w600)),
+              ),
+            Text(plan, style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: textMain)),
+            const SizedBox(height: 4),
+            Text(subtitle, style: GoogleFonts.inter(fontSize: 13, color: textDim)),
+            const SizedBox(height: 20),
+            Text(priceHtg, style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w800, color: textMain)),
+            if (priceUsd.isNotEmpty) Text(priceUsd, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: _blue)),
+            if (period.isNotEmpty) Text(period, style: GoogleFonts.inter(fontSize: 13, color: textDim)),
+            const SizedBox(height: 24),
+            Divider(color: highlighted ? _white.withValues(alpha: 0.1) : const Color(0xFFE2E8F0)),
+            const SizedBox(height: 16),
+            ...features.map((f) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(children: [
+                Icon(Icons.check_circle_rounded, size: 18, color: highlighted ? _green : _blue),
+                const SizedBox(width: 10),
+                Expanded(child: Text(f, style: GoogleFonts.inter(fontSize: 13, color: textMain.withValues(alpha: 0.9)))),
+              ]),
+            )),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: priceHtg == 'Sur devis'
+                  ? OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: textMain,
+                        side: BorderSide(color: textMain.withValues(alpha: 0.3)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: () => context.go('/contact'),
+                      child: const Text('Nous contacter'),
+                    )
+                  : FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: highlighted ? _blue : _navy,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: () => context.go('/register'),
+                      child: Text(plan == 'Starter' ? 'Commencer gratuitement' : 'Choisir $plan'),
+                    ),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+// ── CTA Band ──────────────────────────────────────────────────────────────────
+
+class _CtaBand extends StatelessWidget {
+  const _CtaBand();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(colors: [_blue, Color(0xFF0D47A1)]),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 64),
+      child: Column(children: [
+        Text(
+          'Prêt à transformer votre commerce ?',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(fontSize: 32, fontWeight: FontWeight.w800, color: _white, height: 1.2),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Rejoignez des centaines de commerçants haïtiens qui font confiance à POS Connect.',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(fontSize: 16, color: _white.withValues(alpha: 0.8), height: 1.5),
+        ),
+        const SizedBox(height: 32),
+        Wrap(spacing: 16, runSpacing: 12, alignment: WrapAlignment.center, children: [
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: _white, foregroundColor: _blue,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+            onPressed: () => context.go('/register'),
+            child: const Text('Créer mon compte gratuit'),
+          ),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _white,
+              side: BorderSide(color: _white.withValues(alpha: 0.5)),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              textStyle: GoogleFonts.inter(fontSize: 15),
+            ),
+            onPressed: () => context.go('/contact'),
+            child: const Text('Parler à un expert'),
+          ),
+        ]),
+      ]),
+    );
+  }
+}
+
+// ── Footer ────────────────────────────────────────────────────────────────────
+
+class _Footer extends StatelessWidget {
+  const _Footer();
+
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.sizeOf(context).width >= 700;
+    return Container(
+      color: _navy,
+      padding: EdgeInsets.symmetric(horizontal: isWide ? 80 : 24, vertical: 48),
+      child: Column(children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const _Logo(),
+            const SizedBox(height: 12),
+            Text(
+              'La solution POS moderne pour les commerces et restaurants haïtiens.',
+              style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5),
+            ),
+          ])),
+          if (isWide) ...[
+            const SizedBox(width: 40),
+            Expanded(child: _FooterCol('Navigation', [('Accueil', '/home'), ('Connexion', '/login'), ('Créer un compte', '/register')])),
+            const SizedBox(width: 20),
+            Expanded(child: _FooterCol('Légal', [('Conditions générales', '/terms'), ('Contact', '/contact')])),
+            const SizedBox(width: 20),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Contact', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _white)),
+              const SizedBox(height: 12),
+              _info(Icons.email_outlined,    'support@pos-connect.ht'),
+              _info(Icons.phone_outlined,    '+509 4000-0000'),
+              _info(Icons.location_on_outlined, 'Port-au-Prince, Haïti'),
+            ])),
+          ],
+        ]),
+        const SizedBox(height: 40),
+        Divider(color: _white.withValues(alpha: 0.08)),
+        const SizedBox(height: 20),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('© ${DateTime.now().year} POS Connect. Tous droits réservés.',
+              style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096))),
+          if (isWide)
+            Text('Fait avec ♥ en Haïti 🇭🇹',
+                style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096))),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _info(IconData icon, String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(children: [
+      Icon(icon, size: 14, color: const Color(0xFF718096)),
+      const SizedBox(width: 8),
+      Text(text, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE))),
+    ]),
+  );
+}
+
+class _FooterCol extends StatelessWidget {
+  final String title;
+  final List<(String, String)> links;
+  const _FooterCol(this.title, this.links);
+  @override
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Text(title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _white)),
+    const SizedBox(height: 12),
+    ...links.map((l) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        onTap: () => context.go(l.$2),
+        child: Text(l.$1, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE))),
+      ),
+    )),
+  ]);
+}
+
+// ── Shared ────────────────────────────────────────────────────────────────────
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel(this.text);
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+    decoration: BoxDecoration(
+      color: _blue.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: _blue.withValues(alpha: 0.2)),
+    ),
+    child: Text(text, style: GoogleFonts.inter(fontSize: 13, color: _blue, fontWeight: FontWeight.w600)),
+  );
+}

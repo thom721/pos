@@ -142,7 +142,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     }
 
     if (!mounted) return;
-    context.go('/dashboard');
+    // Sur web, les utilisateurs non connectés voient la page d'accueil publique
+    context.go(kIsWeb ? '/home' : '/dashboard');
   }
 
   @override
