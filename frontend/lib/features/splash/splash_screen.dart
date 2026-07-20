@@ -174,19 +174,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   @override
   Widget build(BuildContext context) {
     if (kIsWeb) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF1B2A3B),
-        body: Center(
-          child: SizedBox(
-            width: 40,
-            height: 40,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0077C5)),
-            ),
-          ),
-        ),
-      );
+      return const Scaffold(backgroundColor: Color(0xFF1B2A3B));
     }
 
     return Scaffold(
