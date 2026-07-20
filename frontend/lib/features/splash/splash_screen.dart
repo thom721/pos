@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
@@ -86,15 +87,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   Future<void> _runSequence() async {
-    // Fast-path: session active → dashboard immédiatement sans animation
+    // Fast-path: session active → retirer splash natif et aller au dashboard sans animation Flutter
     final skipAnimation = await _hasActiveSession();
     if (!mounted) return;
+    FlutterNativeSplash.remove(); // retire le splash OS dans tous les cas
     if (skipAnimation) {
       context.go('/dashboard');
       return;
     }
 
-    // Premier démarrage / déconnecté → animation complète
+    // Premier démarrage / déconnecté → animation Flutter complète
     await Future.delayed(const Duration(milliseconds: 150));
     if (!mounted) return;
     _logoCtrl.forward();

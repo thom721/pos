@@ -77,13 +77,15 @@ dependencies:
   sqflite_common_ffi: ^2.3.4  # requis pour Windows / macOS / Linux
   path: ^1.9.1
 
+  # Splash natif — preserve/remove API utilisée au runtime
+  flutter_native_splash: ^2.4.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
   msix: ^3.16.8
   flutter_launcher_icons: ^0.14.3
-  flutter_native_splash: ^2.4.3
 
 flutter_launcher_icons:
   android: true
