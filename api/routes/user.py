@@ -5,8 +5,20 @@ from api.services.user_service import UserService
 from api.schemas.user import UserCreate, UserRead, UserPublicRead, UserSyncRead, UserUpdate, ChangePasswordRequest
 from api.database import get_db
 from api.dependencies.auth import require_permission, get_current_user
-from api.core.permissions import P
+from api.core.permissions import P, ROLE_PERMISSIONS
 from api.models.User import User
+
+
+def _resolve_permissions(user) -> list[str]:
+    roles = user.roles or []
+    explicit = set(user.permissions or [])
+    if "all" in explicit or any(ROLE_PERMISSIONS.get(r, set()) == {"all"} for r in roles):
+        return ["all"]
+    role_perms: set[str] = set()
+    for role in roles:
+        role_perms.update(ROLE_PERMISSIONS.get(role, set()))
+    custom = {p for p in explicit if p not in roles and p != "all"}
+    return sorted(role_perms | custom)
 
 router = APIRouter(tags=['Users'])
 
@@ -33,13 +45,28 @@ def list_users(
     return UserService(db, tenant_id=current_user.tenant_id).list()
 
 
-@router.get("/users/offline-sync", response_model=List[UserSyncRead])
+@router.get("/users/offline-sync")
 def list_users_offline_sync(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.CONFIG_READ)),
 ):
-    """Retourne les utilisateurs avec offline_hash pour la sync Android (admin uniquement)."""
-    return UserService(db, tenant_id=current_user.tenant_id).list()
+    """Retourne les utilisateurs avec permissions recalculées pour la sync Android (admin)."""
+    users = UserService(db, tenant_id=current_user.tenant_id).list()
+    return [
+        {
+            "id": u.id,
+            "fname": u.fname,
+            "lname": u.lname,
+            "username": u.username,
+            "email": u.email,
+            "is_active": u.is_active,
+            "roles": u.roles or [],
+            "permissions": _resolve_permissions(u),
+            "offline_hash": u.offline_hash,
+            "warehouse_id": u.warehouse_id,
+        }
+        for u in users
+    ]
 
 
 @router.get("/users/{user_id}", response_model=UserRead)

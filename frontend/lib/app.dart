@@ -98,7 +98,10 @@ class _PosAppState extends ConsumerState<PosApp> {
       // Erreurs de sync serveur non fatales
     }
     // 3. Rafraîchir le cache SQLite local
-    final warehouseId = ref.read(activeWarehouseProvider)?.id;
+    // activeWarehouseProvider peut être null au 1er démarrage (avant que la liste
+    // soit chargée). On se rabat alors sur le 1er warehouse assigné à l'utilisateur.
+    final warehouseId = ref.read(activeWarehouseProvider)?.id
+        ?? ref.read(authProvider).user?.warehouseIds.firstOrNull;
     if (_isAndroid) {
       // Sur Android : attendre la fin de la sync pour notifier les providers
       await OfflineCacheService.instance.syncAll(warehouseId: warehouseId);

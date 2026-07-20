@@ -151,7 +151,7 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.paymentsCreate, Perm.paymentsRead,
     Perm.debtsRead,
     Perm.reportsRead,
-    Perm.sessionsOpen, Perm.sessionsClose,
+    Perm.sessionsOpen, Perm.sessionsClose, Perm.sessionsRead,
     Perm.proformasCreate, Perm.proformasRead, Perm.proformasUpdate,
     Perm.invoicesCreate, Perm.invoicesRead, Perm.invoicesUpdate,
     Perm.configRead,
