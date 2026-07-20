@@ -2477,6 +2477,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
             : 'Équilibré';
 
     return AlertDialog(
+      scrollable: true,
       title: Row(children: [
         Container(
           padding: const EdgeInsets.all(8),
@@ -2524,7 +2525,6 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
                   TextField(
                     controller: _balanceCtrl,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    autofocus: true,
                     decoration: const InputDecoration(
                       labelText: 'Solde réel en caisse *',
                       hintText: 'Comptez et saisissez le montant',
