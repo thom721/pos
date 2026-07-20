@@ -41,15 +41,27 @@ class ActiveWarehouseNotifier extends StateNotifier<WarehouseModel?> {
     }
   }
 
-  // Called after login to auto-select the default warehouse if none persisted
-  Future<void> initFromList(List<WarehouseModel> warehouses) async {
+  // Called after login to auto-select the correct warehouse.
+  // userWarehouseIds: assigned warehouses for this user (empty = access all).
+  Future<void> initFromList(
+    List<WarehouseModel> warehouses, {
+    List<String> userWarehouseIds = const [],
+  }) async {
     if (warehouses.isEmpty) return;
-    // If persisted warehouse still exists in the list, keep it
-    if (state != null && warehouses.any((w) => w.id == state!.id)) return;
-    // Otherwise pick the default, fallback to first
-    final def = warehouses.firstWhere(
+
+    // Filter to user-assigned warehouses when the user has restrictions
+    final allowed = userWarehouseIds.isEmpty
+        ? warehouses
+        : warehouses.where((w) => userWarehouseIds.contains(w.id)).toList();
+    final pool = allowed.isEmpty ? warehouses : allowed;
+
+    // If persisted warehouse is in the allowed pool, keep it
+    if (state != null && pool.any((w) => w.id == state!.id)) return;
+
+    // Otherwise pick default from pool, fallback to first
+    final def = pool.firstWhere(
       (w) => w.isDefault,
-      orElse: () => warehouses.first,
+      orElse: () => pool.first,
     );
     await setWarehouse(def);
   }

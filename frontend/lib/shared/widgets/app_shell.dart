@@ -557,11 +557,15 @@ class _WarehouseSelector extends ConsumerWidget {
     final warehouses = ref.watch(warehouseListProvider).valueOrNull ?? [];
     final active    = ref.watch(activeWarehouseProvider);
     final canSwitch = ref.watch(hasPermissionProvider(Perm.configUpdate));
+    final user      = ref.watch(authProvider).user;
 
-    // Init default selection when list loads
+    // Init selection when list loads — restrict to user's assigned warehouses
     if (warehouses.isNotEmpty) {
       Future.microtask(() =>
-          ref.read(activeWarehouseProvider.notifier).initFromList(warehouses));
+          ref.read(activeWarehouseProvider.notifier).initFromList(
+            warehouses,
+            userWarehouseIds: user?.warehouseIds ?? [],
+          ));
     }
 
     // Toujours résoudre le dépôt courant (fallback sur défaut ou premier)
