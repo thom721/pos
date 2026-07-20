@@ -14,19 +14,32 @@ const _white  = Colors.white;
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _scrollCtrl = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _white,
       body: SingleChildScrollView(
-        child: Column(children: const [
-          _NavBar(),
-          _Hero(),
-          _Features(),
-          _RestaurantBand(),
+        controller: _scrollCtrl,
+        child: Column(children: [
+          const _NavBar(),
+          const _Hero(),
+          _Features(scrollCtrl: _scrollCtrl),
+          const _RestaurantBand(),
           _Pricing(),
           _CtaBand(),
           _Footer(),
@@ -267,23 +280,136 @@ class _HeroImage extends StatelessWidget {
   }
 }
 
+// ── Scroll-reveal wrapper ─────────────────────────────────────────────────────
+
+class _Reveal extends StatefulWidget {
+  final Widget child;
+  final ScrollController scrollCtrl;
+  final int delayMs;
+
+  const _Reveal({
+    required this.child,
+    required this.scrollCtrl,
+    this.delayMs = 0,
+  });
+
+  @override
+  State<_Reveal> createState() => _RevealState();
+}
+
+class _RevealState extends State<_Reveal> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double>  _fade;
+  late final Animation<Offset>  _slide;
+  final _key = GlobalKey();
+  bool _done = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 650));
+    _fade  = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+    _slide = Tween<Offset>(begin: const Offset(0, 0.18), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
+    widget.scrollCtrl.addListener(_check);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _check());
+  }
+
+  void _check() {
+    if (_done || !mounted) return;
+    final ctx = _key.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final pos = box.localToGlobal(Offset.zero);
+    final screenH = MediaQuery.of(ctx).size.height;
+    if (pos.dy < screenH + 80) {
+      _done = true;
+      Future.delayed(Duration(milliseconds: widget.delayMs), () {
+        if (mounted) _ctrl.forward();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.scrollCtrl.removeListener(_check);
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(
+        position: _slide,
+        child: KeyedSubtree(key: _key, child: widget.child),
+      ),
+    );
+  }
+}
+
 // ── Features ──────────────────────────────────────────────────────────────────
 
 class _Features extends StatelessWidget {
-  const _Features();
+  final ScrollController scrollCtrl;
+  const _Features({required this.scrollCtrl});
 
   static const _items = [
-    (Icons.devices_rounded,              _blue,               'Multi-plateforme',    'Mobile Android, desktop macOS/Windows et application web — un seul compte, partout.'),
-    (Icons.restaurant_menu_rounded,      Color(0xFFE67E22),   'Mode restaurant',     'Gestion des tables, commandes en cuisine, pourboires et couverts intégrés.'),
-    (Icons.wifi_off_rounded,             _green,              'Hors ligne',          'Continuez à encaisser même sans internet. Les données se synchronisent à la reconnexion.'),
-    (Icons.store_mall_directory_rounded, Color(0xFF8E44AD),   'Multi-dépôts',        'Gérez plusieurs points de vente depuis un tableau de bord centralisé.'),
-    (Icons.cloud_sync_rounded,           Color(0xFF2980B9),   'Sync cloud',          'Toutes vos données synchronisées automatiquement entre tous vos appareils.'),
-    (Icons.bar_chart_rounded,            Color(0xFF16A085),   'Rapports avancés',    'Statistiques de ventes, rapports par dépôt, analyse des performances en temps réel.'),
+    (
+      Icons.devices_rounded, _blue,
+      'Multi-plateforme',
+      'Mobile Android, desktop macOS/Windows et application web — un seul compte, partout.',
+      'https://images.unsplash.com/photo-1512941937938-c02a18bd5432?w=500&q=80',
+    ),
+    (
+      Icons.restaurant_menu_rounded, Color(0xFFE67E22),
+      'Mode restaurant',
+      'Gestion des tables, commandes en cuisine, pourboires et couverts intégrés.',
+      'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=500&q=80',
+    ),
+    (
+      Icons.wifi_off_rounded, _green,
+      'Hors ligne',
+      'Continuez à encaisser même sans internet. Les données se synchronisent à la reconnexion.',
+      'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=500&q=80',
+    ),
+    (
+      Icons.store_mall_directory_rounded, Color(0xFF8E44AD),
+      'Multi-dépôts',
+      'Gérez plusieurs points de vente depuis un tableau de bord centralisé.',
+      'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=500&q=80',
+    ),
+    (
+      Icons.cloud_sync_rounded, Color(0xFF2980B9),
+      'Sync cloud',
+      'Toutes vos données synchronisées automatiquement entre tous vos appareils.',
+      'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=500&q=80',
+    ),
+    (
+      Icons.bar_chart_rounded, Color(0xFF16A085),
+      'Rapports avancés',
+      'Statistiques de ventes, rapports par dépôt, analyse des performances en temps réel.',
+      'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=500&q=80',
+    ),
   ];
 
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width >= 700;
+    final cards = List.generate(_items.length, (i) {
+      final it = _items[i];
+      return _Reveal(
+        scrollCtrl: scrollCtrl,
+        delayMs: (i % 3) * 120,
+        child: _FeatureCard(
+          icon: it.$1, color: it.$2,
+          title: it.$3, desc: it.$4, imageUrl: it.$5,
+        ),
+      );
+    });
+
     return Container(
       color: _bg,
       padding: EdgeInsets.symmetric(horizontal: isWide ? 80 : 24, vertical: 72),
@@ -296,20 +422,28 @@ class _Features extends StatelessWidget {
           style: GoogleFonts.inter(fontSize: isWide ? 32 : 22, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
         ),
         const SizedBox(height: 48),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: isWide ? 3 : 1,
-            crossAxisSpacing: 20, mainAxisSpacing: 20,
-            childAspectRatio: isWide ? 1.35 : 3.5,
+        if (isWide) ...[
+          IntrinsicHeight(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Expanded(child: cards[0]),
+              const SizedBox(width: 20),
+              Expanded(child: cards[1]),
+              const SizedBox(width: 20),
+              Expanded(child: cards[2]),
+            ]),
           ),
-          itemCount: _items.length,
-          itemBuilder: (_, i) => _FeatureCard(
-            icon: _items[i].$1, color: _items[i].$2,
-            title: _items[i].$3, desc: _items[i].$4,
+          const SizedBox(height: 20),
+          IntrinsicHeight(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Expanded(child: cards[3]),
+              const SizedBox(width: 20),
+              Expanded(child: cards[4]),
+              const SizedBox(width: 20),
+              Expanded(child: cards[5]),
+            ]),
           ),
-        ),
+        ] else
+          ...cards.expand((c) => [c, const SizedBox(height: 16)]).toList()..removeLast(),
       ]),
     );
   }
@@ -320,26 +454,70 @@ class _FeatureCard extends StatelessWidget {
   final Color color;
   final String title;
   final String desc;
-  const _FeatureCard({required this.icon, required this.color, required this.title, required this.desc});
+  final String imageUrl;
+
+  const _FeatureCard({
+    required this.icon, required this.color,
+    required this.title, required this.desc, required this.imageUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: _white, borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 12, offset: const Offset(0, 4))],
+        color: _white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 14, offset: const Offset(0, 4))],
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          width: 48, height: 48,
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-          child: Icon(icon, color: color, size: 24),
+        // Image illustrative
+        SizedBox(
+          height: 148,
+          width: double.infinity,
+          child: Stack(fit: StackFit.expand, children: [
+            Image.network(
+              imageUrl,
+              fit: BoxFit.cover,
+              loadingBuilder: (_, child, progress) => progress == null
+                  ? child
+                  : Container(color: color.withValues(alpha: 0.08)),
+              errorBuilder: (_, __, ___) => Container(
+                color: color.withValues(alpha: 0.08),
+                child: Icon(icon, color: color, size: 48),
+              ),
+            ),
+            // Gradient overlay so text/icon remain readable
+            DecoratedBox(decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Colors.black.withValues(alpha: 0.25)],
+              ),
+            )),
+            // Color accent badge top-right
+            Positioned(
+              top: 12, right: 12,
+              child: Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 3))],
+                ),
+                child: Icon(icon, color: _white, size: 18),
+              ),
+            ),
+          ]),
         ),
-        const SizedBox(height: 16),
-        Text(title, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
-        const SizedBox(height: 8),
-        Text(desc, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5)),
+        // Text content
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+            const SizedBox(height: 6),
+            Text(desc, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.55)),
+          ]),
+        ),
       ]),
     );
   }
