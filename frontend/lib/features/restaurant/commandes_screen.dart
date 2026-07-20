@@ -3,11 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/theme.dart';
-import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
+import 'package:pos_connect/data/api/api_client.dart' show dio, extractAnyError;
 import 'package:pos_connect/data/models/restaurant_model.dart';
+import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
 import 'package:pos_connect/providers/restaurant_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/shared/widgets/open_session_dialog.dart';
 
 class CommandesScreen extends ConsumerStatefulWidget {
   final String? autoTableId;
@@ -18,18 +21,98 @@ class CommandesScreen extends ConsumerStatefulWidget {
 }
 
 class _CommandesScreenState extends ConsumerState<CommandesScreen> {
+  String? _deviceId;
+  bool _sessionChecked = false;
+  bool _hasSession = false;
+
   @override
   void initState() {
     super.initState();
-    if (widget.autoTableId != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _showNewOrderDialog(context, preselectedTableId: widget.autoTableId);
-      });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initSession());
+  }
+
+  Future<void> _initSession() async {
+    _deviceId = await AuthRepository().getOrCreateDeviceId();
+    try {
+      final res = await dio.get('/api/sessions/current',
+          queryParameters: {'device_id': _deviceId});
+      final session = res.data['session'];
+      if (!mounted) return;
+      if (session != null) {
+        setState(() { _sessionChecked = true; _hasSession = true; });
+        if (widget.autoTableId != null) {
+          _showNewOrderDialog(context, preselectedTableId: widget.autoTableId);
+        }
+      } else {
+        setState(() { _sessionChecked = true; _hasSession = false; });
+        _promptOpenSession();
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() { _sessionChecked = true; _hasSession = false; });
+      _promptOpenSession();
     }
+  }
+
+  void _promptOpenSession() {
+    final wh = ref.read(activeWarehouseProvider);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => OpenSessionDialog(
+        deviceId: _deviceId!,
+        warehouseId: wh?.id,
+        warehouseName: wh?.name,
+        onOpened: (_) {
+          if (mounted) setState(() => _hasSession = true);
+          if (widget.autoTableId != null) {
+            _showNewOrderDialog(context, preselectedTableId: widget.autoTableId);
+          }
+        },
+        onCancelled: () {
+          if (mounted) context.pop();
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_sessionChecked) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (!_hasSession) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock_clock_rounded, size: 64, color: AppColors.textSecondary),
+              const SizedBox(height: 16),
+              const Text('Session de caisse requise',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary)),
+              const SizedBox(height: 8),
+              const Text('Ouvrez une session pour accéder aux commandes.',
+                  style: TextStyle(color: AppColors.textSecondary),
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: _promptOpenSession,
+                icon: const Icon(Icons.point_of_sale_rounded),
+                label: const Text('Ouvrir la caisse'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final ordersAsync = ref.watch(openOrdersProvider);
     final symbol = ref.watch(settingsProvider).currencySymbol;
     final fmt = NumberFormat('#,##0.00');
@@ -125,7 +208,6 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
     String? selectedTableId = preselectedTableId;
     String? selectedWaiterId;
     int covers = 2;
-    bool creating = false;
 
     final result = await showDialog<bool>(
       context: context,
@@ -145,7 +227,7 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
                   const SizedBox(height: 20),
                   // Table picker
                   DropdownButtonFormField<String?>(
-                    value: selectedTableId,
+                    initialValue: selectedTableId,
                     decoration: const InputDecoration(
                       labelText: 'Table (optionnel)',
                       hintText: 'Comptoir / Bar',
@@ -169,7 +251,7 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
                   const SizedBox(height: 16),
                   // Waiter picker
                   DropdownButtonFormField<String?>(
-                    value: selectedWaiterId,
+                    initialValue: selectedWaiterId,
                     decoration: const InputDecoration(
                       labelText: 'Serveur (optionnel)',
                       border: OutlineInputBorder(),
@@ -218,19 +300,13 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       TextButton(
-                        onPressed: creating ? null : () => Navigator.pop(ctx, false),
+                        onPressed: () => Navigator.pop(ctx, false),
                         child: const Text('Annuler'),
                       ),
                       const SizedBox(width: 8),
                       FilledButton.icon(
-                        onPressed: creating ? null : () => Navigator.pop(ctx, true),
-                        icon: creating
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.add_rounded, size: 18),
+                        onPressed: () => Navigator.pop(ctx, true),
+                        icon: const Icon(Icons.add_rounded, size: 18),
                         label: const Text('Créer'),
                       ),
                     ],

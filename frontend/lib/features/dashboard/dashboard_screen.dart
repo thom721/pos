@@ -9,6 +9,7 @@ import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/sale_provider.dart';
 import 'package:pos_connect/providers/debt_provider.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/shared/widgets/stat_card.dart';
 import 'package:pos_connect/shared/widgets/status_badge.dart';
 
@@ -23,9 +24,16 @@ class DashboardScreen extends ConsumerWidget {
     final isCashier = !(user?.hasPermission(Perm.reportsReadAll) ?? false);
     final salesAsync = ref.watch(dashboardSalesProvider(isCashier));
     final debtsAsync = ref.watch(debtsProvider);
+    final isRestaurant = ref.watch(settingsProvider).businessType == 'restaurant';
 
     final pad = context.hPad;
     final isMobile = context.isMobile;
+
+    final cashierRoute = isRestaurant ? '/restaurant/commandes' : '/pos';
+    final cashierIcon = isRestaurant
+        ? Icons.restaurant_rounded
+        : Icons.point_of_sale_rounded;
+    final cashierLabel = isRestaurant ? 'Commandes' : 'Ouvrir la caisse';
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(pad),
@@ -50,9 +58,9 @@ class DashboardScreen extends ConsumerWidget {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () => context.go('/pos'),
-                  icon: const Icon(Icons.point_of_sale_rounded, size: 18),
-                  label: const Text('Ouvrir la caisse'),
+                  onPressed: () => context.go(cashierRoute),
+                  icon: Icon(cashierIcon, size: 18),
+                  label: Text(cashierLabel),
                 ),
               ),
           ] else
@@ -76,9 +84,9 @@ class DashboardScreen extends ConsumerWidget {
                 const Spacer(),
                 if (!kIsWeb)
                   ElevatedButton.icon(
-                    onPressed: () => context.go('/pos'),
-                    icon: const Icon(Icons.point_of_sale_rounded, size: 18),
-                    label: const Text('Ouvrir la caisse'),
+                    onPressed: () => context.go(cashierRoute),
+                    icon: Icon(cashierIcon, size: 18),
+                    label: Text(cashierLabel),
                   ),
               ],
             ),

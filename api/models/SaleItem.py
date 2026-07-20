@@ -7,7 +7,8 @@ class SaleItem(UUIDBase):
     tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
     sale_id    = Column(String(36), ForeignKey("sales.id"))
-    product_id = Column(String(36), ForeignKey("products.id"))
+    product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
+    label      = Column(String(255), nullable=True)  # nom du plat si pas de product_id
 
     quantity       = Column(Numeric(12, 2), nullable=False)
     unit_price     = Column(Numeric(12, 2), nullable=False)

@@ -382,7 +382,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            item.productName ?? 'Produit',
+                            item.displayName,
                             style: TextStyle(
                               fontSize: 13,
                               color: item.returnedQty > 0
@@ -655,7 +655,8 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
     final checked = val ?? false;
     setState(() => _checked[i] = checked);
     final item = widget.sale.items[i];
-    _qtyCtrls[i]!.text = checked ? _fmtQty(item.quantity) : '0';
+    final maxQty = (item.quantity - item.returnedQty).clamp(0.0, item.quantity);
+    _qtyCtrls[i]!.text = checked ? _fmtQty(maxQty) : '0';
     setState(_updateRefund);
   }
 
@@ -663,7 +664,7 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
     final result = <Map<String, dynamic>>[];
     for (var i = 0; i < widget.sale.items.length; i++) {
       final qty = double.tryParse(_qtyCtrls[i]?.text ?? '0') ?? 0;
-      if (qty > 0) {
+      if (qty > 0 && widget.sale.items[i].productId != null) {
         result.add({
           'product_id': widget.sale.items[i].productId,
           'quantity': qty,
@@ -770,11 +771,16 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
                         // "Tout sélectionner"
                         TextButton(
                           onPressed: () {
+                            final returnable = widget.sale.items
+                                .asMap()
+                                .entries
+                                .where((e) =>
+                                    (e.value.quantity - e.value.returnedQty) > 0)
+                                .map((e) => e.key)
+                                .toList();
                             final allChecked =
-                                _checked.every((c) => c);
-                            for (var i = 0;
-                                i < widget.sale.items.length;
-                                i++) {
+                                returnable.every((i) => _checked[i]);
+                            for (final i in returnable) {
                               _onCheck(i, !allChecked);
                             }
                           },
@@ -782,7 +788,12 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
                               padding: EdgeInsets.zero,
                               minimumSize: const Size(0, 0)),
                           child: Text(
-                            _checked.every((c) => c)
+                            widget.sale.items.asMap().entries
+                                    .where((e) =>
+                                        (e.value.quantity -
+                                            e.value.returnedQty) >
+                                        0)
+                                    .every((e) => _checked[e.key])
                                 ? 'Tout désélectionner'
                                 : 'Tout sélectionner',
                             style: const TextStyle(fontSize: 12),
@@ -797,12 +808,17 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
                       final i = e.key;
                       final item = e.value;
                       final ctrl = _qtyCtrls[i]!;
+                      final maxQty = (item.quantity - item.returnedQty)
+                          .clamp(0.0, item.quantity);
+                      final fullyReturned = maxQty <= 0;
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
-                          color: _checked[i]
-                              ? AppColors.warning.withValues(alpha: 0.06)
-                              : AppColors.background,
+                          color: fullyReturned
+                              ? AppColors.divider.withValues(alpha: 0.3)
+                              : _checked[i]
+                                  ? AppColors.warning.withValues(alpha: 0.06)
+                                  : AppColors.background,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: _checked[i]
@@ -814,18 +830,27 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
                           Checkbox(
                             value: _checked[i],
                             activeColor: AppColors.warning,
-                            onChanged: (v) => _onCheck(i, v),
+                            onChanged: fullyReturned
+                                ? null
+                                : (v) => _onCheck(i, v),
                           ),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(item.productName ?? 'Produit',
-                                    style: const TextStyle(
+                                Text(item.displayName,
+                                    style: TextStyle(
                                         fontSize: 13,
-                                        fontWeight: FontWeight.w500)),
+                                        fontWeight: FontWeight.w500,
+                                        color: fullyReturned
+                                            ? AppColors.textSecondary
+                                            : null)),
                                 Text(
-                                  'Vendu : ${_fmtQty(item.quantity)}  •  Prix : ${_fmt.format(item.unitPrice)}',
+                                  fullyReturned
+                                      ? 'Vendu : ${_fmtQty(item.quantity)}  •  Entièrement retourné'
+                                      : item.returnedQty > 0
+                                          ? 'Vendu : ${_fmtQty(item.quantity)}  •  Déjà retourné : ${_fmtQty(item.returnedQty)}  •  Reste : ${_fmtQty(maxQty)}'
+                                          : 'Vendu : ${_fmtQty(item.quantity)}  •  Prix : ${_fmt.format(item.unitPrice)}',
                                   style: const TextStyle(
                                       fontSize: 11,
                                       color: AppColors.textSecondary),
@@ -838,7 +863,7 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
                             width: 88,
                             child: TextField(
                               controller: ctrl,
-                              enabled: _checked[i],
+                              enabled: !fullyReturned && _checked[i],
                               keyboardType:
                                   const TextInputType.numberWithOptions(
                                       decimal: true),
@@ -852,13 +877,15 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
                               decoration: InputDecoration(
                                 labelText: 'Qté retour',
                                 isDense: true,
-                                helperText: 'max ${_fmtQty(item.quantity)}',
+                                helperText: fullyReturned
+                                    ? 'retourné'
+                                    : 'max ${_fmtQty(maxQty)}',
                               ),
                               onChanged: (_) {
                                 final qty =
                                     double.tryParse(ctrl.text) ?? 0;
-                                if (qty > item.quantity) {
-                                  ctrl.text = _fmtQty(item.quantity);
+                                if (qty > maxQty) {
+                                  ctrl.text = _fmtQty(maxQty);
                                 }
                                 if (qty > 0 && !_checked[i]) {
                                   setState(() => _checked[i] = true);

@@ -136,6 +136,7 @@ _BUILTIN_ROLES = [
     {"name": "manager",       "label": "Gérant",          "color": "#0284C7", "permissions": None},
     {"name": "cashier",       "label": "Caissier",         "color": "#059669", "permissions": None},
     {"name": "stock_manager", "label": "Resp. Stock",      "color": "#D97706", "permissions": None},
+    {"name": "waiter",        "label": "Serveur",          "color": "#EA580C", "permissions": None},
 ]
 
 
@@ -491,12 +492,12 @@ def on_startup():
         _ensure_cloud_admin(db, local_tid)
         # 5. Dépôt par défaut — crée "Depot principal" si aucun dépôt n'existe
         _ensure_default_warehouse(db, local_tid)
-        # Seed built-in roles if not present
+        # Seed/sync built-in roles — crée ou met à jour les permissions
         for rd in _BUILTIN_ROLES:
+            perms = rd["permissions"] if rd["permissions"] is not None \
+                else list(ROLE_PERMISSIONS.get(rd["name"], set()))
             existing = db.query(RoleModel).filter(RoleModel.name == rd["name"]).first()
             if not existing:
-                perms = rd["permissions"] if rd["permissions"] is not None \
-                    else list(ROLE_PERMISSIONS.get(rd["name"], set()))
                 db.add(RoleModel(
                     name=rd["name"],
                     label=rd["label"],
@@ -504,6 +505,10 @@ def on_startup():
                     is_builtin=True,
                     permissions=perms,
                 ))
+            else:
+                existing.label       = rd["label"]
+                existing.color       = rd["color"]
+                existing.permissions = perms
         db.commit()
 
         # Load all roles (including custom ones) into ROLE_PERMISSIONS

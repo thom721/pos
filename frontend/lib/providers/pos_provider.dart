@@ -224,11 +224,13 @@ class PosNotifier extends StateNotifier<PosState> {
   }
 
   void loadFromSale(SaleModel sale) {
-    final items = sale.items.map((si) {
+    final items = sale.items
+        .where((si) => si.productId != null)
+        .map((si) {
       final catalogPrice = si.originalPrice ?? si.unitPrice;
       final product = ProductModel(
-        id: si.productId,
-        name: si.productName ?? 'Produit',
+        id: si.productId!,
+        name: si.displayName,
         salePrice: catalogPrice,
         purchasePrice: 0,
         alertStock: 0,

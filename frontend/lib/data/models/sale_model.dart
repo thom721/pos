@@ -10,7 +10,8 @@ List<SalePaymentModel> _deduplicatePaymentsById(Iterable<SalePaymentModel> payme
 
 class SaleItemModel {
   final String id;
-  final String productId;
+  final String? productId;
+  final String? label;
   final double quantity;
   final double unitPrice;
   final double? originalPrice;
@@ -20,7 +21,8 @@ class SaleItemModel {
 
   SaleItemModel({
     required this.id,
-    required this.productId,
+    this.productId,
+    this.label,
     required this.quantity,
     required this.unitPrice,
     required this.subtotal,
@@ -28,6 +30,9 @@ class SaleItemModel {
     this.productName,
     this.returnedQty = 0,
   });
+
+  /// Nom à afficher : label (plat resto) > nom du produit > fallback
+  String get displayName => label ?? productName ?? productId ?? '—';
 
   // Rabais par article si le prix a été réduit
   double get itemDiscount {
@@ -39,7 +44,8 @@ class SaleItemModel {
 
   factory SaleItemModel.fromJson(Map<String, dynamic> json) => SaleItemModel(
         id: json['id']?.toString() ?? '',
-        productId: json['product_id']?.toString() ?? '',
+        productId: json['product_id']?.toString(),
+        label: json['label']?.toString(),
         quantity: double.tryParse(json['quantity']?.toString() ?? '0') ?? 0,
         unitPrice: double.tryParse(json['unit_price']?.toString() ?? '0') ?? 0,
         originalPrice: json['original_price'] != null

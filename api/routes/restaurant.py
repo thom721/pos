@@ -439,6 +439,9 @@ def add_item(
             raise HTTPException(404, "Plat introuvable")
         item_name = mi.name
         item_price = float(mi.price)
+        # Résoudre le product_id depuis le MenuItem si non fourni explicitement
+        if not resolved_product_id and mi.product_id:
+            resolved_product_id = mi.product_id
     else:
         product = db.query(Product).filter(Product.id == data.product_id).first()
         if not product:
@@ -602,10 +605,22 @@ def checkout_order(
     db.flush()
 
     for oi in order.items:
+        # Résoudre product_id et label depuis le MenuItem
+        pid = oi.product_id
+        item_label: str | None = None
+        if oi.menu_item_id:
+            mi_lookup = oi.menu_item or db.query(MenuItem).filter(MenuItem.id == oi.menu_item_id).first()
+            if mi_lookup:
+                item_label = mi_lookup.name
+                if not pid:
+                    pid = mi_lookup.product_id
+        elif oi.product:
+            item_label = oi.product.name
         db.add(SaleItem(
             id=str(uuid.uuid4()),
             sale_id=sale.id,
-            product_id=oi.product_id,
+            product_id=pid,
+            label=item_label,
             quantity=float(oi.quantity),
             unit_price=float(oi.unit_price),
             original_price=float(oi.unit_price),
@@ -613,28 +628,27 @@ def checkout_order(
         ))
 
     db.add(Payment(
-        id=str(uuid.uuid4()),
-        sale_id=sale.id,
+        reference_type='SALE',
+        reference_id=sale.id,
         tenant_id=current_user.tenant_id,
         amount=data.paid_amount,
-        method=data.payment_method,
+        method=data.payment_method.upper() if data.payment_method else 'CASH',
+        user_id=current_user.id,
     ))
 
     remaining = final - data.paid_amount
     if remaining > 0 and data.customer_id:
-        debt = db.query(Debt).filter(
-            Debt.customer_id == data.customer_id,
-            Debt.tenant_id == current_user.tenant_id,
-        ).first()
-        if debt:
-            debt.balance = float(debt.balance) + remaining
-        else:
-            db.add(Debt(
-                id=str(uuid.uuid4()),
-                tenant_id=current_user.tenant_id,
-                customer_id=data.customer_id,
-                balance=remaining,
-            ))
+        db.add(Debt(
+            reference_type='SALE',
+            reference_id=sale.id,
+            partner_type='CUSTOMER',
+            partner_id=data.customer_id,
+            tenant_id=current_user.tenant_id,
+            total_amount=final,
+            paid_amount=data.paid_amount,
+            balance=remaining,
+            status='UNPAID' if data.paid_amount == 0 else 'PARTIAL',
+        ))
 
     # Enregistrer le pourboire sur la commande
     order.tip = tip

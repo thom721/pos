@@ -61,7 +61,8 @@ class ProductRead(BaseModel):
 
 class SaleItemRead(BaseModel):
     id: str
-    product_id: str
+    product_id: Optional[str] = None
+    label: Optional[str] = None
     quantity: float
     unit_price: Decimal
     original_price: Optional[Decimal] = None

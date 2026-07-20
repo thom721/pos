@@ -534,7 +534,7 @@ class _NewSaleReturnDialogState extends ConsumerState<_NewSaleReturnDialog> {
     final result = <Map<String, dynamic>>[];
     for (var i = 0; i < _sale!.items.length; i++) {
       final qty = double.tryParse(_qtyCtrls[i]?.text ?? '0') ?? 0;
-      if (qty > 0) {
+      if (qty > 0 && _sale!.items[i].productId != null) {
         result.add({
           'product_id': _sale!.items[i].productId,
           'quantity': qty,

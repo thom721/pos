@@ -847,7 +847,8 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 children: _isAndroid
-                    ? _buildAndroidDrawerItems(context, location, isAdmin, user)
+                    ? _buildAndroidDrawerItems(context, location, isAdmin, user,
+                        ref.watch(settingsProvider).businessType)
                     : _buildFullDrawerItems(context, location, isAdmin, user,
                         ref.watch(settingsProvider).businessType),
               ),
@@ -869,14 +870,19 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
     String location,
     bool isAdmin,
     UserModel? user,
+    String businessType,
   ) {
     void go(String route) {
       Navigator.pop(context);
       context.go(route);
     }
 
+    final mainItems = businessType == 'restaurant'
+        ? _restaurantMainNavItems
+        : _androidDrawerMainItems;
+
     return [
-      ..._androidDrawerMainItems.map((item) => _SidebarItem(
+      ...mainItems.map((item) => _SidebarItem(
             item: item,
             isActive: location.startsWith(item.route),
             onTap: () => go(item.route),

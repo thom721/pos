@@ -26,6 +26,7 @@ class OpenSessionBody(BaseModel):
     register_name: str = "Caisse"
     opening_balance: float = 0.0
     force: bool = False  # bypass caisse limit after user confirmation
+    warehouse_id: str | None = None  # si fourni, réassigne la caisse à ce dépôt
 
 
 class CloseSessionBody(BaseModel):
@@ -206,6 +207,16 @@ def open_session(
     # Propagate 402 limit_exceeded or 403 caisse_disabled
     if isinstance(reg, JSONResponse):
         return reg
+
+    # Réassigner la caisse à un autre dépôt si l'utilisateur en a choisi un différent
+    if body.warehouse_id and body.warehouse_id != reg.warehouse_id:
+        from api.models.Warehouse import Warehouse as _WH
+        new_wh = db.query(_WH).filter_by(
+            id=body.warehouse_id, tenant_id=current_user.tenant_id, is_active=True
+        ).first()
+        if new_wh:
+            reg.warehouse_id = body.warehouse_id
+            db.flush()
 
     # Block if the linked warehouse is disabled
     if reg.warehouse_id:

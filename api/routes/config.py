@@ -21,8 +21,14 @@ router = APIRouter(prefix="/api/config", tags=["Config"])
 
 def _wh_id(current_user: User, warehouse_id: Optional[str]) -> Optional[str]:
     """Resolve the effective warehouse_id:
-    prefer the client-supplied value, fall back to the user's own warehouse."""
-    return warehouse_id or getattr(current_user, 'warehouse_id', None) or None
+    prefer the client-supplied value, fall back to the user's own warehouse.
+    User.warehouse_id is stored as a JSON list — extract first element."""
+    if warehouse_id:
+        return warehouse_id
+    raw = getattr(current_user, 'warehouse_id', None)
+    if isinstance(raw, list):
+        return raw[0] if raw else None
+    return raw or None
 
 
 def _notify(tenant_id: Optional[str]) -> None:

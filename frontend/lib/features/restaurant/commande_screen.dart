@@ -9,6 +9,8 @@ import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
 import 'package:pos_connect/providers/restaurant_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/services/bluetooth_print_service.dart';
+import 'package:pos_connect/services/thermal_printer_service.dart';
 import 'package:pos_connect/shared/utils/restaurant_bill_pdf.dart';
 import 'package:printing/printing.dart';
 
@@ -177,7 +179,7 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
 
         await showDialog<void>(
           context: context,
-          builder: (_) => AlertDialog(
+          builder: (dialogCtx) => AlertDialog(
             title: const Text('Paiement reçu'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -238,7 +240,7 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
                 label: const Text('Imprimer'),
               ),
               FilledButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogCtx),
                 child: const Text('Terminer'),
               ),
             ],
@@ -268,9 +270,41 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
   }) async {
     if (_order == null || _order!.items.isEmpty) return;
     final settings = ref.read(settingsProvider);
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      // Android fast-path: Sunmi hardware printer
+      if (await ThermalPrinterService.instance.isSunmiAvailable) {
+        await ThermalPrinterService.instance.printRestaurantBill(
+          _order!, settings,
+          reference: reference, discount: discount,
+          paidAmount: paidAmount, paymentMethod: paymentMethod,
+        );
+        return;
+      }
+      // Android fast-path: Bluetooth thermal printer
+      if (settings.bluetoothPrinterMac.isNotEmpty) {
+        await BluetoothPrintService.instance.printRestaurantBill(
+          _order!, settings,
+          reference: reference, discount: discount,
+          paidAmount: paidAmount, paymentMethod: paymentMethod,
+        );
+        return;
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(
+          content: Text('Erreur impression: ${extractAnyError(e)}'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+      return;
+    }
+
     final hasPOS = settings.posPrinterName.isNotEmpty;
     final hasDoc = settings.docPrinterName.isNotEmpty;
 
+    if (!mounted) return;
     String? chosenUrl;
     if (hasPOS && hasDoc) {
       // Laisser l'utilisateur choisir
@@ -340,7 +374,7 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        messenger.showSnackBar(SnackBar(
           content: Text('Erreur impression: ${extractAnyError(e)}'),
           backgroundColor: AppColors.error,
         ));
