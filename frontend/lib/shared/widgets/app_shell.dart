@@ -39,7 +39,7 @@ const _mainNavItems = [
   _NavItem('Dettes', Icons.account_balance_wallet_rounded, '/debts'),
   _NavItem('Retours', Icons.assignment_return_rounded, '/returns'),
   _NavItem('Inventaire',      Icons.warehouse_rounded, '/inventory'),
-  _NavItem('Établissements', Icons.apartment_rounded,  '/warehouses'),
+  _NavItem('Business', Icons.apartment_rounded,  '/warehouses'),
 ];
 
 const _analyticsNavItems = [
@@ -75,7 +75,7 @@ const _restaurantMainNavItems = [
   _NavItem('Produits / Menu', Icons.inventory_2_rounded,            '/products'),
   _NavItem('Clients',         Icons.people_alt_rounded,             '/customers'),
   _NavItem('Dettes',          Icons.account_balance_wallet_rounded, '/debts'),
-  _NavItem('Établissements',  Icons.apartment_rounded,              '/warehouses'),
+  _NavItem('Business',  Icons.apartment_rounded,              '/warehouses'),
 ];
 
 const _restaurantAndroidBottomItems = [
@@ -95,7 +95,7 @@ const _hotelMainNavItems = [
   _NavItem('Bar & Produits',  Icons.inventory_2_rounded,            '/products'),
   _NavItem('Clients',         Icons.people_alt_rounded,             '/customers'),
   _NavItem('Dettes',          Icons.account_balance_wallet_rounded, '/debts'),
-  _NavItem('Établissements',  Icons.apartment_rounded,              '/warehouses'),
+  _NavItem('Business',  Icons.apartment_rounded,              '/warehouses'),
 ];
 
 const _hotelAndroidBottomItems = [
@@ -926,10 +926,10 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
               isActive: location.startsWith(item.route),
               onTap: () => go(item.route),
             )),
-        // Établissements — affiché ici seulement s'il n'est pas déjà dans mainItems
+        // Business — affiché ici seulement s'il n'est pas déjà dans mainItems
         if (!mainItems.any((i) => i.route == '/warehouses'))
           _SidebarItem(
-            item: const _NavItem('Établissements', Icons.apartment_rounded, '/warehouses'),
+            item: const _NavItem('Business', Icons.apartment_rounded, '/warehouses'),
             isActive: location.startsWith('/warehouses'),
             onTap: () => go('/warehouses'),
           ),
