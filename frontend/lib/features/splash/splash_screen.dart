@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -88,14 +89,19 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   Future<void> _runSequence() async {
     if (kIsWeb) {
-      // Web: pas d'animation — spinner bref puis navigation
+      // Web: attendre que authProvider finisse d'initialiser (lecture storage),
+      // puis naviguer selon l'état réel — évite la course avec le redirect router.
       FlutterNativeSplash.remove();
-      final hasSession = await _hasActiveSession();
+      while (ref.read(authProvider).isLoading) {
+        await Future.delayed(const Duration(milliseconds: 30));
+        if (!mounted) return;
+      }
       if (!mounted) return;
-      if (hasSession) {
+      if (ref.read(authProvider).isAuthenticated) {
         context.go('/dashboard');
         return;
       }
+      // Non authentifié — vérifier si le setup serveur est nécessaire
       try {
         final res = await dio
             .get('/api/setup/health')

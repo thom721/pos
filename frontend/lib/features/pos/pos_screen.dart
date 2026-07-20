@@ -2405,16 +2405,14 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
-      // Réseau indisponible → fermer localement
-      final isNetErr = Platform.isAndroid && (
-        e is DioException && (
+      // Réseau indisponible → fermer localement (toutes plateformes)
+      final isNetErr = e is DioException && (
           e.type == DioExceptionType.connectionError ||
           e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.sendTimeout ||
           e.type == DioExceptionType.receiveTimeout ||
           e.type == DioExceptionType.unknown
-        ) || e is SocketException
-      );
+        ) || e is SocketException;
       if (isNetErr) {
         widget.onClosed();
         if (mounted) Navigator.of(context).pop();
@@ -2422,9 +2420,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
       }
       setState(() {
         _loading = false;
-        _error = e is DioException
-            ? (e.response?.data['detail'] ?? e.response?.data['message'] ?? 'Erreur réseau')
-            : e.toString();
+        _error = extractAnyError(e);
       });
     }
   }
