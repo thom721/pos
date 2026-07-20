@@ -160,7 +160,9 @@ class RestaurantTableModel {
   final String id;
   final String name;
   final int capacity;
-  final double price;
+  final double price;           // prix / nuit
+  final double pricePerDay;
+  final double pricePerMoment;
   final String status; // free | occupied | reserved
   final String? waiterId;
   final String? waiterName;
@@ -171,6 +173,8 @@ class RestaurantTableModel {
     required this.name,
     required this.capacity,
     this.price = 0.0,
+    this.pricePerDay = 0.0,
+    this.pricePerMoment = 0.0,
     required this.status,
     this.waiterId,
     this.waiterName,
@@ -183,13 +187,15 @@ class RestaurantTableModel {
 
   factory RestaurantTableModel.fromJson(Map<String, dynamic> j) =>
       RestaurantTableModel(
-        id:         j['id'] as String,
-        name:       j['name'] as String,
-        capacity:   j['capacity'] as int? ?? 4,
-        price:      (j['price'] as num?)?.toDouble() ?? 0.0,
-        status:     j['status'] as String? ?? 'free',
-        waiterId:   j['waiter_id'] as String?,
-        waiterName: j['waiter_name'] as String?,
+        id:             j['id'] as String,
+        name:           j['name'] as String,
+        capacity:       j['capacity'] as int? ?? 4,
+        price:          (j['price'] as num?)?.toDouble() ?? 0.0,
+        pricePerDay:    (j['price_per_day'] as num?)?.toDouble() ?? 0.0,
+        pricePerMoment: (j['price_per_moment'] as num?)?.toDouble() ?? 0.0,
+        status:         j['status'] as String? ?? 'free',
+        waiterId:       j['waiter_id'] as String?,
+        waiterName:     j['waiter_name'] as String?,
         attributes: (j['attributes'] as List?)
             ?.map((e) => RoomAttr.fromJson(e as Map<String, dynamic>))
             .toList() ?? [],

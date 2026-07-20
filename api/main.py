@@ -205,6 +205,9 @@ def _ensure_schema_patches() -> None:
             "ALTER TABLE restaurant_tables ADD COLUMN price DECIMAL(12,2) NULL DEFAULT 0",
             # warehouse_id sur room_attributes (ajouté par migration y9z0a1b2c3d4)
             "ALTER TABLE room_attributes ADD COLUMN warehouse_id VARCHAR(36) NULL",
+            # prix par jour et par moment (chambres hôtel)
+            "ALTER TABLE restaurant_tables ADD COLUMN price_per_day DECIMAL(12,2) NULL DEFAULT 0",
+            "ALTER TABLE restaurant_tables ADD COLUMN price_per_moment DECIMAL(12,2) NULL DEFAULT 0",
         ]:
             try:
                 conn.execute(text(stmt))

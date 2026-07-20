@@ -118,10 +118,13 @@ class TablesScreen extends ConsumerWidget {
   }
 
   Future<void> _showAddDialog(BuildContext context, WidgetRef ref, {required bool isHotel}) async {
-    final nameCtrl  = TextEditingController();
-    final priceCtrl = TextEditingController();
+    final nameCtrl    = TextEditingController();
+    final nightCtrl   = TextEditingController();
+    final dayCtrl     = TextEditingController();
+    final momentCtrl  = TextEditingController();
     int capacity = isHotel ? 2 : 4;
-    final attrs   = <_AttrEntry>[];
+    final attrs  = <_AttrEntry>[];
+    String? priceError;
 
     await showDialog<void>(
       context: context,
@@ -152,10 +155,7 @@ class TablesScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 20),
                   Row(children: [
-                    Icon(
-                      isHotel ? Icons.people_outline_rounded : Icons.people_outline_rounded,
-                      color: AppColors.textSecondary,
-                    ),
+                    const Icon(Icons.people_outline_rounded, color: AppColors.textSecondary),
                     const SizedBox(width: 8),
                     Text(
                       isHotel ? 'Capacité (personnes) :' : 'Capacité :',
@@ -180,22 +180,63 @@ class TablesScreen extends ConsumerWidget {
                     ),
                   ]),
                   if (isHotel) ...[
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: priceCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: 'Prix / nuit',
-                        hintText: '0.00',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.attach_money_rounded),
+                    const SizedBox(height: 16),
+                    const Text('Tarifs (au moins un requis)',
+                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      Expanded(
+                        child: TextField(
+                          controller: nightCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (_) => setState(() => priceError = null),
+                          decoration: const InputDecoration(
+                            labelText: 'Prix / nuit',
+                            hintText: '0.00',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.nights_stay_outlined, size: 18),
+                            isDense: true,
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: dayCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (_) => setState(() => priceError = null),
+                          decoration: const InputDecoration(
+                            labelText: 'Prix / jour',
+                            hintText: '0.00',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.wb_sunny_outlined, size: 18),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: momentCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (_) => setState(() => priceError = null),
+                          decoration: const InputDecoration(
+                            labelText: 'Prix / moment',
+                            hintText: '0.00',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.access_time_rounded, size: 18),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                    ]),
+                    if (priceError != null) ...[
+                      const SizedBox(height: 6),
+                      Text(priceError!,
+                          style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                    ],
                     const SizedBox(height: 20),
-                    _AttrSection(
-                      attrs: attrs,
-                      onChanged: () => setState(() {}),
-                    ),
+                    _AttrSection(attrs: attrs, onChanged: () => setState(() {})),
                   ],
                   const SizedBox(height: 20),
                   Row(
@@ -206,12 +247,21 @@ class TablesScreen extends ConsumerWidget {
                       FilledButton(
                         onPressed: () async {
                           if (nameCtrl.text.trim().isEmpty) return;
+                          final pNight  = double.tryParse(nightCtrl.text.trim())  ?? 0.0;
+                          final pDay    = double.tryParse(dayCtrl.text.trim())    ?? 0.0;
+                          final pMoment = double.tryParse(momentCtrl.text.trim()) ?? 0.0;
+                          if (isHotel && pNight == 0 && pDay == 0 && pMoment == 0) {
+                            setState(() => priceError = 'Veuillez saisir au moins un tarif.');
+                            return;
+                          }
                           Navigator.pop(ctx);
                           try {
                             await RestaurantRepository().createTable(
                               name: nameCtrl.text.trim(),
                               capacity: capacity,
-                              price: double.tryParse(priceCtrl.text.trim()) ?? 0.0,
+                              price: pNight,
+                              pricePerDay: pDay,
+                              pricePerMoment: pMoment,
                               attributes: attrs
                                   .where((a) => a.key.trim().isNotEmpty)
                                   .map((a) => RoomAttr(key: a.key.trim(), value: a.value.trim()))
@@ -342,25 +392,27 @@ class _TableCard extends ConsumerWidget {
                 child: Text(_label,
                     style: TextStyle(color: _color, fontSize: 10, fontWeight: FontWeight.w600)),
               ),
-              if (isHotel && table.attributes.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 3,
-                  alignment: WrapAlignment.center,
-                  children: table.attributes.take(3).map((a) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: AppColors.background,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.divider),
-                    ),
-                    child: Text(
-                      a.value,
-                      style: const TextStyle(fontSize: 9, color: AppColors.textSecondary),
-                    ),
-                  )).toList(),
-                ),
+              if (isHotel) ...[
+                if (table.attributes.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 3,
+                    alignment: WrapAlignment.center,
+                    children: table.attributes.take(2).map((a) => Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.divider),
+                      ),
+                      child: Text(a.value,
+                          style: const TextStyle(fontSize: 9, color: AppColors.textSecondary)),
+                    )).toList(),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                _PriceChips(table: table),
               ] else if (!isHotel) ...[
                 const SizedBox(height: 4),
                 Row(
@@ -570,13 +622,18 @@ class _TableCard extends ConsumerWidget {
   }
 
   Future<void> _showEditDialog(BuildContext context, WidgetRef ref) async {
-    final nameCtrl  = TextEditingController(text: table.name);
-    final priceCtrl = TextEditingController(
+    final nameCtrl   = TextEditingController(text: table.name);
+    final nightCtrl  = TextEditingController(
         text: table.price > 0 ? table.price.toStringAsFixed(2) : '');
-    int capacity   = table.capacity;
-    final attrs    = table.attributes
+    final dayCtrl    = TextEditingController(
+        text: table.pricePerDay > 0 ? table.pricePerDay.toStringAsFixed(2) : '');
+    final momentCtrl = TextEditingController(
+        text: table.pricePerMoment > 0 ? table.pricePerMoment.toStringAsFixed(2) : '');
+    int capacity = table.capacity;
+    final attrs  = table.attributes
         .map((a) => _AttrEntry(key: a.key, value: a.value))
         .toList();
+    String? priceError;
 
     await showDialog<void>(
       context: context,
@@ -630,22 +687,63 @@ class _TableCard extends ConsumerWidget {
                     ),
                   ]),
                   if (isHotel) ...[
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: priceCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: 'Prix / nuit',
-                        hintText: '0.00',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.attach_money_rounded),
+                    const SizedBox(height: 16),
+                    const Text('Tarifs (au moins un requis)',
+                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      Expanded(
+                        child: TextField(
+                          controller: nightCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (_) => setState(() => priceError = null),
+                          decoration: const InputDecoration(
+                            labelText: 'Prix / nuit',
+                            hintText: '0.00',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.nights_stay_outlined, size: 18),
+                            isDense: true,
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: dayCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (_) => setState(() => priceError = null),
+                          decoration: const InputDecoration(
+                            labelText: 'Prix / jour',
+                            hintText: '0.00',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.wb_sunny_outlined, size: 18),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: momentCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (_) => setState(() => priceError = null),
+                          decoration: const InputDecoration(
+                            labelText: 'Prix / moment',
+                            hintText: '0.00',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.access_time_rounded, size: 18),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                    ]),
+                    if (priceError != null) ...[
+                      const SizedBox(height: 6),
+                      Text(priceError!,
+                          style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                    ],
                     const SizedBox(height: 20),
-                    _AttrSection(
-                      attrs: attrs,
-                      onChanged: () => setState(() {}),
-                    ),
+                    _AttrSection(attrs: attrs, onChanged: () => setState(() {})),
                   ],
                   const SizedBox(height: 20),
                   Row(
@@ -655,15 +753,22 @@ class _TableCard extends ConsumerWidget {
                       const SizedBox(width: 8),
                       FilledButton(
                         onPressed: () async {
+                          final pNight  = double.tryParse(nightCtrl.text.trim())  ?? 0.0;
+                          final pDay    = double.tryParse(dayCtrl.text.trim())    ?? 0.0;
+                          final pMoment = double.tryParse(momentCtrl.text.trim()) ?? 0.0;
+                          if (isHotel && pNight == 0 && pDay == 0 && pMoment == 0) {
+                            setState(() => priceError = 'Veuillez saisir au moins un tarif.');
+                            return;
+                          }
                           Navigator.pop(ctx);
                           try {
                             await RestaurantRepository().updateTable(
                               table.id,
                               name: nameCtrl.text.trim(),
                               capacity: capacity,
-                              price: isHotel
-                                  ? double.tryParse(priceCtrl.text.trim()) ?? 0.0
-                                  : null,
+                              price:         isHotel ? pNight  : null,
+                              pricePerDay:   isHotel ? pDay    : null,
+                              pricePerMoment: isHotel ? pMoment : null,
                               attributes: isHotel
                                   ? attrs
                                       .where((a) => a.key.trim().isNotEmpty)
@@ -692,6 +797,44 @@ class _TableCard extends ConsumerWidget {
       ),
     );
   }
+}
+
+// ── Price chips (hotel card) ───────────────────────────────────────────────────
+
+class _PriceChips extends StatelessWidget {
+  final RestaurantTableModel table;
+  const _PriceChips({required this.table});
+
+  @override
+  Widget build(BuildContext context) {
+    final chips = <Widget>[];
+    if (table.price > 0) {
+      chips.add(_chip('${table.price.toStringAsFixed(0)}/nuit'));
+    }
+    if (table.pricePerDay > 0) {
+      chips.add(_chip('${table.pricePerDay.toStringAsFixed(0)}/jour'));
+    }
+    if (table.pricePerMoment > 0) {
+      chips.add(_chip('${table.pricePerMoment.toStringAsFixed(0)}/mom.'));
+    }
+    if (chips.isEmpty) return const SizedBox.shrink();
+    return Wrap(
+      spacing: 3,
+      runSpacing: 2,
+      alignment: WrapAlignment.center,
+      children: chips,
+    );
+  }
+
+  Widget _chip(String label) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+    decoration: BoxDecoration(
+      color: AppColors.primary.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(label,
+        style: const TextStyle(fontSize: 9, color: AppColors.primary, fontWeight: FontWeight.w600)),
+  );
 }
 
 // ── Attributes editor section ─────────────────────────────────────────────────

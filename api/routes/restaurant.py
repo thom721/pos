@@ -51,6 +51,8 @@ def _table_dict(t: RestaurantTable) -> dict:
         'name': t.name,
         'capacity': t.capacity,
         'price': float(t.price or 0),
+        'price_per_day': float(t.price_per_day or 0),
+        'price_per_moment': float(t.price_per_moment or 0),
         'status': t.status,
         'waiter_id': t.waiter_id,
         'waiter_name': f"{t.waiter.fname} {t.waiter.lname}".strip() if t.waiter else None,
@@ -112,7 +114,9 @@ class RoomAttrIn(BaseModel):
 class TableCreate(BaseModel):
     name: str
     capacity: int = 4
-    price: float = 0.0
+    price: float = 0.0              # prix / nuit
+    price_per_day: float = 0.0
+    price_per_moment: float = 0.0
     waiter_id: Optional[str] = None
     attributes: list[RoomAttrIn] = []
 
@@ -120,6 +124,8 @@ class TableUpdate(BaseModel):
     name: Optional[str] = None
     capacity: Optional[int] = None
     price: Optional[float] = None
+    price_per_day: Optional[float] = None
+    price_per_moment: Optional[float] = None
     status: Optional[str] = None
     waiter_id: Optional[str] = None  # '' = désassigner
     attributes: Optional[list[RoomAttrIn]] = None  # None = pas de changement
@@ -251,6 +257,8 @@ def create_table(
         name=data.name,
         capacity=data.capacity,
         price=data.price,
+        price_per_day=data.price_per_day,
+        price_per_moment=data.price_per_moment,
         waiter_id=data.waiter_id or None,
     )
     db.add(table)
@@ -291,6 +299,10 @@ def update_table(
         table.capacity = data.capacity
     if data.price is not None:
         table.price = data.price
+    if data.price_per_day is not None:
+        table.price_per_day = data.price_per_day
+    if data.price_per_moment is not None:
+        table.price_per_moment = data.price_per_moment
     if data.status is not None:
         table.status = data.status
     if 'waiter_id' in data.model_fields_set:

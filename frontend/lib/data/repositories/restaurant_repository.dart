@@ -33,12 +33,16 @@ class RestaurantRepository {
     required String name,
     int capacity = 4,
     double price = 0.0,
+    double pricePerDay = 0.0,
+    double pricePerMoment = 0.0,
     List<RoomAttr> attributes = const [],
   }) async {
     final res = await dio.post('/api/restaurant/tables/', data: {
       'name': name,
       'capacity': capacity,
       'price': price,
+      'price_per_day': pricePerDay,
+      'price_per_moment': pricePerMoment,
       'attributes': attributes.map((a) => a.toJson()).toList(),
     });
     return RestaurantTableModel.fromJson(res.data as Map<String, dynamic>);
@@ -49,6 +53,8 @@ class RestaurantRepository {
     String? name,
     int? capacity,
     double? price,
+    double? pricePerDay,
+    double? pricePerMoment,
     String? status,
     List<RoomAttr>? attributes,
   }) async {
@@ -56,6 +62,8 @@ class RestaurantRepository {
       if (name != null) 'name': name,
       if (capacity != null) 'capacity': capacity,
       if (price != null) 'price': price,
+      if (pricePerDay != null) 'price_per_day': pricePerDay,
+      if (pricePerMoment != null) 'price_per_moment': pricePerMoment,
       if (status != null) 'status': status,
       if (attributes != null)
         'attributes': attributes.map((a) => a.toJson()).toList(),

@@ -10,8 +10,10 @@ class RestaurantTable(UUIDBase):
     warehouse_id = Column(String(36), ForeignKey('warehouses.id'), nullable=True,  index=True)
     waiter_id    = Column(String(36), ForeignKey('users.id'),      nullable=True,  index=True)
     name         = Column(String(100), nullable=False)
-    capacity     = Column(Integer, default=4)
-    price        = Column(Numeric(12, 2), nullable=True, default=0)
+    capacity         = Column(Integer, default=4)
+    price            = Column(Numeric(12, 2), nullable=True, default=0)   # prix / nuit
+    price_per_day    = Column(Numeric(12, 2), nullable=True, default=0)
+    price_per_moment = Column(Numeric(12, 2), nullable=True, default=0)
     status       = Column(
         SAEnum('free', 'occupied', 'reserved', name='restaurant_table_status'),
         default='free',
