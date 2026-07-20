@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/providers/pricing_provider.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -139,6 +140,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width >= 900;
+    final pricing = ref.watch(pricingProvider);
+    final trialDays = pricing.valueOrNull?.trialDays ?? 30;
+    final trialLabel = 'Essai gratuit $trialDays jours';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -176,18 +180,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             fontWeight: FontWeight.w700,
                             letterSpacing: -0.5)),
                     const SizedBox(height: 12),
-                    const Text('Démarrez votre essai gratuit de 30 jours',
-                        style:
-                            TextStyle(color: Color(0xFF8BA4BE), fontSize: 16)),
+                    Text('Démarrez votre $trialLabel',
+                        style: const TextStyle(
+                            color: Color(0xFF8BA4BE), fontSize: 16)),
                     const SizedBox(height: 48),
                     ...[
-                      ('Aucune carte requise pour l\'essai',
-                          Icons.credit_card_off_outlined),
-                      ('Multi-caisse inclus', Icons.point_of_sale_rounded),
+                      ('Multi-dépôts : commerce, resto, club…',
+                          Icons.store_rounded),
+                      ('Vendez depuis votre téléphone ou tablette',
+                          Icons.phone_android_rounded),
+                      ('Émettez des reçus en un clic',
+                          Icons.receipt_long_rounded),
                       ('Synchronisation cloud automatique',
                           Icons.cloud_sync_rounded),
-                      ('Support Stripe, MonCash & NatCash',
-                          Icons.payments_rounded),
                     ].map((f) => Padding(
                           padding: const EdgeInsets.symmetric(
                               vertical: 8, horizontal: 48),
@@ -211,7 +216,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 padding: const EdgeInsets.all(40),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
-                  child: _success ? _buildSuccess() : _buildForm(isWide),
+                  child: _success ? _buildSuccess(trialDays) : _buildForm(isWide, trialDays),
                 ),
               ),
             ),
@@ -223,7 +228,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   // ── Success state ─────────────────────────────────────────────────────────
 
-  Widget _buildSuccess() {
+  Widget _buildSuccess(int trialDays) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -245,7 +250,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         const SizedBox(height: 12),
         Text(
           'Bienvenue ! Votre boutique "${_businessNameCtrl.text.trim()}" '
-          'est prête. Vous bénéficiez de 30 jours d\'essai gratuit.',
+          'est prête. Vous bénéficiez de $trialDays jours d\'essai gratuit.',
           style: const TextStyle(
               fontSize: 14, color: AppColors.textSecondary, height: 1.5),
           textAlign: TextAlign.center,
@@ -264,7 +269,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   // ── Registration form ─────────────────────────────────────────────────────
 
-  Widget _buildForm(bool isWide) {
+  Widget _buildForm(bool isWide, int trialDays) {
     return Form(
       key: _formKey,
       child: Column(
@@ -296,8 +301,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           const Text('Créer un compte',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          const Text('Essai gratuit de 30 jours — sans carte bancaire',
-              style: TextStyle(fontSize: 13, color: AppColors.success)),
+          Text('Essai gratuit de $trialDays jours — sans carte bancaire',
+              style: const TextStyle(fontSize: 13, color: AppColors.success)),
           const SizedBox(height: 28),
 
           // Error
