@@ -196,6 +196,20 @@ def _run_alembic_migrations() -> None:
                 lock_conn.execute(text("SELECT RELEASE_LOCK('pos_alembic_migration')"))
 
 
+def _ensure_schema_patches() -> None:
+    """Patches de schéma simples et idempotents, indépendants de la chaîne alembic."""
+    with engine.connect() as conn:
+        for stmt in [
+            # price sur restaurant_tables (chambres hôtel)
+            "ALTER TABLE restaurant_tables ADD COLUMN price DECIMAL(12,2) NULL DEFAULT 0",
+        ]:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception:
+                conn.rollback()  # colonne déjà présente — on ignore
+
+
 def _ensure_local_tenant(db) -> str:
     """
     In local-mode deployments, create a sentinel LOCAL tenant (once)
@@ -482,6 +496,8 @@ def on_startup():
         _run_alembic_migrations()
     except Exception as exc:
         _log.warning("Alembic migration warning: %s", exc)
+    # 2b. Patches de schéma simples — idempotents, indépendants de la chaîne alembic
+    _ensure_schema_patches()
 
     import api.database as _db_module
     db = _db_module.SessionLocal()
