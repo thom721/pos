@@ -30,3 +30,6 @@ class AppConfig(UUIDBase):
     pos_auto_print   = Column(Boolean,     nullable=False, default=False)
     doc_printer_name = Column(String(500), nullable=False, default='')
     doc_auto_print   = Column(Boolean,     nullable=False, default=False)
+
+    # Hotel mode — JSON list of check-in fields: [{label, required, on_receipt}, ...]
+    hotel_checkin_fields = Column(Text, nullable=True, default=None)

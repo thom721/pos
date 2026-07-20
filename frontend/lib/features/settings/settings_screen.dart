@@ -369,6 +369,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
             const SizedBox(height: 8),
 
+            // ── Fiche d'accueil hôtel ────────────────────────────────────
+            if (settings.businessType == 'hotel') ...[
+              const SizedBox(height: 24),
+              _HotelCheckinSection(settings: settings, notifier: notifier),
+            ],
+
+            const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -1584,6 +1591,169 @@ class _BluetoothPrinterSectionState extends State<_BluetoothPrinterSection> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Hotel check-in fields configuration ───────────────────────────────────────
+
+const _kDefaultCheckinFields = <Map<String, dynamic>>[
+  {'label': 'Nom complet',      'required': true,  'onReceipt': true},
+  {'label': 'Téléphone',        'required': true,  'onReceipt': false},
+  {'label': 'Pièce d\'identité','required': false, 'onReceipt': false},
+  {'label': 'Nationalité',      'required': false, 'onReceipt': false},
+  {'label': 'Durée du séjour',  'required': true,  'onReceipt': true},
+];
+
+class _HotelCheckinSection extends StatefulWidget {
+  final AppSettings settings;
+  final SettingsNotifier notifier;
+  const _HotelCheckinSection({required this.settings, required this.notifier});
+
+  @override
+  State<_HotelCheckinSection> createState() => _HotelCheckinSectionState();
+}
+
+class _HotelCheckinSectionState extends State<_HotelCheckinSection> {
+  late List<Map<String, dynamic>> _fields;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final src = widget.settings.hotelCheckinFields;
+    _fields = src.isNotEmpty
+        ? src.map((f) => Map<String, dynamic>.from(f)).toList()
+        : _kDefaultCheckinFields.map((f) => Map<String, dynamic>.from(f)).toList();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    await widget.notifier.save(
+      widget.settings.copyWith(hotelCheckinFields: List.from(_fields)),
+    );
+    setState(() => _saving = false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Fiche d\'accueil enregistrée'),
+        backgroundColor: AppColors.success,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(icon: Icons.assignment_ind_rounded, title: 'Fiche d\'accueil client'),
+        const SizedBox(height: 8),
+        Text(
+          'Champs à renseigner lors de l\'enregistrement du client. '
+          'Cochez « Reçu » pour les afficher sur le reçu.',
+          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        // Header row
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(children: const [
+            Expanded(flex: 5, child: Text('Champ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary))),
+            SizedBox(width: 8),
+            SizedBox(width: 80, child: Text('Obligatoire', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary))),
+            SizedBox(width: 68, child: Text('Sur reçu', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary))),
+            SizedBox(width: 32),
+          ]),
+        ),
+        const SizedBox(height: 6),
+        _Card(
+          child: Column(
+            children: List.generate(_fields.length, (i) {
+              final f = _fields[i];
+              return Column(
+                children: [
+                  if (i > 0) const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Label field
+                        Expanded(
+                          flex: 5,
+                          child: TextFormField(
+                            initialValue: f['label'] as String? ?? '',
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              border: OutlineInputBorder(),
+                            ),
+                            style: const TextStyle(fontSize: 13),
+                            onChanged: (v) => setState(() => f['label'] = v),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Required toggle
+                        SizedBox(
+                          width: 80,
+                          child: Switch(
+                            value: f['required'] as bool? ?? false,
+                            onChanged: (v) => setState(() => f['required'] = v),
+                            activeThumbColor: AppColors.primary,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                        // On receipt toggle
+                        SizedBox(
+                          width: 68,
+                          child: Switch(
+                            value: f['onReceipt'] as bool? ?? false,
+                            onChanged: (v) => setState(() => f['onReceipt'] = v),
+                            activeThumbColor: AppColors.success,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                        // Delete
+                        SizedBox(
+                          width: 32,
+                          child: IconButton(
+                            icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                            color: AppColors.error,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () => setState(() => _fields.removeAt(i)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            TextButton.icon(
+              onPressed: () => setState(() => _fields.add(
+                    {'label': '', 'required': false, 'onReceipt': false})),
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Ajouter un champ'),
+              style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+            ),
+            const Spacer(),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.save_rounded, size: 16),
+              label: const Text('Enregistrer la fiche'),
+              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

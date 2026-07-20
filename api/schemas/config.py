@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+import json
+from pydantic import BaseModel, field_validator
 from typing import Optional
 
 
@@ -20,6 +21,17 @@ class ConfigRead(BaseModel):
     pos_auto_print: bool = False
     doc_printer_name: str = ''
     doc_auto_print: bool = False
+    hotel_checkin_fields: Optional[list] = None
+
+    @field_validator('hotel_checkin_fields', mode='before')
+    @classmethod
+    def _parse_checkin(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, ValueError):
+                return None
+        return v
 
     class Config:
         from_attributes = True
@@ -43,3 +55,4 @@ class ConfigUpdate(BaseModel):
     pos_auto_print: Optional[bool] = None
     doc_printer_name: Optional[str] = None
     doc_auto_print: Optional[bool] = None
+    hotel_checkin_fields: Optional[list] = None

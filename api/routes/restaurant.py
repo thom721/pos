@@ -256,6 +256,7 @@ def create_table(
             db.add(RoomAttribute(
                 id=str(uuid.uuid4()),
                 tenant_id=current_user.tenant_id,
+                warehouse_id=table.warehouse_id,
                 table_id=table.id,
                 key=attr.key.strip(),
                 value=attr.value.strip(),
@@ -296,6 +297,7 @@ def update_table(
                 db.add(RoomAttribute(
                     id=str(uuid.uuid4()),
                     tenant_id=current_user.tenant_id,
+                    warehouse_id=table.warehouse_id,
                     table_id=table.id,
                     key=attr.key.strip(),
                     value=attr.value.strip(),

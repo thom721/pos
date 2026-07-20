@@ -35,6 +35,8 @@ class AppSettings {
   final String bluetoothPrinterName;
   // Paper width in mm — device-specific, stored locally only
   final int paperWidth; // 80 | 58
+  // Hotel mode — check-in fields config [{label, required, onReceipt}]
+  final List<Map<String, dynamic>> hotelCheckinFields;
 
   const AppSettings({
     this.businessName = 'Mon Commerce',
@@ -57,6 +59,7 @@ class AppSettings {
     this.bluetoothPrinterMac = '',
     this.bluetoothPrinterName = '',
     this.paperWidth = 80,
+    this.hotelCheckinFields = const [],
   });
 
   AppSettings copyWith({
@@ -80,6 +83,7 @@ class AppSettings {
     String? bluetoothPrinterMac,
     String? bluetoothPrinterName,
     int? paperWidth,
+    List<Map<String, dynamic>>? hotelCheckinFields,
   }) =>
       AppSettings(
         businessName: businessName ?? this.businessName,
@@ -102,6 +106,7 @@ class AppSettings {
         bluetoothPrinterMac: bluetoothPrinterMac ?? this.bluetoothPrinterMac,
         bluetoothPrinterName: bluetoothPrinterName ?? this.bluetoothPrinterName,
         paperWidth: paperWidth ?? this.paperWidth,
+        hotelCheckinFields: hotelCheckinFields ?? this.hotelCheckinFields,
       );
 
   // Serialize to API (snake_case)
@@ -125,6 +130,14 @@ class AppSettings {
         'doc_auto_print': docAutoPrint,
         'bluetooth_printer_mac': bluetoothPrinterMac,
         'bluetooth_printer_name': bluetoothPrinterName,
+        if (hotelCheckinFields.isNotEmpty)
+          'hotel_checkin_fields': hotelCheckinFields
+              .map((f) => {
+                    'label':      f['label']     ?? '',
+                    'required':   f['required']  ?? false,
+                    'on_receipt': f['onReceipt'] ?? false,
+                  })
+              .toList(),
       };
 
   // Parse from API response (snake_case)
@@ -148,7 +161,21 @@ class AppSettings {
         docAutoPrint: j['doc_auto_print'] as bool? ?? false,
         bluetoothPrinterMac: j['bluetooth_printer_mac'] as String? ?? '',
         bluetoothPrinterName: j['bluetooth_printer_name'] as String? ?? '',
+        hotelCheckinFields: _parseCheckinFields(j['hotel_checkin_fields']),
       );
+
+  static List<Map<String, dynamic>> _parseCheckinFields(dynamic raw) {
+    if (raw == null) return [];
+    if (raw is! List) return [];
+    return raw.map((e) {
+      final m = e as Map<String, dynamic>;
+      return <String, dynamic>{
+        'label':      m['label']      ?? m['label']      ?? '',
+        'required':   m['required']   ?? false,
+        'onReceipt':  m['on_receipt'] ?? m['onReceipt']  ?? false,
+      };
+    }).toList();
+  }
 
   // Serialize for local cache (camelCase — backward compat)
   Map<String, dynamic> toJson() => {
@@ -172,6 +199,7 @@ class AppSettings {
         'bluetoothPrinterMac': bluetoothPrinterMac,
         'bluetoothPrinterName': bluetoothPrinterName,
         'paperWidth': paperWidth,
+        'hotelCheckinFields': hotelCheckinFields,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -195,6 +223,7 @@ class AppSettings {
         bluetoothPrinterMac: j['bluetoothPrinterMac'] as String? ?? '',
         bluetoothPrinterName: j['bluetoothPrinterName'] as String? ?? '',
         paperWidth: (j['paperWidth'] as num?)?.toInt() ?? 80,
+        hotelCheckinFields: _parseCheckinFields(j['hotelCheckinFields']),
       );
 }
 

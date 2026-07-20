@@ -1,4 +1,5 @@
 import copy
+import json
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from api.models.AppConfig import AppConfig
@@ -94,7 +95,10 @@ def update(
     config = get_or_create(db, tenant_id=tenant_id, warehouse_id=warehouse_id)
     for key, value in data.items():
         if hasattr(config, key):
-            setattr(config, key, value)
+            if key == 'hotel_checkin_fields' and isinstance(value, list):
+                setattr(config, key, json.dumps(value, ensure_ascii=False))
+            else:
+                setattr(config, key, value)
     db.commit()
     db.refresh(config)
     return config
