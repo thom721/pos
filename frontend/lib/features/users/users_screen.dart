@@ -340,7 +340,7 @@ class _UsersTab extends ConsumerWidget {
         'password':    user['password'],
         'is_active':   user['is_active'] ?? true,
         'roles':       [newRole],
-        'permissions': newRole == 'admin' ? ['all'] : [newRole],
+        'permissions': newRole == 'admin' ? ['all'] : [],
       });
       ref.invalidate(_usersListProvider);
     } catch (e) {

@@ -3,11 +3,35 @@ from sqlalchemy.orm import Session
 from api.database import get_db
 from api.services.auth import Auth,Token,TokenData
 from api.services.user_service import compute_offline_hash
+from api.core.permissions import ROLE_PERMISSIONS
 from datetime import timedelta
 from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import jwt
+
+
+def _resolve_permissions(user) -> list[str]:
+    """Compute effective permissions = current role perms + any extra explicit grants.
+
+    Re-derives from ROLE_PERMISSIONS so that role changes take effect on next login
+    without requiring individual user record updates.
+    """
+    roles = user.roles or []
+    explicit = set(user.permissions or [])
+
+    # Wildcard: admin stays admin
+    if "all" in explicit or any(ROLE_PERMISSIONS.get(r, set()) == {"all"} for r in roles):
+        return ["all"]
+
+    role_perms: set[str] = set()
+    for role in roles:
+        role_perms.update(ROLE_PERMISSIONS.get(role, set()))
+
+    # Keep only explicit permissions that are true custom grants (not role names)
+    custom = {p for p in explicit if p not in roles and p != "all"}
+
+    return sorted(role_perms | custom)
 
 
 
@@ -70,7 +94,7 @@ def login_for_access_token(
         'phone': user.phone,
         'address': user.address,
         'roles': user.roles,
-        'permissions': user.permissions,
+        'permissions': _resolve_permissions(user),
         'must_change_password': user.must_change_password,
     }, plan_warning=warning)
 
