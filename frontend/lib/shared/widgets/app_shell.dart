@@ -91,18 +91,18 @@ const _hotelMainNavItems = [
   _NavItem('Réservations',    Icons.book_online_rounded,            '/restaurant/commandes'),
   _NavItem('Chambres',        Icons.king_bed_rounded,               '/restaurant/tables'),
   _NavItem('Housekeeping',    Icons.cleaning_services_rounded,      '/restaurant/kitchen'),
-  _NavItem('Ventes',          Icons.receipt_long_rounded,           '/sales'),
+  _NavItem('Transactions',    Icons.receipt_long_rounded,           '/sales'),
   _NavItem('Bar & Produits',  Icons.inventory_2_rounded,            '/products'),
   _NavItem('Clients',         Icons.people_alt_rounded,             '/customers'),
   _NavItem('Dettes',          Icons.account_balance_wallet_rounded, '/debts'),
-  _NavItem('Business',  Icons.apartment_rounded,              '/warehouses'),
+  _NavItem('Business',        Icons.apartment_rounded,              '/warehouses'),
 ];
 
 const _hotelAndroidBottomItems = [
-  _NavItem('Réservations', Icons.book_online_rounded,  '/restaurant/commandes'),
-  _NavItem('Chambres',     Icons.king_bed_rounded,     '/restaurant/tables'),
-  _NavItem('Ventes',       Icons.receipt_long_rounded, '/sales'),
-  _NavItem('Profil',       Icons.person_rounded,       '/profile'),
+  _NavItem('Réservations',  Icons.book_online_rounded,  '/restaurant/commandes'),
+  _NavItem('Chambres',      Icons.king_bed_rounded,     '/restaurant/tables'),
+  _NavItem('Transactions',  Icons.receipt_long_rounded, '/sales'),
+  _NavItem('Profil',        Icons.person_rounded,       '/profile'),
 ];
 
 List<_NavItem> _resolveMainNav(String businessType) {
@@ -911,7 +911,9 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
 
     final mainItems = businessType == 'restaurant'
         ? _restaurantMainNavItems
-        : _androidDrawerMainItems;
+        : businessType == 'hotel'
+            ? _hotelMainNavItems
+            : _androidDrawerMainItems;
 
     return [
       ...mainItems.map((item) => _SidebarItem(
