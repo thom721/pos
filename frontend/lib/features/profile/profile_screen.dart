@@ -459,7 +459,7 @@ class _CompanyFormState extends ConsumerState<_CompanyForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Sélecteur de dépôt ──────────────────────────────────────
+            // ── Sélecteur de business ───────────────────────────────────
             if (warehouses.length > 1) ...[
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -472,7 +472,7 @@ class _CompanyFormState extends ConsumerState<_CompanyForm> {
                   children: [
                     const Icon(Icons.warehouse_outlined, size: 18, color: AppColors.primary),
                     const SizedBox(width: 10),
-                    const Text('Dépôt :', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    const Text('Business :', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                     const SizedBox(width: 12),
                     Expanded(
                       child: DropdownButtonHideUnderline(

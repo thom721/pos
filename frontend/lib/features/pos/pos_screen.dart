@@ -841,6 +841,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   String? _deviceId;
 
   static const _sessionPrefKey = 'pos_caisse_session';
+  static const _registerPrefPrefix = 'pos_has_register_';
 
   void _syncSessionProvider() {
     ref.read(_posSessionOpenProvider.notifier).state =
@@ -902,6 +903,17 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     await _fetchSessionFromServer(promptIfMissing: true);
   }
 
+  Future<void> _saveRegisterFlag(bool hasRegister) async {
+    final wh = ref.read(activeWarehouseProvider);
+    final prefs = await SharedPreferences.getInstance();
+    final key = '$_registerPrefPrefix${wh?.id ?? 'default'}';
+    if (hasRegister) {
+      await prefs.setBool(key, true);
+    } else {
+      await prefs.remove(key);
+    }
+  }
+
   /// Vérifie silencieusement l'état de la session côté serveur.
   /// Appelé en arrière-plan quand le cache est déjà affiché.
   Future<void> _refreshSessionFromServer() async {
@@ -909,7 +921,9 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       final res = await dio.get('/api/sessions/current', queryParameters: {'device_id': _deviceId});
       final session = res.data['session'];
       final disabled = res.data['disabled'] == true;
+      final hasRegister = res.data['has_register'] == true || session != null;
       if (session != null) await _cacheSession(session as Map<String, dynamic>);
+      await _saveRegisterFlag(hasRegister);
       if (!mounted) return;
       setState(() {
         _session = session as Map<String, dynamic>?;
@@ -931,7 +945,9 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       final res = await dio.get('/api/sessions/current', queryParameters: {'device_id': _deviceId});
       final session = res.data['session'];
       final disabled = res.data['disabled'] == true;
+      final hasRegister = res.data['has_register'] == true || session != null;
       if (session != null) await _cacheSession(session as Map<String, dynamic>);
+      await _saveRegisterFlag(hasRegister);
       if (!mounted) return;
       setState(() {
         _session = session as Map<String, dynamic>?;

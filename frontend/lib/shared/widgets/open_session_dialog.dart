@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart' show DioException, DioExceptionType;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:pos_connect/core/theme.dart';
@@ -56,7 +57,7 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
     } catch (e) {
       if (!mounted) return;
 
-      // Réseau indisponible sur Android → session locale
+      // Réseau indisponible sur Android → session locale si l'appareil est enregistré
       final isNetErr = Platform.isAndroid && (
         e is DioException && (
           e.type == DioExceptionType.connectionError ||
@@ -67,6 +68,18 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
         ) || e is SocketException
       );
       if (isNetErr) {
+        final prefs = await SharedPreferences.getInstance();
+        final regKey = 'pos_has_register_${widget.warehouseId ?? 'default'}';
+        final isRegistered = prefs.getBool(regKey) ?? false;
+        if (!isRegistered) {
+          if (!mounted) return;
+          setState(() {
+            _loading = false;
+            _error = 'Appareil non enregistré comme caisse. '
+                'Connectez-vous au réseau une première fois pour activer cet appareil.';
+          });
+          return;
+        }
         final localSession = <String, dynamic>{
           'id': const Uuid().v4(),
           'device_id': widget.deviceId,

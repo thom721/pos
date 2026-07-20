@@ -198,7 +198,7 @@ def get_current_session(
         tenant_id=current_user.tenant_id, device_id=device_id
     ).first()
     if not reg or not reg.is_active:
-        return {"session": None, "disabled": not reg.is_active if reg else False}
+        return {"session": None, "has_register": False, "disabled": not reg.is_active if reg else False}
 
     session = (
         db.query(CashierSession)
@@ -206,7 +206,7 @@ def get_current_session(
         .first()
     )
     if not session:
-        return {"session": None}
+        return {"session": None, "has_register": True}
 
     return {
         "session": {
@@ -216,7 +216,8 @@ def get_current_session(
             "opening_balance": float(session.opening_balance or 0),
             "opened_at":       session.opened_at,
             "status":          session.status,
-        }
+        },
+        "has_register": True,
     }
 
 
