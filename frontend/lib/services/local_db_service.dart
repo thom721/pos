@@ -40,7 +40,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 9,
+      version: 10,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -99,6 +99,33 @@ class LocalDbService {
     if (oldVersion < 9) {
       try { await db.execute('ALTER TABLE products ADD COLUMN synced INTEGER NOT NULL DEFAULT 1'); } catch (_) {}
       try { await db.execute('ALTER TABLE categories ADD COLUMN synced INTEGER NOT NULL DEFAULT 1'); } catch (_) {}
+    }
+    if (oldVersion < 10) {
+      // Rendre product_id nullable pour les ventes restaurant (plats libres sans produit inventaire)
+      // SQLite ne supporte pas ALTER COLUMN — on recrée la table
+      try {
+        await db.execute('ALTER TABLE sale_items RENAME TO sale_items_old');
+        await db.execute('''
+          CREATE TABLE sale_items (
+            id             TEXT PRIMARY KEY,
+            sale_id        TEXT NOT NULL,
+            product_id     TEXT,
+            label          TEXT,
+            product_name   TEXT,
+            quantity       REAL NOT NULL,
+            unit_price     REAL NOT NULL,
+            original_price REAL,
+            subtotal       REAL NOT NULL
+          )
+        ''');
+        await db.execute('''
+          INSERT INTO sale_items (id, sale_id, product_id, product_name, quantity, unit_price, original_price, subtotal)
+          SELECT id, sale_id, product_id, product_name, quantity, unit_price, original_price, subtotal
+          FROM sale_items_old
+        ''');
+        await db.execute('DROP TABLE sale_items_old');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON sale_items (sale_id)');
+      } catch (_) {}
     }
   }
 
@@ -203,7 +230,8 @@ class LocalDbService {
       CREATE TABLE IF NOT EXISTS sale_items (
         id             TEXT PRIMARY KEY,
         sale_id        TEXT NOT NULL,
-        product_id     TEXT NOT NULL,
+        product_id     TEXT,
+        label          TEXT,
         product_name   TEXT,
         quantity       REAL NOT NULL,
         unit_price     REAL NOT NULL,
@@ -723,6 +751,7 @@ class LocalDbService {
         'id':             const Uuid().v4(),
         'sale_id':        saleId,
         'product_id':     item['product_id'],
+        'label':          item['label'],
         'product_name':   item['product_name'],
         'quantity':       item['quantity'],
         'unit_price':     item['unit_price'],
@@ -779,6 +808,7 @@ class LocalDbService {
           'id':             item.id.isEmpty ? const Uuid().v4() : item.id,
           'sale_id':        s.id,
           'product_id':     item.productId,
+          'label':          item.label,
           'product_name':   item.productName,
           'quantity':       item.quantity,
           'unit_price':     item.unitPrice,
@@ -959,7 +989,8 @@ class LocalDbService {
       userFullName:  row['cashier_name'] as String?,
       items: itemRows.map((r) => SaleItemModel(
         id:            r['id'] as String,
-        productId:     r['product_id'] as String,
+        productId:     r['product_id'] as String?,
+        label:         r['label'] as String?,
         productName:   r['product_name'] as String?,
         quantity:      (r['quantity'] as num).toDouble(),
         unitPrice:     (r['unit_price'] as num).toDouble(),
