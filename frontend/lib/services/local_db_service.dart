@@ -40,7 +40,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 11,
+      version: 12,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -129,6 +129,9 @@ class LocalDbService {
     }
     if (oldVersion < 11) {
       try { await db.execute('ALTER TABLE sales ADD COLUMN user_id TEXT'); } catch (_) {}
+    }
+    if (oldVersion < 12) {
+      try { await db.execute('ALTER TABLE sale_items ADD COLUMN returned_qty REAL NOT NULL DEFAULT 0'); } catch (_) {}
     }
   }
 
@@ -240,7 +243,8 @@ class LocalDbService {
         quantity       REAL NOT NULL,
         unit_price     REAL NOT NULL,
         original_price REAL,
-        subtotal       REAL NOT NULL
+        subtotal       REAL NOT NULL,
+        returned_qty   REAL NOT NULL DEFAULT 0
       )
     ''');
     await db.execute('''
@@ -819,6 +823,7 @@ class LocalDbService {
           'unit_price':     item.unitPrice,
           'original_price': item.originalPrice,
           'subtotal':       item.subtotal,
+          'returned_qty':   item.returnedQty,
         });
       }
       for (final p in s.payments) {
@@ -1007,6 +1012,7 @@ class LocalDbService {
         unitPrice:     (r['unit_price'] as num).toDouble(),
         originalPrice: r['original_price'] != null ? (r['original_price'] as num).toDouble() : null,
         subtotal:      (r['subtotal'] as num).toDouble(),
+        returnedQty:   r['returned_qty'] != null ? (r['returned_qty'] as num).toDouble() : 0,
       )).toList(),
       payments: const [],
     );
