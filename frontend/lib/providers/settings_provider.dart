@@ -12,7 +12,7 @@ const _kKeyPrefix = 'pos_app_settings';
 
 class AppSettings {
   final String businessName;
-  final String businessType; // commerce | restaurant | depot
+  final String businessType; // commerce | restaurant | depot | hotel
   final String currency;     // HTG | USD | EUR
   final String currencySymbol;
   final String phone;

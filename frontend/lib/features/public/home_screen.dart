@@ -612,15 +612,15 @@ class _RestaurantText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const _SectionLabel('Restaurants & Clubs / Bars'),
+      const _SectionLabel('Restaurants, Clubs & Hôtels'),
       const SizedBox(height: 12),
       Text(
-        'Un POS pensé pour la restauration et les clubs',
+        'Un POS pensé pour la restauration et l\'hôtellerie',
         style: GoogleFonts.inter(fontSize: 30, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
       ),
       const SizedBox(height: 16),
       Text(
-        'Gérez vos tables, prenez les commandes en salle, envoyez les bons en cuisine. Parfait pour les restaurants, snacks, clubs et bars — même logique, même simplicité.',
+        'Gérez vos tables ou chambres, prenez les commandes en salle, envoyez les bons en cuisine. Parfait pour les restaurants, snacks, clubs, bars et hôtels / motels — même logique, même simplicité.',
         style: GoogleFonts.inter(fontSize: 15, color: const Color(0xFF718096), height: 1.6),
       ),
       const SizedBox(height: 28),
@@ -657,7 +657,7 @@ class _CapabilitiesBand extends StatelessWidget {
     (Icons.bar_chart_rounded,        Color(0xFF2CA01C), 'Statistiques avancées',       'Tableaux de bord, tendances et analyses'),
     (Icons.people_rounded,           Color(0xFFE67E22), 'Gestion clients',             'Historique, fidélité et profils complets'),
     (Icons.local_pharmacy_rounded,   Color(0xFF0D9488), 'Commerce & Pharmacie',        'Stocks, produits, alertes péremption'),
-    (Icons.nightlife_rounded,        Color(0xFFDB2777), 'Restaurant, Club & Bar',      'Tables, commandes, bons de cuisine'),
+    (Icons.nightlife_rounded,        Color(0xFFDB2777), 'Restaurant, Club & Hôtel',    'Tables, chambres, réservations, cuisine'),
   ];
 
   @override

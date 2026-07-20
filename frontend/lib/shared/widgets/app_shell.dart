@@ -84,11 +84,37 @@ const _restaurantAndroidBottomItems = [
   _NavItem('Ventes',    Icons.receipt_long_rounded,     '/sales'),
 ];
 
-List<_NavItem> _resolveMainNav(String businessType) =>
-    businessType == 'restaurant' ? _restaurantMainNavItems : _mainNavItems;
+// ── Hôtel / Motel nav ──────────────────────────────────────────────────────
+const _hotelMainNavItems = [
+  _NavItem('Tableau de bord', Icons.dashboard_rounded,              '/dashboard'),
+  _NavItem('Réservations',    Icons.book_online_rounded,            '/restaurant/commandes'),
+  _NavItem('Chambres',        Icons.king_bed_rounded,               '/restaurant/tables'),
+  _NavItem('Housekeeping',    Icons.cleaning_services_rounded,      '/restaurant/kitchen'),
+  _NavItem('Ventes',          Icons.receipt_long_rounded,           '/sales'),
+  _NavItem('Bar & Produits',  Icons.inventory_2_rounded,            '/products'),
+  _NavItem('Clients',         Icons.people_alt_rounded,             '/customers'),
+  _NavItem('Dettes',          Icons.account_balance_wallet_rounded, '/debts'),
+  _NavItem('Établissements',  Icons.apartment_rounded,              '/warehouses'),
+];
 
-List<_NavItem> _resolveAndroidBottom(String businessType) =>
-    businessType == 'restaurant' ? _restaurantAndroidBottomItems : _androidBottomNavItems;
+const _hotelAndroidBottomItems = [
+  _NavItem('Réservations', Icons.book_online_rounded,  '/restaurant/commandes'),
+  _NavItem('Chambres',     Icons.king_bed_rounded,     '/restaurant/tables'),
+  _NavItem('Ventes',       Icons.receipt_long_rounded, '/sales'),
+  _NavItem('Profil',       Icons.person_rounded,       '/profile'),
+];
+
+List<_NavItem> _resolveMainNav(String businessType) {
+  if (businessType == 'restaurant') return _restaurantMainNavItems;
+  if (businessType == 'hotel')      return _hotelMainNavItems;
+  return _mainNavItems;
+}
+
+List<_NavItem> _resolveAndroidBottom(String businessType) {
+  if (businessType == 'restaurant') return _restaurantAndroidBottomItems;
+  if (businessType == 'hotel')      return _hotelAndroidBottomItems;
+  return _androidBottomNavItems;
+}
 
 // ── Android nav (focused cashier workflow) ────────────────────────────────
 const _androidBottomNavItems = [
@@ -109,6 +135,7 @@ const _androidDrawerMainItems = [
 const _allNavItems = [
   ..._mainNavItems,
   ..._restaurantMainNavItems,
+  ..._hotelMainNavItems,
   ..._analyticsNavItems,
   ..._hrNavItems,
   ..._adminNavItems,

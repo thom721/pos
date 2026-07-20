@@ -116,6 +116,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     onTap: () => notifier.save(
                         settings.copyWith(businessType: 'depot')),
                   ),
+                  const Divider(height: 1),
+                  _SelectionTile(
+                    value: 'hotel',
+                    label: 'Hôtel & Motel',
+                    description: 'Chambres, réservations, housekeeping',
+                    icon: Icons.king_bed_rounded,
+                    selected: settings.businessType == 'hotel',
+                    onTap: () => notifier.save(
+                        settings.copyWith(businessType: 'hotel')),
+                  ),
                 ],
               ),
             ),
