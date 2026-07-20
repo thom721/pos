@@ -171,7 +171,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.CONFIG_READ,
         P.SESSIONS_OPEN, P.SESSIONS_CLOSE,
         P.WAREHOUSES_READ,
-        P.TABLES_CREATE, P.TABLES_READ, P.TABLES_UPDATE,
+        P.TABLES_READ,
     },
 
     "stock_manager": {
@@ -188,7 +188,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
 
     # Serveur restaurant : gère les tables et commandes, encaisse, pas de backoffice
     "waiter": {
-        P.TABLES_READ, P.TABLES_CREATE, P.TABLES_UPDATE,
+        P.TABLES_READ, P.TABLES_UPDATE,
         P.PRODUCTS_READ, P.CATEGORIES_READ,
         P.SALES_CREATE,
         P.PAYMENTS_READ,

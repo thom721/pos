@@ -81,6 +81,12 @@ abstract class Perm {
   static const warehousesUpdate = 'warehouses.update';
   static const warehousesDelete = 'warehouses.delete';
 
+  // Restaurant (tables & menu)
+  static const tablesCreate = 'tables.create';
+  static const tablesRead   = 'tables.read';
+  static const tablesUpdate = 'tables.update';
+  static const tablesDelete = 'tables.delete';
+
   // Proformas
   static const proformasCreate = 'proformas.create';
   static const proformasRead   = 'proformas.read';
@@ -135,6 +141,7 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.employeesCreate, Perm.employeesRead, Perm.employeesUpdate,
     Perm.loansCreate, Perm.loansRead, Perm.loansApprove,
     Perm.payrollCreate, Perm.payrollRead, Perm.payrollProcess, Perm.payrollPay,
+    Perm.tablesCreate, Perm.tablesRead, Perm.tablesUpdate, Perm.tablesDelete,
   },
   'cashier': {
     Perm.salesCreate, Perm.salesRead, Perm.salesUpdate, Perm.salesCancel,
@@ -148,6 +155,15 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.proformasCreate, Perm.proformasRead, Perm.proformasUpdate,
     Perm.invoicesCreate, Perm.invoicesRead, Perm.invoicesUpdate,
     Perm.configRead,
+    Perm.tablesRead,
+  },
+  'waiter': {
+    Perm.tablesRead, Perm.tablesUpdate,
+    Perm.productsRead, Perm.categoriesRead,
+    Perm.salesCreate,
+    Perm.paymentsRead,
+    Perm.configRead,
+    Perm.sessionsOpen, Perm.sessionsClose,
   },
   'stock_manager': {
     Perm.productsCreate, Perm.productsRead, Perm.productsUpdate, Perm.productsDelete,

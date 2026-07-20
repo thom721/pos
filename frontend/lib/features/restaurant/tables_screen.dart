@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
+import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/restaurant_provider.dart';
 
 class TablesScreen extends ConsumerWidget {
@@ -13,6 +15,7 @@ class TablesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tablesAsync = ref.watch(tablesProvider);
+    final canCreate = ref.watch(hasPermissionProvider(Perm.tablesCreate));
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -51,16 +54,18 @@ class TablesScreen extends ConsumerWidget {
           ),
         ),
         data: (tables) => tables.isEmpty
-            ? _EmptyState(onAdd: () => _showAddTableDialog(context, ref))
+            ? _EmptyState(onAdd: canCreate ? () => _showAddTableDialog(context, ref) : null)
             : _TableGrid(tables: tables),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddTableDialog(context, ref),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Ajouter une table'),
-      ),
+      floatingActionButton: canCreate
+          ? FloatingActionButton.extended(
+              onPressed: () => _showAddTableDialog(context, ref),
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Ajouter une table'),
+            )
+          : null,
     );
   }
 
@@ -537,8 +542,8 @@ class _TableCard extends ConsumerWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  final VoidCallback onAdd;
-  const _EmptyState({required this.onAdd});
+  final VoidCallback? onAdd;
+  const _EmptyState({this.onAdd});
 
   @override
   Widget build(BuildContext context) {

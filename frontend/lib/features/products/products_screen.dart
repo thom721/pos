@@ -166,13 +166,13 @@ class _VRow {
 
 // ── Menu panel (restaurant only) ──────────────────────────────────────────────
 
-class _MenuPanel extends StatefulWidget {
+class _MenuPanel extends ConsumerStatefulWidget {
   const _MenuPanel();
   @override
-  State<_MenuPanel> createState() => _MenuPanelState();
+  ConsumerState<_MenuPanel> createState() => _MenuPanelState();
 }
 
-class _MenuPanelState extends State<_MenuPanel> {
+class _MenuPanelState extends ConsumerState<_MenuPanel> {
   final _repo = RestaurantRepository();
   final _prodRepo = ProductRepository();
   List<MenuItemModel> _items = [];
@@ -208,6 +208,9 @@ class _MenuPanelState extends State<_MenuPanel> {
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width >= 700;
+    final canCreate = ref.watch(hasPermissionProvider(Perm.tablesCreate));
+    final canEdit   = ref.watch(hasPermissionProvider(Perm.tablesUpdate));
+    final canDelete = ref.watch(hasPermissionProvider(Perm.tablesDelete));
     return Column(
       children: [
         Padding(
@@ -221,11 +224,12 @@ class _MenuPanelState extends State<_MenuPanel> {
                       fontSize: 13, color: AppColors.textSecondary),
                 ),
               ),
-              ElevatedButton.icon(
-                onPressed: () => _showForm(),
-                icon: const Icon(Icons.add_rounded, size: 16),
-                label: const Text('Nouveau plat'),
-              ),
+              if (canCreate)
+                ElevatedButton.icon(
+                  onPressed: () => _showForm(),
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: const Text('Nouveau plat'),
+                ),
             ],
           ),
         ),
@@ -254,7 +258,14 @@ class _MenuPanelState extends State<_MenuPanel> {
             ),
           )
         else if (isWide)
-          Expanded(child: _MenuTable(items: _items, onEdit: (m) => _showForm(m), onDelete: (m) => _confirmDelete(context, m), onToggle: _toggleAvailable))
+          Expanded(child: _MenuTable(
+            items: _items,
+            canEdit: canEdit,
+            canDelete: canDelete,
+            onEdit: (m) => _showForm(m),
+            onDelete: (m) => _confirmDelete(context, m),
+            onToggle: _toggleAvailable,
+          ))
         else
           Expanded(
             child: ListView.separated(
@@ -263,6 +274,8 @@ class _MenuPanelState extends State<_MenuPanel> {
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (_, i) => _MenuItemTile(
                 item: _items[i],
+                canEdit: canEdit,
+                canDelete: canDelete,
                 onEdit: () => _showForm(_items[i]),
                 onDelete: () => _confirmDelete(context, _items[i]),
                 onToggle: () => _toggleAvailable(_items[i]),
@@ -838,10 +851,12 @@ class _MenuPanelState extends State<_MenuPanel> {
 
 class _MenuTable extends StatelessWidget {
   final List<MenuItemModel> items;
+  final bool canEdit;
+  final bool canDelete;
   final void Function(MenuItemModel) onEdit;
   final void Function(MenuItemModel) onDelete;
   final void Function(MenuItemModel) onToggle;
-  const _MenuTable({required this.items, required this.onEdit, required this.onDelete, required this.onToggle});
+  const _MenuTable({required this.items, this.canEdit = true, this.canDelete = true, required this.onEdit, required this.onDelete, required this.onToggle});
 
   @override
   Widget build(BuildContext context) {
@@ -888,22 +903,24 @@ class _MenuTable extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined,
-                            size: 16, color: AppColors.textSecondary),
-                        onPressed: () => onEdit(m),
-                        padding: EdgeInsets.zero,
-                        constraints:
-                            const BoxConstraints(minWidth: 32, minHeight: 32),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline_rounded,
-                            size: 16, color: AppColors.error),
-                        onPressed: () => onDelete(m),
-                        padding: EdgeInsets.zero,
-                        constraints:
-                            const BoxConstraints(minWidth: 32, minHeight: 32),
-                      ),
+                      if (canEdit)
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined,
+                              size: 16, color: AppColors.textSecondary),
+                          onPressed: () => onEdit(m),
+                          padding: EdgeInsets.zero,
+                          constraints:
+                              const BoxConstraints(minWidth: 32, minHeight: 32),
+                        ),
+                      if (canDelete)
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded,
+                              size: 16, color: AppColors.error),
+                          onPressed: () => onDelete(m),
+                          padding: EdgeInsets.zero,
+                          constraints:
+                              const BoxConstraints(minWidth: 32, minHeight: 32),
+                        ),
                     ],
                   ),
                 ],
@@ -916,10 +933,12 @@ class _MenuTable extends StatelessWidget {
 
 class _MenuItemTile extends StatelessWidget {
   final MenuItemModel item;
+  final bool canEdit;
+  final bool canDelete;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onToggle;
-  const _MenuItemTile({required this.item, required this.onEdit, required this.onDelete, required this.onToggle});
+  const _MenuItemTile({required this.item, this.canEdit = true, this.canDelete = true, required this.onEdit, required this.onDelete, required this.onToggle});
 
   @override
   Widget build(BuildContext context) {
@@ -948,20 +967,22 @@ class _MenuItemTile extends StatelessWidget {
           children: [
             Switch(value: item.available, onChanged: (_) => onToggle(),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
-            IconButton(
-              icon: const Icon(Icons.edit_outlined,
-                  size: 16, color: AppColors.textSecondary),
-              onPressed: onEdit,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline_rounded,
-                  size: 16, color: AppColors.error),
-              onPressed: onDelete,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            ),
+            if (canEdit)
+              IconButton(
+                icon: const Icon(Icons.edit_outlined,
+                    size: 16, color: AppColors.textSecondary),
+                onPressed: onEdit,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            if (canDelete)
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded,
+                    size: 16, color: AppColors.error),
+                onPressed: onDelete,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
           ],
         ),
       ),
