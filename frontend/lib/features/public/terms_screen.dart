@@ -79,8 +79,9 @@ class _NavBar extends StatelessWidget {
             ]),
           ),
           const Spacer(),
-          TextButton(onPressed: () => context.go('/home'), child: Text('Accueil', style: GoogleFonts.inter(color: _navy))),
-          TextButton(onPressed: () => context.go('/contact'), child: Text('Contact', style: GoogleFonts.inter(color: _navy))),
+          TextButton(onPressed: () => context.go('/home'),    child: Text('Accueil',        style: GoogleFonts.inter(color: _navy))),
+          TextButton(onPressed: () => context.go('/contact'), child: Text('Contact',        style: GoogleFonts.inter(color: _navy))),
+          TextButton(onPressed: () => context.go('/privacy'), child: Text('Confidentialité',style: GoogleFonts.inter(color: _navy))),
           const SizedBox(width: 12),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: _blue, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10)),
@@ -445,8 +446,9 @@ class _Footer extends StatelessWidget {
       Text('© ${DateTime.now().year} POS Connect. Tous droits réservés.',
           style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096))),
       Row(children: [
-        TextButton(onPressed: () => context.go('/home'), child: Text('Accueil', style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
-        TextButton(onPressed: () => context.go('/contact'), child: Text('Contact', style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
+        TextButton(onPressed: () => context.go('/home'),    child: Text('Accueil',        style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
+        TextButton(onPressed: () => context.go('/contact'), child: Text('Contact',        style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
+        TextButton(onPressed: () => context.go('/privacy'), child: Text('Confidentialité',style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
       ]),
     ]),
   );

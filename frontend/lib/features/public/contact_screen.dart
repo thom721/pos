@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pos_connect/providers/contact_info_provider.dart';
 
 const _navy  = Color(0xFF1B2A3B);
 const _blue  = Color(0xFF0077C5);
@@ -8,20 +10,20 @@ const _green = Color(0xFF2CA01C);
 const _bg    = Color(0xFFF0F2F5);
 const _white = Colors.white;
 
-class ContactScreen extends StatefulWidget {
+class ContactScreen extends ConsumerStatefulWidget {
   const ContactScreen({super.key});
   @override
-  State<ContactScreen> createState() => _ContactScreenState();
+  ConsumerState<ContactScreen> createState() => _ContactScreenState();
 }
 
-class _ContactScreenState extends State<ContactScreen> {
-  final _formKey   = GlobalKey<FormState>();
-  final _nameCtr   = TextEditingController();
-  final _emailCtr  = TextEditingController();
+class _ContactScreenState extends ConsumerState<ContactScreen> {
+  final _formKey    = GlobalKey<FormState>();
+  final _nameCtr    = TextEditingController();
+  final _emailCtr   = TextEditingController();
   final _subjectCtr = TextEditingController();
-  final _msgCtr    = TextEditingController();
-  bool _sending    = false;
-  bool _sent       = false;
+  final _msgCtr     = TextEditingController();
+  bool _sending = false;
+  bool _sent    = false;
 
   @override
   void dispose() {
@@ -39,16 +41,18 @@ class _ContactScreenState extends State<ContactScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final contact = ref.watch(contactInfoProvider).valueOrNull ?? ContactInfo.fallback;
     return Scaffold(
       backgroundColor: _bg,
       body: SingleChildScrollView(
         child: Column(children: [
-          _NavBar(),
-          _Header(),
+          const _NavBar(),
+          const _Header(),
           _Body(
             formKey: _formKey, nameCtr: _nameCtr, emailCtr: _emailCtr,
             subjectCtr: _subjectCtr, msgCtr: _msgCtr,
             sending: _sending, sent: _sent, onSend: _send,
+            contact: contact,
           ),
           const _Footer(),
         ]),
@@ -60,77 +64,73 @@ class _ContactScreenState extends State<ContactScreen> {
 // ── NavBar ────────────────────────────────────────────────────────────────────
 
 class _NavBar extends StatelessWidget {
+  const _NavBar();
   @override
-  Widget build(BuildContext context) {
-    return Material(
-      elevation: 1, color: _white,
-      child: SizedBox(height: 64, child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Row(children: [
-          GestureDetector(
-            onTap: () => context.go('/home'),
-            child: Row(children: [
-              Container(width: 36, height: 36,
-                decoration: BoxDecoration(color: _blue, borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.point_of_sale_rounded, color: _white, size: 20),
-              ),
-              const SizedBox(width: 10),
-              Text('POS Connect', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
-            ]),
-          ),
-          const Spacer(),
-          TextButton(onPressed: () => context.go('/home'), child: Text('Accueil', style: GoogleFonts.inter(color: _navy))),
-          TextButton(onPressed: () => context.go('/terms'), child: Text('Conditions', style: GoogleFonts.inter(color: _navy))),
-          const SizedBox(width: 12),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: _blue, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10)),
-            onPressed: () => context.go('/login'),
-            child: const Text('Se connecter'),
-          ),
-        ]),
-      )),
-    );
-  }
+  Widget build(BuildContext context) => Material(
+    elevation: 1, color: _white,
+    child: SizedBox(height: 64, child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(children: [
+        GestureDetector(
+          onTap: () => context.go('/home'),
+          child: Row(children: [
+            Container(width: 36, height: 36,
+              decoration: BoxDecoration(color: _blue, borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.point_of_sale_rounded, color: _white, size: 20)),
+            const SizedBox(width: 10),
+            Text('POS Connect', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
+          ]),
+        ),
+        const Spacer(),
+        TextButton(onPressed: () => context.go('/home'),    child: Text('Accueil',    style: GoogleFonts.inter(color: _navy))),
+        TextButton(onPressed: () => context.go('/terms'),   child: Text('CGU',        style: GoogleFonts.inter(color: _navy))),
+        TextButton(onPressed: () => context.go('/privacy'), child: Text('Confidentialité', style: GoogleFonts.inter(color: _navy))),
+        const SizedBox(width: 12),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: _blue, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10)),
+          onPressed: () => context.go('/login'),
+          child: const Text('Se connecter'),
+        ),
+      ]),
+    )),
+  );
 }
 
 // ── Header ────────────────────────────────────────────────────────────────────
 
 class _Header extends StatelessWidget {
+  const _Header();
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [Color(0xFF0A1929), Color(0xFF1B2A3B)],
-        ),
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft, end: Alignment.bottomRight,
+        colors: [Color(0xFF0A1929), Color(0xFF1B2A3B)],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 56),
-      child: Column(children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          decoration: BoxDecoration(
-            color: _blue.withValues(alpha: 0.2),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _blue.withValues(alpha: 0.4)),
-          ),
-          child: Text('Support & Contact', style: GoogleFonts.inter(fontSize: 13, color: _white, fontWeight: FontWeight.w500)),
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 56),
+    child: Column(children: [
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: _blue.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _blue.withValues(alpha: 0.4)),
         ),
-        const SizedBox(height: 20),
-        Text('Nous sommes là pour vous aider',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.inter(fontSize: 36, fontWeight: FontWeight.w800, color: _white, height: 1.2),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Une question, un projet, un besoin d\'assistance ? Envoyez-nous un message et nous vous répondons dans les 24 heures.',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.inter(fontSize: 15, color: const Color(0xFFB0C4D8), height: 1.6),
-        ),
-      ]),
-    );
-  }
+        child: Text('Support & Contact', style: GoogleFonts.inter(fontSize: 13, color: _white, fontWeight: FontWeight.w500)),
+      ),
+      const SizedBox(height: 20),
+      Text('Nous sommes là pour vous aider',
+        textAlign: TextAlign.center,
+        style: GoogleFonts.inter(fontSize: 36, fontWeight: FontWeight.w800, color: _white, height: 1.2)),
+      const SizedBox(height: 12),
+      Text(
+        'Une question, un projet, un besoin d\'assistance ? Envoyez-nous un message et nous vous répondons dans les 24 heures.',
+        textAlign: TextAlign.center,
+        style: GoogleFonts.inter(fontSize: 15, color: const Color(0xFFB0C4D8), height: 1.6)),
+    ]),
+  );
 }
 
 // ── Body ──────────────────────────────────────────────────────────────────────
@@ -140,11 +140,13 @@ class _Body extends StatelessWidget {
   final TextEditingController nameCtr, emailCtr, subjectCtr, msgCtr;
   final bool sending, sent;
   final VoidCallback onSend;
+  final ContactInfo contact;
 
   const _Body({
     required this.formKey, required this.nameCtr, required this.emailCtr,
     required this.subjectCtr, required this.msgCtr,
     required this.sending, required this.sent, required this.onSend,
+    required this.contact,
   });
 
   @override
@@ -154,7 +156,7 @@ class _Body extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: isWide ? 80 : 24, vertical: 56),
       child: isWide
           ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Expanded(child: _ContactInfo()),
+              Expanded(child: _ContactInfo(contact: contact)),
               const SizedBox(width: 48),
               Expanded(flex: 2, child: _ContactForm(
                 formKey: formKey, nameCtr: nameCtr, emailCtr: emailCtr,
@@ -163,7 +165,7 @@ class _Body extends StatelessWidget {
               )),
             ])
           : Column(children: [
-              const _ContactInfo(),
+              _ContactInfo(contact: contact),
               const SizedBox(height: 40),
               _ContactForm(
                 formKey: formKey, nameCtr: nameCtr, emailCtr: emailCtr,
@@ -178,17 +180,22 @@ class _Body extends StatelessWidget {
 // ── Contact info panel ────────────────────────────────────────────────────────
 
 class _ContactInfo extends StatelessWidget {
-  const _ContactInfo();
+  final ContactInfo contact;
+  const _ContactInfo({required this.contact});
 
   @override
   Widget build(BuildContext context) {
+    final email = contact.email.isNotEmpty ? contact.email : 'support@pos-connect.ht';
+    final phone = contact.whatsapp.isNotEmpty ? contact.whatsapp : null;
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Coordonnées', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800, color: _navy)),
       const SizedBox(height: 24),
-      _InfoTile(Icons.email_outlined,       'Email', 'support@pos-connect.ht'),
-      _InfoTile(Icons.phone_outlined,       'Téléphone', '+509 4000-0000'),
-      _InfoTile(Icons.access_time_rounded,  'Horaires', 'Lun–Ven : 8h – 17h (EST)'),
-      _InfoTile(Icons.location_on_outlined, 'Adresse', 'Port-au-Prince, Haïti'),
+      _InfoTile(Icons.email_outlined,      'Email',    email),
+      if (phone != null)
+        _InfoTile(Icons.chat_rounded,      'WhatsApp', phone),
+      _InfoTile(Icons.access_time_rounded, 'Horaires', 'Lun–Ven : 8h – 17h (EST)'),
+      _InfoTile(Icons.location_on_outlined,'Adresse',  'Port-au-Prince, Haïti'),
       const SizedBox(height: 32),
       Container(
         padding: const EdgeInsets.all(20),
@@ -206,8 +213,7 @@ class _ContactInfo extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             'Les abonnés Pro et Enterprise bénéficient d\'une réponse garantie sous 4 heures ouvrables et d\'un accès au support WhatsApp.',
-            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5),
-          ),
+            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5)),
         ]),
       ),
       const SizedBox(height: 24),
@@ -227,8 +233,7 @@ class _ContactInfo extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             'Consultez notre base de connaissances pour des guides pas à pas, des tutoriels vidéo et des FAQ.',
-            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5),
-          ),
+            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5)),
         ]),
       ),
     ]);
@@ -253,7 +258,7 @@ class _InfoTile extends StatelessWidget {
       const SizedBox(width: 14),
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096), fontWeight: FontWeight.w500)),
-        Text(value, style: GoogleFonts.inter(fontSize: 14, color: _navy, fontWeight: FontWeight.w600)),
+        Text(value,  style: GoogleFonts.inter(fontSize: 14, color: _navy, fontWeight: FontWeight.w600)),
       ]),
     ]),
   );
@@ -274,60 +279,59 @@ class _ContactForm extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: _white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 20, offset: const Offset(0, 8))],
-      ),
-      child: sent ? _SuccessState() : Form(
-        key: formKey,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Envoyer un message', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: _navy)),
-          const SizedBox(height: 4),
-          Text('Nous vous répondons sous 24 heures ouvrables.',
-              style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096))),
-          const SizedBox(height: 28),
-          Row(children: [
-            Expanded(child: _Field(controller: nameCtr, label: 'Nom complet', hint: 'Jean Dupont', icon: Icons.person_outline)),
-            const SizedBox(width: 16),
-            Expanded(child: _Field(controller: emailCtr, label: 'Email', hint: 'jean@example.com', icon: Icons.email_outlined,
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Champ requis';
-                if (!v.contains('@')) return 'Email invalide';
-                return null;
-              })),
-          ]),
-          const SizedBox(height: 16),
-          _Field(controller: subjectCtr, label: 'Sujet', hint: 'Ex: Problème de connexion', icon: Icons.subject_rounded),
-          const SizedBox(height: 16),
-          _Field(
-            controller: msgCtr, label: 'Message', hint: 'Décrivez votre question ou problème en détail...',
-            icon: Icons.chat_bubble_outline_rounded, maxLines: 6,
-            validator: (v) => (v == null || v.trim().length < 10) ? 'Message trop court' : null,
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: _blue,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-              icon: sending
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: _white))
-                  : const Icon(Icons.send_rounded, size: 18),
-              label: Text(sending ? 'Envoi en cours…' : 'Envoyer le message'),
-              onPressed: sending ? null : onSend,
-            ),
-          ),
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(32),
+    decoration: BoxDecoration(
+      color: _white,
+      borderRadius: BorderRadius.circular(20),
+      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 20, offset: const Offset(0, 8))],
+    ),
+    child: sent ? const _SuccessState() : Form(
+      key: formKey,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Envoyer un message', style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: _navy)),
+        const SizedBox(height: 4),
+        Text('Nous vous répondons sous 24 heures ouvrables.',
+            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096))),
+        const SizedBox(height: 28),
+        Row(children: [
+          Expanded(child: _Field(controller: nameCtr,   label: 'Nom complet',  hint: 'Jean Dupont',         icon: Icons.person_outline)),
+          const SizedBox(width: 16),
+          Expanded(child: _Field(controller: emailCtr,  label: 'Email',        hint: 'jean@example.com',    icon: Icons.email_outlined,
+            validator: (v) {
+              if (v == null || v.isEmpty) return 'Champ requis';
+              if (!v.contains('@')) return 'Email invalide';
+              return null;
+            })),
         ]),
-      ),
-    );
-  }
+        const SizedBox(height: 16),
+        _Field(controller: subjectCtr, label: 'Sujet',   hint: 'Ex: Problème de connexion',            icon: Icons.subject_rounded),
+        const SizedBox(height: 16),
+        _Field(
+          controller: msgCtr, label: 'Message',
+          hint: 'Décrivez votre question ou problème en détail...',
+          icon: Icons.chat_bubble_outline_rounded, maxLines: 6,
+          validator: (v) => (v == null || v.trim().length < 10) ? 'Message trop court' : null,
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: _blue,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            icon: sending
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: _white))
+                : const Icon(Icons.send_rounded, size: 18),
+            label: Text(sending ? 'Envoi en cours…' : 'Envoyer le message'),
+            onPressed: sending ? null : onSend,
+          ),
+        ),
+      ]),
+    ),
+  );
 }
 
 class _Field extends StatelessWidget {
@@ -339,7 +343,8 @@ class _Field extends StatelessWidget {
   final String? Function(String?)? validator;
 
   const _Field({
-    required this.controller, required this.label, required this.hint, required this.icon,
+    required this.controller, required this.label,
+    required this.hint, required this.icon,
     this.maxLines = 1, this.validator,
   });
 
@@ -371,6 +376,7 @@ class _Field extends StatelessWidget {
 }
 
 class _SuccessState extends StatelessWidget {
+  const _SuccessState();
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 40),
@@ -386,8 +392,7 @@ class _SuccessState extends StatelessWidget {
       Text(
         'Merci pour votre message. Notre équipe vous répondra dans les 24 heures ouvrables.',
         textAlign: TextAlign.center,
-        style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF718096), height: 1.5),
-      ),
+        style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF718096), height: 1.5)),
     ]),
   );
 }
@@ -404,8 +409,9 @@ class _Footer extends StatelessWidget {
       Text('© ${DateTime.now().year} POS Connect. Tous droits réservés.',
           style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096))),
       Row(children: [
-        TextButton(onPressed: () => context.go('/home'), child: Text('Accueil', style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
-        TextButton(onPressed: () => context.go('/terms'), child: Text('Conditions', style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
+        TextButton(onPressed: () => context.go('/home'),    child: Text('Accueil',        style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
+        TextButton(onPressed: () => context.go('/terms'),   child: Text('CGU',            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
+        TextButton(onPressed: () => context.go('/privacy'), child: Text('Confidentialité',style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
       ]),
     ]),
   );

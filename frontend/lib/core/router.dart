@@ -38,6 +38,7 @@ import 'package:pos_connect/features/restaurant/commande_screen.dart';
 import 'package:pos_connect/features/public/home_screen.dart';
 import 'package:pos_connect/features/public/contact_screen.dart';
 import 'package:pos_connect/features/public/terms_screen.dart';
+import 'package:pos_connect/features/public/privacy_screen.dart';
 import 'package:pos_connect/shared/widgets/app_shell.dart';
 
 // Notifies GoRouter when auth state changes, without recreating the router.
@@ -69,7 +70,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       if (location == '/register') return null;
       if (location == '/admin') return null;
-      if (location == '/home' || location == '/contact' || location == '/terms') {
+      if (location == '/home' || location == '/contact' || location == '/terms' || location == '/privacy') {
         // Public pages — redirect logged-in users straight to the app
         return isLoggedIn ? '/dashboard' : null;
       }
@@ -122,6 +123,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/terms',
         builder: (context, state) => const TermsScreen(),
+      ),
+      GoRoute(
+        path: '/privacy',
+        builder: (context, state) => const PrivacyScreen(),
       ),
       ShellRoute(
         builder: (context, state, child) => AppShell(child: child),

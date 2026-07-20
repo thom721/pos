@@ -68,9 +68,10 @@ class _NavBar extends StatelessWidget {
             const _Logo(),
             const Spacer(),
             if (!isNarrow) ...[
-              _NavLink('Accueil',     '/home'),
-              _NavLink('Contact',    '/contact'),
-              _NavLink('Conditions', '/terms'),
+              _NavLink('Accueil',          '/home'),
+              _NavLink('Contact',          '/contact'),
+              _NavLink('CGU',              '/terms'),
+              _NavLink('Confidentialité',  '/privacy'),
               const SizedBox(width: 16),
             ],
             OutlinedButton(
@@ -887,7 +888,7 @@ class _Footer extends StatelessWidget {
             const SizedBox(width: 40),
             Expanded(child: _FooterCol('Navigation', [('Accueil', '/home'), ('Connexion', '/login'), ('Créer un compte', '/register')])),
             const SizedBox(width: 20),
-            Expanded(child: _FooterCol('Légal', [('Conditions générales', '/terms'), ('Contact', '/contact')])),
+            Expanded(child: _FooterCol('Légal', [('Conditions générales', '/terms'), ('Politique de confidentialité', '/privacy'), ('Contact', '/contact')])),
             const SizedBox(width: 20),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Contact', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _white)),

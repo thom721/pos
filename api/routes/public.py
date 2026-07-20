@@ -128,6 +128,20 @@ def get_pricing(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/contact-info")
+def get_contact_info(db: Session = Depends(get_db)):
+    """
+    Returns public contact information from platform_config (no auth required).
+    Used by the public contact page.
+    """
+    from api.models.PlatformConfig import PlatformConfig
+    cfg = db.query(PlatformConfig).first()
+    return {
+        "email":    cfg.support_email    if cfg and cfg.support_email    else "support@pos-connect.ht",
+        "whatsapp": cfg.support_whatsapp if cfg and cfg.support_whatsapp else "",
+    }
+
+
 @router.get("/tenant/{tenant_id}", response_model=TenantRead)
 def get_tenant_info(tenant_id: str, db: Session = Depends(get_db)):
     """
