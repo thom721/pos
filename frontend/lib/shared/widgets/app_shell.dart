@@ -38,8 +38,8 @@ const _mainNavItems = [
   _NavItem('Fournisseurs', Icons.local_shipping_rounded, '/suppliers'),
   _NavItem('Dettes', Icons.account_balance_wallet_rounded, '/debts'),
   _NavItem('Retours', Icons.assignment_return_rounded, '/returns'),
-  _NavItem('Inventaire', Icons.warehouse_rounded, '/inventory'),
-  _NavItem('Dépôts', Icons.store_rounded, '/warehouses'),
+  _NavItem('Inventaire',      Icons.warehouse_rounded, '/inventory'),
+  _NavItem('Établissements', Icons.apartment_rounded,  '/warehouses'),
 ];
 
 const _analyticsNavItems = [
@@ -75,6 +75,7 @@ const _restaurantMainNavItems = [
   _NavItem('Produits / Menu', Icons.inventory_2_rounded,            '/products'),
   _NavItem('Clients',         Icons.people_alt_rounded,             '/customers'),
   _NavItem('Dettes',          Icons.account_balance_wallet_rounded, '/debts'),
+  _NavItem('Établissements',  Icons.apartment_rounded,              '/warehouses'),
 ];
 
 const _restaurantAndroidBottomItems = [
@@ -925,11 +926,13 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
               isActive: location.startsWith(item.route),
               onTap: () => go(item.route),
             )),
-        _SidebarItem(
-          item: const _NavItem('Dépôts', Icons.store_rounded, '/warehouses'),
-          isActive: location.startsWith('/warehouses'),
-          onTap: () => go('/warehouses'),
-        ),
+        // Établissements — affiché ici seulement s'il n'est pas déjà dans mainItems
+        if (!mainItems.any((i) => i.route == '/warehouses'))
+          _SidebarItem(
+            item: const _NavItem('Établissements', Icons.apartment_rounded, '/warehouses'),
+            isActive: location.startsWith('/warehouses'),
+            onTap: () => go('/warehouses'),
+          ),
       ],
       _SectionDivider(label: 'Compte'),
       ..._bottomNavItems
