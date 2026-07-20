@@ -2424,8 +2424,8 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
 
     // Session créée hors-ligne : fermer localement sans appel API
     if (widget.session['offline'] == true) {
-      widget.onClosed();
       if (mounted) Navigator.of(context).pop();
+      widget.onClosed();
       return;
     }
 
@@ -2434,8 +2434,11 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
       await dio.post('/api/sessions/$sessionId/close', data: {
         'closing_balance': double.tryParse(_balanceCtrl.text) ?? 0,
       });
-      widget.onClosed();
+      // Pop BEFORE onClosed: onClosed calls _promptOpenSession which pushes a new
+      // dialog; if we pop after, Navigator.pop() removes the wrong (newest) dialog
+      // and the close dialog stays open with a frozen spinner.
       if (mounted) Navigator.of(context).pop();
+      widget.onClosed();
     } catch (e) {
       if (!mounted) return;
       // Réseau indisponible → fermer localement (toutes plateformes)
@@ -2447,8 +2450,8 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
           e.type == DioExceptionType.unknown
         ) || e is SocketException;
       if (isNetErr) {
-        widget.onClosed();
         if (mounted) Navigator.of(context).pop();
+        widget.onClosed();
         return;
       }
       setState(() {
