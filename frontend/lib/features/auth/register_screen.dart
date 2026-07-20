@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -25,9 +26,84 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _obscureConfirm = true;
   bool _loading        = false;
   bool _success        = false;
+  bool _termsAccepted  = false;
   String? _error;
 
   final _repo = AuthRepository();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showIntroModal());
+  }
+
+  void _showIntroModal() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 52, height: 52,
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.amber.shade200),
+                    ),
+                    child: Icon(Icons.admin_panel_settings_rounded,
+                        color: Colors.amber.shade800, size: 28),
+                  ),
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Text('Compte Administrateur',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  ),
+                ]),
+                const SizedBox(height: 20),
+                const Text(
+                  'Ce compte sera l\'administrateur principal de votre système POS Connect. '
+                  'Il vous permettra de gérer vos caisses, dépôts et utilisateurs.',
+                  style: TextStyle(fontSize: 14, color: Color(0xFF4A5568), height: 1.5),
+                ),
+                const SizedBox(height: 16),
+                _ModalBullet(Icons.security_rounded, Colors.red.shade400,
+                    'Conservez vos identifiants en lieu sûr — ne les partagez pas.'),
+                const SizedBox(height: 10),
+                _ModalBullet(Icons.store_rounded, AppColors.primary,
+                    'Vous aurez 1 dépôt (magasin) et 1 caisse par défaut à l\'ouverture.'),
+                const SizedBox(height: 10),
+                _ModalBullet(Icons.expand_rounded, AppColors.success,
+                    'Vous pourrez agrandir votre espace selon les conditions d\'Infini Software.'),
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('J\'ai compris, continuer',
+                        style: TextStyle(fontSize: 15)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -337,13 +413,50 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               return null;
             },
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 20),
+
+          // Privacy policy checkbox
+          InkWell(
+            onTap: () => setState(() => _termsAccepted = !_termsAccepted),
+            borderRadius: BorderRadius.circular(8),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              Checkbox(
+                value: _termsAccepted,
+                onChanged: (v) => setState(() => _termsAccepted = v ?? false),
+                activeColor: AppColors.primary,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                    children: [
+                      const TextSpan(text: 'J\'ai lu et j\'accepte la '),
+                      TextSpan(
+                        text: 'politique de confidentialité',
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppColors.primary,
+                        ),
+                        recognizer: TapGestureRecognizer()
+                          ..onTap = () => context.go('/privacy'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 16),
 
           // Submit button
           SizedBox(
             height: 50,
             child: FilledButton(
-              onPressed: _loading ? null : _submit,
+              onPressed: _loading || !_termsAccepted ? null : _submit,
               child: _loading
                   ? const SizedBox(
                       width: 20,
@@ -380,4 +493,32 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       ),
     );
   }
+}
+
+class _ModalBullet extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String text;
+  const _ModalBullet(this.icon, this.color, this.text);
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Container(
+        width: 28, height: 28,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: color, size: 16),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Text(text,
+            style: const TextStyle(
+                fontSize: 13, color: Color(0xFF4A5568), height: 1.5)),
+      ),
+    ],
+  );
 }

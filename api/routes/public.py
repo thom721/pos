@@ -139,6 +139,7 @@ def get_contact_info(db: Session = Depends(get_db)):
     return {
         "email":    cfg.support_email    if cfg and cfg.support_email    else "support@pos-connect.ht",
         "whatsapp": cfg.support_whatsapp if cfg and cfg.support_whatsapp else "",
+        "address":  cfg.support_address  if cfg and cfg.support_address  else "",
     }
 
 

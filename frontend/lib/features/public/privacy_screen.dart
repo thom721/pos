@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pos_connect/providers/contact_info_provider.dart';
+import 'package:pos_connect/features/public/public_nav_bar.dart';
 
 const _navy  = Color(0xFF1B2A3B);
 const _blue  = Color(0xFF0077C5);
@@ -22,7 +23,7 @@ class PrivacyScreen extends ConsumerWidget {
       backgroundColor: _bg,
       body: SingleChildScrollView(
         child: Column(children: [
-          _NavBar(),
+          const PublicNavBar(),
           _Header(),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: isWide ? 80 : 24, vertical: 48),
@@ -45,39 +46,6 @@ class PrivacyScreen extends ConsumerWidget {
   }
 }
 
-// ── NavBar ────────────────────────────────────────────────────────────────────
-
-class _NavBar extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) => Material(
-    elevation: 1, color: _white,
-    child: SizedBox(height: 64, child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(children: [
-        GestureDetector(
-          onTap: () => context.go('/home'),
-          child: Row(children: [
-            Container(width: 36, height: 36,
-              decoration: BoxDecoration(color: _blue, borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.point_of_sale_rounded, color: _white, size: 20)),
-            const SizedBox(width: 10),
-            Text('POS Connect', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
-          ]),
-        ),
-        const Spacer(),
-        TextButton(onPressed: () => context.go('/home'),    child: Text('Accueil',    style: GoogleFonts.inter(color: _navy))),
-        TextButton(onPressed: () => context.go('/contact'), child: Text('Contact',    style: GoogleFonts.inter(color: _navy))),
-        TextButton(onPressed: () => context.go('/terms'),   child: Text('CGU',        style: GoogleFonts.inter(color: _navy))),
-        const SizedBox(width: 12),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: _blue, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10)),
-          onPressed: () => context.go('/login'),
-          child: const Text('Se connecter'),
-        ),
-      ]),
-    )),
-  );
-}
 
 // ── Header ────────────────────────────────────────────────────────────────────
 
@@ -124,6 +92,7 @@ class _TableOfContents extends StatelessWidget {
     'Qui sommes-nous ?',
     'Données collectées',
     'Utilisation des données',
+    'Adresses IP & sécurité',
     'Ce que nous ne faisons PAS',
     'Conservation',
     'Vos droits',
@@ -196,27 +165,29 @@ class _Body extends StatelessWidget {
           title: 'Données collectées',
           icon: Icons.data_object_rounded,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _Para('Lors de la création de votre compte tenant, nous collectons uniquement :'),
+            _Para('Lors de la création de votre compte, nous collectons uniquement les informations nécessaires au fonctionnement du service :'),
             const SizedBox(height: 12),
             _InfoRow(Icons.store_rounded,  _blue,  'Nom de l\'entreprise',   'Pour identifier votre espace et personnaliser l\'interface.'),
-            _InfoRow(Icons.email_rounded,  _blue,  'Adresse email',          'Utilisée pour la connexion et les notifications importantes du service.'),
+            _InfoRow(Icons.email_rounded,  _blue,  'Adresse email',          'Utilisée pour la connexion et les notifications essentielles du service.'),
             _InfoRow(Icons.lock_rounded,   _blue,  'Mot de passe',           'Stocké sous forme de hash cryptographique (argon2). Jamais en clair.'),
             _InfoRow(Icons.phone_rounded,  _blue,  'Téléphone (optionnel)',  'Pour le support en cas de besoin. Non obligatoire.'),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _blue.withValues(alpha: 0.05),
+                color: const Color(0xFF2CA01C).withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _blue.withValues(alpha: 0.15)),
+                border: Border.all(color: const Color(0xFF2CA01C).withValues(alpha: 0.2)),
               ),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.info_outline_rounded, color: _blue, size: 18),
+                const Icon(Icons.shield_rounded, color: Color(0xFF2CA01C), size: 18),
                 const SizedBox(width: 10),
                 Expanded(child: Text(
-                  'Aucune autre donnée personnelle n\'est collectée. Vos données commerciales (produits, ventes, clients) '
-                  'vous appartiennent entièrement et ne sont jamais analysées ni utilisées à d\'autres fins.',
-                  style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF4A5568), height: 1.5),
+                  'Vos données commerciales (produits, ventes, clients, stocks, etc.) sont stockées '
+                  'sur vos propres appareils et serveurs, et sont utilisées uniquement pour assurer la '
+                  'synchronisation entre vos terminaux (avec ou sans connexion). '
+                  'Infini Software n\'y a aucun accès et ne les analyse jamais.',
+                  style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF2A5A25), height: 1.5),
                 )),
               ]),
             ),
@@ -228,11 +199,12 @@ class _Body extends StatelessWidget {
           title: 'Utilisation des données',
           icon: Icons.settings_rounded,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _Para('Les données collectées sont utilisées exclusivement pour assurer la fluidité du service :'),
+            _Para('Les données de compte collectées sont utilisées exclusivement pour :'),
             const SizedBox(height: 10),
             _Bullet([
               'Créer et gérer votre espace locataire (tenant) sur nos serveurs.',
               'Vous authentifier de manière sécurisée lors de vos connexions.',
+              'Assurer la synchronisation cloud de vos données entre vos appareils.',
               'Vous envoyer des notifications essentielles (expiration du plan, mises à jour critiques).',
               'Assurer le support technique si vous nous contactez.',
             ]),
@@ -241,21 +213,37 @@ class _Body extends StatelessWidget {
 
         _Section(
           number: '4',
+          title: 'Adresses IP & sécurité',
+          icon: Icons.security_rounded,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _Para(
+              'Lors de chaque tentative de connexion, l\'adresse IP de l\'appareil est enregistrée '
+              'à des fins exclusives de sécurité : détection de connexions frauduleuses, protection '
+              'de votre compte contre les accès non autorisés.',
+            ),
+            const SizedBox(height: 10),
+            _Para('Ces journaux de connexion sont conservés pendant 30 jours puis supprimés automatiquement. '
+                'Ils ne sont jamais utilisés à des fins de suivi, de profilage ou de publicité.'),
+          ]),
+        ),
+
+        _Section(
+          number: '5',
           title: 'Ce que nous ne faisons PAS',
           icon: Icons.do_not_disturb_on_rounded,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             _NoBullet([
+              'Accéder à vos données commerciales (ventes, produits, clients, stocks).',
               'Vendre ou louer vos données à des tiers.',
-              'Utiliser vos données à des fins publicitaires.',
+              'Utiliser vos données à des fins publicitaires ou de profilage.',
               'Partager vos données avec des partenaires sans votre consentement explicite.',
-              'Analyser vos données commerciales (ventes, clients, produits).',
               'Conserver vos données après la clôture de votre compte (au-delà du délai légal).',
             ]),
           ]),
         ),
 
         _Section(
-          number: '5',
+          number: '6',
           title: 'Conservation des données',
           icon: Icons.schedule_rounded,
           child: _Para(
@@ -266,7 +254,7 @@ class _Body extends StatelessWidget {
         ),
 
         _Section(
-          number: '6',
+          number: '7',
           title: 'Vos droits',
           icon: Icons.verified_user_rounded,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -284,7 +272,7 @@ class _Body extends StatelessWidget {
         ),
 
         _Section(
-          number: '7',
+          number: '8',
           title: 'Modifications de cette politique',
           icon: Icons.update_rounded,
           child: _Para(
@@ -295,7 +283,7 @@ class _Body extends StatelessWidget {
         ),
 
         _Section(
-          number: '8',
+          number: '9',
           title: 'Nous contacter',
           icon: Icons.email_rounded,
           isLast: true,

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pos_connect/providers/contact_info_provider.dart';
+import 'package:pos_connect/features/public/public_nav_bar.dart';
 
 const _navy  = Color(0xFF1B2A3B);
 const _blue  = Color(0xFF0077C5);
@@ -46,7 +47,7 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
       backgroundColor: _bg,
       body: SingleChildScrollView(
         child: Column(children: [
-          const _NavBar(),
+          const PublicNavBar(),
           const _Header(),
           _Body(
             formKey: _formKey, nameCtr: _nameCtr, emailCtr: _emailCtr,
@@ -59,41 +60,6 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
       ),
     );
   }
-}
-
-// ── NavBar ────────────────────────────────────────────────────────────────────
-
-class _NavBar extends StatelessWidget {
-  const _NavBar();
-  @override
-  Widget build(BuildContext context) => Material(
-    elevation: 1, color: _white,
-    child: SizedBox(height: 64, child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(children: [
-        GestureDetector(
-          onTap: () => context.go('/home'),
-          child: Row(children: [
-            Container(width: 36, height: 36,
-              decoration: BoxDecoration(color: _blue, borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.point_of_sale_rounded, color: _white, size: 20)),
-            const SizedBox(width: 10),
-            Text('POS Connect', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
-          ]),
-        ),
-        const Spacer(),
-        TextButton(onPressed: () => context.go('/home'),    child: Text('Accueil',    style: GoogleFonts.inter(color: _navy))),
-        TextButton(onPressed: () => context.go('/terms'),   child: Text('CGU',        style: GoogleFonts.inter(color: _navy))),
-        TextButton(onPressed: () => context.go('/privacy'), child: Text('Confidentialité', style: GoogleFonts.inter(color: _navy))),
-        const SizedBox(width: 12),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: _blue, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10)),
-          onPressed: () => context.go('/login'),
-          child: const Text('Se connecter'),
-        ),
-      ]),
-    )),
-  );
 }
 
 // ── Header ────────────────────────────────────────────────────────────────────

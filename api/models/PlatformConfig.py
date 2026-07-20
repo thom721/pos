@@ -13,6 +13,7 @@ class PlatformConfig(UUIDBase):
     trial_days        = Column(Integer,     nullable=False, default=30)
     support_email     = Column(String(200), nullable=False, default='')
     support_whatsapp  = Column(String(30),  nullable=False, default='')
+    support_address   = Column(String(255), nullable=False, default='')
     # 'manual' = instructions manuelles | 'api' = traitement automatique via API
     moncash_mode      = Column(String(10),  nullable=False, default='manual')
     natcash_mode      = Column(String(10),  nullable=False, default='manual')

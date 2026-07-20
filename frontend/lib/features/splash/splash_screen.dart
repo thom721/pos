@@ -87,10 +87,35 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   Future<void> _runSequence() async {
-    // Fast-path: session active → retirer splash natif et aller au dashboard sans animation Flutter
+    if (kIsWeb) {
+      // Web: pas d'animation — spinner bref puis navigation
+      FlutterNativeSplash.remove();
+      final hasSession = await _hasActiveSession();
+      if (!mounted) return;
+      if (hasSession) {
+        context.go('/dashboard');
+        return;
+      }
+      try {
+        final res = await dio
+            .get('/api/setup/health')
+            .timeout(const Duration(seconds: 4));
+        if (!mounted) return;
+        final setupDone = res.data['setup_done'] as bool? ?? true;
+        if (!setupDone) {
+          context.go('/install');
+          return;
+        }
+      } catch (_) {}
+      if (!mounted) return;
+      context.go('/home');
+      return;
+    }
+
+    // Non-web: fast-path ou animation complète
     final skipAnimation = await _hasActiveSession();
     if (!mounted) return;
-    FlutterNativeSplash.remove(); // retire le splash OS dans tous les cas
+    FlutterNativeSplash.remove();
     if (skipAnimation) {
       context.go('/dashboard');
       return;
@@ -109,41 +134,27 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     if (!mounted) return;
     _dotsCtrl.forward();
 
-    // minimum total: ~2.4s from start — aussi check si setup est nécessaire
     await Future.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
 
-    if (!kIsWeb) {
-      final prefs = await SharedPreferences.getInstance();
-      final isMobile = defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS;
+    final prefs = await SharedPreferences.getInstance();
+    final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
 
-      if (isMobile) {
-        await prefs.setBool(AppConstants.clientSetupDoneKey, true);
-      } else {
-        final localSetupDone =
-            prefs.getBool(AppConstants.clientSetupDoneKey) ?? false;
-        if (!mounted) return;
-        if (!localSetupDone) {
-          context.go('/install');
-          return;
-        }
-      }
+    if (isMobile) {
+      await prefs.setBool(AppConstants.clientSetupDoneKey, true);
     } else {
-      try {
-        final res = await dio.get('/api/setup/health');
-        final setupDone = res.data['setup_done'] as bool? ?? true;
-        if (!mounted) return;
-        if (!setupDone) {
-          context.go('/install');
-          return;
-        }
-      } catch (_) {}
+      final localSetupDone =
+          prefs.getBool(AppConstants.clientSetupDoneKey) ?? false;
+      if (!mounted) return;
+      if (!localSetupDone) {
+        context.go('/install');
+        return;
+      }
     }
 
     if (!mounted) return;
-    // Sur web, les utilisateurs non connectés voient la page d'accueil publique
-    context.go(kIsWeb ? '/home' : '/dashboard');
+    context.go('/dashboard');
   }
 
   @override
@@ -156,6 +167,22 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF1B2A3B),
+        body: Center(
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0077C5)),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF1B2A3B),
       body: SafeArea(

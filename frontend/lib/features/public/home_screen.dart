@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pos_connect/providers/pricing_provider.dart';
+import 'package:pos_connect/features/public/public_nav_bar.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SingleChildScrollView(
         controller: _scrollCtrl,
         child: Column(children: [
-          const _NavBar(),
+          const PublicNavBar(),
           const _Hero(),
           _Features(scrollCtrl: _scrollCtrl),
           const _RestaurantBand(),
@@ -47,80 +48,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-}
-
-// ── NavBar ────────────────────────────────────────────────────────────────────
-
-class _NavBar extends StatelessWidget {
-  const _NavBar();
-
-  @override
-  Widget build(BuildContext context) {
-    final isNarrow = MediaQuery.sizeOf(context).width < 700;
-    return Material(
-      elevation: 1,
-      color: _white,
-      child: SizedBox(
-        height: 64,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Row(children: [
-            const _Logo(),
-            const Spacer(),
-            if (!isNarrow) ...[
-              _NavLink('Accueil',          '/home'),
-              _NavLink('Contact',          '/contact'),
-              _NavLink('CGU',              '/terms'),
-              _NavLink('Confidentialité',  '/privacy'),
-              const SizedBox(width: 16),
-            ],
-            OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _blue, side: const BorderSide(color: _blue),
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              ),
-              onPressed: () => context.go('/login'),
-              child: const Text('Se connecter'),
-            ),
-            const SizedBox(width: 10),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: _blue,
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              ),
-              onPressed: () => context.go('/register'),
-              child: const Text('Créer un compte'),
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-class _Logo extends StatelessWidget {
-  const _Logo();
-  @override
-  Widget build(BuildContext context) => Row(children: [
-    Container(
-      width: 36, height: 36,
-      decoration: BoxDecoration(color: _blue, borderRadius: BorderRadius.circular(10)),
-      child: const Icon(Icons.point_of_sale_rounded, color: _white, size: 20),
-    ),
-    const SizedBox(width: 10),
-    Text('POS Connect', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
-  ]);
-}
-
-class _NavLink extends StatelessWidget {
-  final String label;
-  final String route;
-  const _NavLink(this.label, this.route);
-  @override
-  Widget build(BuildContext context) => TextButton(
-    onPressed: () => context.go(route),
-    child: Text(label, style: GoogleFonts.inter(fontSize: 14, color: _navy)),
-  );
 }
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
@@ -181,12 +108,21 @@ class _HeroText extends StatelessWidget {
           color: _white, height: 1.15, letterSpacing: -0.5,
         ),
       ),
+      const SizedBox(height: 16),
+      // Sector chips
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        _SectorChip(Icons.store_rounded,           'Commerce général'),
+        _SectorChip(Icons.restaurant_menu_rounded, 'Restaurant'),
+        _SectorChip(Icons.nightlife_rounded,        'Club / Bar'),
+        _SectorChip(Icons.local_pharmacy_rounded,  'Pharmacie'),
+        _SectorChip(Icons.more_horiz_rounded,       'Et plus...'),
+      ]),
       const SizedBox(height: 20),
       Text(
-        'POS Connect est la solution tout-en-un pour les commerces et restaurants haïtiens — caisse, inventaire, rapports et synchronisation cloud sur mobile, desktop et web.',
+        'La caisse tout-en-un adaptée à votre secteur d\'activité — inventaire, ventes, rapports et synchronisation cloud en temps réel.',
         style: GoogleFonts.inter(fontSize: 16, color: const Color(0xFFB0C4D8), height: 1.6),
       ),
-      const SizedBox(height: 36),
+      const SizedBox(height: 32),
       Wrap(spacing: 14, runSpacing: 12, children: [
         FilledButton.icon(
           style: FilledButton.styleFrom(
@@ -210,7 +146,18 @@ class _HeroText extends StatelessWidget {
           onPressed: () => context.go('/contact'),
         ),
       ]),
-      const SizedBox(height: 40),
+      const SizedBox(height: 28),
+      // Platform availability
+      Text('Disponible sur',
+          style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF90A4BE), letterSpacing: 0.8)),
+      const SizedBox(height: 10),
+      Wrap(spacing: 10, runSpacing: 8, children: [
+        _PlatformPill(Icons.android_rounded,    'Android', available: true),
+        _PlatformPill(Icons.computer_rounded,   'macOS',   available: true),
+        _PlatformPill(Icons.web_rounded,        'Web',     available: true),
+        _PlatformPill(Icons.phone_iphone_rounded, 'iOS',   available: false, soon: true),
+      ]),
+      const SizedBox(height: 32),
       // Stats row
       Row(children: [
         _Stat('500+', 'Commerces actifs'),
@@ -226,6 +173,78 @@ class _HeroText extends StatelessWidget {
     width: 1, height: 36, margin: const EdgeInsets.symmetric(horizontal: 20),
     color: _white.withValues(alpha: 0.2),
   );
+}
+
+class _SectorChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _SectorChip(this.icon, this.label);
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    decoration: BoxDecoration(
+      color: _white.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: _white.withValues(alpha: 0.15)),
+    ),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 13, color: _white.withValues(alpha: 0.65)),
+      const SizedBox(width: 6),
+      Text(label,
+          style: GoogleFonts.inter(fontSize: 12, color: _white.withValues(alpha: 0.75))),
+    ]),
+  );
+}
+
+class _PlatformPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool available;
+  final bool soon;
+  const _PlatformPill(this.icon, this.label,
+      {required this.available, this.soon = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = available ? _green : _white.withValues(alpha: 0.4);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: available
+            ? _green.withValues(alpha: 0.12)
+            : _white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: available
+              ? _green.withValues(alpha: 0.3)
+              : _white.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 14, color: fg),
+        const SizedBox(width: 6),
+        Text(label,
+            style: GoogleFonts.inter(
+                fontSize: 12, color: fg, fontWeight: FontWeight.w500)),
+        if (soon) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.amber.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text('bientôt',
+                style: GoogleFonts.inter(
+                    fontSize: 9,
+                    color: Colors.amber,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ]),
+    );
+  }
 }
 
 class _Stat extends StatelessWidget {
@@ -675,18 +694,18 @@ class _Pricing extends ConsumerWidget {
         if (isWide)
           IntrinsicHeight(
             child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              const Expanded(child: _PriceCard(
+              Expanded(child: _PriceCard(
                 plan: 'Starter', priceHtg: 'Gratuit', priceUsd: '',
-                period: 'pour toujours', subtitle: 'Pour démarrer',
+                period: '${p.trialDays} jours d\'essai', subtitle: 'Pour découvrir',
                 highlighted: false,
-                features: ['1 dépôt', '1 caisse', 'Ventes & encaissements', 'Gestion clients', 'Rapports de base', 'Support email'],
+                features: ['1 dépôt', '1 caisse', 'Ventes & encaissements', 'Gestion clients', 'Rapports de base', 'Support email', 'Aucune carte requise'],
               )),
               const SizedBox(width: 20),
               Expanded(child: _PriceCard(
                 plan: 'Pro', priceHtg: proHtg, priceUsd: proUsd,
-                period: 'par mois', subtitle: 'Pour les commerces actifs',
+                period: 'par mois · 1 dépôt', subtitle: 'Basé sur le nombre de caisses',
                 highlighted: true,
-                features: ['3 dépôts', '3 caisses incluses', 'Mode restaurant', 'Sync cloud temps réel', 'Rapports avancés', 'Multi-plateformes', 'Support prioritaire'],
+                features: ['1 dépôt inclus', '3 caisses incluses', 'Mode restaurant', 'Sync cloud temps réel', 'Rapports avancés', 'Multi-plateformes', 'Support prioritaire'],
               )),
               const SizedBox(width: 20),
               const Expanded(child: _PriceCard(
@@ -699,11 +718,11 @@ class _Pricing extends ConsumerWidget {
           )
         else
           Column(children: [
-            const _PriceCard(plan: 'Starter', priceHtg: 'Gratuit', priceUsd: '', period: 'pour toujours', subtitle: 'Pour démarrer', highlighted: false,
-              features: ['1 dépôt', '1 caisse', 'Ventes & encaissements', 'Gestion clients', 'Rapports de base']),
+            _PriceCard(plan: 'Starter', priceHtg: 'Gratuit', priceUsd: '', period: '${p.trialDays} jours d\'essai', subtitle: 'Pour découvrir', highlighted: false,
+              features: const ['1 dépôt', '1 caisse', 'Ventes & encaissements', 'Gestion clients', 'Rapports de base']),
             const SizedBox(height: 20),
-            _PriceCard(plan: 'Pro', priceHtg: proHtg, priceUsd: proUsd, period: 'par mois', subtitle: 'Pour les commerces actifs', highlighted: true,
-              features: const ['3 dépôts', '3 caisses incluses', 'Mode restaurant', 'Sync cloud', 'Rapports avancés']),
+            _PriceCard(plan: 'Pro', priceHtg: proHtg, priceUsd: proUsd, period: 'par mois · 1 dépôt', subtitle: 'Basé sur le nombre de caisses', highlighted: true,
+              features: const ['1 dépôt inclus', '3 caisses incluses', 'Mode restaurant', 'Sync cloud', 'Rapports avancés']),
             const SizedBox(height: 20),
             const _PriceCard(plan: 'Enterprise', priceHtg: 'Sur devis', priceUsd: '', period: '', subtitle: 'Pour les grandes enseignes', highlighted: false,
               features: ['Dépôts illimités', 'Caisses illimitées', 'API REST', 'White label', 'Support dédié']),
@@ -877,7 +896,16 @@ class _Footer extends StatelessWidget {
       child: Column(children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const _Logo(),
+            Row(children: [
+              Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(color: _blue, borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.point_of_sale_rounded, color: _white, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Text('POS Connect',
+                  style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: _white)),
+            ]),
             const SizedBox(height: 12),
             Text(
               'La solution POS moderne pour les commerces et restaurants haïtiens.',

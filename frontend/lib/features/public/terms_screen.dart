@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pos_connect/providers/contact_info_provider.dart';
+import 'package:pos_connect/features/public/public_nav_bar.dart';
 
 const _navy  = Color(0xFF1B2A3B);
 const _blue  = Color(0xFF0077C5);
@@ -33,7 +36,7 @@ class _TermsScreenState extends State<TermsScreen> {
       backgroundColor: _bg,
       body: SingleChildScrollView(
         child: Column(children: [
-          _NavBar(),
+          const PublicNavBar(),
           _Header(),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: isWide ? 80 : 24, vertical: 48),
@@ -58,41 +61,6 @@ class _TermsScreenState extends State<TermsScreen> {
   static List<(String, IconData, Widget)> get sections => _sections;
 }
 
-// ── NavBar ────────────────────────────────────────────────────────────────────
-
-class _NavBar extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      elevation: 1, color: _white,
-      child: SizedBox(height: 64, child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Row(children: [
-          GestureDetector(
-            onTap: () => context.go('/home'),
-            child: Row(children: [
-              Container(width: 36, height: 36,
-                decoration: BoxDecoration(color: _blue, borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.point_of_sale_rounded, color: _white, size: 20)),
-              const SizedBox(width: 10),
-              Text('POS Connect', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: _navy)),
-            ]),
-          ),
-          const Spacer(),
-          TextButton(onPressed: () => context.go('/home'),    child: Text('Accueil',        style: GoogleFonts.inter(color: _navy))),
-          TextButton(onPressed: () => context.go('/contact'), child: Text('Contact',        style: GoogleFonts.inter(color: _navy))),
-          TextButton(onPressed: () => context.go('/privacy'), child: Text('Confidentialité',style: GoogleFonts.inter(color: _navy))),
-          const SizedBox(width: 12),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: _blue, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10)),
-            onPressed: () => context.go('/login'),
-            child: const Text('Se connecter'),
-          ),
-        ]),
-      )),
-    );
-  }
-}
 
 // ── Header ────────────────────────────────────────────────────────────────────
 
@@ -351,23 +319,26 @@ class _TermsLiability extends StatelessWidget {
   ]);
 }
 
-class _TermsContact extends StatelessWidget {
+class _TermsContact extends ConsumerWidget {
   const _TermsContact();
   @override
-  Widget build(BuildContext context) => _Prose([
-    _Para('Pour toute question relative aux présentes conditions générales d\'utilisation, contactez-nous :'),
-    _Def('Email',     'support@pos-connect.ht'),
-    _Def('Téléphone', '+509 4000-0000'),
-    _Def('Adresse',   'Port-au-Prince, Haïti'),
-    _Para('Nos équipes sont disponibles du lundi au vendredi de 8h00 à 17h00 (heure locale).'),
-    const SizedBox(height: 16),
-    Builder(builder: (ctx) => FilledButton.icon(
-      style: FilledButton.styleFrom(backgroundColor: _blue),
-      icon: const Icon(Icons.email_outlined, size: 18),
-      label: const Text('Envoyer un message'),
-      onPressed: () => ctx.go('/contact'),
-    )),
-  ]);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final contact = ref.watch(contactInfoProvider).valueOrNull ?? ContactInfo.fallback;
+    return _Prose([
+      _Para('Pour toute question relative aux présentes conditions générales d\'utilisation, contactez-nous :'),
+      if (contact.email.isNotEmpty)    _Def('Email',     contact.email),
+      if (contact.whatsapp.isNotEmpty) _Def('WhatsApp',  contact.whatsapp),
+      if (contact.address.isNotEmpty)  _Def('Adresse',   contact.address),
+      _Para('Nos équipes sont disponibles du lundi au vendredi de 8h00 à 17h00 (heure locale).'),
+      const SizedBox(height: 16),
+      Builder(builder: (ctx) => FilledButton.icon(
+        style: FilledButton.styleFrom(backgroundColor: _blue),
+        icon: const Icon(Icons.email_outlined, size: 18),
+        label: const Text('Envoyer un message'),
+        onPressed: () => ctx.go('/contact'),
+      )),
+    ]);
+  }
 }
 
 // ── Prose helpers ─────────────────────────────────────────────────────────────
