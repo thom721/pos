@@ -89,8 +89,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 children: [
                   _SelectionTile(
                     value: 'commerce',
-                    label: 'Commerce / Épicerie',
-                    description: 'Vente de produits au détail',
+                    label: 'Commerce, Épicerie & Pharmacie',
+                    description: 'Vente au détail, stocks, gestion clients',
                     icon: Icons.shopping_bag_rounded,
                     selected: settings.businessType == 'commerce',
                     onTap: () => notifier.save(
@@ -99,8 +99,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   const Divider(height: 1),
                   _SelectionTile(
                     value: 'restaurant',
-                    label: 'Restaurant / Snack',
-                    description: 'Vente de plats et boissons',
+                    label: 'Restaurant, Snack & Club / Bar',
+                    description: 'Commandes par table, boissons, cuisine',
                     icon: Icons.restaurant_rounded,
                     selected: settings.businessType == 'restaurant',
                     onTap: () => notifier.save(

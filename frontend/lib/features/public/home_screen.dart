@@ -41,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const _Hero(),
           _Features(scrollCtrl: _scrollCtrl),
           const _RestaurantBand(),
+          const _CapabilitiesBand(),
           _Pricing(),
           _CtaBand(),
           _Footer(),
@@ -119,7 +120,7 @@ class _HeroText extends StatelessWidget {
       ]),
       const SizedBox(height: 20),
       Text(
-        'La caisse tout-en-un adaptée à votre secteur d\'activité — inventaire, ventes, rapports et synchronisation cloud en temps réel.',
+        'La caisse tout-en-un adaptée à votre secteur — inventaire, ventes, crédits clients, gestion RH & paie, statistiques avancées et synchronisation cloud.',
         style: GoogleFonts.inter(fontSize: 16, color: const Color(0xFFB0C4D8), height: 1.6),
       ),
       const SizedBox(height: 32),
@@ -611,15 +612,15 @@ class _RestaurantText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const _SectionLabel('Pour les restaurants'),
+      const _SectionLabel('Restaurants & Clubs / Bars'),
       const SizedBox(height: 12),
       Text(
-        'Un POS pensé pour la restauration haïtienne',
+        'Un POS pensé pour la restauration et les clubs',
         style: GoogleFonts.inter(fontSize: 30, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
       ),
       const SizedBox(height: 16),
       Text(
-        'Gérez vos tables, prenez les commandes en salle, envoyez les bons en cuisine et calculez automatiquement les pourboires. Tout en temps réel.',
+        'Gérez vos tables, prenez les commandes en salle, envoyez les bons en cuisine. Parfait pour les restaurants, snacks, clubs et bars — même logique, même simplicité.',
         style: GoogleFonts.inter(fontSize: 15, color: const Color(0xFF718096), height: 1.6),
       ),
       const SizedBox(height: 28),
@@ -642,6 +643,110 @@ class _RestaurantText extends StatelessWidget {
         ]),
       )),
     ]);
+  }
+}
+
+// ── Capabilities Band ─────────────────────────────────────────────────────────
+
+class _CapabilitiesBand extends StatelessWidget {
+  const _CapabilitiesBand();
+
+  static const _caps = [
+    (Icons.groups_rounded,           Color(0xFF7C3AED), 'RH & Gestion de paie',       'Employés, présences et salaires intégrés'),
+    (Icons.account_balance_rounded,  Color(0xFF0077C5), 'Crédits & Dettes clients',    'Suivi des ventes à crédit et remboursements'),
+    (Icons.bar_chart_rounded,        Color(0xFF2CA01C), 'Statistiques avancées',       'Tableaux de bord, tendances et analyses'),
+    (Icons.people_rounded,           Color(0xFFE67E22), 'Gestion clients',             'Historique, fidélité et profils complets'),
+    (Icons.local_pharmacy_rounded,   Color(0xFF0D9488), 'Commerce & Pharmacie',        'Stocks, produits, alertes péremption'),
+    (Icons.nightlife_rounded,        Color(0xFFDB2777), 'Restaurant, Club & Bar',      'Tables, commandes, bons de cuisine'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.sizeOf(context).width >= 900;
+    return Container(
+      color: _bg,
+      padding: EdgeInsets.symmetric(horizontal: isWide ? 80 : 24, vertical: 72),
+      child: Column(children: [
+        const _SectionLabel('Tout-en-un'),
+        const SizedBox(height: 12),
+        Text(
+          'Tout ce dont votre commerce a besoin',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(
+            fontSize: isWide ? 30 : 22,
+            fontWeight: FontWeight.w800, color: _navy, height: 1.2,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Caisse, stocks, RH, crédits clients, statistiques — un seul outil pour tout piloter.',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF718096)),
+        ),
+        const SizedBox(height: 40),
+        isWide
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: List.generate(_caps.length, (i) => Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(left: i == 0 ? 0 : 16),
+                    child: _CapCard(_caps[i]),
+                  ),
+                )),
+              )
+            : Column(
+                children: List.generate((_caps.length / 2).ceil(), (row) {
+                  final a = row * 2;
+                  final b = a + 1;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(children: [
+                      Expanded(child: _CapCard(_caps[a])),
+                      const SizedBox(width: 12),
+                      if (b < _caps.length)
+                        Expanded(child: _CapCard(_caps[b]))
+                      else
+                        const Expanded(child: SizedBox()),
+                    ]),
+                  );
+                }),
+              ),
+      ]),
+    );
+  }
+}
+
+class _CapCard extends StatelessWidget {
+  final (IconData, Color, String, String) cap;
+  const _CapCard(this.cap);
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color, title, desc) = cap;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10)],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: color, size: 22),
+        ),
+        const SizedBox(height: 14),
+        Text(title,
+            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+        const SizedBox(height: 6),
+        Text(desc,
+            style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096), height: 1.4)),
+      ]),
+    );
   }
 }
 
