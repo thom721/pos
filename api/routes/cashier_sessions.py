@@ -83,6 +83,7 @@ _SLOT_IDLE_MINUTES = 5   # slot considered free after 5 min without heartbeat
 def _get_or_create_register(
     db: Session, tenant_id: str, device_id: str, name: str,
     force: bool = False, warehouse_id: str | None = None,
+    is_admin: bool = False,
 ) -> PosRegister | JSONResponse:
     from api.models.AppConfig import AppConfig
 
@@ -90,8 +91,9 @@ def _get_or_create_register(
 
     # Restaurant/hotel require devices to be explicitly registered in Business → Caisses.
     # Auto-claiming unclaimed slots is only allowed for commerce-type warehouses.
+    # Admins bypass this restriction so they can always open a session on any device.
     requires_explicit = False
-    if warehouse_id:
+    if warehouse_id and not is_admin:
         wh_cfg = db.query(AppConfig).filter_by(
             tenant_id=tenant_id, warehouse_id=warehouse_id
         ).first()
@@ -247,6 +249,7 @@ def open_session(
     reg = _get_or_create_register(
         db, current_user.tenant_id, body.device_id, body.register_name,
         force=body.force, warehouse_id=body.warehouse_id,
+        is_admin='admin' in (current_user.roles or []),
     )
     # Propagate 402 limit_exceeded, 403 caisse_disabled, or 409 no_registers
     if isinstance(reg, JSONResponse):

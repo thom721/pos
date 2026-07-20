@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart' show DioException, DioExceptionType;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -58,7 +59,7 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
       if (!mounted) return;
 
       // Réseau indisponible sur Android → session locale si l'appareil est enregistré
-      final isNetErr = Platform.isAndroid && (
+      final isNetErr = !kIsWeb && Platform.isAndroid && (
         e is DioException && (
           e.type == DioExceptionType.connectionError ||
           e.type == DioExceptionType.connectionTimeout ||
