@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
@@ -6,6 +7,9 @@ import 'package:pos_connect/data/models/purchase_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/services/local_db_service.dart';
+
+bool _isPermissionDenied(Object e) =>
+    e is DioException && e.response?.statusCode == 403;
 
 /// Synchronise les données critiques API → SQLite local.
 ///
@@ -71,7 +75,7 @@ class OfflineCacheService {
       await LocalDbService.instance.setLastSynced('products');
       debugPrint('[OfflineCache] products: ${all.length} mis en cache');
     } catch (e) {
-      debugPrint('[OfflineCache] products sync error: $e');
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] products sync error: $e');
     }
   }
 
@@ -109,7 +113,7 @@ class OfflineCacheService {
       await LocalDbService.instance.setLastSynced('customers');
       debugPrint('[OfflineCache] customers: ${all.length} mis en cache');
     } catch (e) {
-      debugPrint('[OfflineCache] customers sync error: $e');
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] customers sync error: $e');
     }
   }
 
@@ -130,7 +134,7 @@ class OfflineCacheService {
       await LocalDbService.instance.setLastSynced('categories');
       debugPrint('[OfflineCache] categories: ${cats.length} mis en cache');
     } catch (e) {
-      debugPrint('[OfflineCache] categories sync error: $e');
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] categories sync error: $e');
     }
   }
 
@@ -157,7 +161,7 @@ class OfflineCacheService {
       await LocalDbService.instance.setLastSynced('sales');
       debugPrint('[OfflineCache] sales: ${all.length} mis en cache');
     } catch (e) {
-      debugPrint('[OfflineCache] sales sync error: $e');
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] sales sync error: $e');
     }
   }
 
@@ -184,7 +188,7 @@ class OfflineCacheService {
       await LocalDbService.instance.setLastSynced('purchases');
       debugPrint('[OfflineCache] purchases: ${all.length} mis en cache');
     } catch (e) {
-      debugPrint('[OfflineCache] purchases sync error: $e');
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] purchases sync error: $e');
     }
   }
 
@@ -204,7 +208,7 @@ class OfflineCacheService {
       await LocalDbService.instance.setLastSynced('warehouses');
       debugPrint('[OfflineCache] warehouses: ${warehouses.length} mis en cache');
     } catch (e) {
-      debugPrint('[OfflineCache] warehouses sync error: $e');
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] warehouses sync error: $e');
     }
   }
 
@@ -220,7 +224,7 @@ class OfflineCacheService {
       await LocalDbService.instance.upsertLocalUsers(items);
       debugPrint('[OfflineCache] users: ${items.length} en cache local');
     } catch (e) {
-      debugPrint('[OfflineCache] users sync error: $e');
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] users sync error: $e');
     }
   }
 
@@ -239,7 +243,7 @@ class OfflineCacheService {
       await LocalDbService.instance.setLastSynced('cashier_sessions');
       debugPrint('[OfflineCache] sessions: ${items.length} mis en cache');
     } catch (e) {
-      debugPrint('[OfflineCache] sessions sync error: $e');
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] sessions sync error: $e');
     }
   }
 }
