@@ -20,6 +20,7 @@ class User(UUIDBase):
     password    = Column(String(255), nullable=False)
     offline_hash = Column(String(64), nullable=True)
     must_change_password = Column(Boolean, default=True, nullable=False)
+    is_active    = Column(Boolean, default=True, nullable=False)
 
     sales            = relationship("Sale",            back_populates="user")
     purchases        = relationship("Purchase",        back_populates="user")

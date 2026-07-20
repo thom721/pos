@@ -86,12 +86,14 @@ def _get_or_create_register(
 ) -> PosRegister | JSONResponse:
     tenant = db.get(Tenant, tenant_id)
 
-    # 1. Cet appareil possède déjà une caisse → réutiliser
+    # 1. Cet appareil possède déjà une caisse → réutiliser si elle appartient au bon dépôt
     reg = db.query(PosRegister).filter_by(tenant_id=tenant_id, device_id=device_id).first()
     if reg:
         if not reg.is_active:
             return JSONResponse(status_code=403, content={"detail": "caisse_disabled"})
-        return reg
+        if not warehouse_id or reg.warehouse_id == warehouse_id:
+            return reg
+        # La caisse existante appartient à un autre dépôt → chercher un slot dans le bon dépôt
 
     # 2. Chercher une caisse libre dans le dépôt demandé (sans session active)
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=_SLOT_IDLE_MINUTES)
@@ -201,9 +203,7 @@ def open_session(
 ):
     existing = (
         db.query(CashierSession)
-        .join(PosRegister, CashierSession.register_id == PosRegister.id)
         .filter(
-            PosRegister.device_id == body.device_id,
             CashierSession.tenant_id == current_user.tenant_id,
             CashierSession.cashier_id == current_user.id,
             CashierSession.status == "open",
@@ -211,7 +211,7 @@ def open_session(
         .first()
     )
     if existing:
-        raise HTTPException(400, "Une session est déjà ouverte sur cet appareil")
+        raise HTTPException(400, "Une session est déjà ouverte. Fermez la session existante avant d'en ouvrir une nouvelle.")
 
     reg = _get_or_create_register(
         db, current_user.tenant_id, body.device_id, body.register_name,

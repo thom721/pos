@@ -25,6 +25,7 @@ class SaleRepository {
     String? search,
     String? status,
     String? warehouseId,
+    String? cashierId,
     DateTime? dateFrom,
     DateTime? dateTo,
   }) async {
@@ -34,6 +35,7 @@ class SaleRepository {
         search: search,
         status: status,
         warehouseId: warehouseId,
+        cashierId: cashierId,
         page: page,
         limit: limit,
         dateFrom: dateFrom,

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
+import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 
@@ -33,12 +34,20 @@ final salesProvider =
   ref.watch(syncEpochProvider); // rebuild après chaque sync SQLite
   final params = ref.watch(saleListParamsProvider);
   final warehouseId = ref.watch(activeWarehouseProvider)?.id;
+  final user = ref.watch(authProvider).user;
   final repo = ref.read(saleRepositoryProvider);
+
+  // Les non-admins/managers ne voient que leurs propres ventes (Android: SQLite,
+  // web/macOS: filtré côté serveur via JWT).
+  final canSeeAll = user == null || user.isAdmin || user.hasRole('manager');
+  final cashierId = canSeeAll ? null : user.id;
+
   return repo.getSales(
     page: params.page,
     search: params.search,
     status: params.status,
     warehouseId: warehouseId,
+    cashierId: cashierId,
   );
 });
 

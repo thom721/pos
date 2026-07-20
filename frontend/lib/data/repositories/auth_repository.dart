@@ -44,7 +44,10 @@ class AuthRepository {
     final response = await dio.post(
       '/api/auth/login',
       data: FormData.fromMap({'username': username, 'password': password}),
-      options: Options(contentType: 'application/x-www-form-urlencoded'),
+      options: Options(
+        contentType: 'application/x-www-form-urlencoded',
+        extra: {'skipAutoLogout': true}, // 401 = mauvais identifiants, pas session expirée
+      ),
     );
     return AuthToken.fromJson(response.data);
   }
@@ -54,11 +57,10 @@ class AuthRepository {
   Future<AuthToken> cloudLogin(String email, String password) async {
     final deviceId = await getOrCreateDeviceId();
 
-    final response = await dio.post('/api/public/login', data: {
-      'email': email,
-      'password': password,
-      'device_id': deviceId,
-    });
+    final response = await dio.post('/api/public/login',
+      data: {'email': email, 'password': password, 'device_id': deviceId},
+      options: Options(extra: {'skipAutoLogout': true}), // idem
+    );
 
     final token = AuthToken.fromJson(response.data);
 

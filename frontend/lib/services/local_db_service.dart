@@ -833,6 +833,7 @@ class LocalDbService {
     String? search,
     String? status,
     String? warehouseId,
+    String? cashierId,
     int page = 1,
     int limit = 15,
     DateTime? dateFrom,
@@ -851,6 +852,10 @@ class LocalDbService {
     if (warehouseId != null) {
       where.add('warehouse_id = ?');
       args.add(warehouseId);
+    }
+    if (cashierId != null) {
+      where.add('user_id = ?');
+      args.add(cashierId);
     }
     if (search != null && search.isNotEmpty) {
       where.add('(reference LIKE ? OR customer_name LIKE ?)');
