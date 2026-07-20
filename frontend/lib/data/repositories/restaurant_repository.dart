@@ -35,6 +35,7 @@ class RestaurantRepository {
     double price = 0.0,
     double pricePerDay = 0.0,
     double pricePerMoment = 0.0,
+    String? warehouseId,
     List<RoomAttr> attributes = const [],
   }) async {
     final res = await dio.post('/api/restaurant/tables/', data: {
@@ -43,6 +44,7 @@ class RestaurantRepository {
       'price': price,
       'price_per_day': pricePerDay,
       'price_per_moment': pricePerMoment,
+      if (warehouseId != null) 'warehouse_id': warehouseId,
       'attributes': attributes.map((a) => a.toJson()).toList(),
     });
     return RestaurantTableModel.fromJson(res.data as Map<String, dynamic>);

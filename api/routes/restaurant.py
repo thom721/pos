@@ -118,6 +118,7 @@ class TableCreate(BaseModel):
     price_per_day: float = 0.0
     price_per_moment: float = 0.0
     waiter_id: Optional[str] = None
+    warehouse_id: Optional[str] = None  # prioritaire sur _resolve_wh
     attributes: list[RoomAttrIn] = []
 
 class TableUpdate(BaseModel):
@@ -250,10 +251,11 @@ def create_table(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_CREATE)),
 ):
+    wh_id = data.warehouse_id or _resolve_wh(db, current_user)
     table = RestaurantTable(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
-        warehouse_id=_resolve_wh(db, current_user),
+        warehouse_id=wh_id,
         name=data.name,
         capacity=data.capacity,
         price=data.price,

@@ -9,6 +9,7 @@ import 'package:pos_connect/data/repositories/restaurant_repository.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/restaurant_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 
 // ── Predefined room characteristics ──────────────────────────────────────────
 
@@ -262,12 +263,12 @@ class TablesScreen extends ConsumerWidget {
                               price: pNight,
                               pricePerDay: pDay,
                               pricePerMoment: pMoment,
+                              warehouseId: ref.read(activeWarehouseProvider)?.id,
                               attributes: attrs
                                   .where((a) => a.key.trim().isNotEmpty)
                                   .map((a) => RoomAttr(key: a.key.trim(), value: a.value.trim()))
                                   .toList(),
                             );
-                            ref.invalidate(tablesProvider);
                           } catch (e) {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -275,6 +276,8 @@ class TablesScreen extends ConsumerWidget {
                                 backgroundColor: AppColors.error,
                               ));
                             }
+                          } finally {
+                            ref.invalidate(tablesProvider);
                           }
                         },
                         child: const Text('Créer'),
