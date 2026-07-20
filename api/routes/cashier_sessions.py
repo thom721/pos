@@ -191,6 +191,7 @@ def _get_or_create_register(
 @router.get("/current")
 def get_current_session(
     device_id: str,
+    warehouse_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SESSIONS_OPEN)),
 ):
@@ -199,6 +200,10 @@ def get_current_session(
     ).first()
     if not reg or not reg.is_active:
         return {"session": None, "has_register": False, "disabled": not reg.is_active if reg else False}
+
+    # If caller specifies a warehouse, the register must belong to that warehouse
+    if warehouse_id and reg.warehouse_id != warehouse_id:
+        return {"session": None, "has_register": False}
 
     session = (
         db.query(CashierSession)

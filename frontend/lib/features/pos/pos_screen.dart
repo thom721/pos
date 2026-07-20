@@ -24,6 +24,7 @@ import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/pos_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/thermal_printer_service.dart';
 
@@ -914,11 +915,19 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     }
   }
 
+  Map<String, String?> get _sessionQueryParams {
+    final wh = ref.read(activeWarehouseProvider);
+    return {
+      'device_id': _deviceId!,
+      if (wh?.id != null) 'warehouse_id': wh!.id,
+    };
+  }
+
   /// Vérifie silencieusement l'état de la session côté serveur.
   /// Appelé en arrière-plan quand le cache est déjà affiché.
   Future<void> _refreshSessionFromServer() async {
     try {
-      final res = await dio.get('/api/sessions/current', queryParameters: {'device_id': _deviceId});
+      final res = await dio.get('/api/sessions/current', queryParameters: _sessionQueryParams);
       final session = res.data['session'];
       final disabled = res.data['disabled'] == true;
       final hasRegister = res.data['has_register'] == true || session != null;
@@ -932,7 +941,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         _offlineSession = false;
       });
       _syncSessionProvider();
-      // Session fermée sur un autre appareil → proposer de rouvrir
+      // Session fermée ou appartenant à un autre business → proposer de rouvrir
       if (_session == null && !disabled && mounted) _promptOpenSession();
     } catch (_) {
       // Réseau KO → garder la session affichée depuis le cache, rien à faire
@@ -942,7 +951,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   /// Appel réseau complet avec indicateur de chargement.
   Future<void> _fetchSessionFromServer({bool promptIfMissing = false}) async {
     try {
-      final res = await dio.get('/api/sessions/current', queryParameters: {'device_id': _deviceId});
+      final res = await dio.get('/api/sessions/current', queryParameters: _sessionQueryParams);
       final session = res.data['session'];
       final disabled = res.data['disabled'] == true;
       final hasRegister = res.data['has_register'] == true || session != null;
@@ -1139,6 +1148,14 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     final drafts = ref.watch(draftsProvider);
     final isEdit = pos.isEditMode;
     final canDiscount = ref.watch(hasPermissionProvider(Perm.salesDiscount));
+
+    // Quand le dépôt actif se charge (null → valeur), re-vérifier la session
+    // avec le warehouse_id correct pour détecter les sessions d'un autre business.
+    ref.listen<WarehouseModel?>(activeWarehouseProvider, (prev, next) {
+      if (next?.id != null && prev?.id != next?.id && _sessionChecked && mounted) {
+        _refreshSessionFromServer();
+      }
+    });
 
     return LayoutBuilder(
       builder: (context, constraints) {
