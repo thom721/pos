@@ -292,7 +292,13 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     }
     // Sync from API (authoritative for shared fields only)
     try {
-      final warehouseId = _ref.read(activeWarehouseProvider)?.id;
+      var warehouseId = _ref.read(activeWarehouseProvider)?.id;
+      // If active warehouse isn't resolved yet, use the user's first assigned
+      // warehouse so the backend returns the right business_type immediately.
+      if (warehouseId == null) {
+        final ids = _ref.read(authProvider).user?.warehouseIds ?? [];
+        if (ids.isNotEmpty) warehouseId = ids.first;
+      }
       final queryParams = warehouseId != null ? '?warehouse_id=$warehouseId' : '';
       final res = await dio.get('/api/config/$queryParams');
       if (res.statusCode == 200) {

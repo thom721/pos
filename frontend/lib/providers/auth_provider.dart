@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/license_service.dart';
 import 'package:pos_connect/services/local_db_service.dart';
 
@@ -45,8 +46,9 @@ class AuthState {
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _repo;
+  final Ref _ref;
 
-  AuthNotifier(this._repo) : super(const AuthState()) {
+  AuthNotifier(this._repo, this._ref) : super(const AuthState()) {
     _init();
   }
 
@@ -257,6 +259,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logout() async {
     await _repo.logout(explicit: true);
     await LicenseService.clearCache();
+    _ref.read(activeWarehouseProvider.notifier).clear();
     state = const AuthState(isAuthenticated: false, isLoading: false);
   }
 
@@ -264,12 +267,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// Conserve userKey pour permettre la reprise offline.
   Future<void> logoutDueToExpiry() async {
     await _repo.logout(explicit: false);
+    _ref.read(activeWarehouseProvider.notifier).clear();
     state = const AuthState(isAuthenticated: false, isLoading: false);
   }
 }
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  return AuthNotifier(AuthRepository());
+  return AuthNotifier(AuthRepository(), ref);
 });
 
 /// Reads the saved tenant JSON from SharedPreferences.
