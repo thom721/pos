@@ -40,7 +40,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 10,
+      version: 11,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -126,6 +126,9 @@ class LocalDbService {
         await db.execute('DROP TABLE sale_items_old');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON sale_items (sale_id)');
       } catch (_) {}
+    }
+    if (oldVersion < 11) {
+      try { await db.execute('ALTER TABLE sales ADD COLUMN user_id TEXT'); } catch (_) {}
     }
   }
 
@@ -214,6 +217,7 @@ class LocalDbService {
         reference      TEXT NOT NULL DEFAULT '',
         customer_id    TEXT,
         customer_name  TEXT,
+        user_id        TEXT,
         warehouse_id   TEXT,
         total_amount   REAL NOT NULL DEFAULT 0,
         discount       REAL NOT NULL DEFAULT 0,
@@ -787,6 +791,7 @@ class LocalDbService {
         'reference':      s.reference,
         'customer_id':    s.customerId,
         'customer_name':  s.customerName,
+        'user_id':        s.userId,
         'total_amount':   s.totalAmount,
         'discount':       s.discount,
         'final_amount':   s.finalAmount,
@@ -991,6 +996,7 @@ class LocalDbService {
       createdAt:    DateTime.parse(row['created_at'] as String).toLocal(),
       customerName:  row['customer_name'] as String?,
       customerId:    row['customer_id'] as String?,
+      userId:        row['user_id'] as String?,
       userFullName:  row['cashier_name'] as String?,
       items: itemRows.map((r) => SaleItemModel(
         id:            r['id'] as String,

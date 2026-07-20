@@ -92,6 +92,7 @@ class SaleModel {
   final String? customerName;
   final String? customerPhone;
   final String? customerId;
+  final String? userId;
   final String? userFullName;
   final String? warehouseId;
   final List<SaleItemModel> items;
@@ -109,6 +110,7 @@ class SaleModel {
     this.customerName,
     this.customerPhone,
     this.customerId,
+    this.userId,
     this.userFullName,
     this.warehouseId,
     required this.items,
@@ -134,6 +136,7 @@ class SaleModel {
         customerName: json['customer']?['name']?.toString(),
         customerPhone: json['customer']?['phone']?.toString(),
         customerId: json['customer']?['id']?.toString(),
+        userId: json['user']?['id']?.toString(),
         userFullName: json['user'] != null
             ? '${json['user']['fname']} ${json['user']['lname']}'
             : null,
