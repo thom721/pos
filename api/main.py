@@ -43,6 +43,7 @@ from api.models.BillingExtra import BillingExtra as _BillingExtra  # noqa: F401 
 from api.models.Ingredient import Ingredient as _Ingredient  # noqa: F401 — ensures table creation
 from api.models.ModifierGroup import ModifierGroup as _ModifierGroup, ModifierOption as _ModifierOption  # noqa: F401
 from api.models.MenuItem import MenuItem as _MenuItem  # noqa: F401
+from api.models.RoomAttribute import RoomAttribute as _RoomAttribute  # noqa: F401 — ensures table creation
 from fastapi.staticfiles import StaticFiles
 from fastapi.encoders import jsonable_encoder
 
@@ -202,12 +203,14 @@ def _ensure_schema_patches() -> None:
         for stmt in [
             # price sur restaurant_tables (chambres hôtel)
             "ALTER TABLE restaurant_tables ADD COLUMN price DECIMAL(12,2) NULL DEFAULT 0",
+            # warehouse_id sur room_attributes (ajouté par migration y9z0a1b2c3d4)
+            "ALTER TABLE room_attributes ADD COLUMN warehouse_id VARCHAR(36) NULL",
         ]:
             try:
                 conn.execute(text(stmt))
                 conn.commit()
             except Exception:
-                conn.rollback()  # colonne déjà présente — on ignore
+                conn.rollback()  # colonne déjà présente ou table absente — on ignore
 
 
 def _ensure_local_tenant(db) -> str:
