@@ -208,9 +208,13 @@ class _TableCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final canEdit   = ref.watch(hasPermissionProvider(Perm.tablesUpdate));
+    final canDelete = ref.watch(hasPermissionProvider(Perm.tablesDelete));
     return GestureDetector(
       onTap: () => _openOrder(context),
-      onLongPress: () => _showOptions(context, ref),
+      onLongPress: (canEdit || canDelete)
+          ? () => _showOptions(context, ref, canEdit: canEdit, canDelete: canDelete)
+          : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
@@ -301,50 +305,52 @@ class _TableCard extends ConsumerWidget {
     }
   }
 
-  Future<void> _showOptions(BuildContext context, WidgetRef ref) async {
+  Future<void> _showOptions(BuildContext context, WidgetRef ref, {bool canEdit = false, bool canDelete = false}) async {
     await showModalBottomSheet<void>(
       context: context,
       builder: (_) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.edit_rounded, color: AppColors.primary),
-              title: const Text('Modifier la table'),
-              onTap: () async {
-                Navigator.pop(context);
-                await _showEditDialog(context, ref);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.person_pin_rounded, color: AppColors.info),
-              title: const Text('Assigner un serveur'),
-              subtitle: table.waiterName != null
-                  ? Text(table.waiterName!, style: const TextStyle(color: AppColors.primary))
-                  : const Text('Aucun serveur assigné'),
-              onTap: () async {
-                Navigator.pop(context);
-                await _showAssignWaiterDialog(context, ref);
-              },
-            ),
-            if (table.isFree) ListTile(
-              leading: const Icon(Icons.event_available_rounded, color: AppColors.info),
-              title: const Text('Marquer comme réservée'),
-              onTap: () async {
-                Navigator.pop(context);
-                try {
-                  await RestaurantRepository().updateTable(table.id, status: 'reserved');
-                  ref.invalidate(tablesProvider);
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(extractAnyError(e)), backgroundColor: AppColors.error),
-                    );
+            if (canEdit) ...[
+              ListTile(
+                leading: const Icon(Icons.edit_rounded, color: AppColors.primary),
+                title: const Text('Modifier la table'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _showEditDialog(context, ref);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_pin_rounded, color: AppColors.info),
+                title: const Text('Assigner un serveur'),
+                subtitle: table.waiterName != null
+                    ? Text(table.waiterName!, style: const TextStyle(color: AppColors.primary))
+                    : const Text('Aucun serveur assigné'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _showAssignWaiterDialog(context, ref);
+                },
+              ),
+              if (table.isFree) ListTile(
+                leading: const Icon(Icons.event_available_rounded, color: AppColors.info),
+                title: const Text('Marquer comme réservée'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  try {
+                    await RestaurantRepository().updateTable(table.id, status: 'reserved');
+                    ref.invalidate(tablesProvider);
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(extractAnyError(e)), backgroundColor: AppColors.error),
+                      );
+                    }
                   }
-                }
-              },
-            ),
-            ListTile(
+                },
+              ),
+            ],
+            if (canDelete) ListTile(
               leading: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
               title: const Text('Supprimer', style: TextStyle(color: AppColors.error)),
               onTap: () async {
