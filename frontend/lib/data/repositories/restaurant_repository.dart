@@ -21,8 +21,9 @@ class RestaurantRepository {
 
   // ── Tables ──────────────────────────────────────────────────────────────────
 
-  Future<List<RestaurantTableModel>> getTables() async {
-    final res = await dio.get('/api/restaurant/tables/');
+  Future<List<RestaurantTableModel>> getTables({String? warehouseId}) async {
+    final res = await dio.get('/api/restaurant/tables/',
+        queryParameters: warehouseId != null ? {'warehouse_id': warehouseId} : null);
     return (res.data as List)
         .map((e) => RestaurantTableModel.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -64,8 +65,9 @@ class RestaurantRepository {
 
   // ── Orders ──────────────────────────────────────────────────────────────────
 
-  Future<List<RestaurantOrderModel>> getOpenOrders() async {
-    final res = await dio.get('/api/restaurant/orders/');
+  Future<List<RestaurantOrderModel>> getOpenOrders({String? warehouseId}) async {
+    final res = await dio.get('/api/restaurant/orders/',
+        queryParameters: warehouseId != null ? {'warehouse_id': warehouseId} : null);
     return (res.data as List)
         .map((e) => RestaurantOrderModel.fromJson(e as Map<String, dynamic>))
         .toList();

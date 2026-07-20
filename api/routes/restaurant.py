@@ -221,8 +221,9 @@ def list_waiters(
 def list_tables(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_READ)),
+    warehouse_id: str | None = None,
 ):
-    wh_id = _resolve_wh(db, current_user)
+    wh_id = warehouse_id or _resolve_wh(db, current_user)
     q = db.query(RestaurantTable).filter(
         RestaurantTable.tenant_id == current_user.tenant_id
     )
@@ -360,11 +361,15 @@ def delete_table(
 def list_orders(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_READ)),
+    warehouse_id: str | None = None,
 ):
+    wh_id = warehouse_id or _resolve_wh(db, current_user)
     q = db.query(RestaurantOrder).filter(
         RestaurantOrder.tenant_id == current_user.tenant_id,
         RestaurantOrder.status != 'closed',
     )
+    if wh_id:
+        q = q.filter(RestaurantOrder.warehouse_id == wh_id)
     return [_order_dict(o) for o in q.all()]
 
 
