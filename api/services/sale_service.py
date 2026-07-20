@@ -345,6 +345,8 @@ def create_sale(
     discount = data.discount or 0
     total_after_discount = total - discount
     paid = data.paid_amount or 0
+    # The register keeps at most the sale amount; excess cash is given back as change.
+    collected = min(paid, total_after_discount) if paid > 0 else 0
 
     # 2️⃣ Création vente
     # Warehouse : paramètre > payload > dépôt installer du serveur > défaut
@@ -364,7 +366,7 @@ def create_sale(
         total_amount=total,
         discount=discount,
         final_amount=total_after_discount,
-        paid_amount=paid,
+        paid_amount=collected,
         status="UNPAID"
     )
     if tenant_id:
@@ -417,14 +419,14 @@ def create_sale(
         db.add(mv)
 
     # 4️⃣ Paiement + statut + dette
-    if paid > 0:
+    if collected > 0:
         note = None
         if data.payment_method == "CARD" and data.approval_code:
             note = f"Code approbation terminal : {data.approval_code}"
         pmt = Payment(
             reference_type="SALE",
             reference_id=sale.id,
-            amount=paid,
+            amount=collected,
             method=data.payment_method,
             note=note,
             user_id=user_id,

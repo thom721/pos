@@ -642,6 +642,8 @@ def checkout_order(
     tip = max(0.0, data.tip)
     discount = min(data.discount, subtotal)
     final = subtotal - discount + tip
+    # Only count what the register retains; excess cash is returned as change.
+    collected = min(data.paid_amount, final) if data.paid_amount > 0 else 0
 
     reference = f"VNT-{random.randint(1000000000, 9999999999)}"
     sale = Sale(
@@ -654,7 +656,7 @@ def checkout_order(
         total_amount=subtotal,
         discount=discount,
         final_amount=final,
-        paid_amount=data.paid_amount,
+        paid_amount=collected,
         status='PAID' if data.paid_amount >= final else 'PARTIAL',
     )
     db.add(sale)
@@ -687,7 +689,7 @@ def checkout_order(
         reference_type='SALE',
         reference_id=sale.id,
         tenant_id=current_user.tenant_id,
-        amount=data.paid_amount,
+        amount=collected,
         method=data.payment_method.upper() if data.payment_method else 'CASH',
         user_id=current_user.id,
     ))
@@ -701,7 +703,7 @@ def checkout_order(
             partner_id=data.customer_id,
             tenant_id=current_user.tenant_id,
             total_amount=final,
-            paid_amount=data.paid_amount,
+            paid_amount=collected,
             balance=remaining,
             status='UNPAID' if data.paid_amount == 0 else 'PARTIAL',
         ))
