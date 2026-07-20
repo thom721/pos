@@ -32,11 +32,13 @@ class RestaurantRepository {
   Future<RestaurantTableModel> createTable({
     required String name,
     int capacity = 4,
+    double price = 0.0,
     List<RoomAttr> attributes = const [],
   }) async {
     final res = await dio.post('/api/restaurant/tables/', data: {
       'name': name,
       'capacity': capacity,
+      'price': price,
       'attributes': attributes.map((a) => a.toJson()).toList(),
     });
     return RestaurantTableModel.fromJson(res.data as Map<String, dynamic>);
@@ -46,12 +48,14 @@ class RestaurantRepository {
     String tableId, {
     String? name,
     int? capacity,
+    double? price,
     String? status,
     List<RoomAttr>? attributes,
   }) async {
     final res = await dio.put('/api/restaurant/tables/$tableId', data: {
       if (name != null) 'name': name,
       if (capacity != null) 'capacity': capacity,
+      if (price != null) 'price': price,
       if (status != null) 'status': status,
       if (attributes != null)
         'attributes': attributes.map((a) => a.toJson()).toList(),

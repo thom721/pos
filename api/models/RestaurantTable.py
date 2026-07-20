@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Enum as SAEnum, ForeignKey
+from sqlalchemy import Column, String, Integer, Numeric, Enum as SAEnum, ForeignKey
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
@@ -11,6 +11,7 @@ class RestaurantTable(UUIDBase):
     waiter_id    = Column(String(36), ForeignKey('users.id'),      nullable=True,  index=True)
     name         = Column(String(100), nullable=False)
     capacity     = Column(Integer, default=4)
+    price        = Column(Numeric(12, 2), nullable=True, default=0)
     status       = Column(
         SAEnum('free', 'occupied', 'reserved', name='restaurant_table_status'),
         default='free',

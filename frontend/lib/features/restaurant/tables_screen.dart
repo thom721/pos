@@ -118,7 +118,8 @@ class TablesScreen extends ConsumerWidget {
   }
 
   Future<void> _showAddDialog(BuildContext context, WidgetRef ref, {required bool isHotel}) async {
-    final nameCtrl = TextEditingController();
+    final nameCtrl  = TextEditingController();
+    final priceCtrl = TextEditingController();
     int capacity = isHotel ? 2 : 4;
     final attrs   = <_AttrEntry>[];
 
@@ -180,6 +181,17 @@ class TablesScreen extends ConsumerWidget {
                   ]),
                   if (isHotel) ...[
                     const SizedBox(height: 20),
+                    TextField(
+                      controller: priceCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Prix / nuit',
+                        hintText: '0.00',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.attach_money_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                     _AttrSection(
                       attrs: attrs,
                       onChanged: () => setState(() {}),
@@ -199,6 +211,7 @@ class TablesScreen extends ConsumerWidget {
                             await RestaurantRepository().createTable(
                               name: nameCtrl.text.trim(),
                               capacity: capacity,
+                              price: double.tryParse(priceCtrl.text.trim()) ?? 0.0,
                               attributes: attrs
                                   .where((a) => a.key.trim().isNotEmpty)
                                   .map((a) => RoomAttr(key: a.key.trim(), value: a.value.trim()))
@@ -557,7 +570,9 @@ class _TableCard extends ConsumerWidget {
   }
 
   Future<void> _showEditDialog(BuildContext context, WidgetRef ref) async {
-    final nameCtrl = TextEditingController(text: table.name);
+    final nameCtrl  = TextEditingController(text: table.name);
+    final priceCtrl = TextEditingController(
+        text: table.price > 0 ? table.price.toStringAsFixed(2) : '');
     int capacity   = table.capacity;
     final attrs    = table.attributes
         .map((a) => _AttrEntry(key: a.key, value: a.value))
@@ -616,6 +631,17 @@ class _TableCard extends ConsumerWidget {
                   ]),
                   if (isHotel) ...[
                     const SizedBox(height: 20),
+                    TextField(
+                      controller: priceCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Prix / nuit',
+                        hintText: '0.00',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.attach_money_rounded),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                     _AttrSection(
                       attrs: attrs,
                       onChanged: () => setState(() {}),
@@ -635,6 +661,9 @@ class _TableCard extends ConsumerWidget {
                               table.id,
                               name: nameCtrl.text.trim(),
                               capacity: capacity,
+                              price: isHotel
+                                  ? double.tryParse(priceCtrl.text.trim()) ?? 0.0
+                                  : null,
                               attributes: isHotel
                                   ? attrs
                                       .where((a) => a.key.trim().isNotEmpty)

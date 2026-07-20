@@ -19,16 +19,15 @@ from api.models.MenuItem import MenuItem
 from api.models.Product import Product
 from api.services.warehouse_helper import resolve_warehouse_id
 from api.ws_manager import manager
-import asyncio
 
 router = APIRouter(tags=["Restaurant"])
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _notify(tenant_id: str):
+async def _notify(tenant_id: str):
     if tenant_id:
-        asyncio.ensure_future(manager.notify(tenant_id))
+        await manager.notify(tenant_id)
 
 
 def _is_manager(user: User) -> bool:
@@ -51,6 +50,7 @@ def _table_dict(t: RestaurantTable) -> dict:
         'id': t.id,
         'name': t.name,
         'capacity': t.capacity,
+        'price': float(t.price or 0),
         'status': t.status,
         'waiter_id': t.waiter_id,
         'waiter_name': f"{t.waiter.fname} {t.waiter.lname}".strip() if t.waiter else None,
@@ -112,12 +112,14 @@ class RoomAttrIn(BaseModel):
 class TableCreate(BaseModel):
     name: str
     capacity: int = 4
+    price: float = 0.0
     waiter_id: Optional[str] = None
     attributes: list[RoomAttrIn] = []
 
 class TableUpdate(BaseModel):
     name: Optional[str] = None
     capacity: Optional[int] = None
+    price: Optional[float] = None
     status: Optional[str] = None
     waiter_id: Optional[str] = None  # '' = désassigner
     attributes: Optional[list[RoomAttrIn]] = None  # None = pas de changement
@@ -248,6 +250,7 @@ def create_table(
         warehouse_id=_resolve_wh(db, current_user),
         name=data.name,
         capacity=data.capacity,
+        price=data.price,
         waiter_id=data.waiter_id or None,
     )
     db.add(table)
@@ -286,6 +289,8 @@ def update_table(
         table.name = data.name
     if data.capacity is not None:
         table.capacity = data.capacity
+    if data.price is not None:
+        table.price = data.price
     if data.status is not None:
         table.status = data.status
     if 'waiter_id' in data.model_fields_set:

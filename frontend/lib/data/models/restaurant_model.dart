@@ -160,6 +160,7 @@ class RestaurantTableModel {
   final String id;
   final String name;
   final int capacity;
+  final double price;
   final String status; // free | occupied | reserved
   final String? waiterId;
   final String? waiterName;
@@ -169,6 +170,7 @@ class RestaurantTableModel {
     required this.id,
     required this.name,
     required this.capacity,
+    this.price = 0.0,
     required this.status,
     this.waiterId,
     this.waiterName,
@@ -184,6 +186,7 @@ class RestaurantTableModel {
         id:         j['id'] as String,
         name:       j['name'] as String,
         capacity:   j['capacity'] as int? ?? 4,
+        price:      (j['price'] as num?)?.toDouble() ?? 0.0,
         status:     j['status'] as String? ?? 'free',
         waiterId:   j['waiter_id'] as String?,
         waiterName: j['waiter_name'] as String?,
