@@ -147,6 +147,15 @@ class RestaurantWaiterModel {
       );
 }
 
+class RoomAttr {
+  final String key;
+  final String value;
+  const RoomAttr({required this.key, required this.value});
+  factory RoomAttr.fromJson(Map<String, dynamic> j) =>
+      RoomAttr(key: j['key'] as String, value: j['value'] as String);
+  Map<String, dynamic> toJson() => {'key': key, 'value': value};
+}
+
 class RestaurantTableModel {
   final String id;
   final String name;
@@ -154,6 +163,7 @@ class RestaurantTableModel {
   final String status; // free | occupied | reserved
   final String? waiterId;
   final String? waiterName;
+  final List<RoomAttr> attributes;
 
   const RestaurantTableModel({
     required this.id,
@@ -162,6 +172,7 @@ class RestaurantTableModel {
     required this.status,
     this.waiterId,
     this.waiterName,
+    this.attributes = const [],
   });
 
   bool get isFree     => status == 'free';
@@ -176,6 +187,9 @@ class RestaurantTableModel {
         status:     j['status'] as String? ?? 'free',
         waiterId:   j['waiter_id'] as String?,
         waiterName: j['waiter_name'] as String?,
+        attributes: (j['attributes'] as List?)
+            ?.map((e) => RoomAttr.fromJson(e as Map<String, dynamic>))
+            .toList() ?? [],
       );
 }
 

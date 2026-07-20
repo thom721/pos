@@ -8,6 +8,41 @@ import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/restaurant_provider.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
+
+// ── Predefined room characteristics ──────────────────────────────────────────
+
+const _kAttrKeys = [
+  'Type de chambre',
+  'Nombre de lits',
+  'Type de lit',
+  'Climatisation',
+  'Vue',
+  'Étage',
+];
+
+const _kAttrValues = <String, List<String>>{
+  'Type de chambre': ['Standard', 'Deluxe', 'Suite', 'Familiale', 'VIP', 'Junior Suite'],
+  'Nombre de lits':  ['1', '2', '3', '4'],
+  'Type de lit':     ['Simple', 'Double', 'Queen Size', 'King Size', 'Superposés', 'Mixte'],
+  'Climatisation':   ['AC', 'Ventilateur', 'Non climatisée'],
+  'Vue':             ['Rue', 'Jardin', 'Piscine', 'Mer', 'Montagne', 'Cour'],
+  'Étage':           ['RDC', '1er', '2e', '3e', '4e', '5e+'],
+};
+
+const _kCustom = '— Personnalisé…';
+
+class _AttrEntry {
+  String key;
+  String value;
+  bool customKey;
+  bool customValue;
+  _AttrEntry({required this.key, required this.value})
+      : customKey   = !_kAttrKeys.contains(key),
+        customValue = !(_kAttrValues[key]?.contains(value) ?? false);
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 class TablesScreen extends ConsumerWidget {
   const TablesScreen({super.key});
@@ -15,20 +50,30 @@ class TablesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tablesAsync = ref.watch(tablesProvider);
-    final canCreate = ref.watch(hasPermissionProvider(Perm.tablesCreate));
+    final canCreate   = ref.watch(hasPermissionProvider(Perm.tablesCreate));
+    final isHotel     = ref.watch(settingsProvider).businessType == 'hotel';
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.surface,
-        title: const Text('Plan de salle',
-            style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        title: Text(
+          isHotel ? 'Chambres' : 'Plan de salle',
+          style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.restaurant_menu_rounded, color: AppColors.primary),
-            tooltip: 'Vue cuisine',
-            onPressed: () => context.push('/restaurant/kitchen'),
-          ),
+          if (!isHotel)
+            IconButton(
+              icon: const Icon(Icons.restaurant_menu_rounded, color: AppColors.primary),
+              tooltip: 'Vue cuisine',
+              onPressed: () => context.push('/restaurant/kitchen'),
+            ),
+          if (isHotel)
+            IconButton(
+              icon: const Icon(Icons.cleaning_services_rounded, color: AppColors.primary),
+              tooltip: 'Housekeeping',
+              onPressed: () => context.push('/restaurant/kitchen'),
+            ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
             onPressed: () => ref.invalidate(tablesProvider),
@@ -54,24 +99,28 @@ class TablesScreen extends ConsumerWidget {
           ),
         ),
         data: (tables) => tables.isEmpty
-            ? _EmptyState(onAdd: canCreate ? () => _showAddTableDialog(context, ref) : null)
-            : _TableGrid(tables: tables),
+            ? _EmptyState(
+                isHotel: isHotel,
+                onAdd: canCreate ? () => _showAddDialog(context, ref, isHotel: isHotel) : null,
+              )
+            : _TableGrid(tables: tables, isHotel: isHotel),
       ),
       floatingActionButton: canCreate
           ? FloatingActionButton.extended(
-              onPressed: () => _showAddTableDialog(context, ref),
+              onPressed: () => _showAddDialog(context, ref, isHotel: isHotel),
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Ajouter une table'),
+              label: Text(isHotel ? 'Ajouter une chambre' : 'Ajouter une table'),
             )
           : null,
     );
   }
 
-  Future<void> _showAddTableDialog(BuildContext context, WidgetRef ref) async {
+  Future<void> _showAddDialog(BuildContext context, WidgetRef ref, {required bool isHotel}) async {
     final nameCtrl = TextEditingController();
-    int capacity = 4;
+    int capacity = isHotel ? 2 : 4;
+    final attrs   = <_AttrEntry>[];
 
     await showDialog<void>(
       context: context,
@@ -79,50 +128,63 @@ class TablesScreen extends ConsumerWidget {
         builder: (ctx, setState) => Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 420, maxWidth: 520),
-            child: Padding(
+            constraints: const BoxConstraints(minWidth: 440, maxWidth: 560),
+            child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Nouvelle table',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                  Text(
+                    isHotel ? 'Nouvelle chambre' : 'Nouvelle table',
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 20),
                   TextField(
                     controller: nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Nom de la table',
-                      hintText: 'Table 1, Terrasse A…',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: isHotel ? 'Numéro / nom de la chambre' : 'Nom de la table',
+                      hintText: isHotel ? 'Chambre 101, Suite A…' : 'Table 1, Terrasse A…',
+                      border: const OutlineInputBorder(),
                     ),
                     autofocus: true,
                   ),
                   const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      const Icon(Icons.people_outline_rounded, color: AppColors.textSecondary),
-                      const SizedBox(width: 8),
-                      const Text('Capacité :', style: TextStyle(fontSize: 15)),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.remove_circle_outline_rounded),
-                        onPressed: () => setState(() { if (capacity > 1) capacity--; }),
-                        color: AppColors.primary,
-                      ),
-                      SizedBox(
-                        width: 36,
-                        child: Text('$capacity',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.add_circle_outline_rounded),
-                        onPressed: () => setState(() => capacity++),
-                        color: AppColors.primary,
-                      ),
-                    ],
-                  ),
+                  Row(children: [
+                    Icon(
+                      isHotel ? Icons.people_outline_rounded : Icons.people_outline_rounded,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      isHotel ? 'Capacité (personnes) :' : 'Capacité :',
+                      style: const TextStyle(fontSize: 15),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline_rounded),
+                      onPressed: () => setState(() { if (capacity > 1) capacity--; }),
+                      color: AppColors.primary,
+                    ),
+                    SizedBox(
+                      width: 36,
+                      child: Text('$capacity',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline_rounded),
+                      onPressed: () => setState(() => capacity++),
+                      color: AppColors.primary,
+                    ),
+                  ]),
+                  if (isHotel) ...[
+                    const SizedBox(height: 20),
+                    _AttrSection(
+                      attrs: attrs,
+                      onChanged: () => setState(() {}),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -137,6 +199,10 @@ class TablesScreen extends ConsumerWidget {
                             await RestaurantRepository().createTable(
                               name: nameCtrl.text.trim(),
                               capacity: capacity,
+                              attributes: attrs
+                                  .where((a) => a.key.trim().isNotEmpty)
+                                  .map((a) => RoomAttr(key: a.key.trim(), value: a.value.trim()))
+                                  .toList(),
                             );
                             ref.invalidate(tablesProvider);
                           } catch (e) {
@@ -162,31 +228,37 @@ class TablesScreen extends ConsumerWidget {
   }
 }
 
+// ── Grid ──────────────────────────────────────────────────────────────────────
+
 class _TableGrid extends ConsumerWidget {
   final List<RestaurantTableModel> tables;
-  const _TableGrid({required this.tables});
+  final bool isHotel;
+  const _TableGrid({required this.tables, required this.isHotel});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 180,
+        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: isHotel ? 200 : 180,
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: 1.0,
+          childAspectRatio: isHotel ? 0.85 : 1.0,
         ),
         itemCount: tables.length,
-        itemBuilder: (_, i) => _TableCard(table: tables[i]),
+        itemBuilder: (_, i) => _TableCard(table: tables[i], isHotel: isHotel),
       ),
     );
   }
 }
 
+// ── Card ──────────────────────────────────────────────────────────────────────
+
 class _TableCard extends ConsumerWidget {
   final RestaurantTableModel table;
-  const _TableCard({required this.table});
+  final bool isHotel;
+  const _TableCard({required this.table, required this.isHotel});
 
   Color get _color {
     if (table.isOccupied) return AppColors.warning;
@@ -195,15 +267,20 @@ class _TableCard extends ConsumerWidget {
   }
 
   IconData get _icon {
+    if (isHotel) {
+      if (table.isOccupied) return Icons.king_bed_rounded;
+      if (table.isReserved) return Icons.event_available_rounded;
+      return Icons.king_bed_outlined;
+    }
     if (table.isOccupied) return Icons.people_rounded;
     if (table.isReserved) return Icons.event_available_rounded;
     return Icons.chair_rounded;
   }
 
   String get _label {
-    if (table.isOccupied) return 'Occupée';
-    if (table.isReserved) return 'Réservée';
-    return 'Libre';
+    if (table.isOccupied) return isHotel ? 'Occupée'    : 'Occupée';
+    if (table.isReserved) return isHotel ? 'Réservée'   : 'Réservée';
+    return isHotel ? 'Disponible' : 'Libre';
   }
 
   @override
@@ -221,70 +298,88 @@ class _TableCard extends ConsumerWidget {
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: _color, width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: _color.withValues(alpha: 0.15),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: _color.withValues(alpha: 0.15), blurRadius: 8, offset: const Offset(0, 3))],
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: _color.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(_icon, color: _color, size: 26),
               ),
-              child: Icon(_icon, color: _color, size: 28),
-            ),
-            const SizedBox(height: 8),
-            Text(table.name,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 2),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: _color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(20),
+              const SizedBox(height: 6),
+              Text(table.name,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 2),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(_label,
+                    style: TextStyle(color: _color, fontSize: 10, fontWeight: FontWeight.w600)),
               ),
-              child: Text(_label,
-                  style: TextStyle(color: _color, fontSize: 11, fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.people_outline_rounded, size: 12, color: AppColors.textSecondary),
-                const SizedBox(width: 2),
-                Text('${table.capacity}',
-                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-              ],
-            ),
-            if (table.waiterName != null) ...[
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.person_outline_rounded, size: 11, color: AppColors.primary),
-                  const SizedBox(width: 2),
-                  Flexible(
-                    child: Text(
-                      table.waiterName!,
-                      style: const TextStyle(fontSize: 10, color: AppColors.primary),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
+              if (isHotel && table.attributes.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 3,
+                  alignment: WrapAlignment.center,
+                  children: table.attributes.take(3).map((a) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.divider),
                     ),
-                  ),
-                ],
-              ),
+                    child: Text(
+                      a.value,
+                      style: const TextStyle(fontSize: 9, color: AppColors.textSecondary),
+                    ),
+                  )).toList(),
+                ),
+              ] else if (!isHotel) ...[
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.people_outline_rounded, size: 12, color: AppColors.textSecondary),
+                    const SizedBox(width: 2),
+                    Text('${table.capacity}',
+                        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ],
+              if (table.waiterName != null) ...[
+                const SizedBox(height: 3),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.person_outline_rounded, size: 11, color: AppColors.primary),
+                    const SizedBox(width: 2),
+                    Flexible(
+                      child: Text(
+                        table.waiterName!,
+                        style: const TextStyle(fontSize: 10, color: AppColors.primary),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -305,7 +400,8 @@ class _TableCard extends ConsumerWidget {
     }
   }
 
-  Future<void> _showOptions(BuildContext context, WidgetRef ref, {bool canEdit = false, bool canDelete = false}) async {
+  Future<void> _showOptions(BuildContext context, WidgetRef ref,
+      {bool canEdit = false, bool canDelete = false}) async {
     await showModalBottomSheet<void>(
       context: context,
       builder: (_) => SafeArea(
@@ -315,13 +411,13 @@ class _TableCard extends ConsumerWidget {
             if (canEdit) ...[
               ListTile(
                 leading: const Icon(Icons.edit_rounded, color: AppColors.primary),
-                title: const Text('Modifier la table'),
+                title: Text(isHotel ? 'Modifier la chambre' : 'Modifier la table'),
                 onTap: () async {
                   Navigator.pop(context);
                   await _showEditDialog(context, ref);
                 },
               ),
-              ListTile(
+              if (!isHotel) ListTile(
                 leading: const Icon(Icons.person_pin_rounded, color: AppColors.info),
                 title: const Text('Assigner un serveur'),
                 subtitle: table.waiterName != null
@@ -334,7 +430,7 @@ class _TableCard extends ConsumerWidget {
               ),
               if (table.isFree) ListTile(
                 leading: const Icon(Icons.event_available_rounded, color: AppColors.info),
-                title: const Text('Marquer comme réservée'),
+                title: Text(isHotel ? 'Marquer comme réservée' : 'Marquer comme réservée'),
                 onTap: () async {
                   Navigator.pop(context);
                   try {
@@ -352,13 +448,16 @@ class _TableCard extends ConsumerWidget {
             ],
             if (canDelete) ListTile(
               leading: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
-              title: const Text('Supprimer', style: TextStyle(color: AppColors.error)),
+              title: Text(
+                isHotel ? 'Supprimer la chambre' : 'Supprimer',
+                style: const TextStyle(color: AppColors.error),
+              ),
               onTap: () async {
                 Navigator.pop(context);
                 final confirm = await showDialog<bool>(
                   context: context,
                   builder: (_) => AlertDialog(
-                    title: const Text('Supprimer la table'),
+                    title: Text(isHotel ? 'Supprimer la chambre' : 'Supprimer la table'),
                     content: Text('Supprimer "${table.name}" ?'),
                     actions: [
                       TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
@@ -459,7 +558,10 @@ class _TableCard extends ConsumerWidget {
 
   Future<void> _showEditDialog(BuildContext context, WidgetRef ref) async {
     final nameCtrl = TextEditingController(text: table.name);
-    int capacity = table.capacity;
+    int capacity   = table.capacity;
+    final attrs    = table.attributes
+        .map((a) => _AttrEntry(key: a.key, value: a.value))
+        .toList();
 
     await showDialog<void>(
       context: context,
@@ -467,48 +569,58 @@ class _TableCard extends ConsumerWidget {
         builder: (ctx, setState) => Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 420, maxWidth: 520),
-            child: Padding(
+            constraints: const BoxConstraints(minWidth: 440, maxWidth: 560),
+            child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Modifier la table',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                  Text(
+                    isHotel ? 'Modifier la chambre' : 'Modifier la table',
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
                   const SizedBox(height: 20),
                   TextField(
                     controller: nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Nom de la table',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: isHotel ? 'Numéro / nom de la chambre' : 'Nom de la table',
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      const Icon(Icons.people_outline_rounded, color: AppColors.textSecondary),
-                      const SizedBox(width: 8),
-                      const Text('Capacité :', style: TextStyle(fontSize: 15)),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.remove_circle_outline_rounded),
-                        onPressed: () => setState(() { if (capacity > 1) capacity--; }),
-                        color: AppColors.primary,
-                      ),
-                      SizedBox(
-                        width: 36,
-                        child: Text('$capacity',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.add_circle_outline_rounded),
-                        onPressed: () => setState(() => capacity++),
-                        color: AppColors.primary,
-                      ),
-                    ],
-                  ),
+                  Row(children: [
+                    const Icon(Icons.people_outline_rounded, color: AppColors.textSecondary),
+                    const SizedBox(width: 8),
+                    Text(
+                      isHotel ? 'Capacité (personnes) :' : 'Capacité :',
+                      style: const TextStyle(fontSize: 15),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline_rounded),
+                      onPressed: () => setState(() { if (capacity > 1) capacity--; }),
+                      color: AppColors.primary,
+                    ),
+                    SizedBox(
+                      width: 36,
+                      child: Text('$capacity',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline_rounded),
+                      onPressed: () => setState(() => capacity++),
+                      color: AppColors.primary,
+                    ),
+                  ]),
+                  if (isHotel) ...[
+                    const SizedBox(height: 20),
+                    _AttrSection(
+                      attrs: attrs,
+                      onChanged: () => setState(() {}),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -523,6 +635,12 @@ class _TableCard extends ConsumerWidget {
                               table.id,
                               name: nameCtrl.text.trim(),
                               capacity: capacity,
+                              attributes: isHotel
+                                  ? attrs
+                                      .where((a) => a.key.trim().isNotEmpty)
+                                      .map((a) => RoomAttr(key: a.key.trim(), value: a.value.trim()))
+                                      .toList()
+                                  : null,
                             );
                             ref.invalidate(tablesProvider);
                           } catch (e) {
@@ -547,9 +665,200 @@ class _TableCard extends ConsumerWidget {
   }
 }
 
+// ── Attributes editor section ─────────────────────────────────────────────────
+
+class _AttrSection extends StatelessWidget {
+  final List<_AttrEntry> attrs;
+  final VoidCallback onChanged;
+  const _AttrSection({required this.attrs, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Icon(Icons.tune_rounded, size: 18, color: AppColors.textSecondary),
+          const SizedBox(width: 6),
+          const Text('Caractéristiques',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+          const Spacer(),
+          TextButton.icon(
+            onPressed: () {
+              attrs.add(_AttrEntry(key: _kAttrKeys.first, value: _kAttrValues[_kAttrKeys.first]!.first));
+              onChanged();
+            },
+            icon: const Icon(Icons.add_rounded, size: 16),
+            label: const Text('Ajouter', style: TextStyle(fontSize: 13)),
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary, padding: EdgeInsets.zero),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        if (attrs.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'Aucune caractéristique. Appuyez sur + Ajouter.',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary.withValues(alpha: 0.7)),
+            ),
+          ),
+        ...List.generate(attrs.length, (i) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _AttrRow(
+            entry: attrs[i],
+            onDelete: () { attrs.removeAt(i); onChanged(); },
+            onChanged: onChanged,
+          ),
+        )),
+      ],
+    );
+  }
+}
+
+class _AttrRow extends StatefulWidget {
+  final _AttrEntry entry;
+  final VoidCallback onDelete;
+  final VoidCallback onChanged;
+  const _AttrRow({required this.entry, required this.onDelete, required this.onChanged});
+
+  @override
+  State<_AttrRow> createState() => _AttrRowState();
+}
+
+class _AttrRowState extends State<_AttrRow> {
+  late final TextEditingController _keyCtrl;
+  late final TextEditingController _valCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _keyCtrl = TextEditingController(text: widget.entry.customKey   ? widget.entry.key   : '');
+    _valCtrl = TextEditingController(text: widget.entry.customValue ? widget.entry.value : '');
+  }
+
+  @override
+  void dispose() {
+    _keyCtrl.dispose();
+    _valCtrl.dispose();
+    super.dispose();
+  }
+
+  List<String> get _valuesForKey {
+    final k = widget.entry.customKey ? '' : widget.entry.key;
+    return _kAttrValues[k] ?? [];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.entry;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Key ──
+        Expanded(
+          child: e.customKey
+              ? TextField(
+                  controller: _keyCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Caractéristique',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  ),
+                  style: const TextStyle(fontSize: 13),
+                  onChanged: (v) { e.key = v; widget.onChanged(); },
+                )
+              : DropdownButtonFormField<String>(
+                  value: e.key,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  ),
+                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  items: [
+                    ..._kAttrKeys.map((k) => DropdownMenuItem(value: k, child: Text(k))),
+                    const DropdownMenuItem(value: _kCustom, child: Text(_kCustom, style: TextStyle(color: Colors.grey))),
+                  ],
+                  onChanged: (v) => setState(() {
+                    if (v == _kCustom) {
+                      e.customKey   = true;
+                      e.key         = '';
+                      e.customValue = true;
+                      e.value       = '';
+                    } else {
+                      e.key         = v!;
+                      e.customKey   = false;
+                      final vals    = _kAttrValues[v] ?? [];
+                      e.value       = vals.isNotEmpty ? vals.first : '';
+                      e.customValue = false;
+                    }
+                    widget.onChanged();
+                  }),
+                ),
+        ),
+        const SizedBox(width: 8),
+        // ── Value ──
+        Expanded(
+          child: (e.customKey || e.customValue || _valuesForKey.isEmpty)
+              ? TextField(
+                  controller: _valCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Valeur',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  ),
+                  style: const TextStyle(fontSize: 13),
+                  onChanged: (v) { e.value = v; widget.onChanged(); },
+                )
+              : DropdownButtonFormField<String>(
+                  value: _valuesForKey.contains(e.value) ? e.value : _valuesForKey.first,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  ),
+                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  items: [
+                    ..._valuesForKey.map((v) => DropdownMenuItem(value: v, child: Text(v))),
+                    const DropdownMenuItem(value: _kCustom, child: Text(_kCustom, style: TextStyle(color: Colors.grey))),
+                  ],
+                  onChanged: (v) => setState(() {
+                    if (v == _kCustom) {
+                      e.customValue = true;
+                      e.value       = '';
+                      _valCtrl.clear();
+                    } else {
+                      e.value       = v!;
+                      e.customValue = false;
+                    }
+                    widget.onChanged();
+                  }),
+                ),
+        ),
+        const SizedBox(width: 4),
+        // ── Delete ──
+        IconButton(
+          icon: const Icon(Icons.close_rounded, size: 18),
+          color: AppColors.error,
+          onPressed: widget.onDelete,
+          padding: const EdgeInsets.only(top: 2),
+          constraints: const BoxConstraints(),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Empty state ────────────────────────────────────────────────────────────────
+
 class _EmptyState extends StatelessWidget {
   final VoidCallback? onAdd;
-  const _EmptyState({this.onAdd});
+  final bool isHotel;
+  const _EmptyState({this.onAdd, required this.isHotel});
 
   @override
   Widget build(BuildContext context) {
@@ -557,18 +866,29 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.table_restaurant_rounded, size: 72, color: AppColors.divider),
+          Icon(
+            isHotel ? Icons.king_bed_rounded : Icons.table_restaurant_rounded,
+            size: 72,
+            color: AppColors.divider,
+          ),
           const SizedBox(height: 16),
-          const Text('Aucune table configurée',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          Text(
+            isHotel ? 'Aucune chambre configurée' : 'Aucune table configurée',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+          ),
           const SizedBox(height: 8),
-          const Text('Ajoutez vos tables pour commencer à prendre des commandes',
-              style: TextStyle(color: AppColors.textSecondary), textAlign: TextAlign.center),
+          Text(
+            isHotel
+                ? 'Ajoutez vos chambres et leurs caractéristiques'
+                : 'Ajoutez vos tables pour commencer à prendre des commandes',
+            style: const TextStyle(color: AppColors.textSecondary),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 24),
           FilledButton.icon(
             onPressed: onAdd,
             icon: const Icon(Icons.add_rounded),
-            label: const Text('Ajouter une table'),
+            label: Text(isHotel ? 'Ajouter une chambre' : 'Ajouter une table'),
           ),
         ],
       ),

@@ -17,4 +17,6 @@ class RestaurantTable(UUIDBase):
         nullable=False,
     )
 
-    waiter = relationship('User', foreign_keys=[waiter_id], lazy='joined')
+    waiter     = relationship('User', foreign_keys=[waiter_id], lazy='joined')
+    attributes = relationship('RoomAttribute', foreign_keys='RoomAttribute.table_id',
+                              cascade='all, delete-orphan', lazy='joined')

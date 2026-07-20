@@ -11,6 +11,7 @@ from api.core.permissions import P
 from api.core.permissions import has_permission
 from api.models.User import User
 from api.models.RestaurantTable import RestaurantTable
+from api.models.RoomAttribute import RoomAttribute
 from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
 from api.models.Ingredient import Ingredient
 from api.models.ModifierGroup import ModifierGroup, ModifierOption
@@ -54,6 +55,7 @@ def _table_dict(t: RestaurantTable) -> dict:
         'waiter_id': t.waiter_id,
         'waiter_name': f"{t.waiter.fname} {t.waiter.lname}".strip() if t.waiter else None,
         'created_at': t.created_at,
+        'attributes': [{'key': a.key, 'value': a.value} for a in (t.attributes or [])],
     }
 
 
@@ -103,16 +105,22 @@ def _order_dict(o: RestaurantOrder) -> dict:
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
 
+class RoomAttrIn(BaseModel):
+    key: str
+    value: str
+
 class TableCreate(BaseModel):
     name: str
     capacity: int = 4
     waiter_id: Optional[str] = None
+    attributes: list[RoomAttrIn] = []
 
 class TableUpdate(BaseModel):
     name: Optional[str] = None
     capacity: Optional[int] = None
     status: Optional[str] = None
     waiter_id: Optional[str] = None  # '' = désassigner
+    attributes: Optional[list[RoomAttrIn]] = None  # None = pas de changement
 
 class TableAssign(BaseModel):
     waiter_id: Optional[str] = None  # None = désassigner
@@ -242,6 +250,16 @@ def create_table(
         waiter_id=data.waiter_id or None,
     )
     db.add(table)
+    db.flush()
+    for attr in data.attributes:
+        if attr.key.strip():
+            db.add(RoomAttribute(
+                id=str(uuid.uuid4()),
+                tenant_id=current_user.tenant_id,
+                table_id=table.id,
+                key=attr.key.strip(),
+                value=attr.value.strip(),
+            ))
     db.commit()
     db.refresh(table)
     background_tasks.add_task(_notify, current_user.tenant_id)
@@ -270,6 +288,18 @@ def update_table(
         table.status = data.status
     if 'waiter_id' in data.model_fields_set:
         table.waiter_id = data.waiter_id or None
+    if data.attributes is not None:
+        # Replace all attributes
+        db.query(RoomAttribute).filter(RoomAttribute.table_id == table.id).delete()
+        for attr in data.attributes:
+            if attr.key.strip():
+                db.add(RoomAttribute(
+                    id=str(uuid.uuid4()),
+                    tenant_id=current_user.tenant_id,
+                    table_id=table.id,
+                    key=attr.key.strip(),
+                    value=attr.value.strip(),
+                ))
     db.commit()
     db.refresh(table)
     background_tasks.add_task(_notify, current_user.tenant_id)
