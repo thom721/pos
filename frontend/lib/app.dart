@@ -9,6 +9,7 @@ import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/offline_cache_service.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
 import 'package:pos_connect/services/websocket_service.dart';
@@ -97,14 +98,15 @@ class _PosAppState extends ConsumerState<PosApp> {
       // Erreurs de sync serveur non fatales
     }
     // 3. Rafraîchir le cache SQLite local
+    final warehouseId = ref.read(activeWarehouseProvider)?.id;
     if (_isAndroid) {
       // Sur Android : attendre la fin de la sync pour notifier les providers
-      await OfflineCacheService.instance.syncAll();
+      await OfflineCacheService.instance.syncAll(warehouseId: warehouseId);
       if (mounted) {
         ref.read(syncEpochProvider.notifier).state++;
       }
     } else {
-      OfflineCacheService.instance.syncAll().ignore();
+      OfflineCacheService.instance.syncAll(warehouseId: warehouseId).ignore();
     }
   }
 

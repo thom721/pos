@@ -52,13 +52,15 @@ def read_sales(
     status: Optional[str] = None,
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
+    warehouse_id: Optional[str] = None,
 ):
     cashier_id = None
     if not _has_perm(current_user.permissions or [], current_user.roles or [], P.REPORTS_READ_ALL):
         cashier_id = current_user.id
     return list_sales(db=db, page=page, limit=limit, search=search,
                       status=status, date_from=date_from, date_to=date_to,
-                      tenant_id=current_user.tenant_id, cashier_id=cashier_id)
+                      tenant_id=current_user.tenant_id, cashier_id=cashier_id,
+                      warehouse_id=warehouse_id)
 
 
 @router.get("/products/search", response_model=LegacyPaginatedResponse[ProductSaleItem])

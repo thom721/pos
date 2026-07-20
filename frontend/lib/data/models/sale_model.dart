@@ -93,6 +93,7 @@ class SaleModel {
   final String? customerPhone;
   final String? customerId;
   final String? userFullName;
+  final String? warehouseId;
   final List<SaleItemModel> items;
   final List<SalePaymentModel> payments;
 
@@ -109,6 +110,7 @@ class SaleModel {
     this.customerPhone,
     this.customerId,
     this.userFullName,
+    this.warehouseId,
     required this.items,
     required this.payments,
   });
@@ -135,6 +137,7 @@ class SaleModel {
         userFullName: json['user'] != null
             ? '${json['user']['fname']} ${json['user']['lname']}'
             : null,
+        warehouseId: json['warehouse_id']?.toString(),
         items: _deduplicateById(
             (json['items'] as List? ?? []).map((e) => SaleItemModel.fromJson(e as Map<String, dynamic>))),
         payments: _deduplicatePaymentsById(

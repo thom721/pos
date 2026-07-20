@@ -765,6 +765,7 @@ class LocalDbService {
         'payment_method': s.payments.isNotEmpty ? s.payments.first.method : 'CASH',
         'status':         s.status,
         'cashier_name':   s.userFullName,
+        'warehouse_id':   s.warehouseId,
         'created_at':     s.createdAt.toUtc().toIso8601String(),
         'synced':         1,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -801,6 +802,7 @@ class LocalDbService {
   Future<PaginatedResponse<SaleModel>> getSales({
     String? search,
     String? status,
+    String? warehouseId,
     int page = 1,
     int limit = 15,
     DateTime? dateFrom,
@@ -816,6 +818,10 @@ class LocalDbService {
 
     final where = <String>[];
     final args  = <dynamic>[];
+    if (warehouseId != null) {
+      where.add('warehouse_id = ?');
+      args.add(warehouseId);
+    }
     if (search != null && search.isNotEmpty) {
       where.add('(reference LIKE ? OR customer_name LIKE ?)');
       args.addAll(['%$search%', '%$search%']);

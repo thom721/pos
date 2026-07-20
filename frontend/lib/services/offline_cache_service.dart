@@ -28,7 +28,7 @@ class OfflineCacheService {
   // ── API publique ──────────────────────────────────────────────────────────
 
   /// Lance la sync de toutes les entités. Ignoré si déjà en cours.
-  Future<void> syncAll() async {
+  Future<void> syncAll({String? warehouseId}) async {
     if (kIsWeb || _running) return;
     _running = true;
     try {
@@ -37,7 +37,7 @@ class OfflineCacheService {
         _syncCustomers(),
         _syncCategories(),
         _syncWarehouses(),
-        _syncSales(),
+        _syncSales(warehouseId: warehouseId),
         _syncPurchases(),
         _syncUsers(),
         _syncSessions(),
@@ -140,13 +140,17 @@ class OfflineCacheService {
 
   // ── Ventes ────────────────────────────────────────────────────────────────
 
-  Future<void> _syncSales() async {
+  Future<void> _syncSales({String? warehouseId}) async {
     try {
       final all = <SaleModel>[];
       int page = 1;
       while (true) {
         final res = await dio.get('/api/sales/',
-            queryParameters: {'page': page, 'limit': 100},
+            queryParameters: {
+              'page': page,
+              'limit': 100,
+              if (warehouseId != null) 'warehouse_id': warehouseId,
+            },
             options: kBackgroundOptions);
         final raw = res.data as Map<String, dynamic>;
         final items = (raw['data'] as List? ?? [])

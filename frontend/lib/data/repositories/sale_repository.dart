@@ -24,6 +24,7 @@ class SaleRepository {
     int limit = 15,
     String? search,
     String? status,
+    String? warehouseId,
     DateTime? dateFrom,
     DateTime? dateTo,
   }) async {
@@ -32,6 +33,7 @@ class SaleRepository {
       return LocalDbService.instance.getSales(
         search: search,
         status: status,
+        warehouseId: warehouseId,
         page: page,
         limit: limit,
         dateFrom: dateFrom,
@@ -44,6 +46,7 @@ class SaleRepository {
       'limit': limit,
       if (search != null && search.isNotEmpty) 'search': search,
       if (status != null) 'status': status,
+      if (warehouseId != null) 'warehouse_id': warehouseId,
       if (dateFrom != null) 'date_from': dateFrom.toIso8601String(),
       if (dateTo != null) 'date_to': dateTo.toIso8601String(),
     };
