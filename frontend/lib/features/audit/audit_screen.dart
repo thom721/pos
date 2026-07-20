@@ -307,7 +307,7 @@ class _OpenSessionsTabState extends ConsumerState<_OpenSessionsTab> {
   Future<void> _forceClose(Map<String, dynamic> session) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Fermer la session ?'),
         content: Text(
           'Fermer la session de ${session['cashier_name']} '
@@ -316,12 +316,12 @@ class _OpenSessionsTabState extends ConsumerState<_OpenSessionsTab> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Annuler'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Fermer de force'),
           ),
         ],
