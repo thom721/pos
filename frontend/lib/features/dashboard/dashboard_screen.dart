@@ -24,16 +24,17 @@ class DashboardScreen extends ConsumerWidget {
     final isCashier = !(user?.hasPermission(Perm.reportsReadAll) ?? false);
     final salesAsync = ref.watch(dashboardSalesProvider(isCashier));
     final debtsAsync = ref.watch(debtsProvider);
-    final isRestaurant = ref.watch(settingsProvider).businessType == 'restaurant';
+    final businessType = ref.watch(settingsProvider).businessType;
+    final isOrderBased = businessType == 'restaurant' || businessType == 'hotel';
 
     final pad = context.hPad;
     final isMobile = context.isMobile;
 
-    final cashierRoute = isRestaurant ? '/restaurant/commandes' : '/pos';
-    final cashierIcon = isRestaurant
+    final cashierRoute = isOrderBased ? '/restaurant/commandes' : '/pos';
+    final cashierIcon = isOrderBased
         ? Icons.restaurant_rounded
         : Icons.point_of_sale_rounded;
-    final cashierLabel = isRestaurant ? 'Commandes' : 'Ouvrir la caisse';
+    final cashierLabel = isOrderBased ? 'Commandes' : 'Ouvrir la caisse';
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(pad),
@@ -146,9 +147,9 @@ class DashboardScreen extends ConsumerWidget {
             children: [
               _QuickAction(
                 icon: Icons.add_shopping_cart_rounded,
-                label: 'Nouvelle vente',
+                label: isOrderBased ? 'Nouvelle commande' : 'Nouvelle vente',
                 color: AppColors.primary,
-                onTap: () => context.go('/pos'),
+                onTap: () => context.go(cashierRoute),
               ),
               _QuickAction(
                 icon: Icons.people_alt_rounded,

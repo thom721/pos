@@ -8,6 +8,7 @@ import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
 import 'package:pos_connect/providers/restaurant_provider.dart';
+import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/shared/widgets/open_session_dialog.dart';
@@ -32,10 +33,17 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
   }
 
   Future<void> _initSession() async {
-    _deviceId = await AuthRepository().getOrCreateDeviceId();
+    _deviceId ??= await AuthRepository().getOrCreateDeviceId();
+    final wh = ref.read(activeWarehouseProvider);
+    // If warehouse hasn't loaded yet, wait — the ref.listen in build() will
+    // re-trigger this method once activeWarehouseProvider gets a value.
+    if (wh == null) return;
+
     try {
-      final res = await dio.get('/api/sessions/current',
-          queryParameters: {'device_id': _deviceId});
+      final res = await dio.get('/api/sessions/current', queryParameters: {
+        'device_id': _deviceId,
+        'warehouse_id': wh.id,
+      });
       final session = res.data['session'];
       if (!mounted) return;
       if (session != null) {
@@ -45,17 +53,17 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
         }
       } else {
         setState(() { _sessionChecked = true; _hasSession = false; });
-        _promptOpenSession();
+        _promptOpenSession(wh);
       }
     } catch (_) {
       if (!mounted) return;
       setState(() { _sessionChecked = true; _hasSession = false; });
-      _promptOpenSession();
+      _promptOpenSession(wh);
     }
   }
 
-  void _promptOpenSession() {
-    final wh = ref.read(activeWarehouseProvider);
+  void _promptOpenSession([WarehouseModel? wh]) {
+    wh ??= ref.read(activeWarehouseProvider);
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -70,7 +78,7 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
           }
         },
         onCancelled: () {
-          if (mounted) context.pop();
+          if (mounted && context.canPop()) context.pop();
         },
       ),
     );
@@ -78,6 +86,12 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<WarehouseModel?>(activeWarehouseProvider, (prev, next) {
+      if (next?.id != null && prev?.id != next?.id && !_sessionChecked && mounted) {
+        _initSession();
+      }
+    });
+
     if (!_sessionChecked) {
       return const Scaffold(
         backgroundColor: AppColors.background,
