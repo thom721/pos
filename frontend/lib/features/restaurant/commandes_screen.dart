@@ -7,6 +7,7 @@ import 'package:pos_connect/data/api/api_client.dart' show dio, extractAnyError;
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
+import 'package:pos_connect/data/repositories/warehouse_repository.dart';
 import 'package:pos_connect/providers/restaurant_provider.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
@@ -33,11 +34,20 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
   }
 
   Future<void> _initSession() async {
+    if (_sessionChecked) return;
     _deviceId ??= await AuthRepository().getOrCreateDeviceId();
-    final wh = ref.read(activeWarehouseProvider);
-    // If warehouse hasn't loaded yet, wait — the ref.listen in build() will
-    // re-trigger this method once activeWarehouseProvider gets a value.
-    if (wh == null) return;
+
+    // Warehouse pas encore chargé → essayer depuis l'API (1ère installation ou
+    // cache vide) ; si toujours null, le ref.listen() ré-essayera plus tard.
+    var wh = ref.read(activeWarehouseProvider);
+    if (wh == null) {
+      try {
+        final list = await WarehouseRepository().listWarehouses();
+        await ref.read(activeWarehouseProvider.notifier).initFromList(list);
+        wh = ref.read(activeWarehouseProvider);
+      } catch (_) {}
+      if (wh == null) return;
+    }
 
     try {
       final res = await dio.get('/api/sessions/current', queryParameters: {
@@ -86,8 +96,8 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<WarehouseModel?>(activeWarehouseProvider, (prev, next) {
-      if (next?.id != null && prev?.id != next?.id && !_sessionChecked && mounted) {
+    ref.listen<WarehouseModel?>(activeWarehouseProvider, (_, next) {
+      if (next?.id != null && !_sessionChecked && mounted) {
         _initSession();
       }
     });
