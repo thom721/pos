@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from api.database import get_db
 from api.dependencies.auth import get_current_user, require_permission
-from api.core.permissions import P
+from api.core.permissions import P, has_permission as _has_perm
 from api.models.User import User
 from api.models.Warehouse import Warehouse
 from api.models.PosRegister import PosRegister
@@ -83,15 +83,25 @@ def list_warehouses(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.WAREHOUSES_READ)),
 ):
-    return (
+    can_see_all = _has_perm(
+        current_user.permissions or [],
+        current_user.roles or [],
+        P.WAREHOUSES_CREATE,  # admin/manager peuvent créer → accès à tous les dépôts
+    )
+    q = (
         db.query(Warehouse)
         .filter(
             Warehouse.tenant_id == current_user.tenant_id,
             Warehouse.is_active == True,  # noqa: E712
         )
-        .order_by(Warehouse.is_default.desc(), Warehouse.name)
-        .all()
     )
+    if not can_see_all:
+        allowed = current_user.warehouse_id or []
+        if isinstance(allowed, str):
+            allowed = [allowed]
+        if allowed:
+            q = q.filter(Warehouse.id.in_(allowed))
+    return q.order_by(Warehouse.is_default.desc(), Warehouse.name).all()
 
 
 @router.post("/", status_code=201)

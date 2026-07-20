@@ -14,7 +14,7 @@ from api.models.PosRegister import PosRegister
 from api.models.Tenant import Tenant
 from api.models.PlatformConfig import PlatformConfig
 from api.dependencies.auth import require_permission
-from api.core.permissions import P
+from api.core.permissions import P, has_permission as _has_perm
 from api.services import audit_service
 from api.services import billing_extra_service as _billing
 
@@ -452,11 +452,21 @@ def force_close_session(
 def list_sessions(
     page: int = 1,
     limit: int = 20,
+    warehouse_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SESSIONS_READ)),
 ):
     from sqlalchemy import desc
-    q = db.query(CashierSession).filter_by(tenant_id=current_user.tenant_id)
+    can_see_all = _has_perm(
+        current_user.permissions or [],
+        current_user.roles or [],
+        P.REPORTS_READ_ALL,
+    )
+    q = db.query(CashierSession).filter(CashierSession.tenant_id == current_user.tenant_id)
+    if not can_see_all:
+        q = q.filter(CashierSession.cashier_id == current_user.id)
+    if warehouse_id:
+        q = q.filter(CashierSession.warehouse_id == warehouse_id)
     total = q.count()
     items = q.order_by(desc(CashierSession.created_at)).offset((page - 1) * limit).limit(limit).all()
 

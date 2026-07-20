@@ -38,9 +38,9 @@ class OfflineCacheService {
         _syncCategories(),
         _syncWarehouses(),
         _syncSales(warehouseId: warehouseId),
-        _syncPurchases(),
+        _syncPurchases(warehouseId: warehouseId),
         _syncUsers(),
-        _syncSessions(),
+        _syncSessions(warehouseId: warehouseId),
       ]);
     } catch (e) {
       debugPrint('[OfflineCache] syncAll error: $e');
@@ -171,13 +171,17 @@ class OfflineCacheService {
 
   // ── Achats ────────────────────────────────────────────────────────────────
 
-  Future<void> _syncPurchases() async {
+  Future<void> _syncPurchases({String? warehouseId}) async {
     try {
       final all = <PurchaseModel>[];
       int page = 1;
       while (true) {
         final res = await dio.get('/api/purchases/',
-            queryParameters: {'page': page, 'limit': 100},
+            queryParameters: {
+              'page': page,
+              'limit': 100,
+              if (warehouseId != null) 'warehouse_id': warehouseId,
+            },
             options: kBackgroundOptions);
         final raw = res.data as Map<String, dynamic>;
         final items = (raw['data'] as List? ?? [])
@@ -234,11 +238,15 @@ class OfflineCacheService {
 
   // ── Sessions caisse ───────────────────────────────────────────────────────
 
-  Future<void> _syncSessions() async {
+  Future<void> _syncSessions({String? warehouseId}) async {
     try {
       final res = await dio.get(
         '/api/sessions/',
-        queryParameters: {'page': 1, 'limit': 100},
+        queryParameters: {
+          'page': 1,
+          'limit': 100,
+          if (warehouseId != null) 'warehouse_id': warehouseId,
+        },
         options: kBackgroundOptions,
       );
       final data = res.data as Map<String, dynamic>;
