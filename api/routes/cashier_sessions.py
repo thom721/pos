@@ -81,7 +81,8 @@ _SLOT_IDLE_MINUTES = 5   # slot considered free after 5 min without heartbeat
 
 
 def _get_or_create_register(
-    db: Session, tenant_id: str, device_id: str, name: str, force: bool = False
+    db: Session, tenant_id: str, device_id: str, name: str,
+    force: bool = False, warehouse_id: str | None = None,
 ) -> PosRegister | JSONResponse:
     tenant = db.get(Tenant, tenant_id)
 
@@ -92,13 +93,17 @@ def _get_or_create_register(
             return JSONResponse(status_code=403, content={"detail": "caisse_disabled"})
         return reg
 
-    # 2. Chercher une caisse libre (sans session active)
+    # 2. Chercher une caisse libre dans le dépôt demandé (sans session active)
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=_SLOT_IDLE_MINUTES)
-    free_slot = db.query(PosRegister).filter(
+    slot_q = db.query(PosRegister).filter(
         PosRegister.tenant_id == tenant_id,
         PosRegister.is_active == True,  # noqa: E712
         or_(PosRegister.last_seen.is_(None), PosRegister.last_seen < cutoff),
-    ).order_by(
+    )
+    if warehouse_id:
+        slot_q = slot_q.filter(PosRegister.warehouse_id == warehouse_id)
+
+    free_slot = slot_q.order_by(
         PosRegister.last_seen.is_(None).desc(),
         PosRegister.last_seen.asc(),
     ).first()
@@ -108,15 +113,24 @@ def _get_or_create_register(
         db.flush()
         return free_slot
 
-    # 3. Aucun slot libre — vérifier la limite
-    active_count = db.query(PosRegister).filter_by(
-        tenant_id=tenant_id, is_active=True
-    ).count()
+    # 3. Aucun slot libre dans ce dépôt — vérifier la limite
+    count_q = db.query(PosRegister).filter(
+        PosRegister.tenant_id == tenant_id,
+        PosRegister.is_active == True,  # noqa: E712
+    )
+    if warehouse_id:
+        count_q = count_q.filter(PosRegister.warehouse_id == warehouse_id)
+    active_count = count_q.count()
 
     if active_count == 0:
+        msg = (
+            "Aucune caisse configurée pour ce dépôt. Contactez l'administrateur."
+            if warehouse_id
+            else "Aucune caisse configurée. Contactez l'administrateur."
+        )
         return JSONResponse(status_code=409, content={
             "detail":  "no_registers",
-            "message": "Aucune caisse configurée. Contactez l'administrateur.",
+            "message": msg,
         })
 
     if not force:
@@ -136,12 +150,10 @@ def _get_or_create_register(
         )
 
     # 4. force=True : admin a confirmé → créer une caisse supplémentaire
-    from api.core.config import settings as _cfg
-    from api.models.Warehouse import Warehouse as _WH
-    wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
-    if wh_id and not db.query(_WH.id).filter_by(id=wh_id, tenant_id=tenant_id).first():
-        wh_id = None
-    reg = PosRegister(tenant_id=tenant_id, device_id=device_id, name=name, warehouse_id=wh_id)
+    reg = PosRegister(
+        tenant_id=tenant_id, device_id=device_id, name=name,
+        warehouse_id=warehouse_id,
+    )
     db.add(reg)
     db.flush()
     if tenant:
@@ -202,21 +214,12 @@ def open_session(
         raise HTTPException(400, "Une session est déjà ouverte sur cet appareil")
 
     reg = _get_or_create_register(
-        db, current_user.tenant_id, body.device_id, body.register_name, force=body.force
+        db, current_user.tenant_id, body.device_id, body.register_name,
+        force=body.force, warehouse_id=body.warehouse_id,
     )
-    # Propagate 402 limit_exceeded or 403 caisse_disabled
+    # Propagate 402 limit_exceeded, 403 caisse_disabled, or 409 no_registers
     if isinstance(reg, JSONResponse):
         return reg
-
-    # Réassigner la caisse à un autre dépôt si l'utilisateur en a choisi un différent
-    if body.warehouse_id and body.warehouse_id != reg.warehouse_id:
-        from api.models.Warehouse import Warehouse as _WH
-        new_wh = db.query(_WH).filter_by(
-            id=body.warehouse_id, tenant_id=current_user.tenant_id, is_active=True
-        ).first()
-        if new_wh:
-            reg.warehouse_id = body.warehouse_id
-            db.flush()
 
     # Block if the linked warehouse is disabled
     if reg.warehouse_id:
