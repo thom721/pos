@@ -92,6 +92,8 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
           msg = 'Cette caisse a été désactivée. Contactez votre administrateur.';
         } else if (detail == 'no_registers') {
           msg = message ?? 'Aucune caisse configurée. Contactez l\'administrateur.';
+        } else if (detail == 'no_registered_devices') {
+          msg = message ?? 'Aucun appareil enregistré comme caisse. Enregistrez d\'abord un appareil dans Business → Caisses.';
         } else {
           msg = message ?? detail ?? 'Erreur réseau';
         }

@@ -84,7 +84,19 @@ def _get_or_create_register(
     db: Session, tenant_id: str, device_id: str, name: str,
     force: bool = False, warehouse_id: str | None = None,
 ) -> PosRegister | JSONResponse:
+    from api.models.AppConfig import AppConfig
+
     tenant = db.get(Tenant, tenant_id)
+
+    # Restaurant/hotel require devices to be explicitly registered in Business → Caisses.
+    # Auto-claiming unclaimed slots is only allowed for commerce-type warehouses.
+    requires_explicit = False
+    if warehouse_id:
+        wh_cfg = db.query(AppConfig).filter_by(
+            tenant_id=tenant_id, warehouse_id=warehouse_id
+        ).first()
+        if wh_cfg and wh_cfg.business_type in ("restaurant", "hotel"):
+            requires_explicit = True
 
     # 1. Cet appareil possède déjà une caisse → réutiliser si elle appartient au bon dépôt
     reg = db.query(PosRegister).filter_by(tenant_id=tenant_id, device_id=device_id).first()
@@ -104,6 +116,9 @@ def _get_or_create_register(
     )
     if warehouse_id:
         slot_q = slot_q.filter(PosRegister.warehouse_id == warehouse_id)
+    if requires_explicit:
+        # Only re-claim previously registered devices; don't auto-assign unclaimed slots
+        slot_q = slot_q.filter(PosRegister.device_id.isnot(None))
 
     free_slot = slot_q.order_by(
         PosRegister.last_seen.is_(None).desc(),
@@ -134,6 +149,16 @@ def _get_or_create_register(
             "detail":  "no_registers",
             "message": msg,
         })
+
+    # Restaurant/hotel: registers exist but none have been claimed by a device yet
+    if requires_explicit:
+        claimed = count_q.filter(PosRegister.device_id.isnot(None)).count()
+        if claimed == 0:
+            return JSONResponse(status_code=409, content={
+                "detail":  "no_registered_devices",
+                "message": "Aucun appareil n'est enregistré comme caisse pour ce dépôt. "
+                           "Enregistrez d'abord un appareil dans la section Business → Caisses.",
+            })
 
     if not force:
         cfg = db.query(PlatformConfig).first()
