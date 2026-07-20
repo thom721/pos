@@ -27,8 +27,8 @@ class ProductsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isRestaurant =
-        ref.watch(settingsProvider).businessType == 'restaurant';
+    final bt = ref.watch(settingsProvider).businessType;
+    final isRestaurant = bt == 'restaurant' || bt == 'hotel';
 
     if (isRestaurant) {
       return DefaultTabController(
@@ -1027,8 +1027,8 @@ class _ProductsToolbar extends ConsumerWidget {
     final isMobile = context.isMobile;
     final canCreate = ref.watch(hasPermissionProvider(Perm.productsCreate));
     final canManageCat = ref.watch(hasPermissionProvider(Perm.productsUpdate));
-    final isRestaurant =
-        ref.watch(settingsProvider).businessType == 'restaurant';
+    final bt2 = ref.watch(settingsProvider).businessType;
+    final isRestaurant = bt2 == 'restaurant' || bt2 == 'hotel';
 
     final searchField = TextField(
       decoration: const InputDecoration(
