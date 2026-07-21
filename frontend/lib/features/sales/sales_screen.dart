@@ -1099,18 +1099,27 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
       final ok = await BluetoothPrintService.instance
           .printReceipt(widget.sale, settings, mac: mac);
       if (mounted) {
-        Navigator.pop(context);
-        widget.onDone();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(ok
-              ? 'Impression envoyée à $name'
-              : 'Impossible de joindre l\'imprimante Bluetooth'),
-          backgroundColor: ok ? AppColors.success : AppColors.error,
-          duration: const Duration(seconds: 3),
-        ));
+        if (ok) {
+          Navigator.pop(context);
+          widget.onDone();
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Impression envoyée à $name'),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 3),
+          ));
+        } else {
+          setState(() => _printing = false);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                '$name ($mac) — connexion échouée après 3 tentatives.\n'
+                'Vérifiez que l\'imprimante est allumée et à portée.'),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 5),
+          ));
+        }
       }
     } catch (e) {
-      if (mounted) setState(() { _printing = false; _error = e.toString(); });
+      if (mounted) setState(() { _printing = false; _error = extractAnyError(e); });
     }
   }
 

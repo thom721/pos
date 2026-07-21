@@ -24,11 +24,15 @@ class BluetoothPrintService {
 
   Future<bool> connect(String mac) async {
     if (mac.isEmpty) return false;
-    try {
-      return await PrintBluetoothThermal.connect(macPrinterAddress: mac);
-    } catch (_) {
-      return false;
+    // 3 tentatives — certaines imprimantes BT répondent lentement au premier appel
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final ok = await PrintBluetoothThermal.connect(macPrinterAddress: mac);
+        if (ok) return true;
+      } catch (_) {}
+      if (attempt < 2) await Future.delayed(const Duration(milliseconds: 800));
     }
+    return false;
   }
 
   Future<bool> get isConnected async {
