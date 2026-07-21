@@ -92,35 +92,29 @@ def plan_warning(tenant: Tenant) -> dict | None:
 def _check_tenant_access(tenant: Tenant, db: Session, hard_block: bool = False) -> None:
     """
     Vérifie et applique les règles d'accès pour le tenant.
-    hard_block=False → bloque seulement si suspendu (pour login / lectures)
-    hard_block=True  → bloque aussi si expiré sans grâce (pour les ventes)
+    hard_block=False → met à jour le statut mais ne bloque jamais (lecture / connexion)
+    hard_block=True  → bloque avec 402 si expiré ou suspendu (ventes / commandes)
     """
     now = datetime.now(timezone.utc)
 
-    if tenant.status == "suspended":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail=_SUSPENDED_MSG)
-
     expiry, kind = _effective_expiry(tenant)
-    if expiry and now > expiry:
-        grace_end = expiry + timedelta(days=GRACE_DAYS)
-        if now > grace_end:
-            # Passé la période de grâce → suspension définitive
-            tenant.status = "suspended"
-            db.commit()
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail=_SUSPENDED_MSG)
-        else:
-            # Dans la période de grâce
-            if kind == "trial" and tenant.status != "expired":
-                tenant.status = "expired"
-                db.commit()
-            if hard_block:
-                # Les ventes sont bloquées même pendant la période de grâce
-                raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail=_SALES_BLOCKED_MSG,
-                )
+    is_expired = expiry is not None and now > expiry
+    past_grace  = is_expired and now > expiry + timedelta(days=GRACE_DAYS)
+
+    # Auto-update statut — toujours, même sans hard_block
+    if past_grace and tenant.status != "suspended":
+        tenant.status = "suspended"
+        db.commit()
+    elif is_expired and not past_grace and kind == "trial" and tenant.status not in ("expired", "suspended"):
+        tenant.status = "expired"
+        db.commit()
+
+    # Seules les routes d'écriture (ventes, commandes…) lèvent une exception
+    if hard_block and (tenant.status in ("suspended", "expired") or is_expired):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=_SALES_BLOCKED_MSG,
+        )
 
 
 async def get_current_tenant(
@@ -130,7 +124,7 @@ async def get_current_tenant(
     """
     Retourne le Tenant pour les requêtes cloud (tenant_id dans le JWT).
     Retourne None pour les requêtes local-mode (pas de tenant_id).
-    Lève 403 si le tenant est suspendu ou définitivement expiré.
+    Ne bloque jamais la connexion/lecture — seul require_active_plan bloque les ventes.
     """
     if not token:
         return None

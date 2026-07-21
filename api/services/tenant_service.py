@@ -160,20 +160,6 @@ def cloud_login(db: Session, email: str, password: str,
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="Tenant introuvable")
 
-    if tenant.status == "suspended":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Abonnement suspendu — veuillez renouveler")
-
-    if tenant.status == "trial" and tenant.trial_ends_at:
-        trial_end = tenant.trial_ends_at
-        if trial_end.tzinfo is None:
-            trial_end = trial_end.replace(tzinfo=timezone.utc)
-        if datetime.now(timezone.utc) > trial_end:
-            tenant.status = "suspended"
-            db.commit()
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail="Période d'essai expirée — veuillez souscrire")
-
     # Slot-based session management
     register_id = None
     session_token = None
