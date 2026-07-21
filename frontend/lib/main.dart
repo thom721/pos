@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:pos_connect/app.dart';
@@ -14,6 +15,9 @@ void main() async {
   // Maintient le splash natif visible jusqu'à FlutterNativeSplash.remove()
   final binding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: binding);
+
+  // Utiliser uniquement les polices bundlées — évite timeout réseau fonts.gstatic.com
+  GoogleFonts.config.allowRuntimeFetching = false;
 
   await initializeDateFormatting('fr');
   await initServerUrl();

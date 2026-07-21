@@ -45,11 +45,12 @@ class BluetoothPrintService {
     } catch (_) {}
   }
 
-  Future<bool> printReceipt(SaleModel sale, AppSettings settings) async {
-    final mac = settings.bluetoothPrinterMac;
-    if (mac.isEmpty) return false;
+  Future<bool> printReceipt(SaleModel sale, AppSettings settings,
+      {String? mac}) async {
+    final printerMac = mac ?? settings.bluetoothPrinterMac;
+    if (printerMac.isEmpty) return false;
 
-    final connected = await connect(mac);
+    final connected = await connect(printerMac);
     if (!connected) return false;
 
     final logoBytes = await _logoToEscPos(settings);
@@ -64,15 +65,16 @@ class BluetoothPrintService {
   Future<bool> printRestaurantBill(
     RestaurantOrderModel order,
     AppSettings settings, {
+    String? mac,
     String? reference,
     double discount = 0,
     double paidAmount = 0,
     String? paymentMethod,
   }) async {
-    final mac = settings.bluetoothPrinterMac;
-    if (mac.isEmpty) return false;
+    final printerMac = mac ?? settings.bluetoothPrinterMac;
+    if (printerMac.isEmpty) return false;
 
-    final connected = await connect(mac);
+    final connected = await connect(printerMac);
     if (!connected) return false;
 
     final logoBytes = await _logoToEscPos(settings);

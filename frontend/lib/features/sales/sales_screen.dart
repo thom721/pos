@@ -1083,11 +1083,21 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
   }
 
   Future<void> _printBt(String mac, String name) async {
-    final settings = ref.read(settingsProvider);
+    var settings = ref.read(settingsProvider);
+    // Sauvegarder l'imprimante sélectionnée comme imprimante par défaut
+    if (settings.bluetoothPrinterMac != mac) {
+      await ref.read(settingsProvider.notifier).save(
+            settings.copyWith(
+              bluetoothPrinterMac: mac,
+              bluetoothPrinterName: name,
+            ),
+          );
+      settings = ref.read(settingsProvider);
+    }
     setState(() => _printing = true);
     try {
       final ok = await BluetoothPrintService.instance
-          .printReceipt(widget.sale, settings);
+          .printReceipt(widget.sale, settings, mac: mac);
       if (mounted) {
         Navigator.pop(context);
         widget.onDone();
