@@ -356,6 +356,36 @@ class RestaurantRepository {
     await dio.delete('/api/restaurant/ingredients/$id');
   }
 
+  // ── Housekeeping tasks ───────────────────────────────────────────────────────
+
+  Future<List<HousekeepingTaskModel>> getHousekeepingTasks({String? tableId}) async {
+    final res = await dio.get('/api/restaurant/housekeeping/tasks',
+        queryParameters: tableId != null ? {'table_id': tableId} : null);
+    return (res.data as List)
+        .map((e) => HousekeepingTaskModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<HousekeepingTaskModel> createHousekeepingTask({
+    required String tableId,
+    required String description,
+  }) async {
+    final res = await dio.post('/api/restaurant/housekeeping/tasks', data: {
+      'table_id': tableId,
+      'description': description,
+    });
+    return HousekeepingTaskModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<HousekeepingTaskModel> markTaskDone(String taskId) async {
+    final res = await dio.put('/api/restaurant/housekeeping/tasks/$taskId/done');
+    return HousekeepingTaskModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteHousekeepingTask(String taskId) async {
+    await dio.delete('/api/restaurant/housekeeping/tasks/$taskId');
+  }
+
   Future<Map<String, dynamic>> checkout(
     String orderId, {
     required double paidAmount,

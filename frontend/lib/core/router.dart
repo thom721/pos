@@ -34,6 +34,7 @@ import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/features/restaurant/tables_screen.dart';
 import 'package:pos_connect/features/restaurant/table_order_screen.dart';
 import 'package:pos_connect/features/restaurant/kitchen_screen.dart';
+import 'package:pos_connect/features/restaurant/housekeeping_screen.dart';
 import 'package:pos_connect/features/restaurant/commandes_screen.dart';
 import 'package:pos_connect/features/restaurant/commande_screen.dart';
 import 'package:pos_connect/features/public/home_screen.dart';
@@ -264,6 +265,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/restaurant/kitchen',
             builder: (context, state) => const KitchenScreen(),
+          ),
+          GoRoute(
+            path: '/restaurant/housekeeping',
+            builder: (context, state) => const HousekeepingScreen(),
           ),
           GoRoute(
             path: '/restaurant/commandes',

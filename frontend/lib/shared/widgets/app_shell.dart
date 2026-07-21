@@ -90,7 +90,8 @@ const _hotelMainNavItems = [
   _NavItem('Tableau de bord', Icons.dashboard_rounded,              '/dashboard'),
   _NavItem('Réservations',    Icons.book_online_rounded,            '/restaurant/commandes'),
   _NavItem('Chambres',        Icons.king_bed_rounded,               '/restaurant/tables'),
-  _NavItem('Housekeeping',    Icons.cleaning_services_rounded,      '/restaurant/kitchen'),
+  _NavItem('Cuisine',         Icons.restaurant_rounded,             '/restaurant/kitchen'),
+  _NavItem('Housekeeping',    Icons.cleaning_services_rounded,      '/restaurant/housekeeping'),
   _NavItem('Transactions',    Icons.receipt_long_rounded,           '/sales'),
   _NavItem('Bar & Produits',  Icons.inventory_2_rounded,            '/products'),
   _NavItem('Clients',         Icons.people_alt_rounded,             '/customers'),
@@ -99,10 +100,10 @@ const _hotelMainNavItems = [
 ];
 
 const _hotelAndroidBottomItems = [
-  _NavItem('Réservations',  Icons.book_online_rounded,  '/restaurant/commandes'),
-  _NavItem('Chambres',      Icons.king_bed_rounded,     '/restaurant/tables'),
-  _NavItem('Transactions',  Icons.receipt_long_rounded, '/sales'),
-  _NavItem('Profil',        Icons.person_rounded,       '/profile'),
+  _NavItem('Chambres',      Icons.king_bed_rounded,          '/restaurant/tables'),
+  _NavItem('Cuisine',       Icons.restaurant_rounded,        '/restaurant/kitchen'),
+  _NavItem('Housekeeping',  Icons.cleaning_services_rounded, '/restaurant/housekeeping'),
+  _NavItem('Transactions',  Icons.receipt_long_rounded,      '/sales'),
 ];
 
 List<_NavItem> _resolveMainNav(String businessType) {

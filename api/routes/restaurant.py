@@ -13,6 +13,7 @@ from api.models.User import User
 from api.models.RestaurantTable import RestaurantTable
 from api.models.RoomAttribute import RoomAttribute
 from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
+from api.models.HousekeepingTask import HousekeepingTask
 from api.models.Ingredient import Ingredient
 from api.models.ModifierGroup import ModifierGroup, ModifierOption
 from api.models.MenuItem import MenuItem
@@ -1128,4 +1129,94 @@ def delete_menu_item(
     if not m:
         raise HTTPException(404, "Plat introuvable")
     db.delete(m)
+    db.commit()
+
+
+# ── Housekeeping tasks ─────────────────────────────────────────────────────────
+
+def _task_dict(t: HousekeepingTask) -> dict:
+    return {
+        'id': t.id,
+        'table_id': t.table_id,
+        'description': t.description,
+        'status': t.status,
+        'created_at': t.created_at,
+    }
+
+
+class HousekeepingTaskCreate(BaseModel):
+    table_id: str
+    description: str
+
+
+@router.get("/housekeeping/tasks")
+def list_housekeeping_tasks(
+    table_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_READ)),
+):
+    q = db.query(HousekeepingTask).filter(
+        HousekeepingTask.tenant_id == current_user.tenant_id
+    )
+    if table_id:
+        q = q.filter(HousekeepingTask.table_id == table_id)
+    return [_task_dict(t) for t in q.order_by(HousekeepingTask.created_at).all()]
+
+
+@router.post("/housekeeping/tasks", status_code=201)
+def create_housekeeping_task(
+    data: HousekeepingTaskCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    table = db.query(RestaurantTable).filter(
+        RestaurantTable.id == data.table_id,
+        RestaurantTable.tenant_id == current_user.tenant_id,
+    ).first()
+    if not table:
+        raise HTTPException(404, "Chambre introuvable")
+    task = HousekeepingTask(
+        id=str(uuid.uuid4()),
+        tenant_id=current_user.tenant_id,
+        table_id=data.table_id,
+        description=data.description,
+        status='pending',
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return _task_dict(task)
+
+
+@router.put("/housekeeping/tasks/{task_id}/done")
+def mark_task_done(
+    task_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+):
+    task = db.query(HousekeepingTask).filter(
+        HousekeepingTask.id == task_id,
+        HousekeepingTask.tenant_id == current_user.tenant_id,
+    ).first()
+    if not task:
+        raise HTTPException(404, "Tâche introuvable")
+    task.status = 'done'
+    db.commit()
+    db.refresh(task)
+    return _task_dict(task)
+
+
+@router.delete("/housekeeping/tasks/{task_id}", status_code=204)
+def delete_housekeeping_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.TABLES_DELETE)),
+):
+    task = db.query(HousekeepingTask).filter(
+        HousekeepingTask.id == task_id,
+        HousekeepingTask.tenant_id == current_user.tenant_id,
+    ).first()
+    if not task:
+        raise HTTPException(404, "Tâche introuvable")
+    db.delete(task)
     db.commit()

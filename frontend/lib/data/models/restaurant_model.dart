@@ -241,6 +241,35 @@ class RestaurantOrderItemModel {
       );
 }
 
+class HousekeepingTaskModel {
+  final String id;
+  final String tableId;
+  final String description;
+  final String status; // pending | done
+  final DateTime? createdAt;
+
+  const HousekeepingTaskModel({
+    required this.id,
+    required this.tableId,
+    required this.description,
+    required this.status,
+    this.createdAt,
+  });
+
+  bool get isDone => status == 'done';
+
+  factory HousekeepingTaskModel.fromJson(Map<String, dynamic> j) =>
+      HousekeepingTaskModel(
+        id:          j['id'] as String,
+        tableId:     j['table_id'] as String,
+        description: j['description'] as String,
+        status:      j['status'] as String? ?? 'pending',
+        createdAt:   j['created_at'] != null
+            ? DateTime.tryParse(j['created_at'].toString())
+            : null,
+      );
+}
+
 class RestaurantOrderModel {
   final String id;
   final String? tableId;

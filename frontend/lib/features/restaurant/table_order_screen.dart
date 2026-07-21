@@ -75,9 +75,16 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
     }
   }
 
+  bool get _isRoom =>
+      _table != null &&
+      (_table!.price > 0 ||
+          _table!.pricePerDay > 0 ||
+          _table!.pricePerMoment > 0 ||
+          _table!.attributes.isNotEmpty);
+
   Future<void> _confirmOpen() async {
     final isHotel = ref.read(settingsProvider).businessType == 'hotel';
-    if (isHotel && _table != null) {
+    if (isHotel && _isRoom) {
       await _confirmHotelCheckIn();
     } else {
       await _confirmRestaurantOpen();
@@ -464,15 +471,12 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
 
   Future<void> _sendToKitchen() async {
     if (_order == null || _order!.items.isEmpty) return;
-    final isHotel = ref.read(settingsProvider).businessType == 'hotel';
     setState(() => _submitting = true);
     try {
       _order = await _repo.sendToKitchen(_order!.id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(isHotel
-              ? 'Envoyé en cuisine et au housekeeping'
-              : 'Commande envoyée en cuisine'),
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Commande envoyée en cuisine'),
           backgroundColor: AppColors.success,
         ));
       }
@@ -597,6 +601,8 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
     final symbol = settings.currencySymbol;
     final isHotel = settings.businessType == 'hotel';
 
+    final isRoom = isHotel && _isRoom;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -623,7 +629,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
               ? _NoOrderView(
                   onOpen: _confirmOpen,
                   submitting: _submitting,
-                  isHotel: isHotel,
+                  isRoom: isRoom,
                 )
               : Column(
                   children: [
@@ -680,7 +686,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
                       submitting: _submitting,
                       onKitchen: _sendToKitchen,
                       onCheckout: _checkout,
-                      isHotel: isHotel,
+                      isRoom: isRoom,
                     ),
                   ],
                 ),
@@ -754,11 +760,11 @@ class _SearchResult {
 class _NoOrderView extends StatelessWidget {
   final VoidCallback onOpen;
   final bool submitting;
-  final bool isHotel;
+  final bool isRoom;
   const _NoOrderView(
       {required this.onOpen,
       required this.submitting,
-      this.isHotel = false});
+      this.isRoom = false});
 
   @override
   Widget build(BuildContext context) {
@@ -767,7 +773,7 @@ class _NoOrderView extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            isHotel
+            isRoom
                 ? Icons.king_bed_outlined
                 : Icons.receipt_long_rounded,
             size: 64,
@@ -775,7 +781,7 @@ class _NoOrderView extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            isHotel
+            isRoom
                 ? 'Aucun séjour en cours pour cette chambre'
                 : 'Aucune commande ouverte pour cette table',
             style: const TextStyle(color: AppColors.textSecondary),
@@ -789,10 +795,10 @@ class _NoOrderView extends StatelessWidget {
                     height: 16,
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: Colors.white))
-                : Icon(isHotel
+                : Icon(isRoom
                     ? Icons.login_rounded
                     : Icons.add_rounded),
-            label: Text(isHotel ? 'Check-in' : 'Ouvrir une commande'),
+            label: Text(isRoom ? 'Check-in' : 'Ouvrir une commande'),
           ),
         ],
       ),
@@ -1053,7 +1059,7 @@ class _BottomBar extends StatelessWidget {
   final bool submitting;
   final VoidCallback onKitchen;
   final VoidCallback onCheckout;
-  final bool isHotel;
+  final bool isRoom;
 
   const _BottomBar({
     required this.order,
@@ -1061,7 +1067,7 @@ class _BottomBar extends StatelessWidget {
     required this.submitting,
     required this.onKitchen,
     required this.onCheckout,
-    this.isHotel = false,
+    this.isRoom = false,
   });
 
   @override
@@ -1104,12 +1110,8 @@ class _BottomBar extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed:
                         submitting || order.items.isEmpty ? null : onKitchen,
-                    icon: Icon(isHotel
-                        ? Icons.cleaning_services_rounded
-                        : Icons.restaurant_rounded),
-                    label: Text(isHotel
-                        ? 'Cuisine / Housekeeping'
-                        : 'Envoyer en cuisine'),
+                    icon: const Icon(Icons.restaurant_rounded),
+                    label: const Text('Envoyer en cuisine'),
                   ),
                 ),
               if (!order.sentToKitchen && !order.isReady)
@@ -1126,10 +1128,10 @@ class _BottomBar extends StatelessWidget {
                           height: 16,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
-                      : Icon(isHotel
+                      : Icon(isRoom
                           ? Icons.logout_rounded
                           : Icons.point_of_sale_rounded),
-                  label: Text(isHotel ? 'Check-out' : 'Encaisser'),
+                  label: Text(isRoom ? 'Check-out' : 'Encaisser'),
                 ),
               ),
             ],
