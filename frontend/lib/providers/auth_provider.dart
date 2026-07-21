@@ -259,6 +259,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logout() async {
     await _repo.logout(explicit: true);
     await LicenseService.clearCache();
+    await LocalDbService.instance.clearAllCachedData();
     _ref.read(activeWarehouseProvider.notifier).clear();
     state = const AuthState(isAuthenticated: false, isLoading: false);
   }

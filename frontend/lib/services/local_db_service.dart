@@ -302,6 +302,33 @@ class LocalDbService {
 
   Database? get _safeDb => kIsWeb ? null : _db;
 
+  // ── Réinitialisation lors du logout ──────────────────────────────────────
+
+  /// Efface toutes les données sensibles du cache local.
+  /// Appelé à la déconnexion pour éviter les fuites de données entre comptes.
+  Future<void> clearAllCachedData() async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final table in [
+      'local_users',
+      'sale_payments',
+      'sale_items',
+      'sales',
+      'purchase_items',
+      'purchases',
+      'cashier_sessions',
+      'warehouses',
+      'products',
+      'customers',
+      'categories',
+      'sync_meta',
+    ]) {
+      batch.delete(table);
+    }
+    await batch.commit(noResult: true);
+  }
+
   // ── Produits ──────────────────────────────────────────────────────────────
 
   Future<void> upsertProducts(List<ProductModel> products) async {
