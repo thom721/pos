@@ -81,14 +81,15 @@ class _Hero extends StatelessWidget {
   }
 }
 
-class _HeroText extends StatelessWidget {
+class _HeroText extends ConsumerWidget {
   const _HeroText();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final w = MediaQuery.sizeOf(context).width;
     final titleSize = w >= 900 ? 46.0 : w >= 600 ? 34.0 : w >= 400 ? 26.0 : 22.0;
     final bodySize  = w >= 600 ? 16.0 : 14.0;
+    final pricing = ref.watch(pricingProvider).valueOrNull ?? PricingInfo.fallback;
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
@@ -165,11 +166,11 @@ class _HeroText extends StatelessWidget {
       const SizedBox(height: 32),
       // Stats row
       Row(children: [
-        _Stat('500+', 'Commerces actifs'),
+        _Stat(pricing.statBusinesses,      'Commerces actifs'),
         _divider(),
-        _Stat('10k+', 'Transactions/jour'),
+        _Stat(pricing.statTransactionsDay, 'Transactions/jour'),
         _divider(),
-        _Stat('99.9%', 'Disponibilité'),
+        _Stat(pricing.statUptime,          'Disponibilité'),
       ]),
     ]);
   }

@@ -83,6 +83,9 @@ class PlatformConfigUpdate(BaseModel):
     price_per_extra_caisse_usd: float | None = None
     price_per_extra_depot_htg:  float | None = None
     price_per_extra_depot_usd:  float | None = None
+    stat_businesses:       str | None = None
+    stat_transactions_day: str | None = None
+    stat_uptime:           str | None = None
 
 
 # ── Internal helpers ────────────────────────────────────────────────────────
@@ -757,6 +760,9 @@ def get_platform_config(
         "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
         "price_per_extra_depot_htg":  float(getattr(cfg, "price_per_extra_depot_htg", 500.0)),
         "price_per_extra_depot_usd":  float(getattr(cfg, "price_per_extra_depot_usd", 4.0)),
+        "stat_businesses":       getattr(cfg, "stat_businesses",       "500+"),
+        "stat_transactions_day": getattr(cfg, "stat_transactions_day", "10k+"),
+        "stat_uptime":           getattr(cfg, "stat_uptime",           "99.9%"),
         "created_at":        cfg.created_at.isoformat() if cfg.created_at else None,
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }
@@ -795,6 +801,9 @@ def update_platform_config(
         cfg.price_per_extra_depot_htg = body.price_per_extra_depot_htg
     if body.price_per_extra_depot_usd is not None:
         cfg.price_per_extra_depot_usd = body.price_per_extra_depot_usd
+    if body.stat_businesses       is not None: cfg.stat_businesses       = body.stat_businesses
+    if body.stat_transactions_day is not None: cfg.stat_transactions_day = body.stat_transactions_day
+    if body.stat_uptime           is not None: cfg.stat_uptime           = body.stat_uptime
 
     db.commit()
     db.refresh(cfg)
@@ -815,5 +824,8 @@ def update_platform_config(
         "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
         "price_per_extra_depot_htg":  float(getattr(cfg, "price_per_extra_depot_htg", 500.0)),
         "price_per_extra_depot_usd":  float(getattr(cfg, "price_per_extra_depot_usd", 4.0)),
+        "stat_businesses":       getattr(cfg, "stat_businesses",       "500+"),
+        "stat_transactions_day": getattr(cfg, "stat_transactions_day", "10k+"),
+        "stat_uptime":           getattr(cfg, "stat_uptime",           "99.9%"),
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }

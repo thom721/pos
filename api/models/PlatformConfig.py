@@ -35,3 +35,8 @@ class PlatformConfig(UUIDBase):
     smtp_user     = Column(String(200), nullable=False, default='')
     smtp_password = Column(String(255), nullable=False, default='')
     smtp_from     = Column(String(200), nullable=False, default='')
+
+    # Statistiques affichées sur la page d'accueil publique (éditables par le superadmin)
+    stat_businesses       = Column(String(30), nullable=False, default='500+')
+    stat_transactions_day = Column(String(30), nullable=False, default='10k+')
+    stat_uptime           = Column(String(30), nullable=False, default='99.9%')

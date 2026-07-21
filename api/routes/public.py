@@ -118,6 +118,9 @@ def get_pricing(db: Session = Depends(get_db)):
             "trial_days": 30,
             "price_per_extra_caisse_htg": 500.00,
             "price_per_extra_caisse_usd": 4.00,
+            "stat_businesses":       "500+",
+            "stat_transactions_day": "10k+",
+            "stat_uptime":           "99.9%",
         }
     return {
         "monthly_price_htg":         float(cfg.monthly_price_htg),
@@ -125,6 +128,9 @@ def get_pricing(db: Session = Depends(get_db)):
         "trial_days":                cfg.trial_days,
         "price_per_extra_caisse_htg": float(cfg.price_per_extra_caisse_htg),
         "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
+        "stat_businesses":       getattr(cfg, "stat_businesses",       "500+"),
+        "stat_transactions_day": getattr(cfg, "stat_transactions_day", "10k+"),
+        "stat_uptime":           getattr(cfg, "stat_uptime",           "99.9%"),
     }
 
 
