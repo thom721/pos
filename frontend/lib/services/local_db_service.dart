@@ -40,7 +40,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 12,
+      version: 13,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -133,6 +133,9 @@ class LocalDbService {
     if (oldVersion < 12) {
       try { await db.execute('ALTER TABLE sale_items ADD COLUMN returned_qty REAL NOT NULL DEFAULT 0'); } catch (_) {}
     }
+    if (oldVersion < 13) {
+      try { await db.execute('ALTER TABLE products ADD COLUMN warehouse_id TEXT'); } catch (_) {}
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -150,7 +153,8 @@ class LocalDbService {
         category_name  TEXT,
         image_url      TEXT,
         is_active      INTEGER NOT NULL DEFAULT 1,
-        synced         INTEGER NOT NULL DEFAULT 1
+        synced         INTEGER NOT NULL DEFAULT 1,
+        warehouse_id   TEXT
       )
     ''');
 
@@ -351,7 +355,8 @@ class LocalDbService {
           'category_name': p.category?.name,
           'image_url': p.imageUrl,
           'is_active': p.isActive ? 1 : 0,
-          'synced':    1,
+          'synced': 1,
+          'warehouse_id': p.warehouseId,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -442,6 +447,7 @@ class LocalDbService {
               )
             : null,
         imageUrl: row['image_url'] as String?,
+        warehouseId: row['warehouse_id'] as String?,
       );
 
   // ── Auth hors ligne ───────────────────────────────────────────────────────
