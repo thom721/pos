@@ -15,7 +15,9 @@ import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/services/offline_cache_service.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
+import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
+import 'package:pos_connect/data/repositories/warehouse_repository.dart';
 
 final _fmt =
     NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
@@ -301,10 +303,15 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
   }
 
   Future<void> _showForm([MenuItemModel? m]) async {
-    // Recharge les catégories au cas où elles auraient été créées/supprimées
+    // Recharge catégories + dépôts
+    List<WarehouseModel> warehouses = [];
     try {
-      final cats = await ProductRepository().getCategories();
-      if (mounted) setState(() => _categories = cats);
+      final results = await Future.wait([
+        ProductRepository().getCategories(),
+        WarehouseRepository().listWarehouses(),
+      ]);
+      if (mounted) setState(() => _categories = results[0] as List<CategoryModel>);
+      warehouses = results[1] as List<WarehouseModel>;
     } catch (_) {}
     if (!mounted) return;
     final nameCtrl  = TextEditingController(text: m?.name ?? '');
@@ -312,6 +319,7 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
     final priceCtrl = TextEditingController(
         text: m != null ? m.price.toStringAsFixed(2) : '');
     String? selectedCatId = m?.categoryId;
+    String? selectedWarehouseId = m?.warehouseId;
     bool available = m?.available ?? true;
     bool sendToKitchen = m?.sendToKitchen ?? true;
 
@@ -415,6 +423,39 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
                       ],
                       onChanged: (v) => setInner(() => selectedCatId = v),
                     ),
+                    if (warehouses.length > 1) ...[
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String?>(
+                        initialValue: selectedWarehouseId,
+                        decoration: const InputDecoration(
+                            labelText: 'Dépôt (optionnel)',
+                            prefixIcon: Icon(Icons.warehouse_outlined, size: 18)),
+                        items: [
+                          const DropdownMenuItem(
+                              value: null, child: Text('— Tous les dépôts —')),
+                          ...warehouses.map((w) => DropdownMenuItem(
+                              value: w.id,
+                              child: Row(
+                                children: [
+                                  Text(w.name),
+                                  if (w.isDefault) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text('défaut',
+                                          style: TextStyle(fontSize: 10, color: AppColors.primary)),
+                                    ),
+                                  ],
+                                ],
+                              ))),
+                        ],
+                        onChanged: (v) => setInner(() => selectedWarehouseId = v),
+                      ),
+                    ],
                     const Divider(height: 24),
                     // ── Variantes ─────────────────────────────────────────
                     Row(
@@ -780,6 +821,7 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
                         sendToKitchen: sendToKitchen,
                         variants:
                             variantsPayload.isEmpty ? null : variantsPayload,
+                        warehouseId: selectedWarehouseId,
                       );
                     } else {
                       await _repo.updateMenuItem(m.id,
@@ -792,6 +834,7 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
                         available: available,
                         sendToKitchen: sendToKitchen,
                         variants: variantsPayload,
+                        warehouseId: selectedWarehouseId,
                       );
                     }
                     _load();

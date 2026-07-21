@@ -194,6 +194,7 @@ class MenuItemCreate(BaseModel):
     available: bool = True
     send_to_kitchen: bool = True
     variants: Optional[dict] = None
+    warehouse_id: Optional[str] = None
 
 class MenuItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -204,6 +205,7 @@ class MenuItemUpdate(BaseModel):
     available: Optional[bool] = None
     send_to_kitchen: Optional[bool] = None
     variants: Optional[dict] = None
+    warehouse_id: Optional[str] = None
 
 
 # ── Serveurs (waiters) ────────────────────────────────────────────────────────
@@ -1011,6 +1013,7 @@ def _menu_item_dict(m: MenuItem) -> dict:
         'send_to_kitchen': bool(m.send_to_kitchen) if m.send_to_kitchen is not None else True,
         'image_url': m.image_url,
         'variants': m.variants or [],
+        'warehouse_id': m.warehouse_id,
     }
 
 
@@ -1046,7 +1049,7 @@ def create_menu_item(
     m = MenuItem(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
-        warehouse_id=_resolve_wh(db, current_user),
+        warehouse_id=data.warehouse_id or _resolve_wh(db, current_user),
         name=data.name,
         description=data.description,
         price=data.price,
@@ -1069,11 +1072,9 @@ def update_menu_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
 ):
-    wh_id = _resolve_wh(db, current_user)
     m = db.query(MenuItem).filter(
         MenuItem.id == item_id,
         MenuItem.tenant_id == current_user.tenant_id,
-        or_(MenuItem.warehouse_id == wh_id, MenuItem.warehouse_id.is_(None)),
     ).first()
     if not m:
         raise HTTPException(404, "Plat introuvable")
@@ -1093,6 +1094,8 @@ def update_menu_item(
         m.send_to_kitchen = data.send_to_kitchen
     if 'variants' in data.model_fields_set:
         m.variants = data.variants if data.variants else None
+    if 'warehouse_id' in data.model_fields_set and data.warehouse_id is not None:
+        m.warehouse_id = data.warehouse_id
     db.commit()
     db.refresh(m)
     return _menu_item_dict(m)

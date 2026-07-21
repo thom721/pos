@@ -10,6 +10,7 @@ class MenuItemModel {
   final bool sendToKitchen;
   final String? imageUrl;
   final Map<String, dynamic>? variantsData;
+  final String? warehouseId;
 
   const MenuItemModel({
     required this.id,
@@ -23,6 +24,7 @@ class MenuItemModel {
     this.sendToKitchen = true,
     this.imageUrl,
     this.variantsData,
+    this.warehouseId,
   });
 
   List<String> get extraColumns =>
@@ -55,6 +57,7 @@ class MenuItemModel {
       sendToKitchen:  j['send_to_kitchen'] as bool? ?? true,
       imageUrl:       j['image_url'] as String?,
       variantsData: vd,
+      warehouseId:    j['warehouse_id'] as String?,
     );
   }
 }
