@@ -86,6 +86,10 @@ class _HeroText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.sizeOf(context).width;
+    final titleSize = w >= 900 ? 46.0 : w >= 600 ? 34.0 : w >= 400 ? 26.0 : 22.0;
+    final bodySize  = w >= 600 ? 16.0 : 14.0;
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -103,9 +107,9 @@ class _HeroText extends StatelessWidget {
       ),
       const SizedBox(height: 24),
       Text(
-        'Gérez votre commerce.\nPartout. Toujours.',
+        'Gérez votre Business.\nPartout. Toujours.',
         style: GoogleFonts.inter(
-          fontSize: 46, fontWeight: FontWeight.w800,
+          fontSize: titleSize, fontWeight: FontWeight.w800,
           color: _white, height: 1.15, letterSpacing: -0.5,
         ),
       ),
@@ -121,7 +125,7 @@ class _HeroText extends StatelessWidget {
       const SizedBox(height: 20),
       Text(
         'La caisse tout-en-un adaptée à votre secteur — inventaire, ventes, crédits clients, gestion RH & paie, statistiques avancées et synchronisation cloud.',
-        style: GoogleFonts.inter(fontSize: 16, color: const Color(0xFFB0C4D8), height: 1.6),
+        style: GoogleFonts.inter(fontSize: bodySize, color: const Color(0xFFB0C4D8), height: 1.6),
       ),
       const SizedBox(height: 32),
       Wrap(spacing: 14, runSpacing: 12, children: [
