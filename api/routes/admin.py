@@ -86,6 +86,12 @@ class PlatformConfigUpdate(BaseModel):
     stat_businesses:       str | None = None
     stat_transactions_day: str | None = None
     stat_uptime:           str | None = None
+    support_address:       str | None = None
+    smtp_host:             str | None = None
+    smtp_port:             int | None = None
+    smtp_user:             str | None = None
+    smtp_password:         str | None = None
+    smtp_from:             str | None = None
 
 
 # ── Internal helpers ────────────────────────────────────────────────────────
@@ -763,6 +769,12 @@ def get_platform_config(
         "stat_businesses":       getattr(cfg, "stat_businesses",       "500+"),
         "stat_transactions_day": getattr(cfg, "stat_transactions_day", "10k+"),
         "stat_uptime":           getattr(cfg, "stat_uptime",           "99.9%"),
+        "support_address":       getattr(cfg, "support_address",       ""),
+        "smtp_host":             getattr(cfg, "smtp_host",             ""),
+        "smtp_port":             getattr(cfg, "smtp_port",             587),
+        "smtp_user":             getattr(cfg, "smtp_user",             ""),
+        "smtp_password":         getattr(cfg, "smtp_password",         ""),
+        "smtp_from":             getattr(cfg, "smtp_from",             ""),
         "created_at":        cfg.created_at.isoformat() if cfg.created_at else None,
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }
@@ -804,6 +816,12 @@ def update_platform_config(
     if body.stat_businesses       is not None: cfg.stat_businesses       = body.stat_businesses
     if body.stat_transactions_day is not None: cfg.stat_transactions_day = body.stat_transactions_day
     if body.stat_uptime           is not None: cfg.stat_uptime           = body.stat_uptime
+    if body.support_address       is not None: cfg.support_address       = body.support_address
+    if body.smtp_host             is not None: cfg.smtp_host             = body.smtp_host
+    if body.smtp_port             is not None: cfg.smtp_port             = body.smtp_port
+    if body.smtp_user             is not None: cfg.smtp_user             = body.smtp_user
+    if body.smtp_password         is not None: cfg.smtp_password         = body.smtp_password
+    if body.smtp_from             is not None: cfg.smtp_from             = body.smtp_from
 
     db.commit()
     db.refresh(cfg)
@@ -827,5 +845,11 @@ def update_platform_config(
         "stat_businesses":       getattr(cfg, "stat_businesses",       "500+"),
         "stat_transactions_day": getattr(cfg, "stat_transactions_day", "10k+"),
         "stat_uptime":           getattr(cfg, "stat_uptime",           "99.9%"),
+        "support_address":       getattr(cfg, "support_address",       ""),
+        "smtp_host":             getattr(cfg, "smtp_host",             ""),
+        "smtp_port":             getattr(cfg, "smtp_port",             587),
+        "smtp_user":             getattr(cfg, "smtp_user",             ""),
+        "smtp_password":         getattr(cfg, "smtp_password",         ""),
+        "smtp_from":             getattr(cfg, "smtp_from",             ""),
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }

@@ -1109,6 +1109,15 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   final _trialDaysCtrl         = TextEditingController();
   final _supportEmailCtrl      = TextEditingController();
   final _supportWaCtrl         = TextEditingController();
+  final _supportAddressCtrl    = TextEditingController();
+  final _statBusinessesCtrl    = TextEditingController();
+  final _statTransactionsCtrl  = TextEditingController();
+  final _statUptimeCtrl        = TextEditingController();
+  final _smtpHostCtrl          = TextEditingController();
+  final _smtpPortCtrl          = TextEditingController();
+  final _smtpUserCtrl          = TextEditingController();
+  final _smtpPasswordCtrl      = TextEditingController();
+  final _smtpFromCtrl          = TextEditingController();
 
   String _moncashMode = 'manual';
   String _natcashMode = 'manual';
@@ -1116,18 +1125,27 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
 
   void _populateFrom(Map<String, dynamic> cfg) {
     if (_loaded) return;
-    _moncashCtrl.text        = cfg['moncash_number']?.toString()              ?? '';
-    _natcashCtrl.text        = cfg['natcash_number']?.toString()              ?? '';
-    _priceHtgCtrl.text       = cfg['monthly_price_htg']?.toString()          ?? '1500';
-    _priceUsdCtrl.text       = cfg['monthly_price_usd']?.toString()          ?? '12';
-    _extraCaisseHtgCtrl.text = cfg['price_per_extra_caisse_htg']?.toString() ?? '500';
-    _extraCaisseUsdCtrl.text = cfg['price_per_extra_caisse_usd']?.toString() ?? '4';
-    _extraDepotHtgCtrl.text  = cfg['price_per_extra_depot_htg']?.toString()  ?? '500';
-    _extraDepotUsdCtrl.text  = cfg['price_per_extra_depot_usd']?.toString()  ?? '4';
-    _stripePriceCtrl.text    = cfg['stripe_price_id']?.toString()            ?? '';
-    _trialDaysCtrl.text      = cfg['trial_days']?.toString()                 ?? '30';
-    _supportEmailCtrl.text   = cfg['support_email']?.toString()              ?? '';
-    _supportWaCtrl.text      = cfg['support_whatsapp']?.toString()           ?? '';
+    _moncashCtrl.text           = cfg['moncash_number']?.toString()              ?? '';
+    _natcashCtrl.text           = cfg['natcash_number']?.toString()              ?? '';
+    _priceHtgCtrl.text          = cfg['monthly_price_htg']?.toString()          ?? '1500';
+    _priceUsdCtrl.text          = cfg['monthly_price_usd']?.toString()          ?? '12';
+    _extraCaisseHtgCtrl.text    = cfg['price_per_extra_caisse_htg']?.toString() ?? '500';
+    _extraCaisseUsdCtrl.text    = cfg['price_per_extra_caisse_usd']?.toString() ?? '4';
+    _extraDepotHtgCtrl.text     = cfg['price_per_extra_depot_htg']?.toString()  ?? '500';
+    _extraDepotUsdCtrl.text     = cfg['price_per_extra_depot_usd']?.toString()  ?? '4';
+    _stripePriceCtrl.text       = cfg['stripe_price_id']?.toString()            ?? '';
+    _trialDaysCtrl.text         = cfg['trial_days']?.toString()                 ?? '30';
+    _supportEmailCtrl.text      = cfg['support_email']?.toString()              ?? '';
+    _supportWaCtrl.text         = cfg['support_whatsapp']?.toString()           ?? '';
+    _supportAddressCtrl.text    = cfg['support_address']?.toString()            ?? '';
+    _statBusinessesCtrl.text    = cfg['stat_businesses']?.toString()            ?? '500+';
+    _statTransactionsCtrl.text  = cfg['stat_transactions_day']?.toString()      ?? '10k+';
+    _statUptimeCtrl.text        = cfg['stat_uptime']?.toString()                ?? '99.9%';
+    _smtpHostCtrl.text          = cfg['smtp_host']?.toString()                  ?? '';
+    _smtpPortCtrl.text          = cfg['smtp_port']?.toString()                  ?? '587';
+    _smtpUserCtrl.text          = cfg['smtp_user']?.toString()                  ?? '';
+    _smtpPasswordCtrl.text      = cfg['smtp_password']?.toString()              ?? '';
+    _smtpFromCtrl.text          = cfg['smtp_from']?.toString()                  ?? '';
     _moncashMode = cfg['moncash_mode']?.toString() == 'api' ? 'api' : 'manual';
     _natcashMode = cfg['natcash_mode']?.toString() == 'api' ? 'api' : 'manual';
     _loaded = true;
@@ -1147,6 +1165,15 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _trialDaysCtrl.dispose();
     _supportEmailCtrl.dispose();
     _supportWaCtrl.dispose();
+    _supportAddressCtrl.dispose();
+    _statBusinessesCtrl.dispose();
+    _statTransactionsCtrl.dispose();
+    _statUptimeCtrl.dispose();
+    _smtpHostCtrl.dispose();
+    _smtpPortCtrl.dispose();
+    _smtpUserCtrl.dispose();
+    _smtpPasswordCtrl.dispose();
+    _smtpFromCtrl.dispose();
     super.dispose();
   }
 
@@ -1168,6 +1195,15 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
         'trial_days':                  int.tryParse(_trialDaysCtrl.text) ?? 30,
         'support_email':               _supportEmailCtrl.text.trim(),
         'support_whatsapp':            _supportWaCtrl.text.trim(),
+        'support_address':             _supportAddressCtrl.text.trim(),
+        'stat_businesses':             _statBusinessesCtrl.text.trim(),
+        'stat_transactions_day':       _statTransactionsCtrl.text.trim(),
+        'stat_uptime':                 _statUptimeCtrl.text.trim(),
+        'smtp_host':                   _smtpHostCtrl.text.trim(),
+        'smtp_port':                   int.tryParse(_smtpPortCtrl.text) ?? 587,
+        'smtp_user':                   _smtpUserCtrl.text.trim(),
+        'smtp_password':               _smtpPasswordCtrl.text.trim(),
+        'smtp_from':                   _smtpFromCtrl.text.trim(),
         'moncash_mode':                _moncashMode,
         'natcash_mode':                _natcashMode,
       });
@@ -1360,6 +1396,79 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                     controller: _supportWaCtrl,
                     decoration:
                         const InputDecoration(labelText: 'WhatsApp support'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _supportAddressCtrl,
+                    decoration:
+                        const InputDecoration(labelText: 'Adresse physique'),
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Stats page d\'accueil',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _statBusinessesCtrl,
+                        decoration: const InputDecoration(labelText: 'Boutiques (ex: 500+)'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _statTransactionsCtrl,
+                        decoration: const InputDecoration(labelText: 'Transactions/jour (ex: 10k+)'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _statUptimeCtrl,
+                        decoration: const InputDecoration(labelText: 'Disponibilité (ex: 99.9%)'),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 24),
+                  Text('Configuration email (SMTP)',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _smtpHostCtrl,
+                        decoration: const InputDecoration(labelText: 'Serveur SMTP'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _smtpPortCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Port'),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _smtpUserCtrl,
+                    decoration: const InputDecoration(labelText: 'Utilisateur SMTP'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _smtpPasswordCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Mot de passe SMTP',
+                      helperText: 'Laissez vide pour conserver le mot de passe actuel',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _smtpFromCtrl,
+                    decoration: const InputDecoration(
+                        labelText: 'Expéditeur (ex: noreply@mondomaine.com)'),
                   ),
                   const SizedBox(height: 32),
                   ElevatedButton(
