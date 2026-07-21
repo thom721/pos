@@ -5,7 +5,8 @@ from .base import UUIDBase
 
 class Product(UUIDBase):
     __tablename__ = "products"
-    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
+    tenant_id    = Column(String(36), ForeignKey('tenants.id'),    nullable=True, index=True)
+    warehouse_id = Column(String(36), ForeignKey('warehouses.id'), nullable=True, index=True)
 
     category_id = Column(String(36), ForeignKey("categories.id"), nullable=False)
     supplier_id = Column(String(36), ForeignKey("suppliers.id"), nullable=True)

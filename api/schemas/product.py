@@ -7,13 +7,14 @@ from .category import CategoryRead
 # ===== Product Schemas =====
 class ProductBase(BaseModel):
     name: str
-    description: Optional[str] = None 
+    description: Optional[str] = None
     purchase_price: float
     sale_price: float
     alert_stock: int
-    barcode: Optional[str] = None   
-    supplier_id: Optional[str] = None  # FK vers Supplier
-    category_id: Optional[str]  # FK vers Category
+    barcode: Optional[str] = None
+    supplier_id: Optional[str] = None
+    category_id: Optional[str]
+    warehouse_id: Optional[str] = None
 
 
 class ProductCreate(ProductBase):
@@ -37,6 +38,7 @@ class ProductUpdate(BaseModel):
     barcode: Optional[str] = None
     supplier_id: Optional[str] = None
     category_id: Optional[str]
+    warehouse_id: Optional[str] = None
  
 
 class ProductSaleItem(BaseModel):
