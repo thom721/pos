@@ -97,6 +97,9 @@ Le backend lit sa configuration dans cet ordre de priorité :
 
 - [x] CRUD Catégories
 - [x] CRUD Produits (barcode, prix achat/vente, seuil alerte, images)
+- [x] `warehouse_id` optionnel sur les produits — backend (FK + index), schemas Pydantic, migration `h8i9j0k1l2m3`
+- [x] Flutter : champ `warehouseId` dans `ProductModel` (fromJson/toJson) + sélecteur dépôt dans le formulaire produit (affiché uniquement si le tenant a plusieurs dépôts)
+- [x] SQLite v13 : colonne `warehouse_id` ajoutée à la table `products` locale (upsert + lecture)
 - [x] CRUD Fournisseurs
 - [x] Recherche produits avec pagination (caisse)
 - [x] Images produits servies via l'API, URL dynamique (`dio.options.baseUrl`)
@@ -206,8 +209,9 @@ Le champ `business_type` de `AppConfig` / `AppSettings` pilote la navigation :
 
 | `business_type` | Navigation principale | Bottom bar Android |
 |---|---|---|
-| `commerce` (défaut) | Caisse, Ventes, Produits, Clients, Dettes, Stock | Caisse, Ventes, Produits, Stock |
-| `restaurant` | Tables, Cuisine, Ventes, Produits, Clients, Dettes | Tables, Cuisine, Ventes, Produits |
+| `commerce` (défaut) | Caisse, Ventes, **Factures / Devis**, Produits, Clients, Dettes, Stock | Caisse, Ventes, Produits, Stock |
+| `restaurant` | Tables, Cuisine, Ventes, **Factures / Devis**, Produits, Clients, Dettes | Tables, Cuisine, Ventes, Produits |
+| `hotel` | Chambres, Transactions, **Factures / Devis**, Bar & Produits, Clients, Dettes | Chambres, Transactions, Produits |
 
 Implémenté via `_resolveMainNav(businessType)` et `_resolveAndroidBottom(businessType)` dans `AppShell`.
 
@@ -286,6 +290,7 @@ Implémenté via `_resolveMainNav(businessType)` et `_resolveAndroidBottom(busin
 - [x] Évite la contamination de données entre comptes ou entre dépôts lors d'un changement de session
 - [x] Sync utilisateurs offline filtrée par `warehouse_id` : `GET /api/users/offline-sync?warehouse_id=`
 - [x] `users.offline_hash` en DB pour auth offline sans exposer le hash bcrypt
+- [x] Version SQLite **13** : colonne `warehouse_id TEXT` ajoutée à la table `products` (migration `_onUpgrade` + `_createSchema` + `upsertProducts` + `_productFromRow`)
 
 ### 3.19 Préservation des deep links (router)
 
@@ -304,6 +309,20 @@ Implémenté via `_resolveMainNav(businessType)` et `_resolveAndroidBottom(busin
 - [x] Texte description responsive : 16px (≥600px) / 14px (<600px)
 - [x] "Gérez votre Business." (remplace "commerce")
 
+### 3.22 Factures et Devis (Proformas)
+
+- [x] Modèle `Invoice` + `InvoiceItem` : référence auto, client, entête, TVA, remise, statut (`draft`/`sent`/`paid`/`cancelled`), `tenant_id`, `warehouse_id`
+- [x] Modèle `Proforma` + `ProformaItem` : même structure qu'Invoice — document non contractuel / devis
+- [x] `warehouse_id` optionnel sur les 4 tables (Invoice, InvoiceItem, Proforma, ProformaItem) — propagé automatiquement des entêtes aux lignes à la création et à la mise à jour
+- [x] Migration `g7h8i9j0k1l2` — ajout `warehouse_id` sur `invoices`, `invoice_items`, `proformas`, `proforma_items` avec backfill
+- [x] API CRUD `/api/invoices/` et `/api/proformas/` — création, lecture, mise à jour, suppression
+- [x] Accès mobile caissier : route `/events` ouverte avec la permission `invoicesRead` (était `reportsReadAll`)
+- [x] Entrée "Factures / Devis" ajoutée au menu de navigation pour tous les `business_type` (commerce, restaurant, hôtel)
+- [x] PDF A4 Invoice : en-tête business, numéro de facture, section client, tableau articles (QTÉ / PRIX U. / TOTAL), totaux (HT, TVA, TTC), notes, pied de page
+- [x] PDF A4 Proforma : même structure, badge bleu "DOCUMENT NON CONTRACTUEL — PROFORMA"
+- [x] Bouton "Imprimer (A4)" avec spinner dans les dialogs aperçu Invoice et Proforma
+- [x] Boutons de création conditionnels : `invoicesCreate` pour les factures, `proformasCreate` pour les devis
+
 ### 3.21 Mode Hôtel (en développement)
 
 - [x] `room_attributes` table : attributs clé/valeur sur une chambre (type de lit, vue, étage, etc.) avec `warehouse_id`
@@ -320,7 +339,7 @@ tenants         ← gestionnaire SaaS
   │
   ├── users           categories      suppliers
   │     │                │               │
-  │     │           products ────────────┘
+  │     │           products ────────────┘  ← warehouse_id optionnel
   │     │               │
   │     ├── sales ──────┤
   │     │     ├── sale_items
@@ -332,6 +351,12 @@ tenants         ← gestionnaire SaaS
   │     │     ├── purchase_receipts → purchase_receipt_items
   │     │     ├── payments (reference_type=PURCHASE)
   │     │     └── debts   (reference_type=PURCHASE)
+  │     │
+  │     ├── invoices ── warehouse_id
+  │     │     └── invoice_items ── warehouse_id (hérité)
+  │     │
+  │     ├── proformas ── warehouse_id
+  │     │     └── proforma_items ── warehouse_id (hérité)
   │     │
   │     └── restaurant_tables ──── waiter_id (FK users)
   │           └── restaurant_orders ── sale_id (FK sales)
@@ -361,6 +386,9 @@ room_attributes   ← attributs clé/valeur des chambres hôtel (FK restaurant_t
 - `users.is_active` (bool, défaut `true`) — désactiver un utilisateur sans le supprimer
 - `users.offline_hash` (string) — hash dédié à l'auth offline
 - `sale_items.label` (string) — nom du plat (restaurant) conservé dans l'historique
+- `invoices.warehouse_id`, `invoice_items.warehouse_id` — dépôt rattaché à la facture (migration `g7h8i9j0k1l2`)
+- `proformas.warehouse_id`, `proforma_items.warehouse_id` — dépôt rattaché au devis/proforma (migration `g7h8i9j0k1l2`)
+- `products.warehouse_id` — dépôt optionnel par produit (migration `h8i9j0k1l2m3`)
 
 ---
 
@@ -406,6 +434,9 @@ room_attributes   ← attributs clé/valeur des chambres hôtel (FK restaurant_t
 | F18 | Résolu | Menu hamburger absent site public mobile → `showModalBottomSheet` + 3 breakpoints |
 | F19 | Résolu | Texte héro taille fixe → responsive (46/34/26/22px) + "Business" |
 | F20 | Résolu | Cache local contaminé au changement de compte → invalidation tenant/warehouse dans `syncAll()` |
+| F21 | Résolu | `warehouse_id` produit absent de SQLite → perte silencieuse (sqflite ignore les clés inconnues) → v13 : schema + upsert + reader mis à jour |
+| F22 | Résolu | Factures/Devis inaccessibles aux caissiers → permission `reportsReadAll` → `invoicesRead`, nav ajoutée à tous les menus |
+| F23 | Résolu | Dialog Proforma sans impression → `_buildProformaPdf` A4 ajouté + `_ProformaPreviewDialog` converti en `StatefulWidget` |
 
 ---
 
@@ -439,6 +470,8 @@ Migrations récentes :
 - `x8y9z0a1b2c3` — table `room_attributes` (mode hôtel)
 - `y9z0a1b2c3d4` — `app_config.hotel_checkin_fields`, `room_attributes.warehouse_id`
 - `z0a1b2c3d4e5` — `restaurant_tables.price` (tarif nuitée chambre)
+- `g7h8i9j0k1l2` — `warehouse_id` sur `invoices`, `invoice_items`, `proformas`, `proforma_items` (avec backfill)
+- `h8i9j0k1l2m3` — `warehouse_id` sur `products`
 
 ### 6.3 Client (autre machine)
 
@@ -506,11 +539,12 @@ SECRET_KEY=change_me_use_openssl_rand_hex_32
 | Haute | Intégration API MonCash / NatCash (mode `api_auto`) |
 | Haute | Portail self-service tenant (upgrade plan, voir caisses) |
 | Haute | Activation/désactivation utilisateur UI (utiliser `users.is_active`) |
-| Moyenne | Impression tickets thermiques (`printing` package) |
+| Moyenne | Impression tickets thermiques (reçus de ventes, mode restaurant — `printing` package) |
 | Moyenne | Dashboard statistiques complet (ventes/jour, top produits) |
 | Moyenne | Page de configuration URL serveur sur web (remplace le wizard) |
 | Moyenne | Factures récapitulatives mensuelles par tenant |
 | Moyenne | Variantes de plats UI (exploiter `menu_items.variants` JSON) |
+| Moyenne | Envoi facture/proforma par email depuis l'app |
 | Basse | Mode inventaire restaurant (recettes, coûts matières) |
 | Basse | Réservations de tables / chambres (heure, nom client) |
 | Basse | Tests unitaires backend (pytest) |

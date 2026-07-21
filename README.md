@@ -21,11 +21,14 @@ Architecture **SaaS multi-tenant** avec support des déploiements **self-hosted*
 ## Fonctionnalités
 
 ### Commerce (tous types)
-- Catalogue produits (catégories, fournisseurs, barcode, images)
+- Catalogue produits (catégories, fournisseurs, barcode, images) — `warehouse_id` optionnel par produit
 - Caisse POS : ventes, retours, paiements partiels, dettes automatiques
 - Achats fournisseurs avec réceptions partielles
 - Stock calculé en temps réel (StockMovement)
 - Gestion clients et dettes
+- **Factures et Devis (Proformas)** : création, impression PDF A4, accès caissier avec permission `invoicesRead`
+  - `warehouse_id` optionnel propagé automatiquement des entêtes aux lignes
+  - Navigation "Factures / Devis" disponible pour tous les types de commerce (commerce, restaurant, hôtel)
 
 ### Restaurant
 - Plan de salle : tables avec statut (libre / occupée / réservée)
