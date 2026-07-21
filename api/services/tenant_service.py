@@ -192,6 +192,14 @@ def cloud_login(db: Session, email: str, password: str,
             db.refresh(register)
             register_id = register.id
 
+    # Avertissement plan expirant (≤ 5 jours avant la fin)
+    from api.core.tenant import plan_warning, _check_tenant_access
+    _check_tenant_access(tenant, db, hard_block=False)  # met à jour le statut
+    warning = plan_warning(tenant)
+    if warning and user.email == tenant.owner_email:
+        from api.utils.email import maybe_send_warning
+        maybe_send_warning(tenant, db)
+
     token_data = {
         "sub": user.username,
         "tenant_id": tenant.id,
@@ -218,4 +226,5 @@ def cloud_login(db: Session, email: str, password: str,
             "warehouse_id": user.warehouse_id,
         },
         "register_id": register_id,
+        "plan_warning": warning,
     }

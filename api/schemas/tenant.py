@@ -36,3 +36,4 @@ class CloudToken(BaseModel):
     tenant: TenantRead
     user: dict
     register_id: Optional[str] = None
+    plan_warning: Optional[dict] = None
