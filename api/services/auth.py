@@ -66,8 +66,11 @@ class Auth:
             raise HTTPException(status_code=500, detail=str(e))
 
     def authenticate_by_email(self, email: str, password: str):
-        """Used by cloud login (email is the global unique identifier)."""
+        """Used by cloud login — accepts email or username."""
         user = self.db.query(Out).filter(Out.email == email).first()
+        # Fallback: accept username (tenant users may have no email set)
+        if user is None:
+            user = self.db.query(Out).filter(Out.username == email).first()
         if not user or not self.verify_password(password, user.password):
             return None
         return user
