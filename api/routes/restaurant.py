@@ -250,8 +250,9 @@ def list_tables(
                 RestaurantTable.warehouse_id.is_(None),
             ))
     # Accès total (warehouse_id null/vide) sans filtre client → toutes les chambres
-    # Un serveur (cashier) ne voit que ses tables assignées
-    if not _is_manager(current_user):
+    # Un serveur (rôle 'serveur') ne voit que ses tables assignées.
+    # Un cashier ou admin voit toutes les tables.
+    if 'serveur' in (current_user.roles or []):
         q = q.filter(RestaurantTable.waiter_id == current_user.id)
     return [_table_dict(t) for t in q.order_by(RestaurantTable.name).all()]
 
