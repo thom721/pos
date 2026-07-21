@@ -24,13 +24,17 @@ class BluetoothPrintService {
 
   Future<bool> connect(String mac) async {
     if (mac.isEmpty) return false;
-    // 3 tentatives — certaines imprimantes BT répondent lentement au premier appel
+    // Déconnecter toute session fantôme avant de reconnecter
+    try { await PrintBluetoothThermal.disconnect; } catch (_) {}
+    await Future.delayed(const Duration(milliseconds: 400));
+    // 3 tentatives — certaines imprimantes BT répondent lentement
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
-        final ok = await PrintBluetoothThermal.connect(macPrinterAddress: mac);
+        final ok = await PrintBluetoothThermal.connect(macPrinterAddress: mac)
+            .timeout(const Duration(seconds: 8), onTimeout: () => false);
         if (ok) return true;
       } catch (_) {}
-      if (attempt < 2) await Future.delayed(const Duration(milliseconds: 800));
+      if (attempt < 2) await Future.delayed(const Duration(milliseconds: 1000));
     }
     return false;
   }
