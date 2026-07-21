@@ -29,18 +29,26 @@ Architecture **SaaS multi-tenant** avec support des déploiements **self-hosted*
 
 ### Restaurant
 - Plan de salle : tables avec statut (libre / occupée / réservée)
-- Assignation serveur à une ou plusieurs tables
+- Assignation serveur à une ou plusieurs tables — caissiers voient toutes les tables
 - Prise de commande par table : recherche plats, notes par article
+- Plats du menu avec variantes de prix et flag `send_to_kitchen`
+- Sélecteur de dépôt dans le modal plat (affiché si plusieurs dépôts)
 - Envoi en cuisine, vue cuisine temps réel
 - Encaissement avec couverts, remise et pourboire
 - Reçu détaillé à la fermeture de table
 
+### Hôtel (en développement)
+- Chambres avec tarif nuitée (`restaurant_tables.price`)
+- Attributs personnalisés par chambre (`room_attributes` : clé/valeur)
+- Champs check-in configurables (`app_config.hotel_checkin_fields`)
+
 ### Administration SaaS
 - Multi-tenant : shared (données sur posconnect.ht) ou self-hosted (données chez le client)
-- Panel admin : créer/modifier tenants, configurer plans, numéros de paiement
+- Panel admin : créer/modifier tenants, configurer plans, numéros de paiement, adresse support
 - Facturation : essai gratuit → grace period → suspendu → actif
 - Synchronisation cloud bidirectionnelle (catalogue) + push (transactions)
 - Cache de licence offline Ed25519 (7 jours sans internet)
+- Cache SQLite local avec invalidation automatique au changement de tenant/warehouse
 
 ---
 
@@ -158,11 +166,17 @@ pos_api/
 | Méthode | URL | Description |
 |---------|-----|-------------|
 | GET | `/api/restaurant/waiters/` | Liste serveurs disponibles |
-| GET/POST | `/api/restaurant/tables/` | Tables (filtrées par rôle) |
+| GET/POST | `/api/restaurant/tables/` | Tables (filtrées par rôle `serveur` uniquement) |
 | PUT | `/api/restaurant/tables/{id}/assign` | Assigner un serveur |
+| GET/POST | `/api/restaurant/menu/` | Plats du menu (tenant-wide, non filtrés par dépôt) |
 | GET | `/api/restaurant/orders/table/{id}` | Commande active d'une table |
 | POST | `/api/restaurant/orders/` | Ouvrir commande (avec couverts) |
 | POST | `/api/restaurant/orders/{id}/checkout` | Encaisser (remise + pourboire) |
+
+### Utilisateurs
+| Méthode | URL | Description |
+|---------|-----|-------------|
+| GET | `/api/users/offline-sync` | Utilisateurs pour auth offline (filtré par `warehouse_id`) |
 
 ### SaaS & Billing
 | Méthode | URL | Description |
@@ -209,6 +223,12 @@ python seed_user.py
 
 Dans l'interface Paramètres > Type de commerce → choisir "Restaurant".
 La navigation bascule automatiquement vers : Tables · Cuisine · Ventes · Produits.
+
+### Site public (pages marketing)
+
+Routes publiques accessibles sans auth : `/home`, `/contact`, `/terms`, `/privacy`.
+Navigation responsive avec menu hamburger sur mobile (< 860px).
+Un refresh navigateur sur une page protégée restaure l'URL d'origine après auth.
 
 ---
 

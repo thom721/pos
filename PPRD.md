@@ -1,7 +1,7 @@
 # PPRD — Product & Project Requirements Document
 # POS Connect — Système de Caisse Multi-Plateforme
 
-**Date :** 2026-07-18
+**Date :** 2026-07-21
 **Version :** 0.9 (en développement actif)
 **Stack backend :** Python 3.11 · FastAPI · SQLAlchemy · MySQL / SQLite · JWT
 **Stack frontend :** Flutter 3.x · Riverpod · go_router · Dio · SharedPreferences
@@ -189,7 +189,15 @@ Le backend lit sa configuration dans cet ordre de priorité :
 - [x] Picker de couverts à l'ouverture d'une commande
 - [x] Champ pourboire dans le dialog d'encaissement (total recalculé en temps réel)
 - [x] Reçu détaillé : table, couverts, sous-total, remise, pourboire, monnaie à rendre
-- [x] Filtrage : managers voient toutes les tables, caissiers/serveurs voient uniquement les leurs
+- [x] Filtrage tables : admins / managers / caissiers voient **toutes les tables** ; seuls les utilisateurs avec rôle `serveur` sont filtrés à leurs propres tables
+- [x] Plats (menu items) partagés à l'échelle du tenant — non filtrés par dépôt
+- [x] Modal Nouveau/Modifier le plat : sélecteur de dépôt affiché uniquement si le tenant possède plusieurs dépôts
+- [x] `menu_items.variants` (JSON) — variantes de prix par taille / option
+- [x] `menu_items.send_to_kitchen` (bool, défaut `true`) — contrôle si l'article passe en vue cuisine
+- [x] `restaurant_order_items.menu_item_id` — lien direct au plat (product_id maintenant nullable)
+- [x] `modifier_groups` liés aux plats via `menu_item_id`
+- [x] `sale_items.label` — conserve le nom du plat dans l'historique ventes
+- [x] `restaurant_tables.price` — tarif (pour mode hôtel : prix de la chambre / nuit)
 - [x] Navigation adaptative selon `business_type` (restaurant vs commerce) dans `AppShell`
 
 ### 3.9 Navigation adaptative par type de commerce
@@ -271,6 +279,38 @@ Implémenté via `_resolveMainNav(businessType)` et `_resolveAndroidBottom(busin
 - [x] `extractAnyError(Object)` : wrapper acceptant n'importe quelle exception
 - [x] Appliqué sur : écran retours, écran admin, paramètres, changement mot de passe, restaurant
 
+### 3.18 Cache local SQLite avec invalidation automatique
+
+- [x] `OfflineCacheService.syncAll(warehouseId, tenantId)` compare tenant+warehouse avec les valeurs stockées en `SharedPreferences` (`_cache_tenant_id` / `_cache_warehouse_id`)
+- [x] Si tenant ou warehouse a changé → `LocalDbService.clearAllCachedData()` vide toutes les tables locales avant de re-syncer
+- [x] Évite la contamination de données entre comptes ou entre dépôts lors d'un changement de session
+- [x] Sync utilisateurs offline filtrée par `warehouse_id` : `GET /api/users/offline-sync?warehouse_id=`
+- [x] `users.offline_hash` en DB pour auth offline sans exposer le hash bcrypt
+
+### 3.19 Préservation des deep links (router)
+
+- [x] `pendingDeepLink` variable dans la closure `routerProvider`
+- [x] `_kPublicRoutes` : ensemble de routes ne nécessitant pas d'auth
+- [x] Pendant `isLoading=true` : si l'URL est protégée, elle est sauvegardée dans `pendingDeepLink` puis l'utilisateur est redirigé vers `/splash`
+- [x] Après résolution auth : restaure `pendingDeepLink` (ou `/dashboard` par défaut)
+- [x] Résultat : un refresh navigateur sur `/sales`, `/restaurant/tables`, etc. revient à la même page
+
+### 3.20 Site public responsive
+
+- [x] Barre de navigation (`PublicNavBar`) : 3 breakpoints — `≥860px` (nav complète), `500–860px` (CTA + hamburger), `<500px` (logo + hamburger uniquement)
+- [x] Menu hamburger (`showModalBottomSheet`) : liens nav + boutons Se connecter / S'inscrire côte à côte
+- [x] Texte héro responsive — `_HeroText` lit `MediaQuery.sizeOf(context).width` :
+  - `≥900px` → 46px, `600–899px` → 34px, `400–599px` → 26px, `<400px` → 22px
+- [x] Texte description responsive : 16px (≥600px) / 14px (<600px)
+- [x] "Gérez votre Business." (remplace "commerce")
+
+### 3.21 Mode Hôtel (en développement)
+
+- [x] `room_attributes` table : attributs clé/valeur sur une chambre (type de lit, vue, étage, etc.) avec `warehouse_id`
+- [x] `app_config.hotel_checkin_fields` (JSON) : champs personnalisés au check-in
+- [x] `restaurant_tables.price` : tarif nuitée par chambre
+- [x] `users.is_active` : activation/désactivation d'un utilisateur sans le supprimer
+
 ---
 
 ## 4. Schéma de base de données
@@ -300,18 +340,27 @@ tenants         ← gestionnaire SaaS
   └── (toutes les tables métier ont tenant_id UUID FK)
 
 stock_movements   ← lié à Product + User + source (sale/purchase/adjust)
-app_config        ← paramètres persistants (business_type, devise, etc.)
-platform_config   ← config SaaS globale (numéros, prix, trial_days, admin hash)
+app_config        ← paramètres persistants (business_type, devise, hotel_checkin_fields, etc.)
+platform_config   ← config SaaS globale (numéros, prix, trial_days, admin hash, support_address)
 billing_payments  ← historique paiements abonnements
 sync_state        ← watermarks par entity_type
 roles             ← rôles personnalisés par tenant
 return_records    ← retours clients et fournisseurs
+room_attributes   ← attributs clé/valeur des chambres hôtel (FK restaurant_tables)
 ```
 
-**Tables restaurant ajoutées** (migrations `p0q1r2s3t4u5`, `q1r2s3t4u5v6`) :
-- `restaurant_tables` : `tenant_id`, `warehouse_id`, `waiter_id`, `name`, `capacity`, `status`
+**Tables restaurant / hôtel** :
+- `restaurant_tables` : `tenant_id`, `warehouse_id`, `waiter_id`, `name`, `capacity`, `status`, `price`
 - `restaurant_orders` : `tenant_id`, `table_id`, `cashier_id`, `status`, `covers`, `notes`, `tip`, `sale_id`
-- `restaurant_order_items` : `order_id`, `product_id`, `quantity`, `unit_price`, `notes`, `status`
+- `restaurant_order_items` : `order_id`, `product_id` (nullable), `menu_item_id`, `quantity`, `unit_price`, `notes`, `status`, `label`
+- `menu_items` : `tenant_id`, `warehouse_id`, `name`, `description`, `price`, `category_id`, `variants` (JSON), `send_to_kitchen`
+- `modifier_groups` : `tenant_id`, `warehouse_id`, `menu_item_id`, `name`, `required`, `max_choices`
+- `room_attributes` : `tenant_id`, `table_id`, `warehouse_id`, `key`, `value`
+
+**Colonnes ajoutées par migrations récentes** :
+- `users.is_active` (bool, défaut `true`) — désactiver un utilisateur sans le supprimer
+- `users.offline_hash` (string) — hash dédié à l'auth offline
+- `sale_items.label` (string) — nom du plat (restaurant) conservé dans l'historique
 
 ---
 
@@ -331,6 +380,7 @@ return_records    ← retours clients et fournisseurs
 | B8 | Résolu | `No module named 'requests'` dans `local_sync_service` → remplacé par `httpx` |
 | B9 | Résolu | MySQL "gone away" sur sessions longues → `pool_pre_ping + pool_recycle` |
 | B10 | Résolu | Bug timezone sync : `datetime.now()` → `datetime.now(timezone.utc)` |
+| B11 | Résolu | `list_tables` excluait les caissiers (check `_is_manager`) → corrigé : `'serveur' in roles` |
 
 ### 5.2 Frontend
 
@@ -351,6 +401,11 @@ return_records    ← retours clients et fournisseurs
 | F13 | Résolu | Flash splash au login → `refreshListenable` dans `routerProvider` |
 | F14 | Résolu | Menu Abonnement absent sur web → guard `kIsWeb || isAdmin` |
 | F15 | Résolu | `_buildFullDrawerItems` wrong arg count → 5ème param `businessType` ajouté |
+| F16 | Résolu | Plats vides sur mobile → filtre `warehouse_id` retiré de `getMenuItems()` (plats tenant-wide) |
+| F17 | Résolu | Refresh navigateur perd l'URL → `pendingDeepLink` + `_kPublicRoutes` dans `router.dart` |
+| F18 | Résolu | Menu hamburger absent site public mobile → `showModalBottomSheet` + 3 breakpoints |
+| F19 | Résolu | Texte héro taille fixe → responsive (46/34/26/22px) + "Business" |
+| F20 | Résolu | Cache local contaminé au changement de compte → invalidation tenant/warehouse dans `syncAll()` |
 
 ---
 
@@ -375,6 +430,15 @@ Migrations récentes :
 - `o9p0q1r2s3t4` — `warehouse_id` sur `app_config`
 - `p0q1r2s3t4u5` — tables `restaurant_tables`, `restaurant_orders`, `restaurant_order_items`
 - `q1r2s3t4u5v6` — `waiter_id` sur `restaurant_tables`, `covers`/`tip` sur `restaurant_orders`
+- `r2s3t4u5v6w7` — `restaurant_orders.table_id` nullable (commandes sans table)
+- `s3t4u5v6w7x8` — `menu_items.variants`(JSON), `menu_items.warehouse_id`, `restaurant_order_items.menu_item_id`, `modifier_groups.menu_item_id`/`warehouse_id`, `users.offline_hash`
+- `t4u5v6w7x8y9` — `menu_items.send_to_kitchen` (bool, défaut `true`)
+- `u5v6w7x8y9z0` — `sale_items.label` (nom plat dans historique)
+- `v6w7x8y9z0a1` — `users.is_active` (bool, défaut `true`)
+- `w7x8y9z0a1b2` — `platform_config.support_address`
+- `x8y9z0a1b2c3` — table `room_attributes` (mode hôtel)
+- `y9z0a1b2c3d4` — `app_config.hotel_checkin_fields`, `room_attributes.warehouse_id`
+- `z0a1b2c3d4e5` — `restaurant_tables.price` (tarif nuitée chambre)
 
 ### 6.3 Client (autre machine)
 
@@ -437,16 +501,17 @@ SECRET_KEY=change_me_use_openssl_rand_hex_32
 
 | Priorité | Feature |
 |----------|---------|
-| Haute | `docker restart pos_api` pour appliquer migrations restaurant (prod) |
+| Haute | Finaliser mode Hôtel : check-in/check-out, attributs chambre, tarification nuitée |
 | Haute | Rechargement automatique de `pos_server.ini` sans redémarrage |
-| Haute | Synchronisation automatique périodique (background task) |
 | Haute | Intégration API MonCash / NatCash (mode `api_auto`) |
 | Haute | Portail self-service tenant (upgrade plan, voir caisses) |
+| Haute | Activation/désactivation utilisateur UI (utiliser `users.is_active`) |
 | Moyenne | Impression tickets thermiques (`printing` package) |
 | Moyenne | Dashboard statistiques complet (ventes/jour, top produits) |
 | Moyenne | Page de configuration URL serveur sur web (remplace le wizard) |
 | Moyenne | Factures récapitulatives mensuelles par tenant |
+| Moyenne | Variantes de plats UI (exploiter `menu_items.variants` JSON) |
 | Basse | Mode inventaire restaurant (recettes, coûts matières) |
-| Basse | Réservations de tables (heure, nom client) |
+| Basse | Réservations de tables / chambres (heure, nom client) |
 | Basse | Tests unitaires backend (pytest) |
 | Basse | Migration SQLite → MySQL |
