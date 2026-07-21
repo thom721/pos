@@ -9,6 +9,64 @@ const _pubWhite = Colors.white;
 class PublicNavBar extends StatelessWidget {
   const PublicNavBar({super.key});
 
+  void _openMobileMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40, height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            _MobileNavTile(Icons.home_rounded,           'Accueil',         '/home',    context),
+            _MobileNavTile(Icons.mail_outline_rounded,   'Contact',         '/contact', context),
+            _MobileNavTile(Icons.article_outlined,       'CGU',             '/terms',   context),
+            _MobileNavTile(Icons.privacy_tip_outlined,   'Confidentialité', '/privacy', context),
+            const Divider(height: 24),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _pubBlue,
+                      side: const BorderSide(color: _pubBlue),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () { Navigator.pop(ctx); context.go('/login'); },
+                    child: Text('Se connecter',
+                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _pubBlue,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () { Navigator.pop(ctx); context.go('/register'); },
+                    child: Text('S\'inscrire',
+                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
@@ -42,7 +100,7 @@ class PublicNavBar extends StatelessWidget {
               ]),
             ),
             const Spacer(),
-            // Liens de navigation (cachés sur très petit écran)
+            // Liens de navigation (cachés sur écran étroit)
             if (!isNarrow) ...[
               _PubNavLink('Accueil',         '/home'),
               _PubNavLink('Contact',         '/contact'),
@@ -50,8 +108,8 @@ class PublicNavBar extends StatelessWidget {
               _PubNavLink('Confidentialité', '/privacy'),
               const SizedBox(width: 16),
             ],
-            // Bouton Se connecter
-            if (!isVeryNarrow)
+            // Boutons CTA — écrans larges
+            if (!isNarrow) ...[
               OutlinedButton(
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _pubBlue,
@@ -62,20 +120,61 @@ class PublicNavBar extends StatelessWidget {
                 child: Text('Se connecter',
                     style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
               ),
-            const SizedBox(width: 8),
-            // Bouton Créer un compte
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: _pubBlue,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              const SizedBox(width: 8),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: _pubBlue,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+                onPressed: () => context.go('/register'),
+                child: Text('Créer un compte',
+                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
               ),
-              onPressed: () => context.go('/register'),
-              child: Text(isNarrow ? 'S\'inscrire' : 'Créer un compte',
-                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
-            ),
+            ],
+            // Écrans étroits : CTA compact + hamburger
+            if (isNarrow) ...[
+              if (!isVeryNarrow) ...[
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _pubBlue,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  ),
+                  onPressed: () => context.go('/register'),
+                  child: Text('S\'inscrire',
+                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
+                ),
+                const SizedBox(width: 4),
+              ],
+              IconButton(
+                icon: const Icon(Icons.menu_rounded, color: _pubNavy, size: 26),
+                tooltip: 'Menu',
+                onPressed: () => _openMobileMenu(context),
+              ),
+            ],
           ]),
         ),
       ),
+    );
+  }
+}
+
+class _MobileNavTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String route;
+  final BuildContext parentCtx;
+  const _MobileNavTile(this.icon, this.label, this.route, this.parentCtx);
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(icon, color: _pubNavy, size: 20),
+      title: Text(label,
+          style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w500, color: _pubNavy)),
+      onTap: () {
+        Navigator.pop(context);
+        parentCtx.go(route);
+      },
     );
   }
 }
