@@ -1134,14 +1134,17 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
     final paperWidth = settings.paperWidth;
     final hasBtConfigured = settings.bluetoothPrinterMac.isNotEmpty;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20, right: 20, top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final screenH = MediaQuery.of(context).size.height;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: screenH * 0.80),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          left: 20, right: 20, top: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header
           Row(children: [
@@ -1287,6 +1290,7 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
           ],
         ],
       ),
+    ),
     );
   }
 }
