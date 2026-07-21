@@ -33,7 +33,7 @@ final salesProvider =
     FutureProvider.autoDispose<PaginatedResponse<SaleModel>>((ref) async {
   ref.watch(syncEpochProvider); // rebuild après chaque sync SQLite
   final params = ref.watch(saleListParamsProvider);
-  final warehouseId = ref.watch(activeWarehouseProvider)?.id;
+  final activeWh = ref.watch(activeWarehouseProvider)?.id;
   final user = ref.watch(authProvider).user;
   final repo = ref.read(saleRepositoryProvider);
 
@@ -41,6 +41,11 @@ final salesProvider =
   // web/macOS: filtré côté serveur via JWT).
   final canSeeAll = user == null || user.isAdmin || user.hasRole('manager');
   final cashierId = canSeeAll ? null : user.id;
+
+  // Pour les caissiers : ne pas filtrer par warehouseId — cashierId suffit.
+  // Si le dépôt actif a changé (UUID recréé, fallback), les ventes SQLite
+  // restent visibles car elles portent l'ancien warehouse_id.
+  final warehouseId = canSeeAll ? activeWh : null;
 
   return repo.getSales(
     page: params.page,
