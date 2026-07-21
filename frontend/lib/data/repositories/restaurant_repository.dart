@@ -325,6 +325,37 @@ class RestaurantRepository {
         .toList();
   }
 
+  Future<IngredientModel> createIngredient({
+    required String name,
+    String? productId,
+    String? categoryId,
+  }) async {
+    final res = await dio.post('/api/restaurant/ingredients/', data: {
+      'name': name,
+      if (productId != null) 'product_id': productId,
+      if (categoryId != null) 'category_id': categoryId,
+    });
+    return IngredientModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<IngredientModel> updateIngredient(
+    String id, {
+    String? name,
+    String? productId,
+    String? categoryId,
+  }) async {
+    final res = await dio.put('/api/restaurant/ingredients/$id', data: {
+      if (name != null) 'name': name,
+      'product_id': productId,
+      'category_id': categoryId,
+    });
+    return IngredientModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteIngredient(String id) async {
+    await dio.delete('/api/restaurant/ingredients/$id');
+  }
+
   Future<Map<String, dynamic>> checkout(
     String orderId, {
     required double paidAmount,
