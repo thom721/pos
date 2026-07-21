@@ -232,6 +232,7 @@ La navigation bascule automatiquement vers : Tables · Cuisine · Ventes · Prod
 Routes publiques accessibles sans auth : `/home`, `/contact`, `/terms`, `/privacy`.
 Navigation responsive avec menu hamburger sur mobile (< 860px).
 Un refresh navigateur sur une page protégée restaure l'URL d'origine après auth.
+Les statistiques du héro (commerces actifs, transactions/jour, disponibilité) sont dynamiques — lues depuis `platform_config` via `/api/public/pricing` et éditables par le superadmin.
 
 ---
 

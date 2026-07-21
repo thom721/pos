@@ -308,6 +308,10 @@ Implémenté via `_resolveMainNav(businessType)` et `_resolveAndroidBottom(busin
   - `≥900px` → 46px, `600–899px` → 34px, `400–599px` → 26px, `<400px` → 22px
 - [x] Texte description responsive : 16px (≥600px) / 14px (<600px)
 - [x] "Gérez votre Business." (remplace "commerce")
+- [x] **Statistiques dynamiques** : les 3 chiffres du héro (commerces actifs, transactions/jour, disponibilité) sont lus depuis `platform_config` via `/api/public/pricing` — éditables par le superadmin, fallback hardcodé si API indisponible
+  - `PlatformConfig` : colonnes `stat_businesses`, `stat_transactions_day`, `stat_uptime` (String, défauts `500+` / `10k+` / `99.9%`)
+  - Migration `i9j0k1l2m3n4`
+  - `_HeroText` converti en `ConsumerWidget`, lit `pricingProvider`
 
 ### 3.22 Factures et Devis (Proformas)
 
@@ -472,6 +476,7 @@ Migrations récentes :
 - `z0a1b2c3d4e5` — `restaurant_tables.price` (tarif nuitée chambre)
 - `g7h8i9j0k1l2` — `warehouse_id` sur `invoices`, `invoice_items`, `proformas`, `proforma_items` (avec backfill)
 - `h8i9j0k1l2m3` — `warehouse_id` sur `products`
+- `i9j0k1l2m3n4` — `stat_businesses`, `stat_transactions_day`, `stat_uptime` sur `platform_config`
 
 ### 6.3 Client (autre machine)
 
