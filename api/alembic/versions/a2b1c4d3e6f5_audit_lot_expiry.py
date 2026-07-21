@@ -1,6 +1,6 @@
-"""audit_lot_expiry
+"""audit_lot_expiry — table audit_logs, lot/expiry sur stock_movements et purchase_receipt_items
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: a2b1c4d3e6f5
 Revises: e1f2a3b4c5d6
 Create Date: 2026-07-15 10:00:00.000000
 
@@ -9,7 +9,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = 'a1b2c3d4e5f6'
+revision: str = 'a2b1c4d3e6f5'
 down_revision: Union[str, None] = 'e1f2a3b4c5d6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
