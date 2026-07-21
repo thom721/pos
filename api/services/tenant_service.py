@@ -229,6 +229,7 @@ def cloud_login(db: Session, email: str, password: str,
             "roles": user.roles,
             "permissions": _expand_permissions(user, db),
             "must_change_password": user.must_change_password,
+            "warehouse_id": user.warehouse_id,
         },
         "register_id": register_id,
     }
