@@ -72,6 +72,7 @@ const _restaurantMainNavItems = [
   _NavItem('Tables',          Icons.table_restaurant_rounded,       '/restaurant/tables'),
   _NavItem('Cuisine',         Icons.restaurant_rounded,             '/restaurant/kitchen'),
   _NavItem('Ventes',          Icons.receipt_long_rounded,           '/sales'),
+  _NavItem('Factures / Devis',Icons.description_rounded,            '/events'),
   _NavItem('Produits / Menu', Icons.inventory_2_rounded,            '/products'),
   _NavItem('Clients',         Icons.people_alt_rounded,             '/customers'),
   _NavItem('Dettes',          Icons.account_balance_wallet_rounded, '/debts'),
@@ -93,6 +94,7 @@ const _hotelMainNavItems = [
   _NavItem('Cuisine',         Icons.restaurant_rounded,             '/restaurant/kitchen'),
   _NavItem('Housekeeping',    Icons.cleaning_services_rounded,      '/restaurant/housekeeping'),
   _NavItem('Transactions',    Icons.receipt_long_rounded,           '/sales'),
+  _NavItem('Factures / Devis',Icons.description_rounded,            '/events'),
   _NavItem('Bar & Produits',  Icons.inventory_2_rounded,            '/products'),
   _NavItem('Clients',         Icons.people_alt_rounded,             '/customers'),
   _NavItem('Dettes',          Icons.account_balance_wallet_rounded, '/debts'),
@@ -127,10 +129,11 @@ const _androidBottomNavItems = [
 ];
 
 const _androidDrawerMainItems = [
-  _NavItem('Caisse',   Icons.point_of_sale_rounded, '/pos'),
-  _NavItem('Ventes',   Icons.receipt_long_rounded,  '/sales'),
-  _NavItem('Clients',  Icons.people_alt_rounded,    '/customers'),
-  _NavItem('Produits', Icons.inventory_2_rounded,   '/products'),
+  _NavItem('Caisse',          Icons.point_of_sale_rounded,  '/pos'),
+  _NavItem('Ventes',          Icons.receipt_long_rounded,   '/sales'),
+  _NavItem('Clients',         Icons.people_alt_rounded,     '/customers'),
+  _NavItem('Produits',        Icons.inventory_2_rounded,    '/products'),
+  _NavItem('Factures / Devis',Icons.description_rounded,    '/events'),
 ];
 
 // All items for title lookup (includes all business types)
@@ -150,7 +153,7 @@ const Map<String, String> _routePermission = {
   '/suppliers':  Perm.suppliersRead,
   '/returns':    Perm.returnsRead,
   '/inventory':  Perm.inventoryRead,
-  '/events':          Perm.reportsReadAll,
+  '/events':          Perm.invoicesRead,
   '/reports/depots':  Perm.reportsReadAll,
   '/statistics':      Perm.reportsReadAll,
   '/hr':         Perm.employeesRead,

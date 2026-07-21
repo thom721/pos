@@ -12,7 +12,9 @@ import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/proforma_model.dart';
 import 'package:pos_connect/data/models/invoice_model.dart';
 import 'package:pos_connect/data/repositories/events_repository.dart';
+import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/providers/customer_provider.dart';
+import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -665,6 +667,253 @@ Future<Uint8List> _buildInvoicePdf(
   return doc.save();
 }
 
+// ── Proforma PDF (A4) ──────────────────────────────────────────────────────
+
+Future<Uint8List> _buildProformaPdf(
+    Proforma proforma, AppSettings settings) async {
+  final doc = pw.Document();
+  final font = await PdfGoogleFonts.notoSansRegular();
+  final fontBold = await PdfGoogleFonts.notoSansBold();
+  final fmt = _fmtFor(proforma.currency);
+  final df = DateFormat('dd/MM/yyyy');
+
+  doc.addPage(pw.Page(
+    pageFormat: PdfPageFormat.a4,
+    margin: const pw.EdgeInsets.all(40),
+    build: (ctx) {
+      final base  = pw.TextStyle(font: font,     fontSize: 9);
+      final bold  = pw.TextStyle(font: fontBold,  fontSize: 9);
+      final small = pw.TextStyle(font: font,     fontSize: 8);
+      final h1    = pw.TextStyle(font: fontBold,  fontSize: 22);
+      final h2    = pw.TextStyle(font: fontBold,  fontSize: 12, color: PdfColors.grey700);
+
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          // ── Business header + PROFORMA title ──
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(settings.businessName,
+                        style: pw.TextStyle(font: fontBold, fontSize: 14)),
+                    if (settings.address.isNotEmpty)
+                      pw.Text(settings.address, style: small),
+                    if (settings.phone.isNotEmpty)
+                      pw.Text('Tél: ${settings.phone}', style: small),
+                    if (settings.email.isNotEmpty)
+                      pw.Text(settings.email, style: small),
+                  ],
+                ),
+              ),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Text('PROFORMA / DEVIS', style: h1),
+                  pw.Text(proforma.reference, style: h2),
+                  pw.SizedBox(height: 6),
+                  pw.Text('Date : ${df.format(proforma.date)}', style: base),
+                ],
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 20),
+
+          // ── Client section ──
+          if (proforma.clientName != null) ...[
+            pw.Container(
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey100,
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('CLIENT',
+                      style: pw.TextStyle(
+                          font: fontBold,
+                          fontSize: 7,
+                          color: PdfColors.grey600,
+                          letterSpacing: 1)),
+                  pw.SizedBox(height: 4),
+                  pw.Text(proforma.clientName!,
+                      style: pw.TextStyle(font: fontBold, fontSize: 10)),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 16),
+          ],
+
+          // ── Items table ──
+          pw.Table(
+            border: pw.TableBorder(
+              top: const pw.BorderSide(color: PdfColors.grey800, width: 1.5),
+              bottom: const pw.BorderSide(color: PdfColors.grey800, width: 1.5),
+              horizontalInside: const pw.BorderSide(
+                  color: PdfColors.grey300, width: 0.5),
+            ),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(3),
+              1: pw.FixedColumnWidth(50),
+              2: pw.FixedColumnWidth(80),
+              3: pw.FixedColumnWidth(80),
+            },
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey800),
+                children: ['DESCRIPTION', 'QTÉ', 'PRIX U.', 'TOTAL']
+                    .asMap()
+                    .entries
+                    .map((e) {
+                  final align = e.key == 0
+                      ? pw.Alignment.centerLeft
+                      : e.key == 1
+                          ? pw.Alignment.center
+                          : pw.Alignment.centerRight;
+                  return pw.Padding(
+                    padding: const pw.EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 6),
+                    child: pw.Align(
+                      alignment: align,
+                      child: pw.Text(e.value,
+                          style: pw.TextStyle(
+                              font: fontBold,
+                              fontSize: 8,
+                              color: PdfColors.white)),
+                    ),
+                  );
+                }).toList(),
+              ),
+              ...proforma.items.map((item) => pw.TableRow(
+                    children: [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 6),
+                        child: pw.Text(item.name, style: base),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 6),
+                        child: pw.Center(
+                            child: pw.Text(_fmtQty(item.quantity),
+                                style: base)),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 6),
+                        child: pw.Align(
+                          alignment: pw.Alignment.centerRight,
+                          child: pw.Text(fmt.format(item.unitPrice),
+                              style: base),
+                        ),
+                      ),
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 6),
+                        child: pw.Align(
+                          alignment: pw.Alignment.centerRight,
+                          child: pw.Text(fmt.format(item.subtotal),
+                              style: bold),
+                        ),
+                      ),
+                    ],
+                  )),
+            ],
+          ),
+          pw.SizedBox(height: 16),
+
+          // ── Totals ──
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.end,
+            children: [
+              pw.SizedBox(
+                width: 240,
+                child: pw.Column(
+                  children: [
+                    if (proforma.discount > 0) ...[
+                      _pdfTotalRow('Sous-total',
+                          fmt.format(proforma.subtotal), base, base),
+                      _pdfTotalRow('Remise',
+                          '-${fmt.format(proforma.discount)}', base, base),
+                      pw.Divider(thickness: 0.5, color: PdfColors.grey400),
+                    ],
+                    _pdfTotalRow(
+                      'TOTAL',
+                      fmt.format(proforma.total),
+                      pw.TextStyle(font: fontBold, fontSize: 10),
+                      pw.TextStyle(font: fontBold, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 16),
+
+          // ── Validity notice ──
+          pw.Center(
+            child: pw.Container(
+              padding: const pw.EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 6),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(
+                    color: PdfColors.blue700, width: 1.5),
+                borderRadius:
+                    const pw.BorderRadius.all(pw.Radius.circular(4)),
+              ),
+              child: pw.Text(
+                '*** DOCUMENT NON CONTRACTUEL — PROFORMA ***',
+                style: pw.TextStyle(
+                    font: fontBold,
+                    fontSize: 9,
+                    color: PdfColors.blue700),
+              ),
+            ),
+          ),
+
+          // ── Notes ──
+          if (proforma.notes.isNotEmpty) ...[
+            pw.SizedBox(height: 16),
+            pw.Container(
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey100,
+                borderRadius:
+                    const pw.BorderRadius.all(pw.Radius.circular(4)),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text('NOTES / CONDITIONS',
+                      style: pw.TextStyle(
+                          font: fontBold,
+                          fontSize: 7,
+                          color: PdfColors.grey600,
+                          letterSpacing: 1)),
+                  pw.SizedBox(height: 4),
+                  pw.Text(proforma.notes, style: small),
+                ],
+              ),
+            ),
+          ],
+
+          // ── Footer ──
+          pw.SizedBox(height: 24),
+          pw.Divider(thickness: 0.5, color: PdfColors.grey400),
+          pw.SizedBox(height: 4),
+          pw.Center(child: pw.Text(settings.receiptFooter, style: small)),
+        ],
+      );
+    },
+  ));
+
+  return doc.save();
+}
+
 // ── EventsScreen ───────────────────────────────────────────────────────────
 
 class EventsScreen extends ConsumerStatefulWidget {
@@ -731,16 +980,18 @@ class _EventsScreenState extends ConsumerState<EventsScreen>
                         ],
                       ),
                       const Spacer(),
-                      ElevatedButton.icon(
-                        onPressed: _isInvoiceTab
-                            ? () => _showNewInvoiceDialog(context)
-                            : () => _showNewProformaDialog(context),
-                        icon:
-                            const Icon(Icons.add_rounded, size: 18),
-                        label: Text(_isInvoiceTab
-                            ? 'Nouvelle facture'
-                            : 'Nouveau proforma'),
-                      ),
+                      if ((_isInvoiceTab
+                              ? ref.watch(hasPermissionProvider(Perm.invoicesCreate))
+                              : ref.watch(hasPermissionProvider(Perm.proformasCreate))))
+                        ElevatedButton.icon(
+                          onPressed: _isInvoiceTab
+                              ? () => _showNewInvoiceDialog(context)
+                              : () => _showNewProformaDialog(context),
+                          icon: const Icon(Icons.add_rounded, size: 18),
+                          label: Text(_isInvoiceTab
+                              ? 'Nouvelle facture'
+                              : 'Nouveau proforma'),
+                        ),
                     ],
                   ),
                 ),
@@ -2082,7 +2333,7 @@ class _StatusChip extends StatelessWidget {
 
 // ── Proforma preview dialog ────────────────────────────────────────────────
 
-class _ProformaPreviewDialog extends StatelessWidget {
+class _ProformaPreviewDialog extends StatefulWidget {
   final Proforma proforma;
   final NumberFormat fmt;
   final AppSettings settings;
@@ -2094,7 +2345,27 @@ class _ProformaPreviewDialog extends StatelessWidget {
   });
 
   @override
+  State<_ProformaPreviewDialog> createState() => _ProformaPreviewDialogState();
+}
+
+class _ProformaPreviewDialogState extends State<_ProformaPreviewDialog> {
+  bool _printing = false;
+
+  Future<void> _print() async {
+    setState(() => _printing = true);
+    try {
+      final bytes = await _buildProformaPdf(widget.proforma, widget.settings);
+      await Printing.layoutPdf(onLayout: (_) => bytes);
+    } finally {
+      if (mounted) setState(() => _printing = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final proforma = widget.proforma;
+    final fmt      = widget.fmt;
+    final settings = widget.settings;
     return Dialog(
       shape:
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -2220,12 +2491,29 @@ class _ProformaPreviewDialog extends StatelessWidget {
                         fontSize: 12,
                         color: AppColors.textSecondary)),
                 const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Fermer'),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Fermer'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _printing ? null : _print,
+                        icon: _printing
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.print_rounded, size: 16),
+                        label: const Text('Imprimer (A4)'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
