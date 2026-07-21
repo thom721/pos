@@ -725,6 +725,41 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
     super.dispose();
   }
 
+  void _showDebugSheet(BuildContext context, WidgetRef ref) {
+    final user = ref.read(authProvider).user;
+    final active = ref.read(activeWarehouseProvider);
+    final warehouses = ref.read(warehouseListProvider).valueOrNull ?? [];
+    final hasRestriction = (user?.warehouseIds ?? []).isNotEmpty;
+    final apiWh = hasRestriction ? active?.id : null;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Debug — Warehouse', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              const Divider(),
+              _DebugRow('Utilisateur', user?.username ?? '—'),
+              _DebugRow('Rôles', user?.roles.join(', ') ?? '—'),
+              _DebugRow('warehouseIds (user)', user?.warehouseIds.isEmpty == true ? '[] (accès total)' : user?.warehouseIds.join(', ') ?? '—'),
+              const Divider(),
+              _DebugRow('Dépôt actif (provider)', active != null ? '${active.name} (${active.id})' : '⚠ null'),
+              _DebugRow('hasRestriction', '$hasRestriction'),
+              _DebugRow('warehouseId envoyé API', apiWh ?? 'null → backend retourne tout'),
+              const Divider(),
+              _DebugRow('Dépôts disponibles (${warehouses.length})',
+                  warehouses.map((w) => '${w.name}${w.isDefault ? " ★" : ""}').join(', ')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _syncNow() async {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
@@ -751,12 +786,21 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
     // appelé. On le fait ici pour que le dépôt actif soit correctement initialisé.
     if (_isAndroid) {
       final warehouses = ref.watch(warehouseListProvider).valueOrNull ?? [];
+      final active = ref.watch(activeWarehouseProvider);
+      debugPrint('[WH-DEBUG] build: user=${user?.username} warehouseIds=${user?.warehouseIds} '
+          'active=${active?.name}(${active?.id}) warehouses=${warehouses.map((w) => "${w.name}:${w.id}").toList()}');
       if (warehouses.isNotEmpty) {
-        Future.microtask(() =>
-            ref.read(activeWarehouseProvider.notifier).initFromList(
-              warehouses,
-              userWarehouseIds: user?.warehouseIds ?? [],
-            ));
+        Future.microtask(() async {
+          await ref.read(activeWarehouseProvider.notifier).initFromList(
+            warehouses,
+            userWarehouseIds: user?.warehouseIds ?? [],
+          );
+          final selected = ref.read(activeWarehouseProvider);
+          final hasRestriction = (user?.warehouseIds ?? []).isNotEmpty;
+          final apiWh = hasRestriction ? selected?.id : null;
+          debugPrint('[WH-DEBUG] initFromList done → selected=${selected?.name}(${selected?.id}) '
+              'hasRestriction=$hasRestriction apiWarehouseId=$apiWh');
+        });
       }
     }
 
@@ -794,6 +838,14 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
             const Padding(
               padding: EdgeInsets.only(right: 8),
               child: Center(child: _WarehouseSelector()),
+            ),
+          // Bouton debug — Android seulement
+          if (_isAndroid)
+            IconButton(
+              icon: const Icon(Icons.bug_report_outlined, size: 20,
+                  color: AppColors.textSecondary),
+              tooltip: 'Debug warehouse',
+              onPressed: () => _showDebugSheet(context, ref),
             ),
           // Actions Android : sync + connecté
           if (_isAndroid)
@@ -1023,6 +1075,35 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
                 onTap: () => go(item.route),
               )),
     ];
+  }
+}
+
+// ── Debug helper ──────────────────────────────────────────────────────────────
+
+class _DebugRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _DebugRow(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 160,
+            child: Text(label,
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          ),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
   }
 }
 
