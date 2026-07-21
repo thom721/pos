@@ -14,6 +14,7 @@ import 'package:pos_connect/providers/pos_provider.dart';
 import 'package:pos_connect/providers/sale_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/services/bluetooth_print_service.dart';
+import 'package:pos_connect/services/thermal_printer_service.dart';
 import 'package:pos_connect/shared/utils/receipt_pdf.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/shared/widgets/status_badge.dart';
@@ -1037,6 +1038,7 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
   List<BluetoothInfo> _btDevices = [];
   bool _scanning = false;
   bool _printing = false;
+  bool _isSunmi = false;
   String? _error;
 
   bool get _isAndroid => !kIsWeb && Platform.isAndroid;
@@ -1044,7 +1046,32 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
   @override
   void initState() {
     super.initState();
-    if (_isAndroid) _scanBt();
+    if (_isAndroid) _initPrinter();
+  }
+
+  Future<void> _initPrinter() async {
+    _isSunmi = await ThermalPrinterService.instance.isSunmiAvailable;
+    if (mounted) setState(() {});
+    if (!_isSunmi) _scanBt();
+  }
+
+  Future<void> _printSunmi() async {
+    final settings = ref.read(settingsProvider);
+    setState(() { _printing = true; _error = null; });
+    try {
+      await ThermalPrinterService.instance.printReceipt(widget.sale, settings);
+      if (mounted) {
+        Navigator.pop(context);
+        widget.onDone();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Impression envoyée'),
+          backgroundColor: AppColors.success,
+          duration: Duration(seconds: 2),
+        ));
+      }
+    } catch (e) {
+      if (mounted) setState(() { _printing = false; _error = e.toString(); });
+    }
   }
 
   Future<void> _scanBt() async {
@@ -1152,6 +1179,28 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
           ),
 
           const SizedBox(height: 16),
+
+          // Imprimante Sunmi intégrée (détectée automatiquement)
+          if (_isSunmi) ...[
+            const SizedBox(height: 4),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                icon: _printing
+                    ? const SizedBox(width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2,
+                            color: Colors.white))
+                    : const Icon(Icons.print_rounded, size: 18),
+                label: const Text('Imprimer (Sunmi)'),
+                style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.success),
+                onPressed: _printing ? null : _printSunmi,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Divider(height: 8),
+            const SizedBox(height: 4),
+          ],
 
           // Bluetooth (Android uniquement)
           if (_isAndroid) ...[
