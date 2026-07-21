@@ -1,3 +1,4 @@
+import json as _json
 import uuid as _uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -68,6 +69,34 @@ class RegisterUpdate(BaseModel):
 router = APIRouter(prefix="/api/warehouses", tags=["Warehouses"])
 
 
+def _parse_wh_ids(raw) -> list[str]:
+    """Normalise user.warehouse_id quelle que soit la forme stockée en DB.
+
+    La colonne est Column(JSON) mais peut être physiquement TEXT dans MySQL.
+    SQLAlchemy ne désérialise pas toujours automatiquement TEXT → list.
+    Cas supportés :
+      - None / [] → []
+      - ['uuid', ...]  (déjà une liste Python) → tel quel
+      - 'uuid'          (UUID simple en string) → ['uuid']
+      - '["uuid", ...]' (JSON string non parsé) → json.loads → liste
+    """
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return [str(i) for i in raw if i]
+    if isinstance(raw, str):
+        s = raw.strip()
+        if s.startswith('['):
+            try:
+                parsed = _json.loads(s)
+                if isinstance(parsed, list):
+                    return [str(i) for i in parsed if i]
+            except _json.JSONDecodeError:
+                pass
+        return [s] if s else []
+    return []
+
+
 def _get_or_404(db: Session, warehouse_id: str, tenant_id: str) -> Warehouse:
     wh = db.query(Warehouse).filter(
         Warehouse.id == warehouse_id,
@@ -96,9 +125,7 @@ def list_warehouses(
         )
     )
     if not can_see_all:
-        allowed = current_user.warehouse_id or []
-        if isinstance(allowed, str):
-            allowed = [allowed]
+        allowed = _parse_wh_ids(current_user.warehouse_id)
         if allowed:
             q = q.filter(Warehouse.id.in_(allowed))
     return q.order_by(Warehouse.is_default.desc(), Warehouse.name).all()

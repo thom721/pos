@@ -37,13 +37,31 @@ def _is_manager(user: User) -> bool:
     return 'admin' in roles or 'manager' in roles
 
 
+def _parse_wh_ids(raw) -> list[str]:
+    """Normalise user.warehouse_id quel que soit son type stocké en DB (list, str, JSON string)."""
+    import json as _json
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return [str(i) for i in raw if i]
+    if isinstance(raw, str):
+        s = raw.strip()
+        if s.startswith('['):
+            try:
+                parsed = _json.loads(s)
+                if isinstance(parsed, list):
+                    return [str(i) for i in parsed if i]
+            except _json.JSONDecodeError:
+                pass
+        return [s] if s else []
+    return []
+
+
 def _resolve_wh(db: Session, user: User) -> str | None:
     """Retourne le warehouse_id à utiliser (JSON list → premier élément, sinon défaut du tenant)."""
-    wh = user.warehouse_id
-    if wh:
-        first = wh[0] if isinstance(wh, list) else str(wh)
-        if first:
-            return first
+    ids = _parse_wh_ids(user.warehouse_id)
+    if ids:
+        return ids[0]
     return resolve_warehouse_id(db, user.tenant_id)
 
 

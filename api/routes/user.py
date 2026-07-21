@@ -58,9 +58,21 @@ def list_users_offline_sync(
     """
     users = UserService(db, tenant_id=current_user.tenant_id).list()
     if warehouse_id:
+        def _wh_list(raw) -> list:
+            import json as _j
+            if not raw:
+                return []
+            if isinstance(raw, list):
+                return raw
+            if isinstance(raw, str) and raw.strip().startswith('['):
+                try:
+                    return _j.loads(raw)
+                except Exception:
+                    pass
+            return [raw]
         users = [
             u for u in users
-            if not (u.warehouse_id or []) or warehouse_id in (u.warehouse_id or [])
+            if not _wh_list(u.warehouse_id) or warehouse_id in _wh_list(u.warehouse_id)
         ]
     return [
         {
