@@ -127,7 +127,20 @@ def list_warehouses(
     if not can_see_all:
         allowed = _parse_wh_ids(current_user.warehouse_id)
         if allowed:
-            q = q.filter(Warehouse.id.in_(allowed))
+            results = (
+                q.filter(Warehouse.id.in_(allowed))
+                .order_by(Warehouse.is_default.desc(), Warehouse.name)
+                .all()
+            )
+            if results:
+                return results
+            # Les dépôts assignés n'existent plus en base — fallback sur tous
+            # les dépôts actifs du tenant pour éviter un écran vide.
+            import logging as _log
+            _log.getLogger("pos.api").warning(
+                "user %s warehouse_id=%s introuvable → fallback tous dépôts",
+                current_user.username, current_user.warehouse_id,
+            )
     return q.order_by(Warehouse.is_default.desc(), Warehouse.name).all()
 
 
