@@ -52,6 +52,12 @@ from api.models.PayrollPeriod import PayrollPeriod
 from api.models.PayrollEntry import PayrollEntry
 from api.models.EmployeeLoan import EmployeeLoan
 from api.models.PayrollLoanDeduction import PayrollLoanDeduction
+from api.models.RestaurantTable import RestaurantTable
+from api.models.RoomAttribute import RoomAttribute
+from api.models.MenuItem import MenuItem
+from api.models.ModifierGroup import ModifierGroup, ModifierOption
+from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
+from api.models.HousekeepingTask import HousekeepingTask
 
 router = APIRouter(prefix="/api/sync", tags=["Sync"])
 _log = logging.getLogger("pos.sync")
@@ -97,6 +103,16 @@ _MODEL_MAP: dict[str, Any] = {
     "payroll_entry":          PayrollEntry,
     "employee_loan":          EmployeeLoan,
     "payroll_loan_deduction": PayrollLoanDeduction,
+    # Restaurant / Hôtel — configuration
+    "restaurant_table":      RestaurantTable,
+    "room_attribute":        RoomAttribute,
+    "menu_item":             MenuItem,
+    "modifier_group":        ModifierGroup,
+    "modifier_option":       ModifierOption,
+    # Restaurant / Hôtel — opérationnel
+    "restaurant_order":      RestaurantOrder,
+    "restaurant_order_item": RestaurantOrderItem,
+    "housekeeping_task":     HousekeepingTask,
 }
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────

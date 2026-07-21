@@ -45,6 +45,12 @@ from api.models.PayrollPeriod import PayrollPeriod
 from api.models.PayrollEntry import PayrollEntry
 from api.models.EmployeeLoan import EmployeeLoan
 from api.models.PayrollLoanDeduction import PayrollLoanDeduction
+from api.models.RestaurantTable import RestaurantTable
+from api.models.RoomAttribute import RoomAttribute
+from api.models.MenuItem import MenuItem
+from api.models.ModifierGroup import ModifierGroup, ModifierOption
+from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
+from api.models.HousekeepingTask import HousekeepingTask
 
 _log = logging.getLogger("pos.sync")
 
@@ -92,6 +98,20 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "payroll_entry",          "model": PayrollEntry,         "direction": "both"},
     {"type": "employee_loan",          "model": EmployeeLoan,         "direction": "both"},
     {"type": "payroll_loan_deduction", "model": PayrollLoanDeduction, "direction": "both"},
+    # ── Restaurant / Hôtel — configuration (bidirectionnel) ─────────────────────
+    # Tables et attributs : un admin cloud peut créer/modifier des chambres
+    {"type": "restaurant_table", "model": RestaurantTable, "direction": "both"},
+    {"type": "room_attribute",   "model": RoomAttribute,   "direction": "both"},
+    # Carte du menu : créée en central, visible dans tous les dépôts
+    {"type": "menu_item",        "model": MenuItem,        "direction": "both"},
+    {"type": "modifier_group",   "model": ModifierGroup,   "direction": "both"},
+    {"type": "modifier_option",  "model": ModifierOption,  "direction": "both"},
+    # ── Restaurant / Hôtel — données opérationnelles (push uniquement) ──────────
+    # Les commandes sont créées localement ; le cloud les reçoit pour reporting
+    {"type": "restaurant_order",      "model": RestaurantOrder,     "direction": "push"},
+    {"type": "restaurant_order_item", "model": RestaurantOrderItem, "direction": "push"},
+    # Tâches housekeeping : historique poussé vers le cloud
+    {"type": "housekeeping_task", "model": HousekeepingTask, "direction": "push"},
 ]
 
 # Columns excluded when sending to cloud (cloud assigns its own tenant_id via sync token)
