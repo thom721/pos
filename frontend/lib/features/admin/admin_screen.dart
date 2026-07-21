@@ -908,7 +908,7 @@ class _StatChip extends StatelessWidget {
   }
 }
 
-class _PaymentRow extends StatelessWidget {
+class _PaymentRow extends ConsumerWidget {
   final Map<String, dynamic> payment;
   const _PaymentRow({required this.payment});
 
@@ -925,58 +925,158 @@ class _PaymentRow extends StatelessWidget {
     }
   }
 
+  String _fmt(String? iso) {
+    if (iso == null) return '';
+    try {
+      return DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(iso).toLocal());
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<void> _confirmPending(BuildContext context, WidgetRef ref) async {
+    final id = payment['id'] as String?;
+    if (id == null) return;
+
+    final months = await showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        int val = 1;
+        return StatefulBuilder(builder: (ctx, setState) {
+          return AlertDialog(
+            title: const Text('Valider le paiement'),
+            content: DropdownButtonFormField<int>(
+              initialValue: val,
+              decoration: const InputDecoration(labelText: 'Durée'),
+              items: [1, 2, 3, 6, 12]
+                  .map((m) => DropdownMenuItem(
+                      value: m,
+                      child: Text('$m mois')))
+                  .toList(),
+              onChanged: (v) => setState(() => val = v ?? 1),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Annuler')),
+              ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, val),
+                  child: const Text('Confirmer')),
+            ],
+          );
+        });
+      },
+    );
+    if (months == null || !context.mounted) return;
+
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      await d.patch('/api/admin/payments/$id/confirm', data: {'months': months});
+      ref.invalidate(_paymentsProvider);
+      ref.invalidate(_tenantsProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Paiement validé — abonnement activé'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(extractAnyError(e)),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final method = payment['method'] as String? ?? 'manual';
+    final status = payment['status'] as String? ?? 'paid';
     final amount = payment['amount'] as num? ?? 0;
     final currency = payment['currency'] as String? ?? '';
     final invoice = payment['invoice_number'] as String? ?? '';
     final businessName = payment['business_name'] as String? ?? '—';
-    final paidAt = payment['paid_at'] as String?;
+    final description = payment['description'] as String?;
+    final isPending = status == 'pending';
 
-    String? formattedDate;
-    if (paidAt != null) {
-      try {
-        formattedDate =
-            DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(paidAt).toLocal());
-      } catch (_) {}
-    }
+    // Pending → show created_at; paid → show paid_at
+    final dateStr = isPending
+        ? _fmt(payment['created_at'] as String?)
+        : _fmt(payment['paid_at'] as String?);
 
     return Card(
+      color: isPending
+          ? Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.25)
+          : null,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _StatusBadge(
-                label: method.toUpperCase(), color: _methodColor(method)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(businessName,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600)),
-                  Text(invoice,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary)),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            Row(
               children: [
+                _StatusBadge(label: method.toUpperCase(), color: _methodColor(method)),
+                const SizedBox(width: 8),
+                if (isPending)
+                  _StatusBadge(label: 'EN ATTENTE', color: Colors.orange),
+                const Spacer(),
                 Text(
                   '${amount.toStringAsFixed(0)} $currency',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.bold, color: AppColors.success),
                 ),
-                if (formattedDate != null)
-                  Text(formattedDate,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary)),
               ],
             ),
+            const SizedBox(height: 6),
+            Text(businessName,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w600)),
+            Text(invoice,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: AppColors.textSecondary)),
+            if (description != null && description.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(description,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppColors.textSecondary)),
+              ),
+            if (dateStr.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  isPending ? 'Soumis le $dateStr' : 'Payé le $dateStr',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: AppColors.textSecondary),
+                ),
+              ),
+            if (isPending) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.check_circle_outline, size: 16),
+                  label: const Text('Valider le paiement'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.success,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    textStyle: const TextStyle(fontSize: 13),
+                  ),
+                  onPressed: () => _confirmPending(context, ref),
+                ),
+              ),
+            ],
           ],
         ),
       ),
