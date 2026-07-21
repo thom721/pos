@@ -1418,9 +1418,11 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
   late final TextEditingController _purchasePriceCtrl;
   late final TextEditingController _alertCtrl;
   String? _categoryId;
+  String? _warehouseId;
   bool _loading = false;
   String? _error;
   List<CategoryModel> _categories = [];
+  List<WarehouseModel> _warehouses = [];
 
   Uint8List? _imageBytes;
   String? _imageFilename;
@@ -1442,13 +1444,22 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
     _alertCtrl = TextEditingController(
         text: widget.product?.alertStock.toString() ?? '5');
     _categoryId = widget.product?.category?.id;
-    _loadCategories();
+    _warehouseId = widget.product?.warehouseId;
+    _loadData();
   }
 
-  Future<void> _loadCategories() async {
+  Future<void> _loadData() async {
     try {
-      final cats = await ProductRepository().getCategories();
-      if (mounted) setState(() => _categories = cats);
+      final results = await Future.wait([
+        ProductRepository().getCategories(),
+        WarehouseRepository().listWarehouses(),
+      ]);
+      if (mounted) {
+        setState(() {
+          _categories = results[0] as List<CategoryModel>;
+          _warehouses = results[1] as List<WarehouseModel>;
+        });
+      }
     } catch (_) {}
   }
 
@@ -1530,6 +1541,45 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                       .toList(),
                   onChanged: (v) => setState(() => _categoryId = v),
                 ),
+                if (_warehouses.length > 1) ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    initialValue: _warehouseId,
+                    decoration: const InputDecoration(
+                      labelText: 'Dépôt (optionnel)',
+                      prefixIcon: Icon(Icons.warehouse_outlined, size: 18),
+                    ),
+                    items: [
+                      const DropdownMenuItem(
+                          value: null, child: Text('— Tous les dépôts —')),
+                      ..._warehouses.map((w) => DropdownMenuItem(
+                            value: w.id,
+                            child: Row(
+                              children: [
+                                Text(w.name),
+                                if (w.isDefault) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary
+                                          .withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text('défaut',
+                                        style: TextStyle(
+                                            fontSize: 10,
+                                            color: AppColors.primary)),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          )),
+                    ],
+                    onChanged: (v) => setState(() => _warehouseId = v),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -1611,6 +1661,7 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
         'sale_price': double.tryParse(_salePriceCtrl.text) ?? 0,
         'purchase_price': double.tryParse(_purchasePriceCtrl.text) ?? 0,
         'alert_stock': int.tryParse(_alertCtrl.text) ?? 5,
+        'warehouse_id': _warehouseId,
       };
       final repo = ProductRepository();
       if (isEdit) {

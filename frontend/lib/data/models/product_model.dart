@@ -30,6 +30,7 @@ class ProductModel {
   final int? stock;
   final String? imageUrl;
   final bool isActive;
+  final String? warehouseId;
 
   ProductModel({
     required this.id,
@@ -43,6 +44,7 @@ class ProductModel {
     this.stock,
     this.imageUrl,
     this.isActive = true,
+    this.warehouseId,
   });
 
   bool get isLowStock => stock != null && stock! <= alertStock;
@@ -64,6 +66,7 @@ class ProductModel {
             : null,
         imageUrl: json['image_url']?.toString(),
         isActive: json['is_active'] != false,
+        warehouseId: json['warehouse_id']?.toString(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -76,5 +79,6 @@ class ProductModel {
         'category': category?.toJson(),
         'stock': stock,
         'image_url': imageUrl,
+        if (warehouseId != null) 'warehouse_id': warehouseId,
       };
 }
