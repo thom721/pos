@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/models/product_model.dart';
@@ -28,10 +29,31 @@ class OfflineCacheService {
   // ── API publique ──────────────────────────────────────────────────────────
 
   /// Lance la sync de toutes les entités. Ignoré si déjà en cours.
-  Future<void> syncAll({String? warehouseId}) async {
+  ///
+  /// Si [tenantId] ou [warehouseId] diffère de ce qui est en cache,
+  /// le cache local est vidé avant de resyncer (changement de compte/dépôt).
+  Future<void> syncAll({String? warehouseId, String? tenantId}) async {
     if (kIsWeb || _running) return;
     _running = true;
     try {
+      if (tenantId != null) {
+        final prefs = await SharedPreferences.getInstance();
+        final cachedTenant    = prefs.getString('_cache_tenant_id');
+        final cachedWarehouse = prefs.getString('_cache_warehouse_id');
+        final changed = cachedTenant != null &&
+            (cachedTenant != tenantId || cachedWarehouse != warehouseId);
+        if (changed) {
+          await LocalDbService.instance.clearAllCachedData();
+          debugPrint('[OfflineCache] tenant/warehouse changé ($cachedTenant→$tenantId'
+              ' / $cachedWarehouse→$warehouseId) → cache vidé');
+        }
+        await prefs.setString('_cache_tenant_id', tenantId);
+        if (warehouseId != null) {
+          await prefs.setString('_cache_warehouse_id', warehouseId);
+        } else {
+          await prefs.remove('_cache_warehouse_id');
+        }
+      }
       await Future.wait([
         _syncProducts(),
         _syncCustomers(),

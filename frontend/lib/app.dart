@@ -102,14 +102,18 @@ class _PosAppState extends ConsumerState<PosApp> {
     // soit chargée). On se rabat alors sur le 1er warehouse assigné à l'utilisateur.
     final warehouseId = ref.read(activeWarehouseProvider)?.id
         ?? ref.read(authProvider).user?.warehouseIds.firstOrNull;
+    final tenant = ref.read(tenantProvider).valueOrNull;
+    final tenantId = tenant?['id'] as String?;
     if (_isAndroid) {
       // Sur Android : attendre la fin de la sync pour notifier les providers
-      await OfflineCacheService.instance.syncAll(warehouseId: warehouseId);
+      await OfflineCacheService.instance.syncAll(
+          warehouseId: warehouseId, tenantId: tenantId);
       if (mounted) {
         ref.read(syncEpochProvider.notifier).state++;
       }
     } else {
-      OfflineCacheService.instance.syncAll(warehouseId: warehouseId).ignore();
+      OfflineCacheService.instance.syncAll(
+          warehouseId: warehouseId, tenantId: tenantId).ignore();
     }
   }
 
