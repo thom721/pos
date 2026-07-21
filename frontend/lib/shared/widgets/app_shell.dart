@@ -747,6 +747,19 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
         ? _resolveAndroidBottom(businessType).toList()
         : _resolveMainNav(businessType).take(5).toList();
 
+    // Sur Android, _WarehouseSelector n'est pas affiché → initFromList n'est jamais
+    // appelé. On le fait ici pour que le dépôt actif soit correctement initialisé.
+    if (_isAndroid) {
+      final warehouses = ref.watch(warehouseListProvider).valueOrNull ?? [];
+      if (warehouses.isNotEmpty) {
+        Future.microtask(() =>
+            ref.read(activeWarehouseProvider.notifier).initFromList(
+              warehouses,
+              userWarehouseIds: user?.warehouseIds ?? [],
+            ));
+      }
+    }
+
     final currentIndex =
         bottomItems.indexWhere((i) => location.startsWith(i.route));
 

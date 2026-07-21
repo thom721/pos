@@ -237,7 +237,11 @@ def list_tables(
         RestaurantTable.tenant_id == current_user.tenant_id
     )
     if wh_id:
-        q = q.filter(RestaurantTable.warehouse_id == wh_id)
+        # Inclure les tables sans dépôt (créées avant l'assignation warehouse)
+        q = q.filter(or_(
+            RestaurantTable.warehouse_id == wh_id,
+            RestaurantTable.warehouse_id.is_(None),
+        ))
     # Un serveur (cashier) ne voit que ses tables assignées
     if not _is_manager(current_user):
         q = q.filter(RestaurantTable.waiter_id == current_user.id)
@@ -1000,11 +1004,12 @@ def _menu_item_dict(m: MenuItem) -> dict:
 @router.get("/menu-items/")
 def list_menu_items(
     category_id: Optional[str] = None,
+    warehouse_id: Optional[str] = None,
     available_only: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_READ)),
 ):
-    wh_id = _resolve_wh(db, current_user)
+    wh_id = warehouse_id or _resolve_wh(db, current_user)
     q = db.query(MenuItem).filter(MenuItem.tenant_id == current_user.tenant_id)
     if wh_id:
         q = q.filter(or_(MenuItem.warehouse_id == wh_id, MenuItem.warehouse_id.is_(None)))

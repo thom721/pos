@@ -167,10 +167,12 @@ class RestaurantRepository {
   Future<List<MenuItemModel>> getMenuItems({
     String? categoryId,
     bool availableOnly = false,
+    String? warehouseId,
   }) async {
     final res = await dio.get('/api/restaurant/menu-items/', queryParameters: {
       if (categoryId != null) 'category_id': categoryId,
       if (availableOnly) 'available_only': true,
+      if (warehouseId != null) 'warehouse_id': warehouseId,
     });
     return (res.data as List)
         .map((e) => MenuItemModel.fromJson(e as Map<String, dynamic>))

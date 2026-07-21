@@ -13,6 +13,7 @@ import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/offline_cache_service.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
@@ -189,8 +190,9 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
+      final warehouseId = ref.read(activeWarehouseProvider)?.id;
       final results = await Future.wait([
-        _repo.getMenuItems(),
+        _repo.getMenuItems(warehouseId: warehouseId),
         _prodRepo.getCategories(),
       ]);
       if (mounted) {
