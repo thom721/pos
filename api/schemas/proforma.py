@@ -21,16 +21,18 @@ class ProformaCreate(BaseModel):
     notes: Optional[str] = None
     currency: str = "HTG"
     status: str = "draft"
+    warehouse_id: Optional[str] = None
     items: List[ProformaItemInput]
 
 
 class ProformaUpdate(BaseModel):
     client_id: Optional[str] = None
     client_name: Optional[str] = None
-    discount: float = 0
+    discount: Optional[float] = None
     notes: Optional[str] = None
-    currency: str = "HTG"
+    currency: Optional[str] = None
     status: Optional[str] = None
+    warehouse_id: Optional[str] = None
     items: Optional[List[ProformaItemInput]] = None
 
 
@@ -56,6 +58,7 @@ class ProformaRead(BaseModel):
     notes: Optional[str] = None
     currency: str
     status: str
+    warehouse_id: Optional[str] = None
     created_at: datetime
     items: List[ProformaItemRead] = []
 

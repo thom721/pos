@@ -5,7 +5,8 @@ from .base import UUIDBase
 
 class Invoice(UUIDBase):
     __tablename__ = "invoices"
-    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
+    tenant_id    = Column(String(36), ForeignKey('tenants.id'),    nullable=True, index=True)
+    warehouse_id = Column(String(36), ForeignKey('warehouses.id'), nullable=True, index=True)
 
     reference = Column(String(50), unique=True, nullable=False)
     date = Column(DateTime(timezone=True), nullable=False)
@@ -28,8 +29,9 @@ class Invoice(UUIDBase):
 class InvoiceItem(UUIDBase):
     __tablename__ = "invoice_items"
 
-    tenant_id  = Column(String(36), ForeignKey("tenants.id"),  nullable=True, index=True)
-    invoice_id = Column(String(36), ForeignKey("invoices.id"), nullable=False)
+    tenant_id    = Column(String(36), ForeignKey("tenants.id"),    nullable=True, index=True)
+    warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=True, index=True)
+    invoice_id   = Column(String(36), ForeignKey("invoices.id"),   nullable=False)
     product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
     name = Column(String(255), nullable=False)
     quantity = Column(Numeric(12, 3), nullable=False, default=1)

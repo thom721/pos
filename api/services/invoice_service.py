@@ -51,6 +51,7 @@ def create_invoice(db: Session, data: InvoiceCreate, user_id: str, tenant_id: st
         currency=data.currency,
         status=data.status,
         user_id=user_id,
+        warehouse_id=data.warehouse_id,
     )
     if tenant_id:
         invoice.tenant_id = tenant_id
@@ -60,6 +61,7 @@ def create_invoice(db: Session, data: InvoiceCreate, user_id: str, tenant_id: st
     for item in data.items:
         db.add(InvoiceItem(
             tenant_id=invoice.tenant_id,
+            warehouse_id=invoice.warehouse_id,
             invoice_id=invoice.id,
             product_id=item.product_id,
             name=item.name,
@@ -91,12 +93,17 @@ def update_invoice(db: Session, invoice_id: str, data: InvoiceUpdate, tenant_id:
     if data.currency is not None:
         invoice.currency = data.currency
 
+    if data.warehouse_id is not None:
+        invoice.warehouse_id = data.warehouse_id
+
     if data.items is not None:
         for item in invoice.items:
             db.delete(item)
         db.flush()
         for item in data.items:
             db.add(InvoiceItem(
+                tenant_id=invoice.tenant_id,
+                warehouse_id=invoice.warehouse_id,
                 invoice_id=invoice.id,
                 product_id=item.product_id,
                 name=item.name,

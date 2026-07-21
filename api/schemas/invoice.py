@@ -22,6 +22,7 @@ class InvoiceCreate(BaseModel):
     notes: Optional[str] = None
     currency: str = "HTG"
     status: str = "draft"
+    warehouse_id: Optional[str] = None
     items: List[InvoiceItemInput]
 
 
@@ -33,6 +34,7 @@ class InvoiceUpdate(BaseModel):
     notes: Optional[str] = None
     currency: Optional[str] = None
     status: Optional[str] = None
+    warehouse_id: Optional[str] = None
     items: Optional[List[InvoiceItemInput]] = None
 
 
@@ -64,6 +66,7 @@ class InvoiceRead(BaseModel):
     notes: Optional[str] = None
     currency: str
     status: str
+    warehouse_id: Optional[str] = None
     created_at: datetime
     items: List[InvoiceItemRead] = []
 

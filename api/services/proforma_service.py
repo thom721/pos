@@ -52,6 +52,7 @@ def create_proforma(db: Session, data: ProformaCreate, user_id: str, tenant_id: 
         currency=data.currency,
         status=data.status,
         user_id=user_id,
+        warehouse_id=data.warehouse_id,
     )
     if tenant_id:
         proforma.tenant_id = tenant_id
@@ -61,6 +62,7 @@ def create_proforma(db: Session, data: ProformaCreate, user_id: str, tenant_id: 
     for item in data.items:
         db.add(ProformaItem(
             tenant_id=proforma.tenant_id,
+            warehouse_id=proforma.warehouse_id,
             proforma_id=proforma.id,
             product_id=item.product_id,
             name=item.name,
@@ -90,6 +92,9 @@ def update_proforma(db: Session, proforma_id: str, data: ProformaUpdate, tenant_
     if data.currency is not None:
         proforma.currency = data.currency
 
+    if data.warehouse_id is not None:
+        proforma.warehouse_id = data.warehouse_id
+
     if data.items is not None:
         # Replace items
         for item in proforma.items:
@@ -97,6 +102,8 @@ def update_proforma(db: Session, proforma_id: str, data: ProformaUpdate, tenant_
         db.flush()
         for item in data.items:
             db.add(ProformaItem(
+                tenant_id=proforma.tenant_id,
+                warehouse_id=proforma.warehouse_id,
                 proforma_id=proforma.id,
                 product_id=item.product_id,
                 name=item.name,

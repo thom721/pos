@@ -5,7 +5,8 @@ from .base import UUIDBase
 
 class Proforma(UUIDBase):
     __tablename__ = "proformas"
-    tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
+    tenant_id    = Column(String(36), ForeignKey('tenants.id'),    nullable=True, index=True)
+    warehouse_id = Column(String(36), ForeignKey('warehouses.id'), nullable=True, index=True)
 
     reference = Column(String(50), unique=True, nullable=False)
     date = Column(DateTime(timezone=True), nullable=False)
@@ -26,8 +27,9 @@ class Proforma(UUIDBase):
 class ProformaItem(UUIDBase):
     __tablename__ = "proforma_items"
 
-    tenant_id   = Column(String(36), ForeignKey("tenants.id"),   nullable=True, index=True)
-    proforma_id = Column(String(36), ForeignKey("proformas.id"), nullable=False)
+    tenant_id    = Column(String(36), ForeignKey("tenants.id"),    nullable=True, index=True)
+    warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=True, index=True)
+    proforma_id  = Column(String(36), ForeignKey("proformas.id"),  nullable=False)
     product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
     name = Column(String(255), nullable=False)
     quantity = Column(Numeric(12, 3), nullable=False, default=1)
