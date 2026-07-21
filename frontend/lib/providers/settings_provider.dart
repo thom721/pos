@@ -314,6 +314,22 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     } catch (_) {
       // Network unavailable — local cache already applied above
     }
+
+    // Si businessName est toujours le placeholder, utiliser le nom du tenant
+    // (stocké lors du login dans SharedPreferences) comme fallback.
+    if (state.businessName == 'Mon Commerce' || state.businessName.isEmpty) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final tenantRaw = prefs.getString(AppConstants.tenantKey);
+        if (tenantRaw != null) {
+          final tenant = jsonDecode(tenantRaw) as Map<String, dynamic>;
+          final tenantName = tenant['business_name'] as String?;
+          if (tenantName != null && tenantName.isNotEmpty) {
+            state = state.copyWith(businessName: tenantName);
+          }
+        }
+      } catch (_) {}
+    }
   }
 
   /// Recharge la config depuis l'API (appelé par le cycle de sync auto).

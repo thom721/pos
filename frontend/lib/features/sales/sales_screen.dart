@@ -1,7 +1,10 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:printing/printing.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
@@ -168,40 +171,44 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
   bool _printing = false;
 
   Future<void> _print() async {
-    setState(() => _printing = true);
-    final settings = ref.read(settingsProvider);
-    try {
-      // Bluetooth configuré → impression directe ESC/POS sans dialogue
-      if (settings.bluetoothPrinterMac.isNotEmpty) {
-        final ok = await BluetoothPrintService.instance
-            .printReceipt(widget.sale, settings);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(ok
-                ? 'Impression envoyée à ${settings.bluetoothPrinterName}'
-                : 'Impossible de joindre l\'imprimante Bluetooth'),
-            backgroundColor: ok ? AppColors.success : AppColors.error,
-            duration: const Duration(seconds: 3),
-          ));
-        }
-      } else {
-        // Fallback PDF (avec timeout sur les fonts Google → Helvetica offline)
+    // Web → dialogue système directement (pas de BT, pas de choix thermique)
+    if (kIsWeb) {
+      setState(() => _printing = true);
+      try {
+        final settings = ref.read(settingsProvider);
         final bytes = await buildReceiptPdf(widget.sale, settings);
         await Printing.layoutPdf(
           onLayout: (_) => bytes,
           name: 'Recu_${widget.sale.reference}',
         );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Erreur impression: $e'),
+            backgroundColor: AppColors.error,
+          ));
+        }
+      } finally {
+        if (mounted) setState(() => _printing = false);
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Erreur impression: $e'),
-          backgroundColor: AppColors.error,
-        ));
-      }
-    } finally {
-      if (mounted) setState(() => _printing = false);
+      return;
     }
+
+    // Mobile / desktop → bottom sheet avec choix imprimante + taille
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => _PrintOptionsSheet(
+        sale: widget.sale,
+        onDone: () {
+          if (mounted) setState(() => _printing = false);
+        },
+      ),
+    );
   }
 
   void _showQuickReturn() {
@@ -1009,6 +1016,227 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Print Options Bottom Sheet ────────────────────────────────────────────────
+
+class _PrintOptionsSheet extends ConsumerStatefulWidget {
+  final SaleModel sale;
+  final VoidCallback onDone;
+
+  const _PrintOptionsSheet({required this.sale, required this.onDone});
+
+  @override
+  ConsumerState<_PrintOptionsSheet> createState() => _PrintOptionsSheetState();
+}
+
+class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
+  List<BluetoothInfo> _btDevices = [];
+  bool _scanning = false;
+  bool _printing = false;
+  String? _error;
+
+  bool get _isAndroid => !kIsWeb && Platform.isAndroid;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isAndroid) _scanBt();
+  }
+
+  Future<void> _scanBt() async {
+    setState(() { _scanning = true; _error = null; });
+    try {
+      _btDevices = await BluetoothPrintService.instance.getPairedPrinters();
+    } catch (_) {}
+    if (mounted) setState(() => _scanning = false);
+  }
+
+  Future<void> _printBt(String mac, String name) async {
+    final settings = ref.read(settingsProvider);
+    setState(() => _printing = true);
+    try {
+      final ok = await BluetoothPrintService.instance
+          .printReceipt(widget.sale, settings);
+      if (mounted) {
+        Navigator.pop(context);
+        widget.onDone();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ok
+              ? 'Impression envoyée à $name'
+              : 'Impossible de joindre l\'imprimante Bluetooth'),
+          backgroundColor: ok ? AppColors.success : AppColors.error,
+          duration: const Duration(seconds: 3),
+        ));
+      }
+    } catch (e) {
+      if (mounted) setState(() { _printing = false; _error = e.toString(); });
+    }
+  }
+
+  Future<void> _printPdf() async {
+    final settings = ref.read(settingsProvider);
+    setState(() => _printing = true);
+    try {
+      final bytes = await buildReceiptPdf(widget.sale, settings);
+      if (!mounted) return;
+      Navigator.pop(context);
+      widget.onDone();
+      await Printing.layoutPdf(
+        onLayout: (_) => bytes,
+        name: 'Recu_${widget.sale.reference}',
+      );
+    } catch (e) {
+      if (mounted) setState(() { _printing = false; _error = e.toString(); });
+    }
+  }
+
+  Future<void> _setPaperWidth(int w) async {
+    final notifier = ref.read(settingsProvider.notifier);
+    final settings = ref.read(settingsProvider);
+    await notifier.save(settings.copyWith(paperWidth: w));
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.read(settingsProvider);
+    final paperWidth = settings.paperWidth;
+    final hasBtConfigured = settings.bluetoothPrinterMac.isNotEmpty;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20, right: 20, top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(children: [
+            const Icon(Icons.print_rounded, size: 20),
+            const SizedBox(width: 8),
+            Text('Options d\'impression',
+                style: Theme.of(context).textTheme.titleMedium),
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.close_rounded, size: 20),
+              onPressed: () { Navigator.pop(context); widget.onDone(); },
+              visualDensity: VisualDensity.compact,
+            ),
+          ]),
+          const Divider(height: 16),
+
+          // Largeur du papier
+          Text('Taille du papier',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: AppColors.textSecondary)),
+          const SizedBox(height: 8),
+          SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(
+                  value: 58,
+                  label: Text('58 mm'),
+                  icon: Icon(Icons.receipt_outlined, size: 15)),
+              ButtonSegment(
+                  value: 80,
+                  label: Text('80 mm'),
+                  icon: Icon(Icons.receipt_long_outlined, size: 15)),
+            ],
+            selected: {paperWidth},
+            onSelectionChanged: (s) => _setPaperWidth(s.first),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Bluetooth (Android uniquement)
+          if (_isAndroid) ...[
+            Text('Imprimante Bluetooth',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: AppColors.textSecondary)),
+            const SizedBox(height: 8),
+
+            if (hasBtConfigured)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.bluetooth_connected_rounded,
+                    color: AppColors.accent),
+                title: Text(settings.bluetoothPrinterName),
+                subtitle: Text(settings.bluetoothPrinterMac,
+                    style: const TextStyle(fontSize: 11)),
+                trailing: _printing
+                    ? const SizedBox(
+                        width: 20, height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : FilledButton.icon(
+                        icon: const Icon(Icons.print_rounded, size: 16),
+                        label: const Text('Imprimer'),
+                        style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.success),
+                        onPressed: () => _printBt(
+                            settings.bluetoothPrinterMac,
+                            settings.bluetoothPrinterName),
+                      ),
+              )
+            else if (_scanning)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Row(children: [
+                  SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 10),
+                  Text('Recherche d\'imprimantes…',
+                      style: TextStyle(fontSize: 13)),
+                ]),
+              )
+            else if (_btDevices.isNotEmpty)
+              ..._btDevices.map((d) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.bluetooth_rounded,
+                        color: AppColors.textSecondary),
+                    title: Text(d.name, style: const TextStyle(fontSize: 13)),
+                    subtitle: Text(d.macAdress,
+                        style: const TextStyle(fontSize: 11)),
+                    trailing: _printing
+                        ? const SizedBox(
+                            width: 20, height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : OutlinedButton(
+                            onPressed: () => _printBt(d.macAdress, d.name),
+                            child: const Text('Imprimer'),
+                          ),
+                  ))
+            else
+              TextButton.icon(
+                icon: const Icon(Icons.bluetooth_searching_rounded, size: 16),
+                label: const Text('Scanner les imprimantes appairées'),
+                onPressed: _scanBt,
+              ),
+
+            const SizedBox(height: 8),
+          ],
+
+          // Impression PDF / système
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+              label: const Text('Impression PDF / Système'),
+              onPressed: _printing ? null : _printPdf,
+            ),
+          ),
+
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(_error!,
+                style: const TextStyle(
+                    color: AppColors.error, fontSize: 12)),
+          ],
+        ],
       ),
     );
   }
