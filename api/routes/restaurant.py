@@ -1138,6 +1138,7 @@ def _task_dict(t: HousekeepingTask) -> dict:
     return {
         'id': t.id,
         'table_id': t.table_id,
+        'warehouse_id': t.warehouse_id,
         'description': t.description,
         'status': t.status,
         'created_at': t.created_at,
@@ -1155,8 +1156,10 @@ def list_housekeeping_tasks(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_READ)),
 ):
+    wh_id = _resolve_wh(db, current_user)
     q = db.query(HousekeepingTask).filter(
-        HousekeepingTask.tenant_id == current_user.tenant_id
+        HousekeepingTask.tenant_id == current_user.tenant_id,
+        or_(HousekeepingTask.warehouse_id == wh_id, HousekeepingTask.warehouse_id.is_(None)),
     )
     if table_id:
         q = q.filter(HousekeepingTask.table_id == table_id)
@@ -1178,6 +1181,7 @@ def create_housekeeping_task(
     task = HousekeepingTask(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
+        warehouse_id=table.warehouse_id,
         table_id=data.table_id,
         description=data.description,
         status='pending',

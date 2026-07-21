@@ -244,6 +244,7 @@ class RestaurantOrderItemModel {
 class HousekeepingTaskModel {
   final String id;
   final String tableId;
+  final String? warehouseId;
   final String description;
   final String status; // pending | done
   final DateTime? createdAt;
@@ -251,6 +252,7 @@ class HousekeepingTaskModel {
   const HousekeepingTaskModel({
     required this.id,
     required this.tableId,
+    this.warehouseId,
     required this.description,
     required this.status,
     this.createdAt,
@@ -262,6 +264,7 @@ class HousekeepingTaskModel {
       HousekeepingTaskModel(
         id:          j['id'] as String,
         tableId:     j['table_id'] as String,
+        warehouseId: j['warehouse_id'] as String?,
         description: j['description'] as String,
         status:      j['status'] as String? ?? 'pending',
         createdAt:   j['created_at'] != null
