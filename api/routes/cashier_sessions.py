@@ -15,6 +15,7 @@ from api.models.Tenant import Tenant
 from api.models.PlatformConfig import PlatformConfig
 from api.dependencies.auth import require_permission
 from api.core.permissions import P, has_permission as _has_perm
+from api.core.tenant import require_active_plan
 from api.services import audit_service
 from api.services import billing_extra_service as _billing
 
@@ -233,6 +234,7 @@ def open_session(
     body: OpenSessionBody,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SESSIONS_OPEN)),
+    _plan: None = Depends(require_active_plan),
 ):
     existing = (
         db.query(CashierSession)

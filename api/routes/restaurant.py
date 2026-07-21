@@ -8,6 +8,7 @@ import uuid
 from api.database import get_db
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
+from api.core.tenant import require_active_plan
 from api.core.permissions import has_permission
 from api.models.User import User
 from api.models.RestaurantTable import RestaurantTable
@@ -439,6 +440,7 @@ def create_order(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_UPDATE)),
+    _plan: None = Depends(require_active_plan),
     table_id: Optional[str] = None,
 ):
     if table_id:
@@ -654,6 +656,7 @@ def checkout_order(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_CREATE)),
+    _plan: None = Depends(require_active_plan),
 ):
     from api.models.Sale import Sale
     from api.models.SaleItem import SaleItem
