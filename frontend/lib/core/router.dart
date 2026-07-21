@@ -48,21 +48,54 @@ class _AuthRefreshNotifier extends ChangeNotifier {
   }
 }
 
+// Routes qui ne nécessitent pas d'authentification.
+const _kPublicRoutes = {
+  '/splash', '/login', '/home', '/contact', '/terms',
+  '/privacy', '/register', '/install', '/admin', '/change-password',
+};
+
 final routerProvider = Provider<GoRouter>((ref) {
   final notifier = _AuthRefreshNotifier(ref);
+  // Sauvegarde de l'URL d'origine lors d'un refresh sur une page protégée.
+  String? pendingDeepLink;
 
   return GoRouter(
     initialLocation: '/splash',
     refreshListenable: notifier,
     redirect: (context, state) {
       final authState = ref.read(authProvider);
+      final isLoading  = authState.isLoading;
       final isLoggedIn = authState.isAuthenticated;
       final mustChange = authState.user?.mustChangePassword ?? false;
-      final location = state.matchedLocation;
+      final location   = state.matchedLocation;
 
-      if (location == '/splash') return null;
+      // ── Auth en cours de vérification ────────────────────────────────────
+      // Sauvegarder l'URL protégée et afficher le splash pendant la vérif.
+      if (isLoading) {
+        if (!_kPublicRoutes.contains(location)) {
+          pendingDeepLink = state.uri.toString();
+        }
+        return location == '/splash' ? null : '/splash';
+      }
+
+      // ── Splash : auth résolue, naviguer vers la bonne destination ────────
+      if (location == '/splash') {
+        if (!isLoggedIn) {
+          pendingDeepLink = null;
+          return kIsWeb ? '/home' : '/login';
+        }
+        if (mustChange) {
+          pendingDeepLink = null;
+          return '/change-password';
+        }
+        // Restaurer l'URL d'origine (deep link depuis un refresh) ou dashboard
+        final target = pendingDeepLink ?? '/dashboard';
+        pendingDeepLink = null;
+        return target;
+      }
+
+      // ── Routes publiques ─────────────────────────────────────────────────
       if (location == '/install') {
-        // Le wizard n'existe pas sur Android/iOS — rediriger vers login.
         final isMobile = !kIsWeb &&
             (defaultTargetPlatform == TargetPlatform.android ||
                 defaultTargetPlatform == TargetPlatform.iOS);
@@ -70,11 +103,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       if (location == '/register') return null;
       if (location == '/admin') return null;
-      if (location == '/home' || location == '/contact' || location == '/terms' || location == '/privacy') {
-        // Public pages — redirect logged-in users straight to the app
+      if (location == '/home' || location == '/contact' ||
+          location == '/terms' || location == '/privacy') {
         return isLoggedIn ? '/dashboard' : null;
       }
-      // Web: unauthenticated users see the public landing page, not login
+
+      // ── Routes protégées ─────────────────────────────────────────────────
       if (!isLoggedIn && location != '/login') return kIsWeb ? '/home' : '/login';
       if (isLoggedIn && location == '/login') {
         return mustChange ? '/change-password' : '/dashboard';
