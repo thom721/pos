@@ -72,11 +72,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       final location   = state.matchedLocation;
 
       // ── Auth en cours de vérification ────────────────────────────────────
-      // Sauvegarder l'URL protégée et afficher le splash pendant la vérif.
+      // Sur une route publique (login, home…) : rester sur place — évite
+      // que l'appui sur "Se connecter" fasse flasher le splash.
+      // Sur une route protégée : sauvegarder l'URL et afficher le splash.
       if (isLoading) {
-        if (!_kPublicRoutes.contains(location)) {
-          pendingDeepLink = state.uri.toString();
-        }
+        if (_kPublicRoutes.contains(location)) return null;
+        pendingDeepLink = state.uri.toString();
         return location == '/splash' ? null : '/splash';
       }
 

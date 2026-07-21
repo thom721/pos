@@ -297,8 +297,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
             validator: (v) {
               if (v == null || v.trim().isEmpty) return 'Requis';
-              // Sur Android : username ou email acceptés (pas de validation @)
-              if (!_isAndroid && !v.contains('@')) return 'Email invalide';
               return null;
             },
           ),
