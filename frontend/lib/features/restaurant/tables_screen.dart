@@ -464,7 +464,11 @@ class _TableCard extends ConsumerWidget {
       } catch (_) {}
     }
     if (context.mounted) {
-      context.push('/restaurant/commandes', extra: table.id);
+      if (isHotel) {
+        context.push('/restaurant/table/${table.id}', extra: table);
+      } else {
+        context.push('/restaurant/commandes', extra: table.id);
+      }
     }
   }
 

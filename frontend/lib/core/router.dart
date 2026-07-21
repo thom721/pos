@@ -30,6 +30,7 @@ import 'package:pos_connect/features/admin/admin_screen.dart';
 import 'package:pos_connect/features/audit/audit_screen.dart';
 import 'package:pos_connect/features/warehouses/warehouses_screen.dart';
 import 'package:pos_connect/features/reports/depot_reports_screen.dart';
+import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/features/restaurant/tables_screen.dart';
 import 'package:pos_connect/features/restaurant/table_order_screen.dart';
 import 'package:pos_connect/features/restaurant/kitchen_screen.dart';
@@ -257,6 +258,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/restaurant/table/:tableId',
             builder: (context, state) => TableOrderScreen(
               tableId: state.pathParameters['tableId']!,
+              table: state.extra as RestaurantTableModel?,
             ),
           ),
           GoRoute(

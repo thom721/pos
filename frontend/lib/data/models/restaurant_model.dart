@@ -208,6 +208,7 @@ class RestaurantTableModel {
 class RestaurantOrderItemModel {
   final String id;
   final String? productId;
+  final String? menuItemId;
   final String productName;
   final double quantity;
   final double unitPrice;
@@ -217,6 +218,7 @@ class RestaurantOrderItemModel {
   const RestaurantOrderItemModel({
     required this.id,
     this.productId,
+    this.menuItemId,
     required this.productName,
     required this.quantity,
     required this.unitPrice,
@@ -230,6 +232,7 @@ class RestaurantOrderItemModel {
       RestaurantOrderItemModel(
         id:          j['id'] as String,
         productId:   j['product_id'] as String?,
+        menuItemId:  j['menu_item_id'] as String?,
         productName: j['product_name'] as String? ?? '',
         quantity:    (j['quantity'] as num).toDouble(),
         unitPrice:   (j['unit_price'] as num).toDouble(),

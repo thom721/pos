@@ -62,7 +62,10 @@ def _table_dict(t: RestaurantTable) -> dict:
 
 
 def _item_dict(i: RestaurantOrderItem) -> dict:
-    if i.menu_item_id and hasattr(i, 'menu_item') and i.menu_item:
+    label = getattr(i, 'label', None)
+    if label:
+        name = label
+    elif i.menu_item_id and hasattr(i, 'menu_item') and i.menu_item:
         name = i.menu_item.name
     elif i.product:
         name = i.product.name
@@ -72,6 +75,7 @@ def _item_dict(i: RestaurantOrderItem) -> dict:
         'id': i.id,
         'product_id': i.product_id,
         'menu_item_id': i.menu_item_id,
+        'label': getattr(i, 'label', None),
         'product_name': name,
         'quantity': float(i.quantity),
         'unit_price': float(i.unit_price),
@@ -140,6 +144,7 @@ class OrderItemAdd(BaseModel):
     quantity: float = 1.0
     notes: Optional[str] = None
     unit_price: Optional[float] = None  # override pour variante sélectionnée
+    label: Optional[str] = None
 
 class OpenOrderPayload(BaseModel):
     covers: int = 1
@@ -497,15 +502,21 @@ def add_item(
     if order.status == 'closed':
         raise HTTPException(400, "Cette commande est déjà clôturée")
 
-    if not data.product_id and not data.menu_item_id:
-        raise HTTPException(400, "product_id ou menu_item_id requis")
+    if not data.product_id and not data.menu_item_id and not data.label:
+        raise HTTPException(400, "product_id, menu_item_id ou label requis")
 
     item_name: str
     item_price: float
     resolved_product_id = data.product_id
     resolved_menu_item_id = data.menu_item_id
 
-    if data.menu_item_id:
+    if data.label:
+        # freeform item (room charge, etc.)
+        item_name = data.label
+        item_price = data.unit_price or 0
+        resolved_product_id = None
+        resolved_menu_item_id = None
+    elif data.menu_item_id:
         mi = db.query(MenuItem).filter(
             MenuItem.id == data.menu_item_id,
             MenuItem.tenant_id == current_user.tenant_id,
@@ -532,6 +543,7 @@ def add_item(
         unit_price=data.unit_price if data.unit_price is not None else item_price,
         quantity=data.quantity,
         notes=data.notes,
+        label=data.label,
     )
     db.add(item)
     db.commit()

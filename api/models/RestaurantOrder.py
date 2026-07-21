@@ -34,6 +34,7 @@ class RestaurantOrderItem(UUIDBase):
     quantity      = Column(Numeric(10, 2), default=1, nullable=False)
     unit_price    = Column(Numeric(10, 2), nullable=False)
     notes         = Column(String(255), nullable=True)
+    label         = Column(String(255), nullable=True)
     status        = Column(
         SAEnum('pending', 'preparing', 'ready', name='restaurant_item_status'),
         default='pending',
