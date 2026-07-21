@@ -232,16 +232,24 @@ def list_tables(
     current_user: User = Depends(require_permission(P.TABLES_READ)),
     warehouse_id: str | None = None,
 ):
-    wh_id = warehouse_id or _resolve_wh(db, current_user)
     q = db.query(RestaurantTable).filter(
         RestaurantTable.tenant_id == current_user.tenant_id
     )
-    if wh_id:
-        # Inclure les tables sans dépôt (créées avant l'assignation warehouse)
+    if warehouse_id:
+        # Le client a sélectionné un dépôt explicitement (ex: sélecteur web)
         q = q.filter(or_(
-            RestaurantTable.warehouse_id == wh_id,
+            RestaurantTable.warehouse_id == warehouse_id,
             RestaurantTable.warehouse_id.is_(None),
         ))
+    elif current_user.warehouse_id:
+        # L'utilisateur est restreint à des dépôts spécifiques
+        wh_id = _resolve_wh(db, current_user)
+        if wh_id:
+            q = q.filter(or_(
+                RestaurantTable.warehouse_id == wh_id,
+                RestaurantTable.warehouse_id.is_(None),
+            ))
+    # Accès total (warehouse_id null/vide) sans filtre client → toutes les chambres
     # Un serveur (cashier) ne voit que ses tables assignées
     if not _is_manager(current_user):
         q = q.filter(RestaurantTable.waiter_id == current_user.id)
@@ -386,13 +394,17 @@ def list_orders(
     current_user: User = Depends(require_permission(P.TABLES_READ)),
     warehouse_id: str | None = None,
 ):
-    wh_id = warehouse_id or _resolve_wh(db, current_user)
     q = db.query(RestaurantOrder).filter(
         RestaurantOrder.tenant_id == current_user.tenant_id,
         RestaurantOrder.status != 'closed',
     )
-    if wh_id:
-        q = q.filter(RestaurantOrder.warehouse_id == wh_id)
+    if warehouse_id:
+        q = q.filter(RestaurantOrder.warehouse_id == warehouse_id)
+    elif current_user.warehouse_id:
+        wh_id = _resolve_wh(db, current_user)
+        if wh_id:
+            q = q.filter(RestaurantOrder.warehouse_id == wh_id)
+    # Accès total → toutes les commandes actives du tenant
     return [_order_dict(o) for o in q.all()]
 
 
@@ -1009,10 +1021,14 @@ def list_menu_items(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_READ)),
 ):
-    wh_id = warehouse_id or _resolve_wh(db, current_user)
     q = db.query(MenuItem).filter(MenuItem.tenant_id == current_user.tenant_id)
-    if wh_id:
-        q = q.filter(or_(MenuItem.warehouse_id == wh_id, MenuItem.warehouse_id.is_(None)))
+    if warehouse_id:
+        q = q.filter(or_(MenuItem.warehouse_id == warehouse_id, MenuItem.warehouse_id.is_(None)))
+    elif current_user.warehouse_id:
+        wh_id = _resolve_wh(db, current_user)
+        if wh_id:
+            q = q.filter(or_(MenuItem.warehouse_id == wh_id, MenuItem.warehouse_id.is_(None)))
+    # Accès total sans filtre → tous les plats du tenant
     if category_id:
         q = q.filter(MenuItem.category_id == category_id)
     if available_only:

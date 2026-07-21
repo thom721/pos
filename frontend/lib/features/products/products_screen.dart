@@ -12,6 +12,7 @@ import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
+import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/offline_cache_service.dart';
@@ -190,7 +191,9 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final warehouseId = ref.read(activeWarehouseProvider)?.id;
+      final user = ref.read(authProvider).user;
+      final hasRestriction = user?.warehouseIds.isNotEmpty ?? false;
+      final warehouseId = hasRestriction ? ref.read(activeWarehouseProvider)?.id : null;
       final results = await Future.wait([
         _repo.getMenuItems(warehouseId: warehouseId),
         _prodRepo.getCategories(),
