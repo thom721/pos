@@ -17,7 +17,9 @@ import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/license_service.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/services/bluetooth_print_service.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
 class _NavItem {
   final String label;
@@ -732,47 +734,8 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
   void _showPaperSizeSheet(BuildContext context, WidgetRef ref) {
     showModalBottomSheet(
       context: context,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.receipt_long_outlined, size: 20),
-                  const SizedBox(width: 8),
-                  const Text('Taille du papier thermique',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              StatefulBuilder(
-                builder: (ctx2, setLocalState) {
-                  final current = ref.read(settingsProvider).paperWidth;
-                  return SegmentedButton<int>(
-                    segments: const [
-                      ButtonSegment(value: 58, label: Text('58 mm')),
-                      ButtonSegment(value: 80, label: Text('80 mm')),
-                    ],
-                    selected: {current},
-                    onSelectionChanged: (val) async {
-                      final w = val.first;
-                      await ref.read(settingsProvider.notifier).save(
-                            ref.read(settingsProvider).copyWith(paperWidth: w),
-                          );
-                      setLocalState(() {});
-                      if (ctx2.mounted) Navigator.pop(ctx2);
-                    },
-                  );
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
-      ),
+      isScrollControlled: true,
+      builder: (_) => const _PrintSettingsSheet(),
     );
   }
 
@@ -1418,6 +1381,215 @@ class _CaisseOverLimitBannerState extends State<_CaisseOverLimitBanner> {
               constraints: const BoxConstraints(),
               onPressed: () => setState(() => _dismissed = true),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Sheet : paramètres d'impression (papier + imprimante BT) ─────────────────
+
+class _PrintSettingsSheet extends ConsumerStatefulWidget {
+  const _PrintSettingsSheet();
+
+  @override
+  ConsumerState<_PrintSettingsSheet> createState() =>
+      _PrintSettingsSheetState();
+}
+
+class _PrintSettingsSheetState extends ConsumerState<_PrintSettingsSheet> {
+  List<BluetoothInfo>? _paired;
+  bool _loadingBt = false;
+
+  bool get _isAndroid =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isAndroid) _loadPaired();
+  }
+
+  Future<void> _loadPaired() async {
+    setState(() => _loadingBt = true);
+    try {
+      _paired = await BluetoothPrintService.instance.getPairedPrinters();
+    } catch (_) {
+      _paired = [];
+    }
+    if (mounted) setState(() => _loadingBt = false);
+  }
+
+  Future<void> _selectPrinter(String mac, String name) async {
+    final s = ref.read(settingsProvider);
+    await ref.read(settingsProvider.notifier).save(
+          s.copyWith(bluetoothPrinterMac: mac, bluetoothPrinterName: name),
+        );
+    if (mounted) Navigator.pop(context);
+  }
+
+  Future<void> _clearPrinter() async {
+    final s = ref.read(settingsProvider);
+    await ref.read(settingsProvider.notifier).save(
+          s.copyWith(bluetoothPrinterMac: '', bluetoothPrinterName: ''),
+        );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final savedMac = settings.bluetoothPrinterMac;
+    final savedName = settings.bluetoothPrinterName;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Titre ──────────────────────────────────────────────────────
+            const Row(children: [
+              Icon(Icons.print_outlined, size: 20),
+              SizedBox(width: 8),
+              Text('Paramètres d\'impression',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            ]),
+            const SizedBox(height: 20),
+
+            // ── Taille du papier ───────────────────────────────────────────
+            const Text('Taille du papier',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            const SizedBox(height: 8),
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(
+                    value: 58,
+                    icon: Icon(Icons.receipt_outlined, size: 16),
+                    label: Text('58 mm')),
+                ButtonSegment(
+                    value: 80,
+                    icon: Icon(Icons.receipt_long_outlined, size: 16),
+                    label: Text('80 mm')),
+              ],
+              selected: {settings.paperWidth},
+              onSelectionChanged: (val) async {
+                await ref.read(settingsProvider.notifier).save(
+                      settings.copyWith(paperWidth: val.first),
+                    );
+              },
+            ),
+
+            // ── Imprimante BT (Android uniquement) ─────────────────────────
+            if (_isAndroid) ...[
+              const SizedBox(height: 20),
+              const Divider(height: 1),
+              const SizedBox(height: 16),
+              Row(children: [
+                const Text('Imprimante Bluetooth',
+                    style: TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary)),
+                const Spacer(),
+                if (_loadingBt)
+                  const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                else
+                  GestureDetector(
+                    onTap: _loadPaired,
+                    child: const Icon(Icons.refresh_rounded,
+                        size: 18, color: AppColors.textSecondary),
+                  ),
+              ]),
+              const SizedBox(height: 8),
+
+              // Imprimante sauvegardée
+              if (savedMac.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.check_circle_rounded,
+                        color: AppColors.primary, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                              savedName.isNotEmpty ? savedName : savedMac,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 13)),
+                          Text(savedMac,
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _clearPrinter,
+                      style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8)),
+                      child: const Text('Effacer',
+                          style: TextStyle(fontSize: 12)),
+                    ),
+                  ]),
+                ),
+
+              // Liste des appareils appairés
+              if (_loadingBt)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text('Recherche...',
+                      style: TextStyle(
+                          fontSize: 13, color: AppColors.textSecondary)),
+                )
+              else if (_paired == null || _paired!.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text('Aucune imprimante appairée trouvée',
+                      style: TextStyle(
+                          fontSize: 13, color: AppColors.textSecondary)),
+                )
+              else
+                ..._paired!.map((d) {
+                  final isSelected = savedMac == d.macAdress;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    leading: Icon(Icons.bluetooth_rounded,
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.textSecondary,
+                        size: 20),
+                    title: Text(d.name,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                            color: isSelected ? AppColors.primary : null)),
+                    subtitle: Text(d.macAdress,
+                        style: const TextStyle(fontSize: 11)),
+                    trailing: isSelected
+                        ? const Icon(Icons.check_rounded,
+                            color: AppColors.primary, size: 18)
+                        : null,
+                    onTap: () => _selectPrinter(d.macAdress, d.name),
+                  );
+                }),
+            ],
+            const SizedBox(height: 4),
           ],
         ),
       ),
