@@ -59,6 +59,7 @@ def create_invoice(db: Session, data: InvoiceCreate, user_id: str, tenant_id: st
 
     for item in data.items:
         db.add(InvoiceItem(
+            tenant_id=invoice.tenant_id,
             invoice_id=invoice.id,
             product_id=item.product_id,
             name=item.name,

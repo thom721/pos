@@ -26,6 +26,7 @@ class Proforma(UUIDBase):
 class ProformaItem(UUIDBase):
     __tablename__ = "proforma_items"
 
+    tenant_id   = Column(String(36), ForeignKey("tenants.id"),   nullable=True, index=True)
     proforma_id = Column(String(36), ForeignKey("proformas.id"), nullable=False)
     product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
     name = Column(String(255), nullable=False)

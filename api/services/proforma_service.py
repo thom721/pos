@@ -60,6 +60,7 @@ def create_proforma(db: Session, data: ProformaCreate, user_id: str, tenant_id: 
 
     for item in data.items:
         db.add(ProformaItem(
+            tenant_id=proforma.tenant_id,
             proforma_id=proforma.id,
             product_id=item.product_id,
             name=item.name,

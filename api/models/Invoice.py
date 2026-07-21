@@ -28,6 +28,7 @@ class Invoice(UUIDBase):
 class InvoiceItem(UUIDBase):
     __tablename__ = "invoice_items"
 
+    tenant_id  = Column(String(36), ForeignKey("tenants.id"),  nullable=True, index=True)
     invoice_id = Column(String(36), ForeignKey("invoices.id"), nullable=False)
     product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
     name = Column(String(255), nullable=False)
