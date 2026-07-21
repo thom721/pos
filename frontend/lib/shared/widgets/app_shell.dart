@@ -1442,13 +1442,16 @@ class _PrintSettingsSheetState extends ConsumerState<_PrintSettingsSheet> {
     final savedMac = settings.bluetoothPrinterMac;
     final savedName = settings.bluetoothPrinterName;
 
+    final screenH = MediaQuery.sizeOf(context).height;
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: screenH * 0.82),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             // ── Titre ──────────────────────────────────────────────────────
             const Row(children: [
               Icon(Icons.print_outlined, size: 20),
@@ -1591,6 +1594,7 @@ class _PrintSettingsSheetState extends ConsumerState<_PrintSettingsSheet> {
             ],
             const SizedBox(height: 4),
           ],
+        ),
         ),
       ),
     );
