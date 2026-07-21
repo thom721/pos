@@ -729,6 +729,53 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
     super.dispose();
   }
 
+  void _showPaperSizeSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.receipt_long_outlined, size: 20),
+                  const SizedBox(width: 8),
+                  const Text('Taille du papier thermique',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                ],
+              ),
+              const SizedBox(height: 16),
+              StatefulBuilder(
+                builder: (ctx2, setLocalState) {
+                  final current = ref.read(settingsProvider).paperWidth;
+                  return SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 58, label: Text('58 mm')),
+                      ButtonSegment(value: 80, label: Text('80 mm')),
+                    ],
+                    selected: {current},
+                    onSelectionChanged: (val) async {
+                      final w = val.first;
+                      await ref.read(settingsProvider.notifier).save(
+                            ref.read(settingsProvider).copyWith(paperWidth: w),
+                          );
+                      setLocalState(() {});
+                      if (ctx2.mounted) Navigator.pop(ctx2);
+                    },
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showDebugSheet(BuildContext context, WidgetRef ref) {
     final user = ref.read(authProvider).user;
     final active = ref.read(activeWarehouseProvider);
@@ -849,6 +896,14 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
             const Padding(
               padding: EdgeInsets.only(right: 8),
               child: Center(child: _WarehouseSelector()),
+            ),
+          // Bouton taille papier imprimante — Android seulement
+          if (_isAndroid)
+            IconButton(
+              icon: const Icon(Icons.receipt_long_outlined, size: 20,
+                  color: AppColors.textSecondary),
+              tooltip: 'Taille papier imprimante',
+              onPressed: () => _showPaperSizeSheet(context, ref),
             ),
           // Bouton debug — Android seulement
           if (_isAndroid)
