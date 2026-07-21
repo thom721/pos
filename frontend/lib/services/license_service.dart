@@ -122,13 +122,14 @@ class LicenseService {
           pricePerExtraCaisseUsd: priceUsd,
         );
 
-    // 4. Suspended — always blocked
+    // 4. Suspended — avertissement seulement, l'app reste accessible
+    // Les ventes sont bloquées côté backend (402). On n'affiche plus l'écran de blocage.
     if (tenantStatus == 'suspended') {
       return withMeta(
-        access: LicenseAccess.blocked,
+        access: LicenseAccess.warning,
         status: tenantStatus,
         isOfflineVal: isOffline,
-        message: 'Votre compte a été suspendu. Contactez le support POS Connect.',
+        message: 'Votre compte est suspendu. Renouvelez votre abonnement pour retrouver l\'accès aux ventes.',
       );
     }
 

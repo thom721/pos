@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, Tar
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
@@ -65,28 +64,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     _runSequence();
   }
 
-  // Vérifie si l'utilisateur a déjà une session active (token + setup terminé).
-  // Si oui, on skip l'animation pour ne pas afficher le splash à chaque
-  // redémarrage après kill du process par l'OS.
-  Future<bool> _hasActiveSession() async {
-    try {
-      const storage = FlutterSecureStorage();
-      final token = await storage.read(key: AppConstants.tokenKey);
-      if (token == null || token.isEmpty) return false;
-
-      if (!kIsWeb) {
-        final prefs = await SharedPreferences.getInstance();
-        final isMobile = defaultTargetPlatform == TargetPlatform.android ||
-            defaultTargetPlatform == TargetPlatform.iOS;
-        if (isMobile) return true;
-        return prefs.getBool(AppConstants.clientSetupDoneKey) ?? false;
-      }
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
   Future<void> _runSequence() async {
     if (kIsWeb) {
       // Web: attendre que authProvider finisse d'initialiser (lecture storage),
@@ -118,16 +95,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       return;
     }
 
-    // Non-web: fast-path ou animation complète
-    final skipAnimation = await _hasActiveSession();
-    if (!mounted) return;
+    // Non-web: animation Flutter complète à chaque démarrage
     FlutterNativeSplash.remove();
-    if (skipAnimation) {
-      context.go('/dashboard');
-      return;
-    }
-
-    // Premier démarrage / déconnecté → animation Flutter complète
     await Future.delayed(const Duration(milliseconds: 150));
     if (!mounted) return;
     _logoCtrl.forward();
