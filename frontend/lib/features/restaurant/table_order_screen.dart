@@ -464,12 +464,15 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
 
   Future<void> _sendToKitchen() async {
     if (_order == null || _order!.items.isEmpty) return;
+    final isHotel = ref.read(settingsProvider).businessType == 'hotel';
     setState(() => _submitting = true);
     try {
       _order = await _repo.sendToKitchen(_order!.id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Commande envoyée en cuisine'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(isHotel
+              ? 'Envoyé en cuisine et au housekeeping'
+              : 'Commande envoyée en cuisine'),
           backgroundColor: AppColors.success,
         ));
       }
@@ -1096,16 +1099,20 @@ class _BottomBar extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              if (!order.sentToKitchen && !order.isReady && !isHotel)
+                      if (!order.sentToKitchen && !order.isReady)
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed:
                         submitting || order.items.isEmpty ? null : onKitchen,
-                    icon: const Icon(Icons.restaurant_rounded),
-                    label: const Text('Envoyer en cuisine'),
+                    icon: Icon(isHotel
+                        ? Icons.cleaning_services_rounded
+                        : Icons.restaurant_rounded),
+                    label: Text(isHotel
+                        ? 'Cuisine / Housekeeping'
+                        : 'Envoyer en cuisine'),
                   ),
                 ),
-              if (!order.sentToKitchen && !order.isReady && !isHotel)
+              if (!order.sentToKitchen && !order.isReady)
                 const SizedBox(width: 10),
               Expanded(
                 child: FilledButton.icon(
