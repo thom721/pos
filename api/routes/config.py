@@ -1,4 +1,3 @@
-import asyncio
 import os
 import shutil
 from typing import Optional
@@ -31,10 +30,10 @@ def _wh_id(current_user: User, warehouse_id: Optional[str]) -> Optional[str]:
     return raw or None
 
 
-def _notify(tenant_id: Optional[str]) -> None:
+async def _notify(tenant_id: Optional[str]) -> None:
     """Notifie via WebSocket tous les devices du tenant que la config a changé."""
     if tenant_id:
-        asyncio.ensure_future(manager.notify(tenant_id))
+        await manager.notify(tenant_id)
 
 
 @router.get("/", response_model=ConfigRead)
