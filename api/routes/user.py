@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from api.services.user_service import UserService
 from api.schemas.user import UserCreate, UserRead, UserPublicRead, UserSyncRead, UserUpdate, ChangePasswordRequest
 from api.database import get_db
@@ -47,11 +47,21 @@ def list_users(
 
 @router.get("/users/offline-sync")
 def list_users_offline_sync(
+    warehouse_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(P.CONFIG_READ)),
+    current_user: User = Depends(get_current_user),
 ):
-    """Retourne les utilisateurs avec permissions recalculées pour la sync Android (admin)."""
+    """Retourne les utilisateurs du tenant pour l'auth hors ligne.
+
+    Si warehouse_id est fourni, retourne seulement les utilisateurs rattachés
+    à ce dépôt + les utilisateurs à accès total (warehouse_id vide = admin).
+    """
     users = UserService(db, tenant_id=current_user.tenant_id).list()
+    if warehouse_id:
+        users = [
+            u for u in users
+            if not (u.warehouse_id or []) or warehouse_id in (u.warehouse_id or [])
+        ]
     return [
         {
             "id": u.id,

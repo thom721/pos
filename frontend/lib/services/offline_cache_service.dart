@@ -39,7 +39,7 @@ class OfflineCacheService {
         _syncWarehouses(),
         _syncSales(warehouseId: warehouseId),
         _syncPurchases(warehouseId: warehouseId),
-        _syncUsers(),
+        _syncUsers(warehouseId: warehouseId),
         _syncSessions(warehouseId: warehouseId),
       ]);
     } catch (e) {
@@ -222,9 +222,13 @@ class OfflineCacheService {
 
   // ── Utilisateurs (auth hors ligne) ────────────────────────────────────────
 
-  Future<void> _syncUsers() async {
+  Future<void> _syncUsers({String? warehouseId}) async {
     try {
-      final res = await dio.get('/api/users/offline-sync', options: kBackgroundOptions);
+      final res = await dio.get('/api/users/offline-sync',
+          queryParameters: {
+            if (warehouseId != null) 'warehouse_id': warehouseId,
+          },
+          options: kBackgroundOptions);
       final raw = res.data;
       final items = raw is List
           ? raw.cast<Map<String, dynamic>>()
