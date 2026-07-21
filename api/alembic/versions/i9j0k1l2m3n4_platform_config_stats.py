@@ -2,12 +2,17 @@
 
 Revision ID: i9j0k1l2m3n4
 Revises: h8i9j0k1l2m3
-Down_revision: h8i9j0k1l2m3
-Branch_labels: None
-Depends_on: None
+Create Date: 2026-07-21 00:00:00.000000
+
 """
+from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
+
+revision: str = 'i9j0k1l2m3n4'
+down_revision: Union[str, None] = 'h8i9j0k1l2m3'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 
 def _col_exists(table: str, column: str) -> bool:

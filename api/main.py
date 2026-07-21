@@ -208,6 +208,10 @@ def _ensure_schema_patches() -> None:
             # prix par jour et par moment (chambres hôtel)
             "ALTER TABLE restaurant_tables ADD COLUMN price_per_day DECIMAL(12,2) NULL DEFAULT 0",
             "ALTER TABLE restaurant_tables ADD COLUMN price_per_moment DECIMAL(12,2) NULL DEFAULT 0",
+            # stats page d'accueil (migration i9j0k1l2m3n4 — fallback si alembic échoue)
+            "ALTER TABLE platform_config ADD COLUMN stat_businesses VARCHAR(30) NOT NULL DEFAULT '500+'",
+            "ALTER TABLE platform_config ADD COLUMN stat_transactions_day VARCHAR(30) NOT NULL DEFAULT '10k+'",
+            "ALTER TABLE platform_config ADD COLUMN stat_uptime VARCHAR(30) NOT NULL DEFAULT '99.9%'",
         ]:
             try:
                 conn.execute(text(stmt))
