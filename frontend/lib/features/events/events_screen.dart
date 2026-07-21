@@ -962,24 +962,27 @@ class _EventsScreenState extends ConsumerState<EventsScreen>
                       const EdgeInsets.fromLTRB(24, 20, 24, 12),
                   child: Row(
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Documents commerciaux',
-                              style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700)),
-                          Text(
-                            _isInvoiceTab
-                                ? '${invoices.length} facture(s)'
-                                : '${proformas.length} proforma(s)',
-                            style: const TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 13),
-                          ),
-                        ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Documents commerciaux',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700)),
+                            Text(
+                              _isInvoiceTab
+                                  ? '${invoices.length} facture(s)'
+                                  : '${proformas.length} proforma(s)',
+                              style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 13),
+                            ),
+                          ],
+                        ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 12),
                       if ((_isInvoiceTab
                               ? ref.watch(hasPermissionProvider(Perm.invoicesCreate))
                               : ref.watch(hasPermissionProvider(Perm.proformasCreate))))
