@@ -732,7 +732,13 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
   void _showDebugSheet(BuildContext context, WidgetRef ref) {
     final user = ref.read(authProvider).user;
     final active = ref.read(activeWarehouseProvider);
-    final warehouses = ref.read(warehouseListProvider).valueOrNull ?? [];
+    final whAsync = ref.read(warehouseListProvider);
+    final warehouses = whAsync.valueOrNull ?? [];
+    final whState = whAsync.when(
+      data: (d) => 'OK (${d.length} dépôt${d.length == 1 ? '' : 's'})',
+      loading: () => '⏳ chargement...',
+      error: (e, _) => '❌ ERREUR: $e',
+    );
     final hasRestriction = (user?.warehouseIds ?? []).isNotEmpty;
     final apiWh = hasRestriction ? active?.id : null;
 
@@ -755,8 +761,9 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
               _DebugRow('hasRestriction', '$hasRestriction'),
               _DebugRow('warehouseId envoyé API', apiWh ?? 'null → backend retourne tout'),
               const Divider(),
+              _DebugRow('Provider état', whState),
               _DebugRow('Dépôts disponibles (${warehouses.length})',
-                  warehouses.map((w) => '${w.name}${w.isDefault ? " ★" : ""}').join(', ')),
+                  warehouses.isEmpty ? '—' : warehouses.map((w) => '${w.name}${w.isDefault ? " ★" : ""}').join(', ')),
             ],
           ),
         ),
