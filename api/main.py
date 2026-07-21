@@ -197,56 +197,83 @@ def _run_alembic_migrations() -> None:
                 lock_conn.execute(text("SELECT RELEASE_LOCK('pos_alembic_migration')"))
 
 
-def _ensure_schema_patches() -> None:
-    """Patches de schéma simples et idempotents, indépendants de la chaîne alembic."""
+def _sync_schema_from_models() -> None:
+    """
+    Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy :
+    inspecte chaque table existante et ajoute toutes les colonnes manquantes.
+
+    Idempotent et exhaustif — résiste au stamp alembic, aux migrations ratées,
+    aux nouvelles colonnes ajoutées dans les modèles. Plus aucune liste manuelle
+    à maintenir : toute colonne dans un modèle sera présente en DB au prochain
+    démarrage, quoi qu'il arrive.
+    """
+    from sqlalchemy import inspect as _inspect
+
+    try:
+        inspector = _inspect(engine)
+        existing_tables = set(inspector.get_table_names())
+    except Exception as exc:
+        _log.warning("schema-sync: impossible d'inspecter les tables: %s", exc)
+        return
+
+    dialect = engine.dialect
+    added = 0
+
     with engine.connect() as conn:
-        for stmt in [
-            # price sur restaurant_tables (chambres hôtel)
-            "ALTER TABLE restaurant_tables ADD COLUMN price DECIMAL(12,2) NULL DEFAULT 0",
-            # warehouse_id sur room_attributes (ajouté par migration y9z0a1b2c3d4)
-            "ALTER TABLE room_attributes ADD COLUMN warehouse_id VARCHAR(36) NULL",
-            # prix par jour et par moment (chambres hôtel)
-            "ALTER TABLE restaurant_tables ADD COLUMN price_per_day DECIMAL(12,2) NULL DEFAULT 0",
-            "ALTER TABLE restaurant_tables ADD COLUMN price_per_moment DECIMAL(12,2) NULL DEFAULT 0",
-            # stats page d'accueil (migration i9j0k1l2m3n4)
-            "ALTER TABLE platform_config ADD COLUMN stat_businesses VARCHAR(30) NOT NULL DEFAULT '500+'",
-            "ALTER TABLE platform_config ADD COLUMN stat_transactions_day VARCHAR(30) NOT NULL DEFAULT '10k+'",
-            "ALTER TABLE platform_config ADD COLUMN stat_uptime VARCHAR(30) NOT NULL DEFAULT '99.9%'",
-            # warehouse_id sur products (migration h8i9j0k1l2m3)
-            "ALTER TABLE products ADD COLUMN warehouse_id VARCHAR(36) NULL",
-            # warehouse_id sur invoices / proformas et leurs items (migration g7h8i9j0k1l2)
-            "ALTER TABLE invoices ADD COLUMN warehouse_id VARCHAR(36) NULL",
-            "ALTER TABLE invoice_items ADD COLUMN warehouse_id VARCHAR(36) NULL",
-            "ALTER TABLE proformas ADD COLUMN warehouse_id VARCHAR(36) NULL",
-            "ALTER TABLE proforma_items ADD COLUMN warehouse_id VARCHAR(36) NULL",
-            # tenant_id sur invoice_items / proforma_items (migration f6g7h8i9j0k1)
-            "ALTER TABLE invoice_items ADD COLUMN tenant_id VARCHAR(36) NULL",
-            "ALTER TABLE proforma_items ADD COLUMN tenant_id VARCHAR(36) NULL",
-            # label sur sale_items (migration u5v6w7x8y9z0)
-            "ALTER TABLE sale_items ADD COLUMN label VARCHAR(255) NULL",
-            # label sur restaurant_order_items (migration a1b2c3d4e5f6)
-            "ALTER TABLE restaurant_order_items ADD COLUMN label VARCHAR(255) NULL",
-            # is_active sur users (migration v6w7x8y9z0a1)
-            "ALTER TABLE users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1",
-            # support_address sur platform_config (migration w7x8y9z0a1b2)
-            "ALTER TABLE platform_config ADD COLUMN support_address VARCHAR(255) NULL",
-            # warehouse_id sur users (migration j5k6l7m8n9o0 + m7n8o9p0q1r2)
-            "ALTER TABLE users ADD COLUMN warehouse_id TEXT NULL",
-            # warehouse_id sur sales / cashier_sessions / return_records (migration k6l7m8n9o0p1)
-            "ALTER TABLE sales ADD COLUMN warehouse_id VARCHAR(36) NULL",
-            "ALTER TABLE cashier_sessions ADD COLUMN warehouse_id VARCHAR(36) NULL",
-            "ALTER TABLE return_records ADD COLUMN warehouse_id VARCHAR(36) NULL",
-            # warehouse_id sur app_config (migration o9p0q1r2s3t4)
-            "ALTER TABLE app_config ADD COLUMN warehouse_id VARCHAR(36) NULL",
-            # warehouse_id sur modifier_options / restaurant_order_items (migration e5f6g7h8i9j0)
-            "ALTER TABLE modifier_options ADD COLUMN warehouse_id VARCHAR(36) NULL",
-            "ALTER TABLE restaurant_order_items ADD COLUMN warehouse_id VARCHAR(36) NULL",
-        ]:
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue  # table absente — create_all s'en charge
+
             try:
-                conn.execute(text(stmt))
-                conn.commit()
+                db_cols = {c["name"] for c in inspector.get_columns(table.name)}
             except Exception:
-                conn.rollback()  # colonne déjà présente ou table absente — on ignore
+                continue
+
+            for col in table.columns:
+                if col.name in db_cols or col.primary_key:
+                    continue  # déjà présente ou clé primaire
+
+                try:
+                    col_type = col.type.compile(dialect=dialect)
+
+                    # Clause NULL / NOT NULL
+                    nullable_sql = "" if col.nullable else " NOT NULL"
+
+                    # Clause DEFAULT
+                    default_sql = ""
+                    if col.server_default is not None:
+                        sd_arg = col.server_default.arg
+                        # TextClause (sa.text("'val'")) ou chaîne simple
+                        raw = sd_arg.text if hasattr(sd_arg, "text") else str(sd_arg)
+                        default_sql = f" DEFAULT {raw}"
+                    elif not col.nullable:
+                        # NOT NULL sans server_default → défaut neutre pour ne pas bloquer
+                        t = col_type.upper()
+                        if any(k in t for k in ("INT", "BOOL", "DECIMAL", "FLOAT", "DOUBLE", "NUMERIC")):
+                            default_sql = " DEFAULT 0"
+                        elif "DATETIME" in t or "TIMESTAMP" in t:
+                            default_sql = " DEFAULT CURRENT_TIMESTAMP"
+                        else:
+                            default_sql = " DEFAULT ''"
+
+                    stmt = (
+                        f"ALTER TABLE `{table.name}` "
+                        f"ADD COLUMN `{col.name}` {col_type}{nullable_sql}{default_sql}"
+                    )
+                    conn.execute(text(stmt))
+                    conn.commit()
+                    added += 1
+                    _log.info("schema-sync: + %s.%s %s", table.name, col.name, col_type)
+                except Exception:
+                    conn.rollback()  # colonne déjà présente ou type incompatible — ignoré
+
+    if added:
+        _log.info("schema-sync: %d colonne(s) ajoutée(s)", added)
+
+
+# Gardé pour compatibilité — remplacé par _sync_schema_from_models()
+def _ensure_schema_patches() -> None:
+    pass
 
 
 def _ensure_local_tenant(db) -> str:
@@ -535,8 +562,8 @@ def on_startup():
         _run_alembic_migrations()
     except Exception as exc:
         _log.warning("Alembic migration warning: %s", exc)
-    # 2b. Patches de schéma simples — idempotents, indépendants de la chaîne alembic
-    _ensure_schema_patches()
+    # 2b. Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy
+    _sync_schema_from_models()
 
     import api.database as _db_module
     db = _db_module.SessionLocal()
