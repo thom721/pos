@@ -208,10 +208,39 @@ def _ensure_schema_patches() -> None:
             # prix par jour et par moment (chambres hôtel)
             "ALTER TABLE restaurant_tables ADD COLUMN price_per_day DECIMAL(12,2) NULL DEFAULT 0",
             "ALTER TABLE restaurant_tables ADD COLUMN price_per_moment DECIMAL(12,2) NULL DEFAULT 0",
-            # stats page d'accueil (migration i9j0k1l2m3n4 — fallback si alembic échoue)
+            # stats page d'accueil (migration i9j0k1l2m3n4)
             "ALTER TABLE platform_config ADD COLUMN stat_businesses VARCHAR(30) NOT NULL DEFAULT '500+'",
             "ALTER TABLE platform_config ADD COLUMN stat_transactions_day VARCHAR(30) NOT NULL DEFAULT '10k+'",
             "ALTER TABLE platform_config ADD COLUMN stat_uptime VARCHAR(30) NOT NULL DEFAULT '99.9%'",
+            # warehouse_id sur products (migration h8i9j0k1l2m3)
+            "ALTER TABLE products ADD COLUMN warehouse_id VARCHAR(36) NULL",
+            # warehouse_id sur invoices / proformas et leurs items (migration g7h8i9j0k1l2)
+            "ALTER TABLE invoices ADD COLUMN warehouse_id VARCHAR(36) NULL",
+            "ALTER TABLE invoice_items ADD COLUMN warehouse_id VARCHAR(36) NULL",
+            "ALTER TABLE proformas ADD COLUMN warehouse_id VARCHAR(36) NULL",
+            "ALTER TABLE proforma_items ADD COLUMN warehouse_id VARCHAR(36) NULL",
+            # tenant_id sur invoice_items / proforma_items (migration f6g7h8i9j0k1)
+            "ALTER TABLE invoice_items ADD COLUMN tenant_id VARCHAR(36) NULL",
+            "ALTER TABLE proforma_items ADD COLUMN tenant_id VARCHAR(36) NULL",
+            # label sur sale_items (migration u5v6w7x8y9z0)
+            "ALTER TABLE sale_items ADD COLUMN label VARCHAR(255) NULL",
+            # label sur restaurant_order_items (migration a1b2c3d4e5f6)
+            "ALTER TABLE restaurant_order_items ADD COLUMN label VARCHAR(255) NULL",
+            # is_active sur users (migration v6w7x8y9z0a1)
+            "ALTER TABLE users ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1",
+            # support_address sur platform_config (migration w7x8y9z0a1b2)
+            "ALTER TABLE platform_config ADD COLUMN support_address VARCHAR(255) NULL",
+            # warehouse_id sur users (migration j5k6l7m8n9o0 + m7n8o9p0q1r2)
+            "ALTER TABLE users ADD COLUMN warehouse_id TEXT NULL",
+            # warehouse_id sur sales / cashier_sessions / return_records (migration k6l7m8n9o0p1)
+            "ALTER TABLE sales ADD COLUMN warehouse_id VARCHAR(36) NULL",
+            "ALTER TABLE cashier_sessions ADD COLUMN warehouse_id VARCHAR(36) NULL",
+            "ALTER TABLE return_records ADD COLUMN warehouse_id VARCHAR(36) NULL",
+            # warehouse_id sur app_config (migration o9p0q1r2s3t4)
+            "ALTER TABLE app_config ADD COLUMN warehouse_id VARCHAR(36) NULL",
+            # warehouse_id sur modifier_options / restaurant_order_items (migration e5f6g7h8i9j0)
+            "ALTER TABLE modifier_options ADD COLUMN warehouse_id VARCHAR(36) NULL",
+            "ALTER TABLE restaurant_order_items ADD COLUMN warehouse_id VARCHAR(36) NULL",
         ]:
             try:
                 conn.execute(text(stmt))
