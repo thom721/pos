@@ -539,6 +539,7 @@ def add_item(
     item = RestaurantOrderItem(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
+        warehouse_id=order.warehouse_id,
         order_id=order_id,
         product_id=resolved_product_id,
         menu_item_id=resolved_menu_item_id,
@@ -986,6 +987,7 @@ def add_modifier_option(
     opt = ModifierOption(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
+        warehouse_id=g.warehouse_id,
         group_id=group_id,
         name=data.name,
         extra_price=data.extra_price,

@@ -25,8 +25,9 @@ class ModifierGroup(UUIDBase):
 class ModifierOption(UUIDBase):
     __tablename__ = "modifier_options"
 
-    tenant_id   = Column(String(36), ForeignKey('tenants.id'),         nullable=True,  index=True)
-    group_id    = Column(String(36), ForeignKey('modifier_groups.id'), nullable=False, index=True)
+    tenant_id    = Column(String(36), ForeignKey('tenants.id'),         nullable=True, index=True)
+    warehouse_id = Column(String(36), ForeignKey('warehouses.id'),      nullable=True, index=True)
+    group_id     = Column(String(36), ForeignKey('modifier_groups.id'), nullable=False, index=True)
     name        = Column(String(100), nullable=False)
     extra_price = Column(Numeric(10, 2), default=0, nullable=False)
 

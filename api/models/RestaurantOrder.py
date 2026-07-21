@@ -28,7 +28,8 @@ class RestaurantOrder(UUIDBase):
 class RestaurantOrderItem(UUIDBase):
     __tablename__ = "restaurant_order_items"
 
-    tenant_id     = Column(String(36), ForeignKey('tenants.id'),           nullable=True,  index=True)
+    tenant_id     = Column(String(36), ForeignKey('tenants.id'),           nullable=True, index=True)
+    warehouse_id  = Column(String(36), ForeignKey('warehouses.id'),        nullable=True, index=True)
     order_id      = Column(String(36), ForeignKey('restaurant_orders.id'), nullable=False, index=True)
     product_id    = Column(String(36), ForeignKey('products.id'),          nullable=True)
     menu_item_id  = Column(String(36), ForeignKey('menu_items.id'),        nullable=True)
