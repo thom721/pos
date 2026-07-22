@@ -7,6 +7,7 @@ import 'package:pos_connect/providers/pricing_provider.dart'
     show PricingInfo, PricingPlan, pricingProvider;
 import 'package:pos_connect/features/public/public_nav_bar.dart';
 import 'package:pos_connect/shared/widgets/pos_logo.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -1000,6 +1001,24 @@ class _Footer extends StatelessWidget {
               'La solution POS moderne pour businesses et restaurants.',
               style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5),
             ),
+            const SizedBox(height: 16),
+            _StoreBadge(
+              label: 'Google Play',
+              sublabel: 'Disponible sur',
+              icon: _GooglePlayIcon(),
+              onTap: () => launchUrl(
+                Uri.parse('https://play.google.com/store/apps/details?id=com.infinisoftware.pos_connect'),
+                mode: LaunchMode.externalApplication,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _StoreBadge(
+              label: 'App Store',
+              sublabel: 'Bientôt disponible',
+              icon: const _AppleIcon(),
+              onTap: null,
+              disabled: true,
+            ),
           ])),
           if (isWide) ...[
             const SizedBox(width: 40),
@@ -1059,6 +1078,107 @@ class _FooterCol extends StatelessWidget {
       ),
     )),
   ]);
+}
+
+// ── Store badges ──────────────────────────────────────────────────────────────
+
+class _StoreBadge extends StatelessWidget {
+  final String label;
+  final String sublabel;
+  final Widget icon;
+  final VoidCallback? onTap;
+  final bool disabled;
+
+  const _StoreBadge({
+    required this.label,
+    required this.sublabel,
+    required this.icon,
+    required this.onTap,
+    this.disabled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final badge = Container(
+      width: 160,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: disabled ? const Color(0xFF2A3F55) : Colors.black,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: disabled ? const Color(0xFF3A5068) : const Color(0xFF444444),
+        ),
+      ),
+      child: Row(children: [
+        SizedBox(width: 24, height: 24, child: icon),
+        const SizedBox(width: 10),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            sublabel,
+            style: GoogleFonts.inter(
+              fontSize: 9,
+              color: disabled ? const Color(0xFF5A7A9A) : const Color(0xFFAAAAAA),
+              letterSpacing: 0.2,
+            ),
+          ),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: disabled ? const Color(0xFF5A7A9A) : Colors.white,
+              height: 1.2,
+            ),
+          ),
+        ]),
+      ]),
+    );
+
+    if (onTap == null) return badge;
+    return GestureDetector(onTap: onTap, child: badge);
+  }
+}
+
+class _GooglePlayIcon extends StatelessWidget {
+  const _GooglePlayIcon();
+  @override
+  Widget build(BuildContext context) => CustomPaint(painter: _GooglePlayPainter());
+}
+
+class _GooglePlayPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    // Simplified Google Play triangle split into 4 colored segments
+    final paintG = Paint()..color = const Color(0xFF4CAF50);
+    final paintB = Paint()..color = const Color(0xFF2196F3);
+    final paintY = Paint()..color = const Color(0xFFFFEB3B);
+    final paintR = Paint()..color = const Color(0xFFF44336);
+
+    final topLeft  = Path()..moveTo(0, 0)..lineTo(w * 0.52, h * 0.50)..lineTo(0, h * 0.50)..close();
+    final botLeft  = Path()..moveTo(0, h * 0.50)..lineTo(w * 0.52, h * 0.50)..lineTo(0, h)..close();
+    final topRight = Path()..moveTo(w * 0.52, h * 0.50)..lineTo(w, h * 0.50)..lineTo(w * 0.52, 0)..close();
+    final botRight = Path()..moveTo(w * 0.52, h * 0.50)..lineTo(w, h * 0.50)..lineTo(w * 0.52, h)..close();
+
+    canvas.drawPath(topLeft,  paintB);
+    canvas.drawPath(botLeft,  paintG);
+    canvas.drawPath(topRight, paintY);
+    canvas.drawPath(botRight, paintR);
+  }
+
+  @override
+  bool shouldRepaint(_) => false;
+}
+
+class _AppleIcon extends StatelessWidget {
+  const _AppleIcon();
+  @override
+  Widget build(BuildContext context) => const Icon(
+    Icons.apple,
+    color: Color(0xFF5A7A9A),
+    size: 22,
+  );
 }
 
 // ── Shared ────────────────────────────────────────────────────────────────────
