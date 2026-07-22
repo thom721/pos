@@ -283,6 +283,12 @@ if ($iniExists) {
     # Créer le répertoire de données si absent (mysqld jamais initialisé)
     if (-not (Test-Path $BundledDataDir)) {
       New-Item -Path $BundledDataDir -ItemType Directory -Force | Out-Null
+      # Accorder les droits AVANT --initialize-insecure (errno 13 sinon)
+      try {
+        icacls $BundledDataDir /grant "SYSTEM:(OI)(CI)F" `
+                               /grant "Administrators:(OI)(CI)F" `
+                               /grant "Users:(OI)(CI)F" | Out-Null
+      } catch {}
       Write-Host "  Initialisation du répertoire de données MySQL..." -ForegroundColor DarkGray
       # --initialize-insecure : root sans mot de passe (on le change juste après)
       & $BundledMysqldExe --defaults-file="$BundledMyIni" --initialize-insecure --console 2>&1 |
@@ -418,6 +424,7 @@ port = $DbPort
 
     if (-not (Test-Path $dataDir)) {
       New-Item -Path $dataDir -ItemType Directory -Force | Out-Null
+      try { icacls $dataDir /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F" /grant "Users:(OI)(CI)F" | Out-Null } catch {}
       & $mysqldExe --defaults-file="$MysqlInstDir\my.ini" --initialize-insecure --console 2>&1 | Out-Null
       Write-OK "Répertoire de données initialisé."
     }
