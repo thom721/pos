@@ -17,6 +17,7 @@ import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/license_service.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/shared/widgets/pos_logo.dart';
 import 'package:pos_connect/services/bluetooth_print_service.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
@@ -266,24 +267,16 @@ class _DesktopShell extends ConsumerWidget {
                   child: Row(
                     children: [
                       Container(
-                        width: 32,
-                        height: 32,
+                        width: 56,
+                        height: 56,
                         decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.point_of_sale,
-                            color: Colors.white, size: 18),
-                      ),
-                      const SizedBox(width: 10),
-                      const Text(
-                        'POS Connect',
-                        style: TextStyle(
                           color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.3,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: const Color(0xFFCC0000), width: 1),
                         ),
+                        padding: const EdgeInsets.all(8),
+                        child: const PosLogo(width: 40),
                       ),
                     ],
                   ),
