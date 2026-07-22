@@ -667,6 +667,28 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
     _user = TextEditingController(text: cfg.dbUser);
     _pass = TextEditingController(text: cfg.dbPassword);
     _detectMysql();
+    _loadCurrentDbConfig();
+  }
+
+  Future<void> _loadCurrentDbConfig() async {
+    try {
+      final res = await dio.get('/api/setup/current-db-config');
+      final data = res.data as Map<String, dynamic>;
+      if (!mounted) return;
+      // Ne pré-remplir que si le champ est vide (l'utilisateur n'a rien saisi)
+      if (_host.text.isEmpty || _host.text == '127.0.0.1') {
+        _host.text = (data['host'] as String?) ?? _host.text;
+      }
+      if (_port.text.isEmpty || _port.text == '3307') {
+        _port.text = '${data['port'] ?? _port.text}';
+      }
+      if (_name.text.isEmpty) _name.text = (data['name'] as String?) ?? _name.text;
+      if (_user.text.isEmpty) _user.text = (data['user'] as String?) ?? _user.text;
+      // Le mot de passe de l'ini est toujours prioritaire : il doit correspondre
+      // au mot de passe avec lequel pos_user a été (ou sera) créé par le PS1.
+      final iniPass = (data['password'] as String?) ?? '';
+      if (iniPass.isNotEmpty) _pass.text = iniPass;
+    } catch (_) {}
   }
 
   Future<void> _detectMysql() async {

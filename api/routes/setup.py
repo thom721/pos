@@ -388,6 +388,19 @@ def detect_mysql():
     }
 
 
+@router.get("/current-db-config")
+def current_db_config():
+    """Retourne la config BDD actuelle lue dans pos_server.ini (pour pré-remplir le wizard)."""
+    return {
+        "db_type":  settings.DB_TYPE,
+        "host":     settings.DB_HOST,
+        "port":     settings.DB_PORT,
+        "name":     settings.DB_NAME,
+        "user":     settings.DB_USER,
+        "password": settings.DB_PASSWORD,
+    }
+
+
 @router.post("/test-db")
 def test_db_connection(data: DbTestRequest):
     """Test database connectivity before saving config."""
