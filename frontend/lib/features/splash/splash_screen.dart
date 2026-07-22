@@ -37,20 +37,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         context.go('/dashboard');
         return;
       }
-      // Non authentifié — vérifier si le setup serveur est nécessaire
-      try {
-        final res = await dio
-            .get('/api/setup/health')
-            .timeout(const Duration(seconds: 4));
-        if (!mounted) return;
-        final setupDone = res.data['setup_done'] as bool? ?? true;
-        if (!setupDone) {
-          context.go('/install');
-          return;
-        }
-      } catch (_) {}
-      if (!mounted) return;
+      // Naviguer immédiatement sans bloquer sur le health check.
+      // Le check setup tourne en arrière-plan : si le serveur n'est pas configuré
+      // il redirigera vers /install une fois la réponse reçue.
       context.go('/home');
+      _checkSetupInBackground();
       return;
     }
 
@@ -73,6 +64,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
     if (!mounted) return;
     context.go('/dashboard');
+  }
+
+  void _checkSetupInBackground() {
+    dio.get('/api/setup/health').timeout(const Duration(seconds: 8)).then((res) {
+      if (!mounted) return;
+      final setupDone = res.data['setup_done'] as bool? ?? true;
+      if (!setupDone) context.go('/install');
+    }).catchError((_) {});
   }
 
   @override

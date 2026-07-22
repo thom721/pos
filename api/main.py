@@ -12,6 +12,7 @@ _log = logging.getLogger("pos.migration")
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from api.database import engine, Base
 from api.routes import returns, sales, purchases, user, category, customer, product, login, supplier, auth, stock, purchases_receive, payments, debts, config
 from api.routes import proformas, invoices, inventory
@@ -69,6 +70,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # ── Dirty-flag middleware ─────────────────────────────────────────────────────
 # Tout POST/PUT/PATCH/DELETE réussi (hors routes de sync elles-mêmes) réveille
