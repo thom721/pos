@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
   static const sidebar = Color(0xFF1B2A3B);
@@ -26,6 +25,13 @@ class AppColors {
   static const statusPending = Color(0xFF718096);
 }
 
+// Styles de texte locaux — police système (Roboto/Android, SF Pro/iOS)
+// Remplace Google Fonts Inter pour éviter les requêtes réseau au démarrage.
+class _T {
+  static TextStyle t(double size, FontWeight w, Color c) =>
+      TextStyle(fontSize: size, fontWeight: w, color: c);
+}
+
 class AppTheme {
   static ThemeData get light {
     final base = ThemeData(
@@ -34,26 +40,20 @@ class AppTheme {
         seedColor: AppColors.primary,
         primary: AppColors.primary,
         surface: AppColors.surface,
-        background: AppColors.background,
       ),
     );
 
     return base.copyWith(
       scaffoldBackgroundColor: AppColors.background,
-      textTheme: GoogleFonts.interTextTheme(base.textTheme).copyWith(
-        displayLarge: GoogleFonts.inter(
-            fontSize: 32, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-        displayMedium: GoogleFonts.inter(
-            fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-        titleLarge: GoogleFonts.inter(
-            fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-        titleMedium: GoogleFonts.inter(
-            fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-        bodyLarge: GoogleFonts.inter(fontSize: 15, color: AppColors.textPrimary),
-        bodyMedium: GoogleFonts.inter(fontSize: 14, color: AppColors.textPrimary),
-        bodySmall: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
-        labelLarge: GoogleFonts.inter(
-            fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+      textTheme: base.textTheme.copyWith(
+        displayLarge:  _T.t(32, FontWeight.w700, AppColors.textPrimary),
+        displayMedium: _T.t(24, FontWeight.w700, AppColors.textPrimary),
+        titleLarge:    _T.t(18, FontWeight.w600, AppColors.textPrimary),
+        titleMedium:   _T.t(16, FontWeight.w600, AppColors.textPrimary),
+        bodyLarge:     _T.t(15, FontWeight.w400, AppColors.textPrimary),
+        bodyMedium:    _T.t(14, FontWeight.w400, AppColors.textPrimary),
+        bodySmall:     _T.t(12, FontWeight.w400, AppColors.textSecondary),
+        labelLarge:    _T.t(14, FontWeight.w600, AppColors.textPrimary),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -62,7 +62,7 @@ class AppTheme {
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          textStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
+          textStyle: _T.t(14, FontWeight.w600, Colors.white),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -71,7 +71,7 @@ class AppTheme {
           side: const BorderSide(color: AppColors.primary),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          textStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
+          textStyle: _T.t(14, FontWeight.w600, AppColors.primary),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -94,8 +94,8 @@ class AppTheme {
           borderSide: const BorderSide(color: AppColors.error),
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        hintStyle: GoogleFonts.inter(fontSize: 14, color: AppColors.textSecondary),
-        labelStyle: GoogleFonts.inter(fontSize: 14, color: AppColors.textSecondary),
+        hintStyle: _T.t(14, FontWeight.w400, AppColors.textSecondary),
+        labelStyle: _T.t(14, FontWeight.w400, AppColors.textSecondary),
       ),
       cardTheme: CardThemeData(
         color: AppColors.surface,
@@ -111,8 +111,7 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 1,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: GoogleFonts.inter(
-            fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+        titleTextStyle: _T.t(18, FontWeight.w600, AppColors.textPrimary),
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
         toolbarHeight: 64,
       ),
@@ -123,7 +122,7 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.background,
-        labelStyle: GoogleFonts.inter(fontSize: 12, color: AppColors.textSecondary),
+        labelStyle: _T.t(12, FontWeight.w400, AppColors.textSecondary),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       ),

@@ -12,16 +12,16 @@ import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/services/local_db_service.dart';
 
 void main() async {
-  // Maintient le splash natif visible jusqu'à FlutterNativeSplash.remove()
   final binding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: binding);
 
-  // Utiliser uniquement les polices bundlées — évite timeout réseau fonts.gstatic.com
-  GoogleFonts.config.allowRuntimeFetching = false;
+  // Sur mobile : pas de fetching réseau (fonts.gstatic.com → 647 frames sautées)
+  // Sur web : fetching autorisé (pages publiques utilisent Inter via CDN)
+  if (!kIsWeb) GoogleFonts.config.allowRuntimeFetching = false;
 
   await initializeDateFormatting('fr');
   await initServerUrl();
-  await LocalDbService.instance.init(); // ouvre / crée pos_cache.db
+  await LocalDbService.instance.init();
 
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
     launchAtStartup.setup(
