@@ -190,6 +190,33 @@
       document.body.style.background = "transparent";
     }
   </script>
+  <!-- Étend removeSplashFromWeb() pour retirer aussi #pos-loading quand Flutter est prêt.
+       Ce script est placé après splash-screen-script pour pouvoir le patcher sans être
+       écrasé par flutter_native_splash:create (qui ne touche que splash-screen-script). -->
+  <script>
+  (function () {
+    function hidePosLoading() {
+      var el = document.getElementById('pos-loading');
+      if (!el) return;
+      el.classList.add('out');
+      setTimeout(function () { el && el.remove(); }, 400);
+    }
+    // Patch removeSplashFromWeb pour inclure #pos-loading
+    var _orig = window.removeSplashFromWeb;
+    window.removeSplashFromWeb = function () {
+      if (_orig) _orig();
+      hidePosLoading();
+    };
+    // Fallback : MutationObserver → retire #pos-loading dès que flt-glass-pane apparaît
+    var _obs = new MutationObserver(function () {
+      if (document.querySelector('flt-glass-pane')) {
+        hidePosLoading();
+        _obs.disconnect();
+      }
+    });
+    _obs.observe(document.body, { childList: true });
+  })();
+  </script>
 </head>
 
 <body>
