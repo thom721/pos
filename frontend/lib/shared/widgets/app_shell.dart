@@ -754,30 +754,37 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
 
     showModalBottomSheet(
       context: context,
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Debug — Warehouse', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-              const Divider(),
-              _DebugRow('Utilisateur', user?.username ?? '—'),
-              _DebugRow('Rôles', user?.roles.join(', ') ?? '—'),
-              _DebugRow('warehouseIds (user)', user?.warehouseIds.isEmpty == true ? '[] (accès total)' : user?.warehouseIds.join(', ') ?? '—'),
-              const Divider(),
-              _DebugRow('Dépôt actif (provider)', active != null ? '${active.name} (${active.id})' : '⚠ null'),
-              _DebugRow('hasRestriction', '$hasRestriction'),
-              _DebugRow('warehouseId envoyé API', apiWh ?? 'null → backend retourne tout'),
-              const Divider(),
-              _DebugRow('Provider état', whState),
-              _DebugRow('Dépôts disponibles (${warehouses.length})',
-                  warehouses.isEmpty ? '—' : warehouses.map((w) => '${w.name}${w.isDefault ? " ★" : ""}').join(', ')),
-            ],
+      isScrollControlled: true,
+      builder: (ctx) {
+        final screenH = MediaQuery.sizeOf(ctx).height;
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: screenH * 0.75),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Debug — Warehouse', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                  const Divider(),
+                  _DebugRow('Utilisateur', user?.username ?? '—'),
+                  _DebugRow('Rôles', user?.roles.join(', ') ?? '—'),
+                  _DebugRow('warehouseIds (user)', user?.warehouseIds.isEmpty == true ? '[] (accès total)' : user?.warehouseIds.join(', ') ?? '—'),
+                  const Divider(),
+                  _DebugRow('Dépôt actif (provider)', active != null ? '${active.name} (${active.id})' : '⚠ null'),
+                  _DebugRow('hasRestriction', '$hasRestriction'),
+                  _DebugRow('warehouseId envoyé API', apiWh ?? 'null → backend retourne tout'),
+                  const Divider(),
+                  _DebugRow('Provider état', whState),
+                  _DebugRow('Dépôts disponibles (${warehouses.length})',
+                      warehouses.isEmpty ? '—' : warehouses.map((w) => '${w.name}${w.isDefault ? " ★" : ""}').join(', ')),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

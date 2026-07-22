@@ -167,6 +167,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
           final hash = await _hashPassword(emailLower, password);
           await LocalDbService.instance.saveLocalUser(
               emailLower, hash, jsonEncode(token.user!));
+          // Sécurité : un seul user offline par terminal — supprimer les autres
+          await LocalDbService.instance.clearOtherLocalUsers(emailLower);
         }
       }
       await _repo.savePlanWarning(token.planWarning);

@@ -474,6 +474,19 @@ class LocalDbService {
     return rows.isEmpty ? null : rows.first;
   }
 
+  /// Supprime tous les users locaux sauf celui passé en paramètre.
+  /// Appelé après login cloud réussi — un seul user peut se connecter
+  /// offline sur ce terminal (sécurité POS).
+  Future<void> clearOtherLocalUsers(String keepEmail) async {
+    final db = _safeDb;
+    if (db == null) return;
+    await db.delete(
+      'local_users',
+      where: 'email != ?',
+      whereArgs: [keepEmail],
+    );
+  }
+
   /// Bulk insert depuis le sync — sauvegarde tous les utilisateurs du tenant
   /// avec leur offline_hash pour permettre l'auth hors ligne.
   Future<void> upsertLocalUsers(List<Map<String, dynamic>> users) async {
