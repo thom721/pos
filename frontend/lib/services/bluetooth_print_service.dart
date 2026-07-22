@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
@@ -13,6 +14,8 @@ class BluetoothPrintService {
   BluetoothPrintService._();
   static final BluetoothPrintService instance = BluetoothPrintService._();
 
+  BluetoothConnection? _connection;
+
   Future<List<BluetoothInfo>> getPairedPrinters() async {
     if (kIsWeb) return [];
     try {
@@ -24,33 +27,42 @@ class BluetoothPrintService {
 
   Future<bool> connect(String mac) async {
     if (mac.isEmpty) return false;
-    // Déconnecter toute session fantôme avant de reconnecter
-    try { await PrintBluetoothThermal.disconnect; } catch (_) {}
-    await Future.delayed(const Duration(milliseconds: 400));
-    // 3 tentatives — certaines imprimantes BT répondent lentement
+    // Fermer toute connexion précédente
+    try {
+      await _connection?.close();
+    } catch (_) {}
+    _connection = null;
+
+    // Connexion SPP directe via flutter_bluetooth_serial
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
-        final ok = await PrintBluetoothThermal.connect(macPrinterAddress: mac)
-            .timeout(const Duration(seconds: 8), onTimeout: () => false);
-        if (ok) return true;
+        _connection = await BluetoothConnection.toAddress(mac)
+            .timeout(const Duration(seconds: 10));
+        if (_connection?.isConnected ?? false) return true;
       } catch (_) {}
-      if (attempt < 2) await Future.delayed(const Duration(milliseconds: 1000));
+      if (attempt < 2) await Future.delayed(const Duration(milliseconds: 800));
     }
     return false;
   }
 
-  Future<bool> get isConnected async {
+  Future<bool> get isConnected async =>
+      _connection?.isConnected ?? false;
+
+  Future<void> disconnect() async {
+    try { await _connection?.close(); } catch (_) {}
+    _connection = null;
+  }
+
+  Future<bool> _sendBytes(List<int> bytes) async {
+    final conn = _connection;
+    if (conn == null || !conn.isConnected) return false;
     try {
-      return await PrintBluetoothThermal.connectionStatus;
+      conn.output.add(Uint8List.fromList(bytes));
+      await conn.output.allSent;
+      return true;
     } catch (_) {
       return false;
     }
-  }
-
-  Future<void> disconnect() async {
-    try {
-      await PrintBluetoothThermal.disconnect;
-    } catch (_) {}
   }
 
   Future<bool> printReceipt(SaleModel sale, AppSettings settings,
@@ -63,11 +75,7 @@ class BluetoothPrintService {
 
     final logoBytes = await _logoToEscPos(settings);
     final bytes = _buildEscPos(sale, settings, logoBytes);
-    try {
-      return await PrintBluetoothThermal.writeBytes(bytes);
-    } catch (_) {
-      return false;
-    }
+    return _sendBytes(bytes);
   }
 
   Future<bool> printRestaurantBill(
@@ -89,11 +97,7 @@ class BluetoothPrintService {
     final bytes = _buildEscPosRestaurantBill(order, settings, logoBytes,
         reference: reference, discount: discount,
         paidAmount: paidAmount, paymentMethod: paymentMethod);
-    try {
-      return await PrintBluetoothThermal.writeBytes(bytes);
-    } catch (_) {
-      return false;
-    }
+    return _sendBytes(bytes);
   }
 
   // ── Logo → ESC/POS bitmap ─────────────────────────────────────────────────
