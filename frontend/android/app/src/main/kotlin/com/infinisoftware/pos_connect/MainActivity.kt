@@ -1,4 +1,4 @@
-package com.kikipllc.pos_connect
+package com.infinisoftware.pos_connect
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothSocket

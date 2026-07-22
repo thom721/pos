@@ -71,185 +71,313 @@ class BillingScreen extends ConsumerWidget {
 
 Future<void> _printBillingInvoice(
     Map<String, dynamic> payment, Map<String, dynamic> statusData) async {
-  final doc = pw.Document();
-
-  // Charger le logo depuis les assets
-  pw.ImageProvider? logoImg;
-  try {
-    final ByteData data = await rootBundle.load('assets/icon/splash_logo.png');
-    logoImg = pw.MemoryImage(data.buffer.asUint8List());
-  } catch (_) {
-    logoImg = null;
-  }
-  final fmt = DateFormat('dd/MM/yyyy');
   final fmtFull = DateFormat('dd MMMM yyyy', 'fr_FR');
 
+  // Charger le logo
+  pw.ImageProvider? logoImg;
+  try {
+    final data = await rootBundle.load('assets/icon/splash_logo.png');
+    logoImg = pw.MemoryImage(data.buffer.asUint8List());
+  } catch (_) {}
+
+  // ── Données paiement ────────────────────────────────────────────────────────
   final invoiceNum  = payment['invoice_number'] as String? ?? '';
   final method      = payment['method'] as String? ?? '';
   final amount      = payment['amount'] as double? ?? 0.0;
-  final currency    = payment['currency'] as String? ?? 'USD';
+  final currency    = payment['currency'] as String? ?? 'HTG';
   final description = payment['description'] as String? ?? 'Abonnement POS Connect';
   final paidAt      = payment['paid_at'] != null
-      ? DateTime.tryParse(payment['paid_at'] as String)
-      : null;
-  final periodStart = payment['period_start'] != null
-      ? DateTime.tryParse(payment['period_start'] as String)
-      : null;
+      ? DateTime.tryParse(payment['paid_at'] as String) : null;
   final periodEnd   = payment['period_end'] != null
-      ? DateTime.tryParse(payment['period_end'] as String)
-      : null;
+      ? DateTime.tryParse(payment['period_end'] as String) : null;
+  final periodStart = payment['period_start'] != null
+      ? DateTime.tryParse(payment['period_start'] as String) : null;
 
   final business = statusData['business_name'] as String? ?? '';
-  final email    = statusData['owner_email'] as String? ?? '';
+  final email    = statusData['owner_email']   as String? ?? '';
+
+  // Numéro de reçu = 4 derniers chiffres zéro-paddés du numéro de facture
+  final receiptNum = invoiceNum.contains('-')
+      ? '0000-${invoiceNum.split('-').last.padLeft(4, '0')}'
+      : invoiceNum;
+
+  // Durée de l'abonnement
+  final days = (periodEnd != null && periodStart != null)
+      ? periodEnd.difference(periodStart).inDays
+      : 30;
+
+  final expiryLine = periodEnd != null
+      ? 'Expire le ${periodEnd.toLocal().toIso8601String().substring(0, 10)} ($days jours)'
+      : '';
 
   final methodLabel = switch (method) {
-    'stripe'   => 'Carte bancaire (Stripe)',
-    'moncash'  => 'MonCash',
-    'natcash'  => 'NatCash',
-    'manual'   => 'Activation manuelle',
-    _          => method,
+    'stripe'  => 'Carte bancaire (Stripe)',
+    'moncash' => 'MonCash',
+    'natcash' => 'NatCash',
+    'manual'  => 'Activation manuelle',
+    _         => method,
   };
+
+  // Infos plateforme depuis l'API (avec fallback)
+  String platformAddr  = '';
+  String platformEmail = '';
+  try {
+    final res = await dio.get('/api/public/contact-info');
+    platformAddr  = res.data['address'] as String? ?? '';
+    platformEmail = res.data['email']   as String? ?? '';
+  } catch (_) {}
+
+  // ── Montant formaté ─────────────────────────────────────────────────────────
+  final amtStr = '${amount % 1 == 0 ? amount.toInt() : amount} $currency';
+
+  // ── Couleurs ────────────────────────────────────────────────────────────────
+  const blue    = PdfColor(0.0,  0.47, 0.77); // #0077C5
+  const darkTxt = PdfColor(0.1,  0.1,  0.1);
+  const grey    = PdfColor(0.45, 0.45, 0.45);
+  const greyLt  = PdfColor(0.85, 0.85, 0.85);
+
+  // ── Helpers de cellule table ─────────────────────────────────────────────────
+  pw.Widget cell(String text, {
+    bool bold = false,
+    PdfColor color = darkTxt,
+    pw.TextAlign align = pw.TextAlign.left,
+    double size = 10,
+  }) =>
+      pw.Text(text,
+          textAlign: align,
+          style: pw.TextStyle(
+              fontSize: size,
+              fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+              color: color));
+
+  pw.Widget totRow(String label, String value, {bool bold = false}) =>
+      pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 3),
+        child: pw.Row(children: [
+          pw.Expanded(child: pw.SizedBox()),
+          pw.SizedBox(
+            width: 120,
+            child: pw.Text(label,
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                    fontSize: 10,
+                    fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+                    color: bold ? darkTxt : grey)),
+          ),
+          pw.SizedBox(width: 16),
+          pw.SizedBox(
+            width: 90,
+            child: pw.Text(value,
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                    fontSize: 10,
+                    fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+                    color: darkTxt)),
+          ),
+        ]),
+      );
+
+  // ── Document ─────────────────────────────────────────────────────────────────
+  final doc = pw.Document();
 
   doc.addPage(pw.Page(
     pageFormat: PdfPageFormat.a4,
-    margin: const pw.EdgeInsets.all(40),
+    margin: const pw.EdgeInsets.symmetric(horizontal: 48, vertical: 40),
     build: (pw.Context ctx) => pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        // Header
+
+        // ── 1. Header : "Reçu" + brand ────────────────────────────────────────
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
+            // Colonne gauche : titre + métadonnées
             pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              if (logoImg != null)
-                pw.Image(logoImg, width: 130, height: 60, fit: pw.BoxFit.contain)
-              else
-                pw.Text('POS Connect',
-                    style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 4),
-              pw.Text('Plateforme de gestion commerciale',
-                  style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey600)),
+              pw.Text('Reçu',
+                  style: pw.TextStyle(fontSize: 30, fontWeight: pw.FontWeight.bold,
+                      color: darkTxt)),
+              pw.SizedBox(height: 10),
+              pw.Row(children: [
+                pw.SizedBox(
+                  width: 130,
+                  child: pw.Text('Numéro de facture',
+                      style: pw.TextStyle(fontSize: 10, color: grey)),
+                ),
+                pw.Text(invoiceNum,
+                    style: pw.TextStyle(fontSize: 10, color: darkTxt)),
+              ]),
+              pw.SizedBox(height: 3),
+              pw.Row(children: [
+                pw.SizedBox(
+                  width: 130,
+                  child: pw.Text('Numéro de reçu',
+                      style: pw.TextStyle(fontSize: 10, color: grey)),
+                ),
+                pw.Text(receiptNum,
+                    style: pw.TextStyle(fontSize: 10, color: darkTxt)),
+              ]),
+              pw.SizedBox(height: 3),
+              pw.Row(children: [
+                pw.SizedBox(
+                  width: 130,
+                  child: pw.Text('Date de paiement',
+                      style: pw.TextStyle(fontSize: 10, color: grey)),
+                ),
+                pw.Text(paidAt != null ? fmtFull.format(paidAt.toLocal()) : '—',
+                    style: pw.TextStyle(fontSize: 10, color: darkTxt)),
+              ]),
             ]),
-            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-              pw.Text('REÇU DE PAIEMENT',
-                  style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.blueGrey800)),
-              pw.SizedBox(height: 4),
-              pw.Text(invoiceNum,
-                  style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.blue700)),
-            ]),
+            // Colonne droite : logo
+            if (logoImg != null)
+              pw.Image(logoImg, width: 120, height: 55, fit: pw.BoxFit.contain)
+            else
+              pw.RichText(
+                text: pw.TextSpan(children: [
+                  pw.TextSpan(
+                    text: 'POS',
+                    style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold,
+                        color: const PdfColor(0.8, 0.0, 0.0)),
+                  ),
+                  pw.TextSpan(
+                    text: 'Connect',
+                    style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold,
+                        color: blue),
+                  ),
+                ]),
+              ),
           ],
         ),
-        pw.Divider(color: PdfColors.grey300, thickness: 1, height: 32),
 
-        // Client info
+        pw.SizedBox(height: 24),
+        pw.Divider(color: greyLt, thickness: 0.8, height: 1),
+        pw.SizedBox(height: 20),
+
+        // ── 2. Vendeur / Client ───────────────────────────────────────────────
         pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Expanded(child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('FACTURÉ À',
-                    style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.grey600, letterSpacing: 1)),
-                pw.SizedBox(height: 6),
-                pw.Text(business,
-                    style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
-                if (email.isNotEmpty)
-                  pw.Text(email,
-                      style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
+                pw.Text('POS Connect',
+                    style: pw.TextStyle(fontSize: 11,
+                        fontWeight: pw.FontWeight.bold, color: darkTxt)),
+                if (platformAddr.isNotEmpty)
+                  pw.Text(platformAddr,
+                      style: pw.TextStyle(fontSize: 10, color: grey)),
+                if (platformEmail.isNotEmpty)
+                  pw.Text(platformEmail,
+                      style: pw.TextStyle(fontSize: 10, color: grey)),
               ],
             )),
             pw.Expanded(child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('DATE DE PAIEMENT',
-                    style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.grey600, letterSpacing: 1)),
-                pw.SizedBox(height: 6),
-                pw.Text(paidAt != null ? fmtFull.format(paidAt.toLocal()) : '—',
-                    style: const pw.TextStyle(fontSize: 12)),
-                if (periodStart != null && periodEnd != null) ...[
-                  pw.SizedBox(height: 4),
-                  pw.Text('Période : ${fmt.format(periodStart.toLocal())} — ${fmt.format(periodEnd.toLocal())}',
-                      style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
-                ],
+                pw.Text('Facturé à',
+                    style: pw.TextStyle(fontSize: 11,
+                        fontWeight: pw.FontWeight.bold, color: darkTxt)),
+                if (business.isNotEmpty)
+                  pw.Text(business,
+                      style: pw.TextStyle(fontSize: 10, color: darkTxt)),
+                if (email.isNotEmpty)
+                  pw.Text(email,
+                      style: pw.TextStyle(fontSize: 10, color: grey)),
               ],
             )),
           ],
         ),
-        pw.SizedBox(height: 32),
 
-        // Table
-        pw.Container(
-          decoration: pw.BoxDecoration(
-            color: PdfColors.blueGrey50,
-            borderRadius: pw.BorderRadius.circular(6),
-          ),
-          child: pw.Padding(
-            padding: const pw.EdgeInsets.all(16),
-            child: pw.Column(children: [
-              pw.Row(children: [
-                pw.Expanded(flex: 5,
-                    child: pw.Text('DESCRIPTION',
-                        style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.grey600, letterSpacing: 0.8))),
-                pw.Text('MÉTHODE',
-                    style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.grey600, letterSpacing: 0.8)),
-                pw.SizedBox(width: 40),
-                pw.Text('MONTANT',
-                    style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.grey600, letterSpacing: 0.8)),
-              ]),
-              pw.Divider(color: PdfColors.grey300, height: 16),
-              pw.Row(children: [
-                pw.Expanded(flex: 5,
-                    child: pw.Text(description,
-                        style: const pw.TextStyle(fontSize: 12))),
-                pw.Text(methodLabel,
-                    style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
-                pw.SizedBox(width: 40),
-                pw.Text('$currency ${amount.toStringAsFixed(2)}',
-                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-              ]),
-              pw.Divider(color: PdfColors.grey300, height: 24),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.end,
-                children: [
-                  pw.Text('TOTAL PAYÉ : ',
-                      style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
-                  pw.Text('$currency ${amount.toStringAsFixed(2)}',
-                      style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.green700)),
-                ],
-              ),
-            ]),
-          ),
-        ),
-        pw.SizedBox(height: 32),
+        pw.SizedBox(height: 24),
 
-        // Status badge
-        pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: pw.BoxDecoration(
-            color: PdfColors.green50,
-            border: pw.Border.all(color: PdfColors.green300),
-            borderRadius: pw.BorderRadius.circular(20),
-          ),
-          child: pw.Row(mainAxisSize: pw.MainAxisSize.min, children: [
-            pw.Text('✓  PAIEMENT CONFIRMÉ',
-                style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.green800)),
-          ]),
+        // ── 3. Résumé paiement ────────────────────────────────────────────────
+        pw.Text(
+          '$amtStr payé le ${paidAt != null ? fmtFull.format(paidAt.toLocal()) : '—'}',
+          style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold,
+              color: darkTxt),
         ),
-        pw.Spacer(),
-        pw.Divider(color: PdfColors.grey200, height: 1),
+
+        pw.SizedBox(height: 16),
+
+        // ── 4. Table des articles ─────────────────────────────────────────────
+        // En-têtes
+        pw.Row(children: [
+          pw.Expanded(flex: 5, child: cell('Description', color: blue, bold: true)),
+          pw.SizedBox(width: 40, child: cell('Qté', color: blue, bold: true, align: pw.TextAlign.center)),
+          pw.SizedBox(width: 90, child: cell('Prix unitaire', color: blue, bold: true, align: pw.TextAlign.right)),
+          pw.SizedBox(width: 80, child: cell('Montant', color: blue, bold: true, align: pw.TextAlign.right)),
+        ]),
+        pw.SizedBox(height: 6),
+        pw.Divider(color: greyLt, thickness: 0.6, height: 1),
         pw.SizedBox(height: 8),
-        pw.Center(
-          child: pw.Text('Merci pour votre confiance — posconnect.ht',
-              style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey500)),
+
+        // Ligne article
+        pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          pw.Expanded(flex: 5, child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              cell(description),
+              if (expiryLine.isNotEmpty)
+                pw.Text(expiryLine,
+                    style: pw.TextStyle(fontSize: 9, color: grey)),
+            ],
+          )),
+          pw.SizedBox(width: 40, child: cell('1', align: pw.TextAlign.center)),
+          pw.SizedBox(width: 90, child: cell(amtStr, align: pw.TextAlign.right)),
+          pw.SizedBox(width: 80, child: cell(amtStr, align: pw.TextAlign.right)),
+        ]),
+
+        pw.SizedBox(height: 8),
+        pw.Divider(color: greyLt, thickness: 0.6, height: 1),
+        pw.SizedBox(height: 4),
+
+        // Totaux
+        totRow('Sous-total', amtStr),
+        totRow('Total', amtStr),
+        pw.SizedBox(height: 2),
+        totRow('Montant payé', amtStr, bold: true),
+
+        pw.SizedBox(height: 28),
+        pw.Divider(color: greyLt, thickness: 0.6, height: 1),
+        pw.SizedBox(height: 16),
+
+        // ── 5. Historique de paiement ─────────────────────────────────────────
+        pw.Text('Historique de paiement',
+            style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold,
+                color: darkTxt)),
+        pw.SizedBox(height: 10),
+
+        // En-têtes historique
+        pw.Row(children: [
+          pw.Expanded(flex: 2, child: cell('Moyen de paiement', color: grey)),
+          pw.Expanded(flex: 2, child: cell('Date', color: grey)),
+          pw.Expanded(flex: 2, child: cell('Montant payé', color: grey)),
+          pw.Expanded(flex: 2, child: cell('Numéro de reçu', color: grey)),
+        ]),
+        pw.SizedBox(height: 6),
+        pw.Divider(color: greyLt, thickness: 0.6, height: 1),
+        pw.SizedBox(height: 6),
+
+        // Ligne historique
+        pw.Row(children: [
+          pw.Expanded(flex: 2, child: cell(methodLabel)),
+          pw.Expanded(flex: 2, child: cell(
+              paidAt != null ? fmtFull.format(paidAt.toLocal()) : '—')),
+          pw.Expanded(flex: 2, child: cell(amtStr)),
+          pw.Expanded(flex: 2, child: cell(receiptNum)),
+        ]),
+
+        pw.Spacer(),
+
+        // ── 6. Footer ─────────────────────────────────────────────────────────
+        pw.Divider(color: greyLt, thickness: 0.6, height: 1),
+        pw.SizedBox(height: 6),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.end,
+          children: [
+            pw.Text('Page 1 sur 1',
+                style: pw.TextStyle(fontSize: 9, color: grey)),
+          ],
         ),
       ],
     ),
