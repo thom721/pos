@@ -207,14 +207,22 @@
       if (_orig) _orig();
       hidePosLoading();
     };
-    // Fallback : MutationObserver → retire #pos-loading dès que flt-glass-pane apparaît
-    var _obs = new MutationObserver(function () {
-      if (document.querySelector('flt-glass-pane')) {
-        hidePosLoading();
-        _obs.disconnect();
-      }
-    });
-    _obs.observe(document.body, { childList: true });
+    // Fallback : MutationObserver → retire #pos-loading dès que flt-glass-pane apparaît.
+    // Démarré après DOMContentLoaded car document.body est null dans <head>.
+    function startObserver() {
+      var _obs = new MutationObserver(function () {
+        if (document.querySelector('flt-glass-pane')) {
+          hidePosLoading();
+          _obs.disconnect();
+        }
+      });
+      _obs.observe(document.body, { childList: true });
+    }
+    if (document.body) {
+      startObserver();
+    } else {
+      document.addEventListener('DOMContentLoaded', startObserver);
+    }
   })();
   </script>
 </head>
