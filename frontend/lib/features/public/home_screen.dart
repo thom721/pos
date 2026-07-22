@@ -807,18 +807,18 @@ class _Pricing extends ConsumerWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (var i = 0; i < p.plans.length; i++) ...[
+                for (var i = 0; i < p.plans.where((x) => x.visible).length; i++) ...[
                   if (i > 0) const SizedBox(width: 20),
-                  Expanded(child: _PriceCard(plan: p.plans[i])),
+                  Expanded(child: _PriceCard(plan: p.plans.where((x) => x.visible).toList()[i])),
                 ],
               ],
             ),
           )
         else
           Column(children: [
-            for (var i = 0; i < p.plans.length; i++) ...[
-              if (i > 0) const SizedBox(height: 20),
-              _PriceCard(plan: p.plans[i]),
+            for (final plan in p.plans.where((x) => x.visible)) ...[
+              _PriceCard(plan: plan),
+              const SizedBox(height: 20),
             ],
           ]),
         const SizedBox(height: 20),

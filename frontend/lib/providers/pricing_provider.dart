@@ -9,6 +9,7 @@ class PricingPlan {
   final String priceUsd;
   final String period;
   final bool highlighted;
+  final bool visible;
   final List<String> features;
 
   const PricingPlan({
@@ -19,17 +20,19 @@ class PricingPlan {
     required this.priceUsd,
     required this.period,
     required this.highlighted,
+    this.visible = true,
     required this.features,
   });
 
   factory PricingPlan.fromJson(Map<String, dynamic> j) => PricingPlan(
-        id:          j['id']?.toString()       ?? '',
-        name:        j['name']?.toString()     ?? '',
-        subtitle:    j['subtitle']?.toString() ?? '',
+        id:          j['id']?.toString()        ?? '',
+        name:        j['name']?.toString()      ?? '',
+        subtitle:    j['subtitle']?.toString()  ?? '',
         priceHtg:    j['price_htg']?.toString() ?? '',
         priceUsd:    j['price_usd']?.toString() ?? '',
-        period:      j['period']?.toString()   ?? '',
+        period:      j['period']?.toString()    ?? '',
         highlighted: j['highlighted'] == true,
+        visible:     j['visible'] != false,
         features:    (j['features'] as List?)
                         ?.map((e) => e.toString())
                         .toList() ??
@@ -44,7 +47,7 @@ class PricingPlan {
         'price_usd': priceUsd.isEmpty ? null : priceUsd,
         'period': period,
         'highlighted': highlighted,
-        'visible': true,
+        'visible': visible,
         'features': features,
       };
 }
