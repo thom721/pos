@@ -164,14 +164,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const PosLogo(width: 180),
-                    const SizedBox(height: 24),
-                    const Text('POS Connect',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 32,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.5)),
+                    const PosLogo(width: 200),
                     const SizedBox(height: 12),
                     Text('Démarrez votre $trialLabel',
                         style: const TextStyle(
@@ -287,21 +280,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           if (!isWide) ...[
             Center(
               child: Container(
-                width: 56,
-                height: 56,
+                width: 110, height: 110,
                 decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFCC0000), width: 1),
                 ),
-                child: const Icon(Icons.point_of_sale,
-                    color: Colors.white, size: 30),
+                padding: const EdgeInsets.all(12),
+                child: const PosLogo(width: 86),
               ),
             ),
-            const SizedBox(height: 12),
-            const Center(
-                child: Text('POS Connect',
-                    style: TextStyle(
-                        fontSize: 26, fontWeight: FontWeight.w700))),
             const SizedBox(height: 24),
           ],
 
