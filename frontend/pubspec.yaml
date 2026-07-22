@@ -68,8 +68,6 @@ dependencies:
 
   # Impression Bluetooth thermique (ESC/POS) — imprimantes portables 58/80mm
   print_bluetooth_thermal: ^1.2.2
-  # Connexion socket SPP directe (fallback fiable quand print_bluetooth_thermal échoue)
-  flutter_bluetooth_serial: ^0.4.0
 
   # Traitement d'image (conversion bitmap pour imprimantes thermiques ESC/POS)
   image: ^4.5.0

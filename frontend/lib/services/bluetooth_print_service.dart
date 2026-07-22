@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
@@ -14,7 +14,7 @@ class BluetoothPrintService {
   BluetoothPrintService._();
   static final BluetoothPrintService instance = BluetoothPrintService._();
 
-  BluetoothConnection? _connection;
+  static const _ch = MethodChannel('pos_connect/bluetooth');
 
   Future<List<BluetoothInfo>> getPairedPrinters() async {
     if (kIsWeb) return [];
@@ -27,39 +27,32 @@ class BluetoothPrintService {
 
   Future<bool> connect(String mac) async {
     if (mac.isEmpty) return false;
-    // Fermer toute connexion précédente
-    try {
-      await _connection?.close();
-    } catch (_) {}
-    _connection = null;
+    // Déconnecter session précédente
+    try { await _ch.invokeMethod('disconnect'); } catch (_) {}
 
-    // Connexion SPP directe via flutter_bluetooth_serial
+    // Connexion RFCOMM non-sécurisée via Method Channel Android
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
-        _connection = await BluetoothConnection.toAddress(mac)
-            .timeout(const Duration(seconds: 10));
-        if (_connection?.isConnected ?? false) return true;
+        final ok = await _ch.invokeMethod<bool>('connect', {'mac': mac})
+            .timeout(const Duration(seconds: 10), onTimeout: () => false);
+        if (ok == true) return true;
       } catch (_) {}
       if (attempt < 2) await Future.delayed(const Duration(milliseconds: 800));
     }
     return false;
   }
 
-  Future<bool> get isConnected async =>
-      _connection?.isConnected ?? false;
+  Future<bool> get isConnected async => false;
 
   Future<void> disconnect() async {
-    try { await _connection?.close(); } catch (_) {}
-    _connection = null;
+    try { await _ch.invokeMethod('disconnect'); } catch (_) {}
   }
 
   Future<bool> _sendBytes(List<int> bytes) async {
-    final conn = _connection;
-    if (conn == null || !conn.isConnected) return false;
     try {
-      conn.output.add(Uint8List.fromList(bytes));
-      await conn.output.allSent;
-      return true;
+      final ok = await _ch.invokeMethod<bool>(
+          'sendBytes', {'bytes': Uint8List.fromList(bytes)});
+      return ok == true;
     } catch (_) {
       return false;
     }
