@@ -391,7 +391,7 @@ class _Features extends StatelessWidget {
       Icons.devices_rounded, _blue,
       'Multi-plateforme',
       'Mobile Android, desktop macOS/Windows et application web — un seul compte, partout.',
-      'https://images.unsplash.com/photo-1512941937938-c02a18bd5432?w=500&q=80',
+      'https://images.unsplash.com/photo-1498049794561-7780e7231661?w=500&q=80',
     ),
     (
       Icons.restaurant_menu_rounded, Color(0xFFE67E22),
