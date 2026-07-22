@@ -157,8 +157,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ('Rapports et statistiques détaillés', Icons.bar_chart_rounded),
                       ('Multi-caisse & synchronisation cloud', Icons.sync_rounded),
                     ].map((f) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 48),
-                      child: Row(children: [
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(f.$2, color: AppColors.accent, size: 18),
                         const SizedBox(width: 12),
                         Text(f.$1,
