@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1123,6 +1125,10 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   String _natcashMode = 'manual';
   bool _loaded = false;
 
+  // Pricing plans
+  final List<_PlanEditors> _planEditors = [];
+  bool _plansLoaded = false;
+
   void _populateFrom(Map<String, dynamic> cfg) {
     if (_loaded) return;
     _moncashCtrl.text           = cfg['moncash_number']?.toString()              ?? '';
@@ -1149,6 +1155,23 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _moncashMode = cfg['moncash_mode']?.toString() == 'api' ? 'api' : 'manual';
     _natcashMode = cfg['natcash_mode']?.toString() == 'api' ? 'api' : 'manual';
     _loaded = true;
+
+    if (!_plansLoaded) {
+      _plansLoaded = true;
+      for (final e in _planEditors) { e.dispose(); }
+      _planEditors.clear();
+      List<dynamic> rawPlans = [];
+      final rawJson = cfg['pricing_plans_json'];
+      if (rawJson != null && rawJson.toString().isNotEmpty) {
+        try { rawPlans = jsonDecode(rawJson.toString()) as List; } catch (_) {}
+      }
+      final source = rawPlans.isNotEmpty ? rawPlans : _defaultPlans;
+      for (final plan in source) {
+        final e = _PlanEditors();
+        e.populate(plan as Map<String, dynamic>);
+        _planEditors.add(e);
+      }
+    }
   }
 
   @override
@@ -1174,6 +1197,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _smtpUserCtrl.dispose();
     _smtpPasswordCtrl.dispose();
     _smtpFromCtrl.dispose();
+    for (final e in _planEditors) { e.dispose(); }
     super.dispose();
   }
 
@@ -1206,8 +1230,9 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
         'smtp_from':                   _smtpFromCtrl.text.trim(),
         'moncash_mode':                _moncashMode,
         'natcash_mode':                _natcashMode,
+        'pricing_plans_json': jsonEncode(_planEditors.map((e) => e.toMap()).toList()),
       });
-      setState(() => _loaded = false); // reset so controllers repopulate on next rebuild
+      setState(() { _loaded = false; _plansLoaded = false; });
       ref.invalidate(_platformConfigProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1469,6 +1494,159 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                     controller: _smtpFromCtrl,
                     decoration: const InputDecoration(
                         labelText: 'Expéditeur (ex: noreply@mondomaine.com)'),
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Cards de tarification',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Laissez Prix HTG/USD vide pour utiliser les prix du plan Pro ci-dessus.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  ..._planEditors.asMap().entries.map((entry) {
+                    final i = entry.key;
+                    final e = entry.value;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            Expanded(
+                              child: Text(e.nameCtrl.text.isEmpty ? 'Card ${i + 1}' : e.nameCtrl.text,
+                                  style: Theme.of(context).textTheme.titleMedium),
+                            ),
+                            const Text('Visible', style: TextStyle(fontSize: 12)),
+                            Switch(
+                              value: e.visible,
+                              onChanged: (v) => setState(() => e.visible = v),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text('Mis en avant', style: TextStyle(fontSize: 12)),
+                            Switch(
+                              value: e.highlighted,
+                              onChanged: (v) => setState(() => e.highlighted = v),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: AppColors.error),
+                              tooltip: 'Supprimer cette card',
+                              onPressed: () => setState(() {
+                                e.dispose();
+                                _planEditors.removeAt(i);
+                              }),
+                            ),
+                          ]),
+                          const SizedBox(height: 8),
+                          Row(children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: e.nameCtrl,
+                                decoration: const InputDecoration(labelText: 'Nom'),
+                                onChanged: (_) => setState(() {}),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: e.subtitleCtrl,
+                                decoration: const InputDecoration(labelText: 'Sous-titre'),
+                              ),
+                            ),
+                          ]),
+                          const SizedBox(height: 8),
+                          Row(children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: e.priceHtgCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Prix HTG',
+                                  hintText: 'Vide = auto',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: e.priceUsdCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Prix USD',
+                                  hintText: 'Vide = auto',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: e.periodCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Période',
+                                  hintText: 'ex: par mois',
+                                ),
+                              ),
+                            ),
+                          ]),
+                          const SizedBox(height: 12),
+                          Text('Fonctionnalités',
+                              style: Theme.of(context).textTheme.bodySmall),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: e.features.asMap().entries.map((fe) => Chip(
+                              label: Text(fe.value, style: const TextStyle(fontSize: 12)),
+                              deleteIcon: const Icon(Icons.close, size: 14),
+                              onDeleted: () => setState(() => e.features.removeAt(fe.key)),
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                            )).toList(),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: e.featureAddCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Ajouter une fonctionnalité',
+                                  isDense: true,
+                                ),
+                                onFieldSubmitted: (v) {
+                                  final txt = v.trim();
+                                  if (txt.isNotEmpty) {
+                                    setState(() {
+                                      e.features.add(txt);
+                                      e.featureAddCtrl.clear();
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.add_circle_outline),
+                              onPressed: () {
+                                final txt = e.featureAddCtrl.text.trim();
+                                if (txt.isNotEmpty) {
+                                  setState(() {
+                                    e.features.add(txt);
+                                    e.featureAddCtrl.clear();
+                                  });
+                                }
+                              },
+                            ),
+                          ]),
+                        ]),
+                      ),
+                    );
+                  }),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.add),
+                    label: const Text('Ajouter une card'),
+                    onPressed: () => setState(() {
+                      final e = _PlanEditors();
+                      e.id = 'plan_${_planEditors.length + 1}';
+                      _planEditors.add(e);
+                    }),
                   ),
                   const SizedBox(height: 32),
                   ElevatedButton(
@@ -1742,3 +1920,73 @@ class _RegistersDialogState extends ConsumerState<_RegistersDialog> {
     );
   }
 }
+
+// ── Pricing plan editor helpers ───────────────────────────────────────────────
+
+class _PlanEditors {
+  final nameCtrl       = TextEditingController();
+  final subtitleCtrl   = TextEditingController();
+  final periodCtrl     = TextEditingController();
+  final priceHtgCtrl   = TextEditingController();
+  final priceUsdCtrl   = TextEditingController();
+  final featureAddCtrl = TextEditingController();
+  String id = '';
+  bool visible = true;
+  bool highlighted = false;
+  List<String> features = [];
+
+  void populate(Map<String, dynamic> plan) {
+    id            = plan['id']?.toString()        ?? '';
+    nameCtrl.text = plan['name']?.toString()      ?? '';
+    subtitleCtrl.text = plan['subtitle']?.toString() ?? '';
+    periodCtrl.text   = plan['period']?.toString()   ?? '';
+    priceHtgCtrl.text = plan['price_htg']?.toString() ?? '';
+    priceUsdCtrl.text = plan['price_usd']?.toString() ?? '';
+    visible     = plan['visible']     != false;
+    highlighted = plan['highlighted'] == true;
+    features    = (plan['features'] as List?)?.map((e) => e.toString()).toList() ?? [];
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id':          id,
+    'name':        nameCtrl.text.trim(),
+    'subtitle':    subtitleCtrl.text.trim(),
+    'price_htg':   priceHtgCtrl.text.trim().isEmpty ? null : priceHtgCtrl.text.trim(),
+    'price_usd':   priceUsdCtrl.text.trim().isEmpty ? null : priceUsdCtrl.text.trim(),
+    'period':      periodCtrl.text.trim(),
+    'highlighted': highlighted,
+    'visible':     visible,
+    'features':    features,
+  };
+
+  void dispose() {
+    nameCtrl.dispose();
+    subtitleCtrl.dispose();
+    periodCtrl.dispose();
+    priceHtgCtrl.dispose();
+    priceUsdCtrl.dispose();
+    featureAddCtrl.dispose();
+  }
+}
+
+// Defaults shown when pricing_plans_json is null in DB
+const _defaultPlans = [
+  {
+    'id': 'starter', 'visible': true, 'name': 'Starter',
+    'subtitle': 'Pour découvrir', 'price_htg': 'Gratuit', 'price_usd': null,
+    'period': '{trial_days} jours d\'essai', 'highlighted': false,
+    'features': ['1 dépôt', '1 caisse', 'Ventes & encaissements', 'Gestion clients', 'Rapports de base', 'Support email', 'Aucune carte requise'],
+  },
+  {
+    'id': 'pro', 'visible': true, 'name': 'Pro',
+    'subtitle': 'Basé sur le nombre de caisses', 'price_htg': null, 'price_usd': null,
+    'period': 'par mois · 1 dépôt', 'highlighted': true,
+    'features': ['1 dépôt inclus', '3 caisses incluses', 'Mode restaurant', 'Sync cloud temps réel', 'Rapports avancés', 'Multi-plateformes', 'Support prioritaire'],
+  },
+  {
+    'id': 'enterprise', 'visible': true, 'name': 'Enterprise',
+    'subtitle': 'Pour les grandes enseignes', 'price_htg': 'Sur devis', 'price_usd': null,
+    'period': '', 'highlighted': false,
+    'features': ['Dépôts illimités', 'Caisses illimitées', 'API REST complète', 'White label', 'Formation sur site', 'Gestionnaire dédié', 'SLA 99.9%'],
+  },
+];

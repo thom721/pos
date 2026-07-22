@@ -3,6 +3,7 @@ Public routes — no authentication required.
 Used by the Flutter Web registration/login flow and WordPress webhook.
 """
 import base64
+import json
 import os
 import logging
 
@@ -103,6 +104,80 @@ def login(payload: CloudLogin, db: Session = Depends(get_db)):
     )
 
 
+_DEFAULT_PLANS = [
+    {
+        "id": "starter",
+        "visible": True,
+        "name": "Starter",
+        "subtitle": "Pour découvrir",
+        "price_htg": "Gratuit",
+        "price_usd": None,
+        "period": "{trial_days} jours d'essai",
+        "highlighted": False,
+        "features": [
+            "1 dépôt", "1 caisse", "Ventes & encaissements",
+            "Gestion clients", "Rapports de base", "Support email", "Aucune carte requise",
+        ],
+    },
+    {
+        "id": "pro",
+        "visible": True,
+        "name": "Pro",
+        "subtitle": "Basé sur le nombre de caisses",
+        "price_htg": None,
+        "price_usd": None,
+        "period": "par mois · 1 dépôt",
+        "highlighted": True,
+        "features": [
+            "1 dépôt inclus", "3 caisses incluses", "Mode restaurant",
+            "Sync cloud temps réel", "Rapports avancés", "Multi-plateformes", "Support prioritaire",
+        ],
+    },
+    {
+        "id": "enterprise",
+        "visible": True,
+        "name": "Enterprise",
+        "subtitle": "Pour les grandes enseignes",
+        "price_htg": "Sur devis",
+        "price_usd": None,
+        "period": "",
+        "highlighted": False,
+        "features": [
+            "Dépôts illimités", "Caisses illimitées", "API REST complète",
+            "White label", "Formation sur site", "Gestionnaire dédié", "SLA 99.9%",
+        ],
+    },
+]
+
+
+def _resolve_plans(plans: list, price_htg: float, price_usd: float, trial_days: int) -> list:
+    """Replace dynamic placeholders in plan data."""
+    def _fmt_htg(v: float) -> str:
+        return f"{int(v) if v == int(v) else v:,} HTG".replace(",", " ")
+
+    def _fmt_usd(v: float) -> str:
+        return f"{int(v) if v == int(v) else v} USD"
+
+    result = []
+    for plan in plans:
+        if not plan.get("visible", True):
+            continue
+        p = dict(plan)
+        # Resolve dynamic prices (None = use monthly price from config)
+        if p.get("price_htg") is None:
+            p["price_htg"] = _fmt_htg(price_htg)
+        if p.get("price_usd") is None and plan["id"] == "pro":
+            p["price_usd"] = _fmt_usd(price_usd)
+        else:
+            p["price_usd"] = p.get("price_usd") or ""
+        # Replace trial_days placeholder in period
+        period = p.get("period", "")
+        if "{trial_days}" in period:
+            p["period"] = period.replace("{trial_days}", str(trial_days))
+        result.append(p)
+    return result
+
+
 @router.get("/pricing")
 def get_pricing(db: Session = Depends(get_db)):
     """
@@ -111,26 +186,34 @@ def get_pricing(db: Session = Depends(get_db)):
     """
     from api.models.PlatformConfig import PlatformConfig
     cfg = db.query(PlatformConfig).first()
-    if not cfg:
-        return {
-            "monthly_price_htg": 2500.00,
-            "monthly_price_usd": 20.00,
-            "trial_days": 30,
-            "price_per_extra_caisse_htg": 500.00,
-            "price_per_extra_caisse_usd": 4.00,
-            "stat_businesses":       "500+",
-            "stat_transactions_day": "10k+",
-            "stat_uptime":           "99.9%",
-        }
+
+    price_htg   = float(cfg.monthly_price_htg)   if cfg else 2500.0
+    price_usd   = float(cfg.monthly_price_usd)   if cfg else 20.0
+    trial_days  = cfg.trial_days                  if cfg else 30
+    extra_c_htg = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
+    extra_c_usd = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
+
+    raw_plans = None
+    if cfg:
+        raw = getattr(cfg, "pricing_plans_json", None)
+        if raw:
+            try:
+                raw_plans = json.loads(raw)
+            except (ValueError, TypeError):
+                raw_plans = None
+
+    plans = _resolve_plans(raw_plans or _DEFAULT_PLANS, price_htg, price_usd, trial_days)
+
     return {
-        "monthly_price_htg":         float(cfg.monthly_price_htg),
-        "monthly_price_usd":         float(cfg.monthly_price_usd),
-        "trial_days":                cfg.trial_days,
-        "price_per_extra_caisse_htg": float(cfg.price_per_extra_caisse_htg),
-        "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
-        "stat_businesses":       getattr(cfg, "stat_businesses",       "500+"),
-        "stat_transactions_day": getattr(cfg, "stat_transactions_day", "10k+"),
-        "stat_uptime":           getattr(cfg, "stat_uptime",           "99.9%"),
+        "monthly_price_htg":          price_htg,
+        "monthly_price_usd":          price_usd,
+        "trial_days":                 trial_days,
+        "price_per_extra_caisse_htg": extra_c_htg,
+        "price_per_extra_caisse_usd": extra_c_usd,
+        "stat_businesses":       getattr(cfg, "stat_businesses",       "500+") if cfg else "500+",
+        "stat_transactions_day": getattr(cfg, "stat_transactions_day", "10k+") if cfg else "10k+",
+        "stat_uptime":           getattr(cfg, "stat_uptime",           "99.9%") if cfg else "99.9%",
+        "plans": plans,
     }
 
 

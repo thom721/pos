@@ -92,6 +92,7 @@ class PlatformConfigUpdate(BaseModel):
     smtp_user:             str | None = None
     smtp_password:         str | None = None
     smtp_from:             str | None = None
+    pricing_plans_json:    str | None = None
 
 
 # ── Internal helpers ────────────────────────────────────────────────────────
@@ -775,6 +776,7 @@ def get_platform_config(
         "smtp_user":             getattr(cfg, "smtp_user",             ""),
         "smtp_password":         getattr(cfg, "smtp_password",         ""),
         "smtp_from":             getattr(cfg, "smtp_from",             ""),
+        "pricing_plans_json": getattr(cfg, "pricing_plans_json", None),
         "created_at":        cfg.created_at.isoformat() if cfg.created_at else None,
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }
@@ -822,6 +824,7 @@ def update_platform_config(
     if body.smtp_user             is not None: cfg.smtp_user             = body.smtp_user
     if body.smtp_password         is not None: cfg.smtp_password         = body.smtp_password
     if body.smtp_from             is not None: cfg.smtp_from             = body.smtp_from
+    if body.pricing_plans_json    is not None: cfg.pricing_plans_json    = body.pricing_plans_json
 
     db.commit()
     db.refresh(cfg)
@@ -851,5 +854,6 @@ def update_platform_config(
         "smtp_user":             getattr(cfg, "smtp_user",             ""),
         "smtp_password":         getattr(cfg, "smtp_password",         ""),
         "smtp_from":             getattr(cfg, "smtp_from",             ""),
+        "pricing_plans_json":    getattr(cfg, "pricing_plans_json",    None),
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }

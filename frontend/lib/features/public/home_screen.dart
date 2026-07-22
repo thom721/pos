@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:pos_connect/providers/pricing_provider.dart';
+import 'package:pos_connect/providers/pricing_provider.dart'
+    show PricingInfo, PricingPlan, pricingProvider;
 import 'package:pos_connect/features/public/public_nav_bar.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -778,8 +779,6 @@ class _Pricing extends ConsumerWidget {
     final pricing = ref.watch(pricingProvider);
     final p = pricing.valueOrNull ?? PricingInfo.fallback;
 
-    final proHtg = _fmtHtg(p.monthlyPriceHtg);
-    final proUsd = _fmtUsd(p.monthlyPriceUsd);
     final extraLabel = '+ ${_fmtHtg(p.extraCaisseHtg)} / ${_fmtUsd(p.extraCaisseUsd)} par caisse supplémentaire';
     final trialLabel = p.trialDays > 0 ? 'Essai gratuit ${p.trialDays} jours  •  ' : '';
 
@@ -803,39 +802,22 @@ class _Pricing extends ConsumerWidget {
         const SizedBox(height: 48),
         if (isWide)
           IntrinsicHeight(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Expanded(child: _PriceCard(
-                plan: 'Starter', priceHtg: 'Gratuit', priceUsd: '',
-                period: '${p.trialDays} jours d\'essai', subtitle: 'Pour découvrir',
-                highlighted: false,
-                features: ['1 dépôt', '1 caisse', 'Ventes & encaissements', 'Gestion clients', 'Rapports de base', 'Support email', 'Aucune carte requise'],
-              )),
-              const SizedBox(width: 20),
-              Expanded(child: _PriceCard(
-                plan: 'Pro', priceHtg: proHtg, priceUsd: proUsd,
-                period: 'par mois · 1 dépôt', subtitle: 'Basé sur le nombre de caisses',
-                highlighted: true,
-                features: ['1 dépôt inclus', '3 caisses incluses', 'Mode restaurant', 'Sync cloud temps réel', 'Rapports avancés', 'Multi-plateformes', 'Support prioritaire'],
-              )),
-              const SizedBox(width: 20),
-              const Expanded(child: _PriceCard(
-                plan: 'Enterprise', priceHtg: 'Sur devis', priceUsd: '',
-                period: '', subtitle: 'Pour les grandes enseignes',
-                highlighted: false,
-                features: ['Dépôts illimités', 'Caisses illimitées', 'API REST complète', 'White label', 'Formation sur site', 'Gestionnaire dédié', 'SLA 99.9%'],
-              )),
-            ]),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < p.plans.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 20),
+                  Expanded(child: _PriceCard(plan: p.plans[i])),
+                ],
+              ],
+            ),
           )
         else
           Column(children: [
-            _PriceCard(plan: 'Starter', priceHtg: 'Gratuit', priceUsd: '', period: '${p.trialDays} jours d\'essai', subtitle: 'Pour découvrir', highlighted: false,
-              features: const ['1 dépôt', '1 caisse', 'Ventes & encaissements', 'Gestion clients', 'Rapports de base']),
-            const SizedBox(height: 20),
-            _PriceCard(plan: 'Pro', priceHtg: proHtg, priceUsd: proUsd, period: 'par mois · 1 dépôt', subtitle: 'Basé sur le nombre de caisses', highlighted: true,
-              features: const ['1 dépôt inclus', '3 caisses incluses', 'Mode restaurant', 'Sync cloud', 'Rapports avancés']),
-            const SizedBox(height: 20),
-            const _PriceCard(plan: 'Enterprise', priceHtg: 'Sur devis', priceUsd: '', period: '', subtitle: 'Pour les grandes enseignes', highlighted: false,
-              features: ['Dépôts illimités', 'Caisses illimitées', 'API REST', 'White label', 'Support dédié']),
+            for (var i = 0; i < p.plans.length; i++) ...[
+              if (i > 0) const SizedBox(height: 20),
+              _PriceCard(plan: p.plans[i]),
+            ],
           ]),
         const SizedBox(height: 20),
         pricing.isLoading
@@ -847,19 +829,14 @@ class _Pricing extends ConsumerWidget {
 }
 
 class _PriceCard extends StatelessWidget {
-  final String plan, priceHtg, priceUsd, period, subtitle;
-  final bool highlighted;
-  final List<String> features;
+  final PricingPlan plan;
 
-  const _PriceCard({
-    required this.plan, required this.priceHtg, required this.priceUsd,
-    required this.period, required this.subtitle,
-    required this.highlighted, required this.features,
-  });
+  const _PriceCard({required this.plan});
 
   @override
   Widget build(BuildContext context) {
-    final textDim = highlighted ? const Color(0xFF90A4BE) : const Color(0xFF718096);
+    final highlighted = plan.highlighted;
+    final textDim  = highlighted ? const Color(0xFF90A4BE) : const Color(0xFF718096);
     final textMain = highlighted ? _white : _navy;
 
     return Container(
@@ -893,17 +870,17 @@ class _PriceCard extends StatelessWidget {
                 ),
                 child: Text('Recommandé', style: GoogleFonts.inter(color: _white, fontSize: 12, fontWeight: FontWeight.w600)),
               ),
-            Text(plan, style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: textMain)),
+            Text(plan.name, style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: textMain)),
             const SizedBox(height: 4),
-            Text(subtitle, style: GoogleFonts.inter(fontSize: 13, color: textDim)),
+            Text(plan.subtitle, style: GoogleFonts.inter(fontSize: 13, color: textDim)),
             const SizedBox(height: 20),
-            Text(priceHtg, style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w800, color: textMain)),
-            if (priceUsd.isNotEmpty) Text(priceUsd, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: _blue)),
-            if (period.isNotEmpty) Text(period, style: GoogleFonts.inter(fontSize: 13, color: textDim)),
+            Text(plan.priceHtg, style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w800, color: textMain)),
+            if (plan.priceUsd.isNotEmpty) Text(plan.priceUsd, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: _blue)),
+            if (plan.period.isNotEmpty) Text(plan.period, style: GoogleFonts.inter(fontSize: 13, color: textDim)),
             const SizedBox(height: 24),
             Divider(color: highlighted ? _white.withValues(alpha: 0.1) : const Color(0xFFE2E8F0)),
             const SizedBox(height: 16),
-            ...features.map((f) => Padding(
+            ...plan.features.map((f) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Row(children: [
                 Icon(Icons.check_circle_rounded, size: 18, color: highlighted ? _green : _blue),
@@ -914,7 +891,7 @@ class _PriceCard extends StatelessWidget {
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
-              child: priceHtg == 'Sur devis'
+              child: plan.priceHtg == 'Sur devis'
                   ? OutlinedButton(
                       style: OutlinedButton.styleFrom(
                         foregroundColor: textMain,
@@ -930,7 +907,7 @@ class _PriceCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                       onPressed: () => context.go('/register'),
-                      child: Text(plan == 'Starter' ? 'Commencer gratuitement' : 'Choisir $plan'),
+                      child: Text(plan.id == 'starter' ? 'Commencer gratuitement' : 'Choisir ${plan.name}'),
                     ),
             ),
           ]),

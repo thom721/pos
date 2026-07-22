@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Numeric, Boolean
+from sqlalchemy import Column, String, Integer, Numeric, Boolean, Text
 from .base import UUIDBase
 
 class PlatformConfig(UUIDBase):
@@ -40,3 +40,6 @@ class PlatformConfig(UUIDBase):
     stat_businesses       = Column(String(30), nullable=False, default='500+')
     stat_transactions_day = Column(String(30), nullable=False, default='10k+')
     stat_uptime           = Column(String(30), nullable=False, default='99.9%')
+
+    # Cards de tarification affichées sur la page publique (JSON array)
+    pricing_plans_json    = Column(Text, nullable=True, default=None)
