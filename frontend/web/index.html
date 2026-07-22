@@ -1,24 +1,85 @@
-<!DOCTYPE html><html><head>
+<!DOCTYPE html><html lang="fr"><head>
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="POS Connect — La solution POS pour les businesses haïtiens.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-  <!-- iOS meta tags & icons -->
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="POS Connect">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <!-- ── SEO de base ──────────────────────────────────────── -->
+  <title>POS Connect — Logiciel de caisse pour businesses haïtiens</title>
+  <meta name="description" content="POS Connect est la solution de point de vente cloud tout-en-un pour les businesses haïtiens. Gérez ventes, stocks, clients, restaurants et multi-caisses depuis n'importe quel appareil.">
+  <meta name="keywords" content="POS, point de vente, logiciel caisse, Haïti, restaurant, gestion stock, multi-caisse, cloud, application POS, caisse enregistreuse">
+  <meta name="author" content="Infini Software">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#1B2A3B">
+  <link rel="canonical" href="https://pos.infini-software.cloud/">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
-  <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+  <!-- ── Open Graph (Facebook · WhatsApp · LinkedIn) ─────── -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="POS Connect">
+  <meta property="og:locale" content="fr_HT">
+  <meta property="og:url" content="https://pos.infini-software.cloud/">
+  <meta property="og:title" content="POS Connect — Logiciel de caisse pour businesses haïtiens">
+  <meta property="og:description" content="Gérez ventes, stocks, clients et restaurant depuis n'importe quel appareil. Solution cloud multi-plateforme pensée pour Haïti.">
+  <meta property="og:image" content="https://pos.infini-software.cloud/icons/Icon-512.png">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
+  <meta property="og:image:alt" content="Logo POS Connect">
 
-  <title>POS Connect</title>
+  <!-- ── Twitter Card ──────────────────────────────────────── -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="POS Connect — Logiciel de caisse pour businesses haïtiens">
+  <meta name="twitter:description" content="Gérez ventes, stocks, clients et restaurant depuis n'importe quel appareil. Solution cloud multi-plateforme.">
+  <meta name="twitter:image" content="https://pos.infini-software.cloud/icons/Icon-512.png">
+
+  <!-- ── Données structurées JSON-LD ──────────────────────── -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "POS Connect",
+        "url": "https://pos.infini-software.cloud/",
+        "image": "https://pos.infini-software.cloud/icons/Icon-512.png",
+        "description": "Solution de point de vente cloud tout-en-un pour les businesses haïtiens. Gestion des ventes, stocks, clients, restaurants et multi-caisses.",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web, Android, iOS, Windows, macOS, Linux",
+        "inLanguage": "fr",
+        "author": { "@type": "Organization", "name": "Infini Software", "url": "https://infini-software.cloud" },
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "HTG",
+          "description": "Essai gratuit sans carte de crédit"
+        }
+      },
+      {
+        "@type": "Organization",
+        "name": "Infini Software",
+        "url": "https://infini-software.cloud",
+        "logo": "https://pos.infini-software.cloud/icons/Icon-512.png",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "customer support",
+          "email": "software@infini-software.cloud",
+          "availableLanguage": ["fr", "ht"]
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!-- ── PWA · iOS · Favicon ──────────────────────────────── -->
   <link rel="manifest" href="manifest.json">
-
-  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="POS Connect">
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="icons/Icon-512.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" sizes="64x64" href="favicon.png">
 
   <style>
     *, *::before, *::after { box-sizing: border-box; }
