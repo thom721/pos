@@ -6,6 +6,7 @@ import 'package:pos_connect/providers/contact_info_provider.dart' show ContactIn
 import 'package:pos_connect/providers/pricing_provider.dart'
     show PricingInfo, PricingPlan, pricingProvider;
 import 'package:pos_connect/features/public/public_nav_bar.dart';
+import 'package:pos_connect/shared/widgets/pos_logo.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -984,16 +985,7 @@ class _Footer extends StatelessWidget {
       child: Column(children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Container(
-                width: 36, height: 36,
-                decoration: BoxDecoration(color: _blue, borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.point_of_sale_rounded, color: _white, size: 20),
-              ),
-              const SizedBox(width: 10),
-              Text('POS Connect',
-                  style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: _white)),
-            ]),
+            const PosLogo(width: 120),
             const SizedBox(height: 12),
             Text(
               'La solution POS moderne pour businesses et restaurants.',
