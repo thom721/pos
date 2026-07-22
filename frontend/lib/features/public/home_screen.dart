@@ -1002,22 +1002,27 @@ class _Footer extends StatelessWidget {
               style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5),
             ),
             const SizedBox(height: 16),
-            _StoreBadge(
-              label: 'Google Play',
-              sublabel: 'Disponible sur',
-              icon: _GooglePlayIcon(),
-              onTap: () => launchUrl(
-                Uri.parse('https://play.google.com/store/apps/details?id=com.infinisoftware.pos_connect'),
-                mode: LaunchMode.externalApplication,
-              ),
-            ),
-            const SizedBox(height: 10),
-            _StoreBadge(
-              label: 'App Store',
-              sublabel: 'Bientôt disponible',
-              icon: const _AppleIcon(),
-              onTap: null,
-              disabled: true,
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _StoreBadge(
+                  label: 'Google Play',
+                  sublabel: 'Disponible sur',
+                  icon: _GooglePlayIcon(),
+                  onTap: () => launchUrl(
+                    Uri.parse('https://play.google.com/store/apps/details?id=com.infinisoftware.pos_connect'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _StoreBadge(
+                  label: 'App Store',
+                  sublabel: 'Bientôt disponible',
+                  icon: const _AppleIcon(),
+                  onTap: null,
+                  disabled: true,
+                ),
+              ],
             ),
           ])),
           if (isWide) ...[
