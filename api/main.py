@@ -10,7 +10,7 @@ logging.basicConfig(
 )
 _log = logging.getLogger("pos.migration")
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from api.database import engine, Base
 from api.routes import returns, sales, purchases, user, category, customer, product, login, supplier, auth, stock, purchases_receive, payments, debts, config
@@ -702,6 +702,26 @@ from pathlib import Path as _Path
 
 _web_dir = _Path(_settings_cors.WEB_DIR or "web")
 if _web_dir.exists() and _web_dir.is_dir():
+    _NO_CACHE = {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+    }
+
+    # Routes spéciales avant le mount StaticFiles : empêchent le navigateur
+    # de servir une version obsolète après un déploiement.
+    @app.get("/", include_in_schema=False)
+    @app.get("/index.html", include_in_schema=False)
+    async def _serve_index():
+        return FileResponse(str(_web_dir / "index.html"), headers=_NO_CACHE)
+
+    @app.get("/flutter_service_worker.js", include_in_schema=False)
+    async def _serve_sw():
+        return FileResponse(str(_web_dir / "flutter_service_worker.js"), headers=_NO_CACHE)
+
+    @app.get("/flutter_bootstrap.js", include_in_schema=False)
+    async def _serve_bootstrap():
+        return FileResponse(str(_web_dir / "flutter_bootstrap.js"), headers=_NO_CACHE)
+
     # Monté EN DERNIER — les routes API prennent toujours la priorité.
     app.mount("/", StaticFiles(directory=str(_web_dir), html=True), name="web")
     _log.info("Flutter web SPA servi depuis : %s", _web_dir.resolve())

@@ -301,20 +301,33 @@ def send_contact_message(body: ContactMessage, db: Session = Depends(get_db)):
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as srv:
-            srv.ehlo()
-            srv.starttls()
-            srv.ehlo()
-            if smtp_user and smtp_pass:
-                srv.login(smtp_user, smtp_pass)
-            srv.sendmail(sender, [to_email], msg.as_string())
+        import ssl as _ssl
+        if smtp_port == 465:
+            # Connexion SSL directe
+            ctx = _ssl.create_default_context()
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, context=ctx, timeout=15) as srv:
+                if smtp_user and smtp_pass:
+                    srv.login(smtp_user, smtp_pass)
+                srv.sendmail(sender, [to_email], msg.as_string())
+        else:
+            # STARTTLS (port 587 ou autre)
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as srv:
+                srv.ehlo()
+                try:
+                    srv.starttls()
+                    srv.ehlo()
+                except smtplib.SMTPException:
+                    pass  # serveur sans STARTTLS (port 25)
+                if smtp_user and smtp_pass:
+                    srv.login(smtp_user, smtp_pass)
+                srv.sendmail(sender, [to_email], msg.as_string())
         _log.info("Contact message sent from %s to %s", body.email, to_email)
         return {"success": True}
     except Exception as exc:
         _log.error("Erreur envoi email contact: %s", exc)
         raise HTTPException(
             status_code=500,
-            detail="Erreur lors de l'envoi. Réessayez plus tard.",
+            detail=f"Erreur lors de l'envoi : {exc}",
         )
 
 

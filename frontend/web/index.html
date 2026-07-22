@@ -1,22 +1,9 @@
 <!DOCTYPE html><html><head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="POS Connect — La solution POS pour les businesses haïtiens.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -30,29 +17,81 @@
 
   <title>POS Connect</title>
   <link rel="manifest" href="manifest.json">
-  
-  
+
   <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+
   <style>
-    html, body { margin: 0; height: 100%; background-color: #1B2A3B; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%;
+      background: #1B2A3B;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    /* ── Loading overlay ────────────────────────────────── */
+    #pos-loading {
+      position: fixed;
+      inset: 0;
+      background: #1B2A3B;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.35s ease;
+    }
+    #pos-loading.out {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .pos-logo-wrap {
+      width: 72px; height: 72px;
+      background: #0077C5;
+      border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 32px rgba(0,119,197,0.4);
+    }
+    .pos-logo-wrap svg { width: 40px; height: 40px; fill: #fff; }
+    .pos-app-name {
+      color: #fff; font-size: 22px; font-weight: 700;
+      letter-spacing: -0.3px; margin-bottom: 8px;
+    }
+    .pos-tagline { color: #5A7A9A; font-size: 13px; margin-bottom: 36px; }
+    .pos-spinner {
+      width: 28px; height: 28px;
+      border: 3px solid rgba(255,255,255,0.12);
+      border-top-color: #0077C5;
+      border-radius: 50%;
+      animation: pos-spin 0.75s linear infinite;
+    }
+    @keyframes pos-spin { to { transform: rotate(360deg); } }
   </style>
+
   <script id="splash-screen-script">
     function removeSplashFromWeb() {
-      document.body.style.background = "transparent";
+      var el = document.getElementById('pos-loading');
+      if (el) {
+        el.classList.add('out');
+        setTimeout(function() { el.remove(); }, 380);
+      }
+      document.body.style.background = 'transparent';
     }
   </script>
 </head>
+
 <body>
-  
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
+  <!-- Retiré automatiquement par removeSplashFromWeb() quand Flutter est prêt -->
+  <div id="pos-loading" aria-hidden="true">
+    <div class="pos-logo-wrap">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4 3h16a1 1 0 0 1 1 1v2H3V4a1 1 0 0 1 1-1zm-1 5h18v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8zm5 4v2h2v-2H8zm0 4v2h2v-2H8zm4-4v2h2v-2h-2zm0 4v2h2v-2h-2zm4-4v2h2v-2h-2z"/>
+      </svg>
+    </div>
+    <div class="pos-app-name">POS Connect</div>
+    <div class="pos-tagline">Chargement…</div>
+    <div class="pos-spinner"></div>
+  </div>
 
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
   <script src="flutter_bootstrap.js" async=""></script>
-
-
 </body></html>
