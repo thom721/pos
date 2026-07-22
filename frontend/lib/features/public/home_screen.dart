@@ -118,7 +118,7 @@ class _HeroText extends ConsumerWidget {
       const SizedBox(height: 16),
       // Sector chips
       Wrap(spacing: 8, runSpacing: 8, children: [
-        _SectorChip(Icons.store_rounded,           'Commerce général'),
+        _SectorChip(Icons.store_rounded,           'Business général'),
         _SectorChip(Icons.restaurant_menu_rounded, 'Restaurant'),
         _SectorChip(Icons.nightlife_rounded,        'Club / Bar'),
         _SectorChip(Icons.local_pharmacy_rounded,  'Pharmacie'),
@@ -167,7 +167,7 @@ class _HeroText extends ConsumerWidget {
       const SizedBox(height: 32),
       // Stats row
       Row(children: [
-        _Stat(pricing.statBusinesses,      'Commerces actifs'),
+        _Stat(pricing.statBusinesses,      'Businesses actifs'),
         _divider(),
         _Stat(pricing.statTransactionsDay, 'Transactions/jour'),
         _divider(),
@@ -444,7 +444,7 @@ class _Features extends StatelessWidget {
         const _SectionLabel('Fonctionnalités'),
         const SizedBox(height: 12),
         Text(
-          'Tout ce dont vous avez besoin pour gérer votre commerce',
+          'Tout ce dont vous avez besoin pour gérer votre business',
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(fontSize: isWide ? 32 : 22, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
         ),
@@ -662,7 +662,7 @@ class _CapabilitiesBand extends StatelessWidget {
     (Icons.account_balance_rounded,  Color(0xFF0077C5), 'Crédits & Dettes clients',    'Suivi des ventes à crédit et remboursements'),
     (Icons.bar_chart_rounded,        Color(0xFF2CA01C), 'Statistiques avancées',       'Tableaux de bord, tendances et analyses'),
     (Icons.people_rounded,           Color(0xFFE67E22), 'Gestion clients',             'Historique, fidélité et profils complets'),
-    (Icons.local_pharmacy_rounded,   Color(0xFF0D9488), 'Commerce & Pharmacie',        'Stocks, produits, alertes péremption'),
+    (Icons.local_pharmacy_rounded,   Color(0xFF0D9488), 'Business & Pharmacie',        'Stocks, produits, alertes péremption'),
     (Icons.nightlife_rounded,        Color(0xFFDB2777), 'Restaurant, Club & Hôtel',    'Tables, chambres, réservations, cuisine'),
   ];
 
@@ -676,7 +676,7 @@ class _CapabilitiesBand extends StatelessWidget {
         const _SectionLabel('Tout-en-un'),
         const SizedBox(height: 12),
         Text(
-          'Tout ce dont votre commerce a besoin',
+          'Tout ce dont votre business a besoin',
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(
             fontSize: isWide ? 30 : 22,
@@ -789,7 +789,7 @@ class _Pricing extends ConsumerWidget {
         const _SectionLabel('Tarification'),
         const SizedBox(height: 12),
         Text(
-          'Des tarifs adaptés à chaque commerce',
+          'Des tarifs adaptés à chaque business',
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(fontSize: isWide ? 32 : 22, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
         ),
@@ -932,7 +932,7 @@ class _CtaBand extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 64),
       child: Column(children: [
         Text(
-          'Prêt à transformer votre commerce ?',
+          'Prêt à transformer votre business ?',
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(fontSize: 32, fontWeight: FontWeight.w800, color: _white, height: 1.2),
         ),
@@ -995,7 +995,7 @@ class _Footer extends StatelessWidget {
             ]),
             const SizedBox(height: 12),
             Text(
-              'La solution POS moderne pour les commerces et restaurants haïtiens.',
+              'La solution POS moderne pour les businesses et restaurants haïtiens.',
               style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5),
             ),
           ])),

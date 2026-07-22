@@ -150,7 +150,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         style: TextStyle(color: Colors.white, fontSize: 32,
                             fontWeight: FontWeight.w700, letterSpacing: -0.5)),
                     const SizedBox(height: 12),
-                    const Text('Gérez votre commerce avec précision',
+                    const Text('Gérez votre business avec précision',
                         style: TextStyle(color: Color(0xFF8BA4BE), fontSize: 16)),
                     const SizedBox(height: 48),
                     ...[
@@ -182,6 +182,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (kIsWeb) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () => context.go('/'),
+                            icon: const Icon(Icons.arrow_back_rounded, size: 16),
+                            label: const Text('Accueil'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.textSecondary,
+                              padding: EdgeInsets.zero,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       if (!isWide) ...[
                         Center(
                           child: Container(

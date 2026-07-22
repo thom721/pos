@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -185,7 +186,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             color: Color(0xFF8BA4BE), fontSize: 16)),
                     const SizedBox(height: 48),
                     ...[
-                      ('Multi-dépôts : commerce, resto, club…',
+                      ('Multi-dépôts : business, resto, club…',
                           Icons.store_rounded),
                       ('Vendez depuis votre téléphone ou tablette',
                           Icons.phone_android_rounded),
@@ -275,6 +276,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (kIsWeb) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => context.go('/'),
+                icon: const Icon(Icons.arrow_back_rounded, size: 16),
+                label: const Text('Accueil'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.textSecondary,
+                  padding: EdgeInsets.zero,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           // Mobile logo
           if (!isWide) ...[
             Center(
