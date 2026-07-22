@@ -137,7 +137,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const PosLogo(width: 200),
+                    Container(
+                      width: 130, height: 130,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFCC0000), width: 1),
+                      ),
+                      padding: const EdgeInsets.all(16),
+                      child: const PosLogo(width: 98),
+                    ),
                     const SizedBox(height: 12),
                     const Text('Gérez votre business avec précision',
                         style: TextStyle(color: Color(0xFF8BA4BE), fontSize: 16)),
