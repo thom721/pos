@@ -84,8 +84,17 @@
   <!-- Retiré automatiquement par removeSplashFromWeb() quand Flutter est prêt -->
   <div id="pos-loading" aria-hidden="true">
     <div class="pos-logo-wrap">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M4 3h16a1 1 0 0 1 1 1v2H3V4a1 1 0 0 1 1-1zm-1 5h18v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8zm5 4v2h2v-2H8zm0 4v2h2v-2H8zm4-4v2h2v-2h-2zm0 4v2h2v-2h-2zm4-4v2h2v-2h-2z"/>
+      <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="rg" cx="38%" cy="32%" r="62%">
+            <stop offset="0%" stop-color="#ff5555"/>
+            <stop offset="55%" stop-color="#cc0000"/>
+            <stop offset="100%" stop-color="#8b0000"/>
+          </radialGradient>
+        </defs>
+        <circle cx="24" cy="24" r="24" fill="url(#rg)"/>
+        <ellipse cx="18" cy="15" rx="7" ry="4.5" fill="#fff" opacity="0.28"/>
+        <polygon points="14,12 34,24 14,36" fill="#fff" opacity="0.95"/>
       </svg>
     </div>
     <div class="pos-app-name">POS Connect</div>
