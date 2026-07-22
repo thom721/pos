@@ -2,10 +2,8 @@
 
     <!-- Connexion réseau -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <!-- Lecture stockage pour picker image (API < 33) -->
+    <!-- Lecture stockage pour picker image (API ≤ 32 uniquement — remplacé par Photo Picker sur API 33+) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
-    <!-- Lecture images (API >= 33) -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <!-- Bluetooth imprimante thermique -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
