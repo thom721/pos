@@ -985,7 +985,16 @@ class _Footer extends StatelessWidget {
       child: Column(children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const PosLogo(width: 120),
+            Container(
+              width: 90, height: 90,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFCC0000), width: 1),
+              ),
+              padding: const EdgeInsets.all(10),
+              child: const PosLogo(width: 70),
+            ),
             const SizedBox(height: 12),
             Text(
               'La solution POS moderne pour businesses et restaurants.',
