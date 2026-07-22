@@ -8,6 +8,7 @@ import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/pricing_provider.dart';
+import 'package:pos_connect/shared/widgets/pos_logo.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -163,16 +164,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Icon(Icons.point_of_sale,
-                          color: Colors.white, size: 40),
-                    ),
+                    const PosLogo(width: 180),
                     const SizedBox(height: 24),
                     const Text('POS Connect',
                         style: TextStyle(

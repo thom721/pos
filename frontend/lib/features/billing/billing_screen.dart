@@ -72,6 +72,15 @@ class BillingScreen extends ConsumerWidget {
 Future<void> _printBillingInvoice(
     Map<String, dynamic> payment, Map<String, dynamic> statusData) async {
   final doc = pw.Document();
+
+  // Charger le logo depuis les assets
+  pw.ImageProvider? logoImg;
+  try {
+    final ByteData data = await rootBundle.load('assets/icon/splash_logo.png');
+    logoImg = pw.MemoryImage(data.buffer.asUint8List());
+  } catch (_) {
+    logoImg = null;
+  }
   final fmt = DateFormat('dd/MM/yyyy');
   final fmtFull = DateFormat('dd MMMM yyyy', 'fr_FR');
 
@@ -112,8 +121,11 @@ Future<void> _printBillingInvoice(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
             pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              pw.Text('POS Connect',
-                  style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+              if (logoImg != null)
+                pw.Image(logoImg, width: 130, height: 60, fit: pw.BoxFit.contain)
+              else
+                pw.Text('POS Connect',
+                    style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
               pw.SizedBox(height: 4),
               pw.Text('Plateforme de gestion commerciale',
                   style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey600)),

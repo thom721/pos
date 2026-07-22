@@ -1120,6 +1120,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   final _smtpUserCtrl          = TextEditingController();
   final _smtpPasswordCtrl      = TextEditingController();
   final _smtpFromCtrl          = TextEditingController();
+  final _logoUrlCtrl           = TextEditingController();
 
   String _moncashMode = 'manual';
   String _natcashMode = 'manual';
@@ -1152,6 +1153,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _smtpUserCtrl.text          = cfg['smtp_user']?.toString()                  ?? '';
     _smtpPasswordCtrl.text      = cfg['smtp_password']?.toString()              ?? '';
     _smtpFromCtrl.text          = cfg['smtp_from']?.toString()                  ?? '';
+    _logoUrlCtrl.text           = cfg['logo_url']?.toString()                  ?? '';
     _moncashMode = cfg['moncash_mode']?.toString() == 'api' ? 'api' : 'manual';
     _natcashMode = cfg['natcash_mode']?.toString() == 'api' ? 'api' : 'manual';
     _loaded = true;
@@ -1197,6 +1199,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _smtpUserCtrl.dispose();
     _smtpPasswordCtrl.dispose();
     _smtpFromCtrl.dispose();
+    _logoUrlCtrl.dispose();
     for (final e in _planEditors) { e.dispose(); }
     super.dispose();
   }
@@ -1231,6 +1234,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
         'moncash_mode':                _moncashMode,
         'natcash_mode':                _natcashMode,
         'pricing_plans_json': jsonEncode(_planEditors.map((e) => e.toMap()).toList()),
+        'logo_url': _logoUrlCtrl.text.trim().isEmpty ? null : _logoUrlCtrl.text.trim(),
       });
       setState(() { _loaded = false; _plansLoaded = false; });
       ref.invalidate(_platformConfigProvider);
@@ -1494,6 +1498,23 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                     controller: _smtpFromCtrl,
                     decoration: const InputDecoration(
                         labelText: 'Expéditeur (ex: noreply@mondomaine.com)'),
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Logo de la plateforme',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    'URL de votre logo (PNG/SVG). Laissez vide pour utiliser le logo POS Connect par défaut.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _logoUrlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'URL du logo',
+                      hintText: 'https://exemple.com/logo.png',
+                      prefixIcon: Icon(Icons.image_outlined),
+                    ),
                   ),
                   const SizedBox(height: 24),
                   Text('Cards de tarification',

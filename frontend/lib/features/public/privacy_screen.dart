@@ -154,8 +154,8 @@ class _Body extends StatelessWidget {
           title: 'Qui sommes-nous ?',
           icon: Icons.business_rounded,
           child: _Para(
-            'POS Connect est un logiciel de point de vente développé par Infini Software, une société haïtienne. '
-            'Notre mission est de fournir aux commerces et restaurants haïtiens un outil moderne, fiable et accessible. '
+            'POS Connect est un logiciel de point de vente développé par Infini Software. '
+            'Notre mission est de fournir aux commerces et restaurants un outil moderne, fiable et accessible. '
             'La présente politique de confidentialité décrit comment nous traitons vos données personnelles.',
           ),
         ),

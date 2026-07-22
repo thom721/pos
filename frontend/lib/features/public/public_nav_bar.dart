@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pos_connect/shared/widgets/pos_logo.dart';
 
 const _pubNavy  = Color(0xFF1B2A3B);
 const _pubBlue  = Color(0xFF0077C5);
@@ -85,18 +86,7 @@ class PublicNavBar extends StatelessWidget {
             GestureDetector(
               onTap: () => context.go('/home'),
               child: Row(children: [
-                Container(
-                  width: 36, height: 36,
-                  decoration: BoxDecoration(
-                    color: _pubBlue,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.point_of_sale_rounded, color: _pubWhite, size: 20),
-                ),
-                const SizedBox(width: 10),
-                Text('POS Connect',
-                    style: GoogleFonts.inter(
-                        fontSize: 16, fontWeight: FontWeight.w700, color: _pubNavy)),
+                const PosLogo(width: 110),
               ]),
             ),
             const Spacer(),

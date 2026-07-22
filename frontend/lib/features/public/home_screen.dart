@@ -939,7 +939,7 @@ class _CtaBand extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Text(
-          'Rejoignez des centaines de commerçants haïtiens qui font confiance à POS Connect.',
+          'Rejoignez des centaines de businesses qui font confiance à POS Connect.',
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(fontSize: 16, color: _white.withValues(alpha: 0.8), height: 1.5),
         ),
@@ -996,7 +996,7 @@ class _Footer extends StatelessWidget {
             ]),
             const SizedBox(height: 12),
             Text(
-              'La solution POS moderne pour les businesses et restaurants haïtiens.',
+              'La solution POS moderne pour businesses et restaurants.',
               style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5),
             ),
           ])),

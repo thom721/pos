@@ -222,6 +222,14 @@ def get_pricing(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/brand")
+def get_brand(db: Session = Depends(get_db)):
+    """Branding public : logo_url de la plateforme (null = logo par défaut)."""
+    from api.models.PlatformConfig import PlatformConfig
+    cfg = db.query(PlatformConfig).first()
+    return {"logo_url": getattr(cfg, "logo_url", None) if cfg else None}
+
+
 @router.get("/contact-info")
 def get_contact_info(db: Session = Depends(get_db)):
     """

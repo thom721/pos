@@ -43,3 +43,4 @@ class PlatformConfig(UUIDBase):
 
     # Cards de tarification affichées sur la page publique (JSON array)
     pricing_plans_json    = Column(Text, nullable=True, default=None)
+    logo_url              = Column(String(512), nullable=True, default=None)
