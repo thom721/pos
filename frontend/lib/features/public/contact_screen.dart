@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pos_connect/data/api/api_client.dart' show dio, extractAnyError;
 import 'package:pos_connect/providers/contact_info_provider.dart';
 import 'package:pos_connect/features/public/public_nav_bar.dart';
 
@@ -36,8 +37,24 @@ class _ContactScreenState extends ConsumerState<ContactScreen> {
   Future<void> _send() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _sending = true);
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() { _sending = false; _sent = true; });
+    try {
+      await dio.post('/api/public/contact', data: {
+        'name':    _nameCtr.text.trim(),
+        'email':   _emailCtr.text.trim(),
+        'subject': _subjectCtr.text.trim(),
+        'message': _msgCtr.text.trim(),
+      });
+      if (mounted) setState(() { _sending = false; _sent = true; });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _sending = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(extractAnyError(e)),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ));
+      }
+    }
   }
 
   @override
@@ -154,6 +171,8 @@ class _ContactInfo extends StatelessWidget {
     final email = contact.email.isNotEmpty ? contact.email : 'support@pos-connect.ht';
     final phone = contact.whatsapp.isNotEmpty ? contact.whatsapp : null;
 
+    final address = contact.address.isNotEmpty ? contact.address : 'Port-au-Prince, Haïti';
+
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Coordonnées', style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800, color: _navy)),
       const SizedBox(height: 24),
@@ -161,7 +180,7 @@ class _ContactInfo extends StatelessWidget {
       if (phone != null)
         _InfoTile(Icons.chat_rounded,      'WhatsApp', phone),
       _InfoTile(Icons.access_time_rounded, 'Horaires', 'Lun–Ven : 8h – 17h (EST)'),
-      _InfoTile(Icons.location_on_outlined,'Adresse',  'Port-au-Prince, Haïti'),
+      _InfoTile(Icons.location_on_outlined,'Adresse',  address),
       const SizedBox(height: 32),
       Container(
         padding: const EdgeInsets.all(20),
@@ -179,26 +198,6 @@ class _ContactInfo extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             'Les abonnés Pro et Enterprise bénéficient d\'une réponse garantie sous 4 heures ouvrables et d\'un accès au support WhatsApp.',
-            style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5)),
-        ]),
-      ),
-      const SizedBox(height: 24),
-      Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: _green.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _green.withValues(alpha: 0.15)),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            const Icon(Icons.book_outlined, color: _green, size: 20),
-            const SizedBox(width: 8),
-            Text('Documentation', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _navy)),
-          ]),
-          const SizedBox(height: 8),
-          Text(
-            'Consultez notre base de connaissances pour des guides pas à pas, des tutoriels vidéo et des FAQ.',
             style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5)),
         ]),
       ),

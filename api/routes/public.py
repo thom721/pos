@@ -3,11 +3,16 @@ Public routes — no authentication required.
 Used by the Flutter Web registration/login flow and WordPress webhook.
 """
 import base64
+import html
 import json
 import os
 import logging
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from api.database import get_db
@@ -230,6 +235,87 @@ def get_contact_info(db: Session = Depends(get_db)):
         "whatsapp": cfg.support_whatsapp if cfg and cfg.support_whatsapp else "",
         "address":  cfg.support_address  if cfg and cfg.support_address  else "",
     }
+
+
+class ContactMessage(BaseModel):
+    name:    str
+    email:   EmailStr
+    subject: str
+    message: str
+
+
+@router.post("/contact")
+def send_contact_message(body: ContactMessage, db: Session = Depends(get_db)):
+    """
+    Envoie un message de contact par email via le SMTP configuré dans platform_config.
+    """
+    from api.models.PlatformConfig import PlatformConfig
+    cfg = db.query(PlatformConfig).first()
+
+    smtp_host = getattr(cfg, "smtp_host", "") if cfg else ""
+    smtp_port = getattr(cfg, "smtp_port", 587) if cfg else 587
+    smtp_user = getattr(cfg, "smtp_user", "") if cfg else ""
+    smtp_pass = getattr(cfg, "smtp_password", "") if cfg else ""
+    smtp_from = getattr(cfg, "smtp_from", "") if cfg else ""
+    to_email  = getattr(cfg, "support_email", "") if cfg else ""
+
+    if not smtp_host or not to_email:
+        raise HTTPException(
+            status_code=503,
+            detail="Service de messagerie non configuré. Contactez-nous directement par email.",
+        )
+
+    sender = smtp_from or smtp_user or "noreply@pos-connect.ht"
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"[Contact POS Connect] {body.subject}"
+    msg["From"]    = sender
+    msg["To"]      = to_email
+    msg["Reply-To"] = body.email
+
+    name_esc    = html.escape(body.name)
+    email_esc   = html.escape(body.email)
+    subject_esc = html.escape(body.subject)
+    msg_esc     = html.escape(body.message).replace("\n", "<br>")
+
+    plain = (
+        f"Nom : {body.name}\n"
+        f"Email : {body.email}\n"
+        f"Sujet : {body.subject}\n\n"
+        f"Message :\n{body.message}"
+    )
+    html_body = f"""
+<html><body style="font-family:sans-serif;color:#1A202C;max-width:600px;margin:auto">
+  <h2 style="color:#0077C5">Nouveau message de contact</h2>
+  <table cellpadding="6" style="border-collapse:collapse">
+    <tr><td><strong>Nom :</strong></td><td>{name_esc}</td></tr>
+    <tr><td><strong>Email :</strong></td><td><a href="mailto:{email_esc}">{email_esc}</a></td></tr>
+    <tr><td><strong>Sujet :</strong></td><td>{subject_esc}</td></tr>
+  </table>
+  <hr style="margin:20px 0;border:none;border-top:1px solid #E2E8F0">
+  <h3>Message :</h3>
+  <p style="line-height:1.6">{msg_esc}</p>
+</body></html>
+"""
+    msg.attach(MIMEText(plain, "plain", "utf-8"))
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as srv:
+            srv.ehlo()
+            srv.starttls()
+            srv.ehlo()
+            if smtp_user and smtp_pass:
+                srv.login(smtp_user, smtp_pass)
+            srv.sendmail(sender, [to_email], msg.as_string())
+        _log.info("Contact message sent from %s to %s", body.email, to_email)
+        return {"success": True}
+    except Exception as exc:
+        _log.error("Erreur envoi email contact: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Erreur lors de l'envoi. Réessayez plus tard.",
+        )
 
 
 @router.get("/tenant/{tenant_id}", response_model=TenantRead)

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pos_connect/providers/contact_info_provider.dart' show ContactInfo, contactInfoProvider;
 import 'package:pos_connect/providers/pricing_provider.dart'
     show PricingInfo, PricingPlan, pricingProvider;
 import 'package:pos_connect/features/public/public_nav_bar.dart';
@@ -1005,13 +1006,16 @@ class _Footer extends StatelessWidget {
             const SizedBox(width: 20),
             Expanded(child: _FooterCol('Légal', [('Conditions générales', '/terms'), ('Politique de confidentialité', '/privacy'), ('Contact', '/contact')])),
             const SizedBox(width: 20),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Contact', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _white)),
-              const SizedBox(height: 12),
-              _info(Icons.email_outlined,    'support@pos-connect.ht'),
-              _info(Icons.phone_outlined,    '+509 4000-0000'),
-              _info(Icons.location_on_outlined, 'Port-au-Prince, Haïti'),
-            ])),
+            Expanded(child: Consumer(builder: (ctx, ref, _) {
+              final c = ref.watch(contactInfoProvider).valueOrNull ?? ContactInfo.fallback;
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Contact', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _white)),
+                const SizedBox(height: 12),
+                _info(Icons.email_outlined, c.email.isNotEmpty ? c.email : 'support@pos-connect.ht'),
+                if (c.whatsapp.isNotEmpty) _info(Icons.chat_rounded, c.whatsapp),
+                if (c.address.isNotEmpty) _info(Icons.location_on_outlined, c.address),
+              ]);
+            })),
           ],
         ]),
         const SizedBox(height: 40),
