@@ -155,7 +155,19 @@ if (Test-Path "$MySqlBinDir\mysqld.exe") {
     if (-not (Test-Path "$MySqlData\ibdata1")) {
         Write-Log "Initialisation du datadir MySQL ($MySqlData)..."
 
-        # my.ini : port 3307, datadir dans ProgramData
+        # Accorder les droits d'ecriture AVANT d'appeler mysqld --initialize
+        # (mysqld echoue avec errno 13 si le dossier n'est pas accessible en ecriture)
+        try {
+            icacls $MySqlData /grant "SYSTEM:(OI)(CI)F" `
+                              /grant "Administrators:(OI)(CI)F" `
+                              /grant "Users:(OI)(CI)F" | Out-Null
+            Write-Log "Permissions dossier MySQL accordees"
+        } catch {
+            Write-Log "Impossible d'accorder les permissions sur $MySqlData : $_" "WARN"
+        }
+
+        # my.ini dans le dossier d'installation (pas dans le datadir)
+        # pour eviter que MySQL refuse d'initialiser un datadir non vide
         $basedirFwd = $MySqlDir   -replace '\\', '/'
         $datadirFwd = $MySqlData  -replace '\\', '/'
         Write-UTF8NoBOM $MyIni @"
@@ -185,16 +197,6 @@ port = $MySqlPort
             Write-Log "mysqld --initialize-insecure a echoue (code $LASTEXITCODE) -- verifiez les logs ci-dessus" "ERROR"
         } else {
             Write-Log "MySQL initialise (root sans mot de passe)"
-            # Proteger apres init reussie -- GRANT seulement, pas de DENY
-            # (un DENY Users bloquerait aussi les Administrateurs membres de ce groupe)
-            try {
-                icacls $MySqlData /inheritance:r `
-                    /grant "SYSTEM:(OI)(CI)F" `
-                    /grant "Administrators:(OI)(CI)F" | Out-Null
-                Write-Log "Protection dossier MySQL : acces restreint a SYSTEM + Administrateurs"
-            } catch {
-                Write-Log "Impossible de proteger le dossier MySQL : $_" "WARN"
-            }
         }
     } else {
         Write-Log "MySQL deja initialise"

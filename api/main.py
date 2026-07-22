@@ -199,7 +199,7 @@ def _run_alembic_migrations() -> None:
                 lock_conn.execute(text("SELECT RELEASE_LOCK('pos_alembic_migration')"))
 
 
-def _sync_schema_from_models() -> None:
+def _sync_schema_from_models(active_engine=None) -> None:
     """
     Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy :
     inspecte chaque table existante et ajoute toutes les colonnes manquantes.
@@ -209,19 +209,22 @@ def _sync_schema_from_models() -> None:
     à maintenir : toute colonne dans un modèle sera présente en DB au prochain
     démarrage, quoi qu'il arrive.
     """
+    import api.database as _db_mod
     from sqlalchemy import inspect as _inspect
 
+    _eng = active_engine or _db_mod.engine
+
     try:
-        inspector = _inspect(engine)
+        inspector = _inspect(_eng)
         existing_tables = set(inspector.get_table_names())
     except Exception as exc:
         _log.warning("schema-sync: impossible d'inspecter les tables: %s", exc)
         return
 
-    dialect = engine.dialect
+    dialect = _eng.dialect
     added = 0
 
-    with engine.connect() as conn:
+    with _eng.connect() as conn:
         for table in Base.metadata.sorted_tables:
             if table.name not in existing_tables:
                 continue  # table absente — create_all s'en charge
@@ -565,7 +568,7 @@ def on_startup():
     except Exception as exc:
         _log.warning("Alembic migration warning: %s", exc)
     # 2b. Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy
-    _sync_schema_from_models()
+    _sync_schema_from_models(_active_engine)
 
     import api.database as _db_module
     db = _db_module.SessionLocal()
