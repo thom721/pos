@@ -155,12 +155,14 @@ if (Test-Path "$MySqlBinDir\mysqld.exe") {
     if (-not (Test-Path "$MySqlData\ibdata1")) {
         Write-Log "Initialisation du datadir MySQL ($MySqlData)..."
 
-        # Accorder les droits d'ecriture AVANT d'appeler mysqld --initialize
-        # (mysqld echoue avec errno 13 si le dossier n'est pas accessible en ecriture)
+        # Prendre la propriete puis definir les ACL explicites (pas de simple /grant
+        # qui laisse des ACL refus heritees de C:\ProgramData ; /grant:r remplace).
         try {
-            icacls $MySqlData /grant "SYSTEM:(OI)(CI)F" `
-                              /grant "Administrators:(OI)(CI)F" `
-                              /grant "Users:(OI)(CI)F" | Out-Null
+            takeown /F "$MySqlData" /D Y 2>&1 | Out-Null
+            icacls "$MySqlData" /inheritance:r `
+                                /grant:r "SYSTEM:(OI)(CI)F" `
+                                /grant:r "Administrators:(OI)(CI)F" `
+                                /grant:r "Users:(OI)(CI)F" | Out-Null
             Write-Log "Permissions dossier MySQL accordees"
         } catch {
             Write-Log "Impossible d'accorder les permissions sur $MySqlData : $_" "WARN"
