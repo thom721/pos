@@ -19,7 +19,14 @@ class BluetoothPrintService {
   Future<List<BluetoothInfo>> getPairedPrinters() async {
     if (kIsWeb) return [];
     try {
-      return await PrintBluetoothThermal.pairedBluetooths;
+      // Sur Android 12+, BLUETOOTH_CONNECT est une permission runtime.
+      // Si elle n'est pas accordée, le plugin retourne sans résoudre le
+      // Future → spinner infini. On vérifie d'abord, puis on ajoute un
+      // timeout de sécurité pour ne jamais bloquer l'UI.
+      final granted = await PrintBluetoothThermal.isPermissionBluetoothGranted;
+      if (!granted) return [];
+      return await PrintBluetoothThermal.pairedBluetooths
+          .timeout(const Duration(seconds: 6), onTimeout: () => []);
     } catch (_) {
       return [];
     }

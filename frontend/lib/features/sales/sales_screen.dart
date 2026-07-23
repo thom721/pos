@@ -1039,6 +1039,7 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
   bool _scanning = false;
   bool _printing = false;
   bool _isSunmi = false;
+  bool _btPermissionDenied = false;
   String? _error;
 
   bool get _isAndroid => !kIsWeb && Platform.isAndroid;
@@ -1080,8 +1081,13 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
   }
 
   Future<void> _scanBt() async {
-    setState(() { _scanning = true; _error = null; });
+    setState(() { _scanning = true; _error = null; _btPermissionDenied = false; });
     try {
+      final granted = await PrintBluetoothThermal.isPermissionBluetoothGranted;
+      if (!granted) {
+        if (mounted) setState(() { _scanning = false; _btPermissionDenied = true; });
+        return;
+      }
       _btDevices = await BluetoothPrintService.instance.getPairedPrinters();
     } catch (_) {}
     if (mounted) setState(() => _scanning = false);
@@ -1257,6 +1263,25 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
                             settings.bluetoothPrinterMac,
                             settings.bluetoothPrinterName),
                       ),
+              )
+            else if (_btPermissionDenied)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(children: [
+                  const Icon(Icons.bluetooth_disabled_rounded,
+                      size: 18, color: AppColors.error),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Permission Bluetooth refusée.\nActivez "Appareils à proximité" dans les paramètres de l\'app.',
+                      style: TextStyle(fontSize: 12, color: AppColors.error),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _scanBt,
+                    child: const Text('Réessayer'),
+                  ),
+                ]),
               )
             else if (_scanning)
               const Padding(
