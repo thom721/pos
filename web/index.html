@@ -1,0 +1,252 @@
+<!DOCTYPE html><html lang="fr"><head>
+  <base href="/">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+  <!-- ── SEO de base ──────────────────────────────────────── -->
+  <title>POS Connect — Le logiciel de caisse qui fait plus pour votre business</title>
+  <meta name="description" content="POS Connect centralise ventes, stocks, clients, caisses et restaurant dans une seule plateforme cloud. Accédez à vos données en temps réel depuis n'importe quel appareil, boostez vos revenus et gardez le contrôle total de votre business — où que vous soyez.">
+  <meta name="keywords" content="POS, point de vente, logiciel caisse, restaurant, gestion stock, multi-caisse, cloud, application POS, caisse enregistreuse, gestion business, synchronisation temps réel">
+  <meta name="author" content="Infini Software">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#1B2A3B">
+  <link rel="canonical" href="https://pos.infini-software.cloud/">
+
+  <!-- ── Open Graph (Facebook · WhatsApp · LinkedIn) ─────── -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="POS Connect">
+  <meta property="og:locale" content="fr_HT">
+  <meta property="og:url" content="https://pos.infini-software.cloud/">
+  <meta property="og:title" content="POS Connect — Le logiciel de caisse qui fait plus pour votre business">
+  <meta property="og:description" content="Ventes, stocks, clients, restaurant — tout en un. POS Connect synchronise votre business en temps réel sur tous vos appareils. Essai gratuit, sans carte.">
+  <meta property="og:image" content="https://pos.infini-software.cloud/icons/Icon-512.png">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
+  <meta property="og:image:alt" content="Logo POS Connect">
+
+  <!-- ── Twitter Card ──────────────────────────────────────── -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="POS Connect — Le logiciel de caisse qui fait plus pour votre business">
+  <meta name="twitter:description" content="Ventes, stocks, clients, restaurant — tout en un. Synchronisation cloud temps réel sur tous vos appareils. Essai gratuit, sans carte.">
+  <meta name="twitter:image" content="https://pos.infini-software.cloud/icons/Icon-512.png">
+
+  <!-- ── Données structurées JSON-LD ──────────────────────── -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "POS Connect",
+        "url": "https://pos.infini-software.cloud/",
+        "image": "https://pos.infini-software.cloud/icons/Icon-512.png",
+        "description": "POS Connect centralise ventes, stocks, clients, caisses et restaurant dans une seule plateforme cloud. Accédez à vos données en temps réel, boostez vos revenus et gardez le contrôle total de votre business.",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web, Android, iOS, Windows, macOS, Linux",
+        "inLanguage": "fr",
+        "author": { "@type": "Organization", "name": "Infini Software", "url": "https://infini-software.cloud" },
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "HTG",
+          "description": "Essai gratuit sans carte de crédit"
+        }
+      },
+      {
+        "@type": "Organization",
+        "name": "Infini Software",
+        "url": "https://infini-software.cloud",
+        "logo": "https://pos.infini-software.cloud/icons/Icon-512.png",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "customer support",
+          "email": "software@infini-software.cloud",
+          "availableLanguage": ["fr", "ht"]
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!-- ── PWA · iOS · Favicon ──────────────────────────────── -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="POS Connect">
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="icons/Icon-512.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" sizes="64x64" href="favicon.png">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%;
+      background: #FFFFFF;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    /* ── Loading overlay ────────────────────────────────── */
+    #pos-loading {
+      position: fixed;
+      inset: 0;
+      background: #FFFFFF;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.35s ease;
+    }
+    #pos-loading.out {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .pos-logo-wrap {
+      width: 200px; height: 100px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+    }
+    .pos-logo-wrap img { width: 200px; height: 100px; object-fit: contain; }
+    .pos-tagline { color: #5A7A9A; font-size: 13px; margin-bottom: 36px; }
+    .pos-spinner {
+      width: 28px; height: 28px;
+      border: 3px solid rgba(0,0,0,0.10);
+      border-top-color: #0077C5;
+      border-radius: 50%;
+      animation: pos-spin 0.75s linear infinite;
+    }
+    @keyframes pos-spin { to { transform: rotate(360deg); } }
+  </style>
+
+  
+  
+  
+  <style id="splash-screen-style">
+    html {
+      height: 100%
+    }
+
+    body {
+      margin: 0;
+      min-height: 100%;
+      background-color: #FFFFFF;
+          background-size: 100% 100%;
+    }
+
+    .center {
+      margin: 0;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      -ms-transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%);
+    }
+
+    .contain {
+      display:block;
+      width:100%; height:100%;
+      object-fit: contain;
+    }
+
+    .stretch {
+      display:block;
+      width:100%; height:100%;
+    }
+
+    .cover {
+      display:block;
+      width:100%; height:100%;
+      object-fit: cover;
+    }
+
+    .bottom {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      -ms-transform: translate(-50%, 0);
+      transform: translate(-50%, 0);
+    }
+
+    .bottomLeft {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+    }
+
+    .bottomRight {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+    }
+  </style>
+  <script id="splash-screen-script">
+    function removeSplashFromWeb() {
+      document.getElementById("splash")?.remove();
+      document.getElementById("splash-branding")?.remove();
+      document.body.style.background = "transparent";
+    }
+  </script>
+  <!-- Étend removeSplashFromWeb() pour retirer aussi #pos-loading quand Flutter est prêt.
+       Ce script est placé après splash-screen-script pour pouvoir le patcher sans être
+       écrasé par flutter_native_splash:create (qui ne touche que splash-screen-script). -->
+  <script>
+  (function () {
+    function hidePosLoading() {
+      var el = document.getElementById('pos-loading');
+      if (!el) return;
+      el.classList.add('out');
+      setTimeout(function () { el && el.remove(); }, 400);
+    }
+    // Patch removeSplashFromWeb pour inclure #pos-loading
+    var _orig = window.removeSplashFromWeb;
+    window.removeSplashFromWeb = function () {
+      if (_orig) _orig();
+      hidePosLoading();
+    };
+    // Fallback : MutationObserver → retire #pos-loading dès que flt-glass-pane apparaît.
+    // Démarré après DOMContentLoaded car document.body est null dans <head>.
+    function startObserver() {
+      var _obs = new MutationObserver(function () {
+        if (document.querySelector('flt-glass-pane')) {
+          hidePosLoading();
+          _obs.disconnect();
+        }
+      });
+      _obs.observe(document.body, { childList: true });
+    }
+    if (document.body) {
+      startObserver();
+    } else {
+      document.addEventListener('DOMContentLoaded', startObserver);
+    }
+  })();
+  </script>
+</head>
+
+<body>
+  <picture id="splash">
+      <source srcset="splash/img/light-1x.png 1x, splash/img/light-2x.png 2x, splash/img/light-3x.png 3x, splash/img/light-4x.png 4x" media="(prefers-color-scheme: light)">
+      <source srcset="splash/img/dark-1x.png 1x, splash/img/dark-2x.png 2x, splash/img/dark-3x.png 3x, splash/img/dark-4x.png 4x" media="(prefers-color-scheme: dark)">
+      <img class="center" aria-hidden="true" src="splash/img/light-1x.png" alt="">
+  </picture>
+  
+  <!-- Retiré automatiquement par removeSplashFromWeb() quand Flutter est prêt -->
+  <div id="pos-loading" aria-hidden="true">
+    <div class="pos-logo-wrap">
+      <picture>
+        <source srcset="splash/img/light-2x.png 2x, splash/img/light-3x.png 3x" media="(prefers-color-scheme: light)">
+        <source srcset="splash/img/dark-2x.png 2x, splash/img/dark-3x.png 3x" media="(prefers-color-scheme: dark)">
+        <img src="splash/img/light-2x.png" alt="POS Connect">
+      </picture>
+    </div>
+    <div class="pos-tagline">Chargement…</div>
+    <div class="pos-spinner"></div>
+  </div>
+
+  <script src="flutter_bootstrap.js" async=""></script>
+
+</body></html>
