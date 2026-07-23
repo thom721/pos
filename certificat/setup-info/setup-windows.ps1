@@ -155,6 +155,48 @@ if (-not (Test-Path "$MySqlBinDir\mysqld.exe")) {
 if (Test-Path "$MySqlBinDir\mysqld.exe") {
     New-Item -ItemType Directory -Force -Path $MySqlData | Out-Null
 
+    # -- Variables DB et mot de passe generes AVANT l'init ---------------------
+    # Meme approche que MySQLInstaller (Main_run.py) : le mot de passe est connu
+    # avant le demarrage de MySQL, mis dans init.sql que MySQL execute
+    # automatiquement a CHAQUE demarrage via init-file dans [mysqld].
+    # Aucun appel mysql.exe post-demarrage necessaire.
+    $DbName  = "pos_db"
+    $DbUser  = "pos_user"
+    $MySqlExe = "$MySqlBinDir\mysql.exe"
+
+    # Reutiliser mot de passe existant si pos_server.ini deja configure
+    $DbPass = $null
+    if (Test-Path $IniTarget) {
+        foreach ($line in (Get-Content $IniTarget)) {
+            if ($line -match '^\s*password\s*=\s*(.+)$') { $DbPass = $Matches[1].Trim(); break }
+        }
+    }
+    if (-not $DbPass) {
+        $chars  = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+        $DbPass = -join ((1..16) | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
+    }
+
+    # init.sql : execute par MySQL a CHAQUE demarrage normal grace a
+    # "init-file" dans [mysqld] de my.ini.
+    # CREATE USER IF NOT EXISTS + ALTER USER = idempotent, safe sur reinstall.
+    # Cree aussi root@127.0.0.1 pour que les connexions TCP fonctionnent
+    # (--initialize-insecure cree uniquement root@localhost).
+    $InitSqlFwd  = ($MySqlDir -replace '\\', '/') + '/init.sql'
+    $InitSqlPath = "$MySqlDir\init.sql"
+    Write-UTF8NoBOM $InitSqlPath @"
+CREATE DATABASE IF NOT EXISTS ``$DbName`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'root'@'127.0.0.1'   IDENTIFIED WITH mysql_native_password BY '';
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;
+CREATE USER IF NOT EXISTS '$DbUser'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '$DbPass';
+CREATE USER IF NOT EXISTS '$DbUser'@'localhost'  IDENTIFIED WITH mysql_native_password BY '$DbPass';
+ALTER USER '$DbUser'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '$DbPass';
+ALTER USER '$DbUser'@'localhost'  IDENTIFIED WITH mysql_native_password BY '$DbPass';
+GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'localhost';
+FLUSH PRIVILEGES;
+"@
+    Write-Log "init.sql cree -- sera execute par MySQL a chaque demarrage"
+
     # Arreter les services dependants pour eviter les conflits de port pendant la reinit
     foreach ($depSvc in @("POS_Connect_API", "POS_Connect_Nginx")) {
         $ds = Get-Service -Name $depSvc -ErrorAction SilentlyContinue
@@ -212,15 +254,16 @@ if (Test-Path "$MySqlBinDir\mysqld.exe") {
             Write-Log "icacls code $LASTEXITCODE -- tentative de continuer" "WARN"
         }
 
-        # my.ini dans le dossier d'installation (pas dans le datadir)
-        # pour eviter que MySQL refuse d'initialiser un datadir non vide
+        # my.ini dans le dossier d'installation (pas dans le datadir).
+        # init-file : MySQL execute init.sql a CHAQUE demarrage normal.
         $basedirFwd = $MySqlDir   -replace '\\', '/'
         $datadirFwd = $MySqlData  -replace '\\', '/'
         Write-UTF8NoBOM $MyIni @"
 [mysqld]
-basedir  = "$basedirFwd"
-datadir  = "$datadirFwd"
-port     = $MySqlPort
+basedir   = "$basedirFwd"
+datadir   = "$datadirFwd"
+port      = $MySqlPort
+init-file = "$InitSqlFwd"
 max_allowed_packet = 64M
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
@@ -237,23 +280,10 @@ port = $MySqlPort
 port = $MySqlPort
 "@
 
-        # init.sql execute par MySQL lors de l'initialisation :
-        # --initialize-insecure cree root@localhost uniquement.
-        # Les connexions TCP (--host=127.0.0.1) s'authentifient comme root@'127.0.0.1'
-        # qui n'existe pas → Access denied sur TOUT appel mysql/mysqladmin apres l'init.
-        # Ce fichier cree root@'127.0.0.1' pendant l'init pour que les connexions TCP
-        # fonctionnent immediatement sans etape supplementaire.
-        $InitSqlPath = "$MySqlDir\init.sql"
-        Write-UTF8NoBOM $InitSqlPath @"
-CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '';
-GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;
-FLUSH PRIVILEGES;
-"@
-
         # Capturer la sortie d'abord, puis verifier $LASTEXITCODE.
         # Le pipe direct (cmd | ForEach-Object) perd $LASTEXITCODE car ForEach-Object
         # est un cmdlet PS qui remet LASTEXITCODE a 0 apres execution.
-        $_initOut  = & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure --init-file="$InitSqlPath" 2>&1
+        $_initOut  = & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure 2>&1
         $_initCode = $LASTEXITCODE
         $_initOut | ForEach-Object { Write-Log "  [mysqld-init] $_" }
         if ($_initCode -ne 0) {
@@ -262,7 +292,7 @@ FLUSH PRIVILEGES;
             Get-ChildItem "$MySqlData" -ErrorAction SilentlyContinue |
                 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 1
-            $_initOut2  = & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure --init-file="$InitSqlPath" 2>&1
+            $_initOut2  = & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure 2>&1
             $_initCode2 = $LASTEXITCODE
             $_initOut2 | ForEach-Object { Write-Log "  [mysqld-init-retry] $_" }
             if ($_initCode2 -ne 0) {
@@ -271,27 +301,32 @@ FLUSH PRIVILEGES;
                 Write-Log "MySQL reinitialise avec succes apres nettoyage du datadir"
             }
         } else {
-            Write-Log "MySQL initialise (root@localhost + root@127.0.0.1 sans mot de passe)"
+            Write-Log "MySQL initialise -- init.sql sera execute au premier demarrage"
         }
     } else {
-        Write-Log "MySQL deja initialise"
-        if (-not (Test-Path $MyIni)) {
-            $basedirFwd = $MySqlDir  -replace '\\', '/'
-            $datadirFwd = $MySqlData -replace '\\', '/'
-            Write-UTF8NoBOM $MyIni @"
+        Write-Log "MySQL deja initialise -- mise a jour my.ini + init.sql"
+        # Toujours reecrire my.ini pour s'assurer que init-file est present
+        # (les anciennes installations n'avaient pas cette ligne)
+        $basedirFwd = $MySqlDir  -replace '\\', '/'
+        $datadirFwd = $MySqlData -replace '\\', '/'
+        Write-UTF8NoBOM $MyIni @"
 [mysqld]
-basedir  = "$basedirFwd"
-datadir  = "$datadirFwd"
-port     = $MySqlPort
+basedir   = "$basedirFwd"
+datadir   = "$datadirFwd"
+port      = $MySqlPort
+init-file = "$InitSqlFwd"
 max_allowed_packet = 64M
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
 default-authentication-plugin = mysql_native_password
 
+[mysql]
+default-character-set = utf8mb4
+port = $MySqlPort
+
 [client]
 port = $MySqlPort
 "@
-        }
     }
 
     # -- Service MySQL ----------------------------------------------------------
@@ -342,46 +377,12 @@ port = $MySqlPort
         Write-Log "MySQL n'a pas repondu dans les 40s -- verifiez les logs" "WARN"
     }
 
-    # -- Creer pos_db + pos_user ------------------------------------------------
-    $DbName = "pos_db"
-    $DbUser = "pos_user"
-    $MySqlExe = "$MySqlBinDir\mysql.exe"
-
-    # Reutiliser mot de passe existant si pos_server.ini deja configure
-    $DbPass = $null
-    if (Test-Path $IniTarget) {
-        foreach ($line in (Get-Content $IniTarget)) {
-            if ($line -match '^\s*password\s*=\s*(.+)$') {
-                $DbPass = $Matches[1].Trim()
-                break
-            }
-        }
-    }
-    if (-not $DbPass) {
-        # Generer un mot de passe fort (16 chars alphanumeriques + symboles)
-        $chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-        $DbPass = -join ((1..16) | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
-    }
-
-    if ($MySqlReady -and (Test-Path $MySqlExe)) {
-        $Sql = @"
-CREATE DATABASE IF NOT EXISTS ``$DbName`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS '$DbUser'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '$DbPass';
-CREATE USER IF NOT EXISTS '$DbUser'@'localhost'  IDENTIFIED WITH mysql_native_password BY '$DbPass';
-ALTER  USER '$DbUser'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '$DbPass';
-ALTER  USER '$DbUser'@'localhost'  IDENTIFIED WITH mysql_native_password BY '$DbPass';
-GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'127.0.0.1';
-GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'localhost';
-FLUSH PRIVILEGES;
-"@
-        try {
-            $Sql | & $MySqlExe --host=127.0.0.1 --port=$MySqlPort -u root --connect-timeout=10
-            Write-Log "Base '$DbName' et utilisateur '$DbUser' crees/verifies"
-        } catch {
-            Write-Log "Creation DB/user : $_" "WARN"
-        }
-
-        # -- Ecrire pos_server.ini avec MySQL (seulement si MySQL est demarre) ---
+    # -- Ecrire pos_server.ini ---------------------------------------------------
+    # init.sql (execute automatiquement par MySQL au demarrage) cree deja
+    # la DB et l'utilisateur -- aucun appel mysql.exe supplementaire necessaire.
+    # On ecrit pos_server.ini apres confirmation que MySQL tourne.
+    if ($MySqlReady) {
+        Write-Log "Base '$DbName' et utilisateur '$DbUser' configures via init.sql (automatique)"
         Write-UTF8NoBOM $IniTarget @"
 [database]
 type     = mysql
