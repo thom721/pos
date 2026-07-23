@@ -281,68 +281,6 @@ def _ensure_schema_patches() -> None:
     pass
 
 
-def _ensure_local_tenant(db) -> str:
-    """
-    In local-mode deployments, create a sentinel LOCAL tenant (once)
-    and backfill all existing rows that have tenant_id = NULL.
-    Returns the LOCAL tenant id.
-
-    If the server was linked to a cloud tenant via connect_tenant, the INI
-    contains cloud_tenant_id — the local tenant will have that same UUID so
-    that pulled records (which carry the cloud tenant_id) are always valid
-    without any substitution.
-    """
-    from api.models.Tenant import Tenant as TenantModel
-    from api.core.config import load_ini_config
-
-    ini = load_ini_config()
-    cloud_tid = (ini.get("CLOUD_TENANT_ID") or ini.get("cloud_tenant_id") or "").strip()
-
-    local = None
-    if cloud_tid:
-        local = db.query(TenantModel).filter(TenantModel.id == cloud_tid).first()
-    if not local:
-        local = db.query(TenantModel).filter(TenantModel.slug == "__local__").first()
-
-    if not local:
-        kwargs = dict(
-            slug="__local__",
-            business_name="Local",
-            owner_email="local@localhost",
-            status="local",
-            is_local=True,
-        )
-        if cloud_tid:
-            kwargs["id"] = cloud_tid
-        local = TenantModel(**kwargs)
-        db.add(local)
-        db.flush()
-        _log.info("Tenant LOCAL créé : %s", local.id)
-
-    tid = local.id
-
-    # Tables that now carry tenant_id — backfill NULLs once
-    _TENANT_TABLES = [
-        "users", "categories", "suppliers", "products", "customers",
-        "sales", "sale_items", "purchases", "purchase_items",
-        "purchase_receipts", "purchase_receipt_items",
-        "payments", "stock_movements", "debts", "return_records",
-        "inventory_records", "app_config", "proformas", "proforma_items",
-        "invoices", "invoice_items", "employee_profiles", "employee_loans",
-        "payroll_periods", "payroll_entries", "payroll_loan_deductions", "roles",
-    ]
-    for tbl in _TENANT_TABLES:
-        try:
-            db.execute(
-                text(f"UPDATE `{tbl}` SET tenant_id = :tid WHERE tenant_id IS NULL"),
-                {"tid": tid},
-            )
-        except Exception:
-            pass  # table might not exist yet on first boot
-
-    db.commit()
-    return tid
-
 
 def _ensure_default_warehouse(db, tenant_id: str) -> None:
     """Crée ou identifie le dépôt par défaut pour ce tenant. Idempotent."""
@@ -573,8 +511,10 @@ def on_startup():
     import api.database as _db_module
     db = _db_module.SessionLocal()
     try:
-        # 3. Tenant LOCAL — pour les déploiements en mode local (pas SaaS)
-        local_tid = _ensure_local_tenant(db)
+        # 3. Tenant_id — lu depuis l'INI si déjà lié au cloud, sinon None
+        from api.core.config import load_ini_config as _load_ini
+        _ini = _load_ini()
+        local_tid: str | None = (_ini.get("CLOUD_TENANT_ID") or _ini.get("cloud_tenant_id") or "").strip() or None
         # 4. Superadmin — auto-génère les credentials si absent, crée le user
         _ensure_cloud_admin(db, local_tid)
         # 5. Dépôt par défaut — crée "Depot principal" si aucun dépôt n'existe
