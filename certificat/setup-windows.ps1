@@ -280,6 +280,24 @@ if ($iniExists) {
   if (Test-Path $BundledMysqldExe) {
     Write-Host "  MySQL bundlé détecté : $BundledMysqlDir" -ForegroundColor DarkGray
 
+    # Créer my.ini avant toute initialisation (mysqld en a besoin pour datadir + port)
+    if (-not (Test-Path $BundledMyIni)) {
+      Write-UTF8NoBOM $BundledMyIni @"
+[mysqld]
+basedir=$($BundledMysqlDir.Replace('\','\\'))
+datadir=$($BundledDataDir.Replace('\','\\'))
+port=$DbPort
+default-authentication-plugin=mysql_native_password
+character-set-server=utf8mb4
+collation-server=utf8mb4_unicode_ci
+max_connections=200
+
+[client]
+port=$DbPort
+"@
+      Write-OK "my.ini généré dans $BundledMyIni"
+    }
+
     # Créer le répertoire de données si absent (mysqld jamais initialisé)
     if (-not (Test-Path $BundledDataDir)) {
       New-Item -Path $BundledDataDir -ItemType Directory -Force | Out-Null
