@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
+import 'package:pos_connect/data/models/debt_model.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/purchase_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
@@ -40,8 +41,13 @@ class OfflineCacheService {
         final prefs = await SharedPreferences.getInstance();
         final cachedTenant    = prefs.getString('_cache_tenant_id');
         final cachedWarehouse = prefs.getString('_cache_warehouse_id');
+        // Ne vider que si le TENANT change, ou si le warehouse passe d'une valeur
+        // connue à une valeur DIFFÉRENTE. Le passage null→valeur (premier chargement
+        // du warehouse actif) ne doit PAS déclencher un vidage — c'est la cause
+        // des disparitions de ventes après la première sync.
+        final warehouseChanged = cachedWarehouse != null && cachedWarehouse != warehouseId;
         final changed = cachedTenant != null &&
-            (cachedTenant != tenantId || cachedWarehouse != warehouseId);
+            (cachedTenant != tenantId || warehouseChanged);
         if (changed) {
           await LocalDbService.instance.clearAllCachedData();
           debugPrint('[OfflineCache] tenant/warehouse changé ($cachedTenant→$tenantId'
@@ -61,6 +67,7 @@ class OfflineCacheService {
         _syncWarehouses(),
         _syncSales(warehouseId: warehouseId),
         _syncPurchases(warehouseId: warehouseId),
+        _syncDebts(),
         _syncUsers(warehouseId: warehouseId),
         _syncSessions(warehouseId: warehouseId),
       ]);
@@ -259,6 +266,35 @@ class OfflineCacheService {
       debugPrint('[OfflineCache] users: ${items.length} en cache local');
     } catch (e) {
       if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] users sync error: $e');
+    }
+  }
+
+  // ── Dettes ───────────────────────────────────────────────────────────────
+
+  Future<void> _syncDebts() async {
+    try {
+      final all = <DebtModel>[];
+      int page = 1;
+      while (true) {
+        final res = await dio.get(
+          '/api/debts/',
+          queryParameters: {'page': page, 'limit': 100},
+          options: kBackgroundOptions,
+        );
+        final data = res.data as Map<String, dynamic>;
+        final items = (data['data'] as List? ?? [])
+            .map((e) => DebtModel.fromJson(e as Map<String, dynamic>))
+            .toList();
+        all.addAll(items);
+        final totalPages = (data['meta']?['pages'] ?? data['pages'] ?? 1) as int;
+        if (page >= totalPages) break;
+        page++;
+      }
+      await LocalDbService.instance.upsertDebts(all);
+      await LocalDbService.instance.setLastSynced('debts');
+      debugPrint('[OfflineCache] debts: ${all.length} mis en cache');
+    } catch (e) {
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] debts sync error: $e');
     }
   }
 

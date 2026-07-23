@@ -13,6 +13,7 @@ import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/purchase_model.dart';
 import 'package:pos_connect/core/date_utils.dart' show toHaitiTime;
+import 'package:pos_connect/data/models/debt_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 
@@ -263,6 +264,24 @@ class LocalDbService {
     ''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_sales_created ON sales (created_at DESC)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_sale_items_sale ON sale_items (sale_id)');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS debts (
+        id             TEXT PRIMARY KEY,
+        reference_type TEXT NOT NULL DEFAULT '',
+        reference_id   TEXT NOT NULL DEFAULT '',
+        partner_type   TEXT NOT NULL DEFAULT 'CUSTOMER',
+        partner_id     TEXT NOT NULL DEFAULT '',
+        partner_name   TEXT,
+        total_amount   REAL NOT NULL DEFAULT 0,
+        paid_amount    REAL NOT NULL DEFAULT 0,
+        balance        REAL NOT NULL DEFAULT 0,
+        status         TEXT NOT NULL DEFAULT 'UNPAID',
+        created_at     TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_debts_status ON debts (status)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_debts_partner ON debts (partner_id)');
 
     await db.execute('''
       CREATE TABLE IF NOT EXISTS purchases (
@@ -1206,6 +1225,93 @@ class LocalDbService {
 
     return PaginatedResponse(
       data: purchases,
+      meta: PaginationMeta(
+        page: page, limit: limit, total: total,
+        pages: (total / limit).ceil().clamp(1, 99999),
+      ),
+    );
+  }
+
+  // ── Dettes ────────────────────────────────────────────────────────────────
+
+  Future<void> upsertDebts(List<DebtModel> debts) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final d in debts) {
+      batch.insert('debts', {
+        'id':             d.id,
+        'reference_type': d.referenceType,
+        'reference_id':   d.referenceId,
+        'partner_type':   d.partnerType,
+        'partner_id':     d.partnerId,
+        'partner_name':   d.partnerName,
+        'total_amount':   d.totalAmount,
+        'paid_amount':    d.paidAmount,
+        'balance':        d.balance,
+        'status':         d.status,
+        'created_at':     d.createdAt.toUtc().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<PaginatedResponse<DebtModel>> getDebts({
+    String? partnerType,
+    String? status,
+    int page = 1,
+    int limit = 50,
+  }) async {
+    final db = _safeDb;
+    if (db == null) {
+      return PaginatedResponse(
+        data: const [],
+        meta: PaginationMeta(page: 1, limit: limit, total: 0, pages: 1),
+      );
+    }
+
+    final where = <String>[];
+    final args  = <dynamic>[];
+    if (partnerType != null && partnerType.isNotEmpty) {
+      where.add('partner_type = ?');
+      args.add(partnerType.toUpperCase());
+    }
+    if (status != null && status.isNotEmpty) {
+      where.add('status = ?');
+      args.add(status.toUpperCase());
+    }
+    final whereStr = where.isEmpty ? null : where.join(' AND ');
+
+    final total = Sqflite.firstIntValue(await db.rawQuery(
+      'SELECT COUNT(*) FROM debts${whereStr != null ? ' WHERE $whereStr' : ''}',
+      args,
+    )) ?? 0;
+
+    final rows = await db.query(
+      'debts',
+      where: whereStr,
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'created_at DESC',
+      limit: limit,
+      offset: (page - 1) * limit,
+    );
+
+    final debts = rows.map((row) => DebtModel(
+      id:            row['id'] as String,
+      referenceType: row['reference_type'] as String,
+      referenceId:   row['reference_id'] as String,
+      partnerType:   row['partner_type'] as String,
+      partnerId:     row['partner_id'] as String,
+      partnerName:   row['partner_name'] as String?,
+      totalAmount:   (row['total_amount'] as num).toDouble(),
+      paidAmount:    (row['paid_amount'] as num).toDouble(),
+      balance:       (row['balance'] as num).toDouble(),
+      status:        row['status'] as String,
+      createdAt:     toHaitiTime(DateTime.parse(row['created_at'] as String)),
+    )).toList();
+
+    return PaginatedResponse(
+      data: debts,
       meta: PaginationMeta(
         page: page, limit: limit, total: total,
         pages: (total / limit).ceil().clamp(1, 99999),
