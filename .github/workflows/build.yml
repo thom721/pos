@@ -88,8 +88,10 @@ jobs:
             --include-package=alembic `
             --include-package-data=alembic `
             --include-data-files=alembic.ini=alembic.ini `
+            --include-data-files=api/alembic.ini=api/alembic.ini `
             --include-data-files=pos_server.ini.example=pos_server.ini.example `
             --include-data-dir=api/static=api/static `
+            --include-data-dir=api/alembic=api/alembic `
             --output-dir=dist `
             --output-filename=posconnect-server `
             server_main.py
@@ -132,8 +134,10 @@ jobs:
             --include-package=alembic \
             --include-package-data=alembic \
             --include-data-files=alembic.ini=alembic.ini \
+            --include-data-files=api/alembic.ini=api/alembic.ini \
             --include-data-files=pos_server.ini.example=pos_server.ini.example \
             --include-data-dir=api/static=api/static \
+            --include-data-dir=api/alembic=api/alembic \
             --output-dir=dist \
             --output-filename=posconnect-server \
             server_main.py
@@ -173,8 +177,10 @@ jobs:
             --include-package=alembic \
             --include-package-data=alembic \
             --include-data-files=alembic.ini=alembic.ini \
+            --include-data-files=api/alembic.ini=api/alembic.ini \
             --include-data-files=pos_server.ini.example=pos_server.ini.example \
             --include-data-dir=api/static=api/static \
+            --include-data-dir=api/alembic=api/alembic \
             --output-dir=dist \
             --output-filename=posconnect-server \
             server_main.py
