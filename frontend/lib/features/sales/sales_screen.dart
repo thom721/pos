@@ -1052,7 +1052,12 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
   Future<void> _initPrinter() async {
     _isSunmi = await ThermalPrinterService.instance.isSunmiAvailable;
     if (mounted) setState(() {});
-    if (!_isSunmi) _scanBt();
+    // Scanner uniquement si aucune imprimante n'est déjà configurée.
+    // Évite un scan Bluetooth inutile (et visible dans la barre de statut)
+    // à chaque ouverture du dialog quand l'imprimante est déjà connue.
+    if (!_isSunmi && ref.read(settingsProvider).bluetoothPrinterMac.isEmpty) {
+      _scanBt();
+    }
   }
 
   Future<void> _printSunmi() async {

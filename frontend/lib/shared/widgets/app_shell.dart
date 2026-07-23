@@ -1408,7 +1408,10 @@ class _PrintSettingsSheetState extends ConsumerState<_PrintSettingsSheet> {
   @override
   void initState() {
     super.initState();
-    if (_isAndroid) _loadPaired();
+    // Scanner uniquement si aucune imprimante n'est déjà configurée.
+    if (_isAndroid && ref.read(settingsProvider).bluetoothPrinterMac.isEmpty) {
+      _loadPaired();
+    }
   }
 
   Future<void> _loadPaired() async {
