@@ -372,6 +372,18 @@ port = 9003
     }
 }
 
+# -- 3b. Permissions dossier de données (SQLite fallback inscriptible par SYSTEM) --
+# Cas frequent : pos_connect.db cree par une installation precedente avec des
+# permissions restrictives → SYSTEM ne peut pas ecrire → SQLITE_READONLY au demarrage.
+Write-Log "Correction permissions $DataDir (SYSTEM + Administrateurs)..."
+takeown /F "$DataDir" /R /D Y 2>&1 | Out-Null
+icacls "$DataDir" /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F" /T /C /Q 2>&1 | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    Write-Log "Permissions $DataDir accordees"
+} else {
+    Write-Log "icacls $DataDir code $LASTEXITCODE (non bloquant)" "WARN"
+}
+
 # -- 4. Service : POS Connect API -----------------------------------------------
 $SvcApi = "POS_Connect_API"
 $svcApiStatus = & $NssmExe status $SvcApi 2>&1

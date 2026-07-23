@@ -458,6 +458,26 @@ def _ensure_db_ready():
                 _data = _Path(_os.environ.get("PROGRAMDATA", "C:\\ProgramData")) / "POS_Connect"
                 _data.mkdir(parents=True, exist_ok=True)
                 _sqlite_path = str(_data / "pos_connect.db")
+                # Supprimer l'attribut lecture-seule et s'assurer que SYSTEM peut écrire.
+                # Nécessaire quand le fichier a été créé par une installation précédente
+                # avec des permissions restrictives (errno SQLITE_READONLY au démarrage).
+                try:
+                    import stat as _stat
+                    import subprocess as _sp
+                    if _os.path.exists(_sqlite_path):
+                        _mode = _os.stat(_sqlite_path).st_mode
+                        if not (_mode & _stat.S_IWRITE):
+                            _os.chmod(_sqlite_path, _mode | _stat.S_IWRITE)
+                    # Accorder SYSTEM + Administrateurs en écriture sur tout le dossier
+                    _sp.run(
+                        ["icacls", str(_data),
+                         "/grant", "SYSTEM:(OI)(CI)F",
+                         "/grant", "Administrators:(OI)(CI)F",
+                         "/T", "/C", "/Q"],
+                        capture_output=True, timeout=10,
+                    )
+                except Exception as _perm_exc:
+                    _log.warning("SQLite permission fix échoué : %s", _perm_exc)
             else:
                 _sqlite_path = "./pos_connect.db"
             sqlite_url = f"sqlite:///{_sqlite_path}"
