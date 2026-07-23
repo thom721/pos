@@ -1232,8 +1232,7 @@ Future<void> _generatePdf(
   final fileName =
       'rapport_ventes_${DateFormat('yyyyMMdd').format(haitiNow())}.pdf';
 
-  if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
-    // Desktop: let the user pick where to save, then open the file.
+  if (!kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
     final bytes = await doc.save();
     final savePath = await FilePicker.platform.saveFile(
       dialogTitle: 'Enregistrer le rapport PDF',
@@ -1243,13 +1242,11 @@ Future<void> _generatePdf(
     );
     if (savePath != null) {
       await File(savePath).writeAsBytes(bytes);
-      // Open with the default system viewer (Preview on macOS).
       if (Platform.isMacOS) await Process.run('open', [savePath]);
       if (Platform.isWindows) await Process.run('start', ['', savePath], runInShell: true);
       if (Platform.isLinux) await Process.run('xdg-open', [savePath]);
     }
   } else {
-    // Mobile / web: use the native print/share panel.
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => doc.save(),
       name: fileName,

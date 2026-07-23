@@ -909,7 +909,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     _deviceId = await _getDeviceId();
 
     // Android : afficher le cache immédiatement (réactivité), puis vérifier en arrière-plan
-    if (Platform.isAndroid) {
+    if (!kIsWeb && Platform.isAndroid) {
       final cached = await _loadCachedSession();
       if (cached != null) {
         if (mounted) {
