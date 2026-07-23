@@ -172,7 +172,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
   bool _printing = false;
 
   Future<void> _print() async {
-    // Web → dialogue système directement (pas de BT, pas de choix thermique)
+    // Web → PDF système directement, pas de modal
     if (kIsWeb) {
       setState(() => _printing = true);
       try {
@@ -195,7 +195,93 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
       return;
     }
 
-    // Mobile / desktop → bottom sheet avec choix imprimante + taille
+    final settings = ref.read(settingsProvider);
+
+    // Android + impression automatique → imprimer directement sans modal
+    if (Platform.isAndroid && settings.posAutoPrint) {
+      final isSunmi = await ThermalPrinterService.instance.isSunmiAvailable;
+      if (isSunmi) {
+        setState(() => _printing = true);
+        try {
+          await ThermalPrinterService.instance.printReceipt(widget.sale, settings);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Impression envoyée'),
+              backgroundColor: AppColors.success,
+              duration: Duration(seconds: 2),
+            ));
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Erreur impression: $e'),
+              backgroundColor: AppColors.error,
+            ));
+          }
+        } finally {
+          if (mounted) setState(() => _printing = false);
+        }
+        return;
+      }
+      if (settings.bluetoothPrinterMac.isNotEmpty) {
+        setState(() => _printing = true);
+        try {
+          final ok = await BluetoothPrintService.instance.printReceipt(
+            widget.sale, settings, mac: settings.bluetoothPrinterMac);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(ok
+                  ? 'Impression envoyée à ${settings.bluetoothPrinterName}'
+                  : 'Connexion imprimante échouée — vérifiez qu\'elle est allumée'),
+              backgroundColor: ok ? AppColors.success : AppColors.error,
+              duration: const Duration(seconds: 3),
+            ));
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Erreur: $e'),
+              backgroundColor: AppColors.error,
+            ));
+          }
+        } finally {
+          if (mounted) setState(() => _printing = false);
+        }
+        return;
+      }
+      // Aucune imprimante configurée → ouvrir le modal pour en choisir une
+    }
+
+    // Bureau + impression automatique + imprimante configurée → sans modal
+    if (!Platform.isAndroid && settings.posAutoPrint &&
+        settings.posPrinterName.isNotEmpty) {
+      setState(() => _printing = true);
+      try {
+        await ThermalPrinterService.instance.printReceipt(
+          widget.sale, settings,
+          printerUrl: settings.posPrinterName,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Impression envoyée'),
+            backgroundColor: AppColors.success,
+            duration: Duration(seconds: 2),
+          ));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Erreur impression: $e'),
+            backgroundColor: AppColors.error,
+          ));
+        }
+      } finally {
+        if (mounted) setState(() => _printing = false);
+      }
+      return;
+    }
+
+    // Modal : auto-print désactivé ou aucune imprimante configurée
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
