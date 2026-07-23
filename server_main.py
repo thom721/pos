@@ -41,9 +41,21 @@ def _fix_workdir() -> None:
         pass  # mode source normal
 
 
+def _crash_log_path() -> pathlib.Path:
+    # Priorité : ProgramData (visible facilement) → dossier de l'exe (fallback)
+    try:
+        import os
+        prog_data = os.environ.get("PROGRAMDATA") or r"C:\ProgramData"
+        candidate = pathlib.Path(prog_data) / "POS_Connect" / "posconnect-crash.log"
+        candidate.parent.mkdir(parents=True, exist_ok=True)
+        return candidate
+    except Exception:
+        return pathlib.Path(sys.executable).parent / "posconnect-crash.log"
+
+
 def _write_crash_log(tb_text: str) -> str:
     import datetime
-    log_path = pathlib.Path(sys.executable).parent / "posconnect-crash.log"
+    log_path = _crash_log_path()
     with open(log_path, "a", encoding="utf-8") as f:
         f.write(f"\n{'=' * 60}\n")
         f.write(f"CRASH {datetime.datetime.now().isoformat()}\n")
@@ -52,6 +64,8 @@ def _write_crash_log(tb_text: str) -> str:
 
 
 def _show_crash_popup(log_path: str, summary: str) -> None:
+    # MessageBoxW ne fonctionne pas depuis un service Windows (session 0 isolée).
+    # On tente quand même : si l'exe est lancé manuellement ça marche, sinon ça échoue silencieusement.
     try:
         import ctypes
         ctypes.windll.user32.MessageBoxW(  # type: ignore[attr-defined]
@@ -92,10 +106,14 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
+    except BaseException as _exc:
+        # BaseException attrape aussi SystemExit (levé par uvicorn sur erreur de port, etc.)
+        # On skip SystemExit(0) = arrêt propre.
+        if isinstance(_exc, SystemExit) and _exc.code == 0:
+            sys.exit(0)
         import traceback
         tb = traceback.format_exc()
         log_path = _write_crash_log(tb)
         summary = tb.strip().splitlines()[-1] if tb.strip() else "Erreur inconnue"
         _show_crash_popup(log_path, summary)
-        sys.exit(1)
+        sys.exit(getattr(_exc, "code", 1) or 1)

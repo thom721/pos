@@ -152,20 +152,36 @@ if (-not (Test-Path "$MySqlBinDir\mysqld.exe")) {
 if (Test-Path "$MySqlBinDir\mysqld.exe") {
     New-Item -ItemType Directory -Force -Path $MySqlData | Out-Null
 
+    # Arreter les services dependants pour eviter les conflits de port pendant la reinit
+    foreach ($depSvc in @("POS_Connect_API", "POS_Connect_Nginx")) {
+        $ds = Get-Service -Name $depSvc -ErrorAction SilentlyContinue
+        if ($ds -and $ds.Status -ne "Stopped") {
+            Write-Log "Arret de $depSvc avant reconfiguration MySQL..."
+            Stop-Service -Name $depSvc -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
+    }
+
     if (-not (Test-Path "$MySqlData\ibdata1")) {
         Write-Log "Initialisation du datadir MySQL ($MySqlData)..."
 
-        # Prendre la propriete puis definir les ACL explicites (pas de simple /grant
-        # qui laisse des ACL refus heritees de C:\ProgramData ; /grant:r remplace).
-        try {
-            takeown /F "$MySqlData" /D Y 2>&1 | Out-Null
-            icacls "$MySqlData" /inheritance:r `
-                                /grant:r "SYSTEM:(OI)(CI)F" `
-                                /grant:r "Administrators:(OI)(CI)F" `
-                                /grant:r "Users:(OI)(CI)F" | Out-Null
-            Write-Log "Permissions dossier MySQL accordees"
-        } catch {
-            Write-Log "Impossible d'accorder les permissions sur $MySqlData : $_" "WARN"
+        # Prise de propriete recursive + reset complet des ACL puis attribution
+        # stricte SYSTEM + Administrators uniquement.
+        # Notes :
+        #   /R sur takeown = recursif (fichiers d'une init partielle precedente)
+        #   /reset /T sur icacls = supprime toutes les ACL explicites recursivement
+        #   (evite les DENY herites de C:\ProgramData et les reliquats d'init ratee)
+        #   Pas de Users:(OI)(CI)F -- MySQL 8 refuse les datadirs accessibles a
+        #   BUILTIN\Users (consideres "world-writable", errno 13).
+        takeown /F "$MySqlData" /R /D Y 2>&1 | Out-Null
+        icacls "$MySqlData" /reset /T /C /Q 2>&1 | Out-Null
+        icacls "$MySqlData" /inheritance:r `
+                            /grant:r "SYSTEM:(OI)(CI)F" `
+                            /grant:r "Administrators:(OI)(CI)F" /T /C /Q 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "Permissions dossier MySQL accordees (SYSTEM + Administrateurs)"
+        } else {
+            Write-Log "icacls code $LASTEXITCODE -- tentative de continuer" "WARN"
         }
 
         # my.ini dans le dossier d'installation (pas dans le datadir)
@@ -236,6 +252,7 @@ port = $MySqlPort
     } else {
         Write-Log "Service $SvcMySQL existe deja ($svcStatus)"
         Stop-Service -Name $SvcMySQL -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3  # laisser le temps au processus de liberer les verrous
     }
     # Toujours mettre a jour AppParameters pour corriger le chemin my.ini (reinstallation)
     & $NssmExe set $SvcMySQL AppParameters "--defaults-file=$MyIni"
@@ -296,10 +313,9 @@ FLUSH PRIVILEGES;
         } catch {
             Write-Log "Creation DB/user : $_" "WARN"
         }
-    }
 
-    # -- Ecrire pos_server.ini complet avec MySQL -------------------------------
-    Write-UTF8NoBOM $IniTarget @"
+        # -- Ecrire pos_server.ini avec MySQL (seulement si MySQL est demarre) ---
+        Write-UTF8NoBOM $IniTarget @"
 [database]
 type     = mysql
 host     = 127.0.0.1
@@ -312,13 +328,25 @@ password = $DbPass
 host = 0.0.0.0
 port = 9003
 "@
-    Write-Log "pos_server.ini ecrit (MySQL 127.0.0.1:$MySqlPort, db=$DbName, user=$DbUser)"
-    # Restreindre les droits : uniquement SYSTEM et Administrateurs peuvent lire le fichier
-    try {
-        icacls $IniTarget /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" | Out-Null
+        Write-Log "pos_server.ini ecrit (MySQL 127.0.0.1:$MySqlPort, db=$DbName, user=$DbUser)"
+        icacls $IniTarget /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" 2>&1 | Out-Null
         Write-Log "Permissions pos_server.ini restreintes (SYSTEM + Administrateurs)"
-    } catch {
-        Write-Log "Impossible de restreindre les permissions de pos_server.ini : $_" "WARN"
+    } else {
+        # MySQL non pret -- garder SQLite si ini existe, sinon creer SQLite minimal
+        Write-Log "MySQL non demarre -- pos_server.ini reste en SQLite" "WARN"
+        if (-not (Test-Path $IniTarget)) {
+            Write-UTF8NoBOM $IniTarget @"
+[database]
+type = sqlite
+path = $DataDir\pos_connect.db
+
+[server]
+host = 0.0.0.0
+port = 9003
+"@
+            Write-Log "pos_server.ini minimal cree (SQLite -- MySQL non demarre)"
+            icacls $IniTarget /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" 2>&1 | Out-Null
+        }
     }
 
 } else {
@@ -361,7 +389,9 @@ if ($LASTEXITCODE -ne 0 -or "$svcApiStatus" -match "can't open service|No such s
     }
     Write-Log "Service $SvcApi installe"
 } else {
-    Write-Log "Service $SvcApi existe deja"
+    Write-Log "Service $SvcApi existe deja -- arret pour eviter conflit port 9003..."
+    Stop-Service -Name $SvcApi -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
 }
 
 # -- 5. Service : Nginx ---------------------------------------------------------
@@ -379,7 +409,9 @@ if ($LASTEXITCODE -ne 0 -or "$svcNginxStatus" -match "can't open service|No such
     & $NssmExe set    $SvcNginx DependOnService "POS_Connect_API"
     Write-Log "Service $SvcNginx installe"
 } else {
-    Write-Log "Service $SvcNginx existe deja"
+    Write-Log "Service $SvcNginx existe deja -- arret pour reinitialisation..."
+    Stop-Service -Name $SvcNginx -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
 }
 
 # -- 6. Demarrer API + Nginx ----------------------------------------------------
@@ -387,7 +419,13 @@ Write-Log "Demarrage des services API et Nginx..."
 foreach ($svc in @($SvcApi, $SvcNginx)) {
     try {
         Start-Service -Name $svc -ErrorAction SilentlyContinue
-        Write-Log "  OK $svc demarre"
+        Start-Sleep -Seconds 2
+        $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
+        if ($s -and $s.Status -eq "Running") {
+            Write-Log "  OK $svc demarre"
+        } else {
+            Write-Log "  WARN $svc n'a pas demarré (verifiez les logs)" "WARN"
+        }
     } catch {
         Write-Log "  FAIL $svc : $_" "WARN"
     }
