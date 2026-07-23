@@ -165,6 +165,31 @@ if (Test-Path "$MySqlBinDir\mysqld.exe") {
         }
     }
 
+    # Arreter le service MySQL s'il existe (PAUSED compris) + tuer tout mysqld
+    # residuel AVANT de toucher au datadir.
+    # Un service PAUSED garde le processus mysqld vivant avec des verrous sur le
+    # datadir -- c'est la cause principale de l'echec de --initialize-insecure.
+    $preMysqlSvc = Get-Service -Name "POS_Connect_MySQL" -ErrorAction SilentlyContinue
+    if ($preMysqlSvc) {
+        if ($preMysqlSvc.Status -eq "Paused") {
+            Write-Log "Service POS_Connect_MySQL en pause -- reprise avant arret..."
+            Resume-Service -Name "POS_Connect_MySQL" -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
+        if ((Get-Service -Name "POS_Connect_MySQL" -ErrorAction SilentlyContinue).Status -ne "Stopped") {
+            Write-Log "Arret service POS_Connect_MySQL avant initialisation..."
+            Stop-Service -Name "POS_Connect_MySQL" -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+        }
+    }
+    # Tuer tout processus mysqld residuel (service stoppe mais processus zombie)
+    $zombies = @(Get-Process -Name "mysqld" -ErrorAction SilentlyContinue)
+    if ($zombies.Count -gt 0) {
+        Write-Log "Arret force de $($zombies.Count) processus mysqld residuel(s)..."
+        $zombies | ForEach-Object { $_ | Stop-Process -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 3
+    }
+
     if (-not (Test-Path "$MySqlData\ibdata1")) {
         Write-Log "Initialisation du datadir MySQL ($MySqlData)..."
 
@@ -219,7 +244,19 @@ port = $MySqlPort
         $_initCode = $LASTEXITCODE
         $_initOut | ForEach-Object { Write-Log "  [mysqld-init] $_" }
         if ($_initCode -ne 0) {
-            Write-Log "mysqld --initialize-insecure a echoue (code $_initCode) -- verifiez les logs ci-dessus" "ERROR"
+            Write-Log "mysqld --initialize-insecure a echoue (code $_initCode) -- nettoyage datadir et retry..." "ERROR"
+            # Nettoyer le datadir partiel puis reessayer une seule fois
+            Get-ChildItem "$MySqlData" -ErrorAction SilentlyContinue |
+                Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
+            $_initOut2  = & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure 2>&1
+            $_initCode2 = $LASTEXITCODE
+            $_initOut2 | ForEach-Object { Write-Log "  [mysqld-init-retry] $_" }
+            if ($_initCode2 -ne 0) {
+                Write-Log "Reinitialisation aussi echouee (code $_initCode2) -- MySQL ne pourra pas demarrer" "ERROR"
+            } else {
+                Write-Log "MySQL reinitialise avec succes apres nettoyage du datadir"
+            }
         } else {
             Write-Log "MySQL initialise (root sans mot de passe)"
         }
@@ -258,8 +295,18 @@ port = $MySqlPort
         Write-Log "Service $SvcMySQL installe"
     } else {
         Write-Log "Service $SvcMySQL existe deja ($svcStatus)"
+        # Gerer PAUSED : Stop-Service ne fonctionne pas sur un service en pause
+        $winSvc2 = Get-Service -Name $SvcMySQL -ErrorAction SilentlyContinue
+        if ($winSvc2 -and $winSvc2.Status -eq "Paused") {
+            Resume-Service -Name $SvcMySQL -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
+        }
         Stop-Service -Name $SvcMySQL -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 3  # laisser le temps au processus de liberer les verrous
+        Start-Sleep -Seconds 3
+        # Tuer tout mysqld residuel apres Stop-Service
+        Get-Process -Name "mysqld" -ErrorAction SilentlyContinue |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
     }
     # Toujours mettre a jour AppParameters pour corriger le chemin my.ini (reinstallation)
     & $NssmExe set $SvcMySQL AppParameters "--defaults-file=$MyIni"
