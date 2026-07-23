@@ -193,9 +193,10 @@ class BluetoothPrintService {
       nl();
     }
 
-    // Init + code page Latin-1
-    esc([0x1B, 0x40]);
-    esc([0x1B, 0x74, 0x02]);
+    // Init + code page Latin-1 + double-strike (texte plus foncé)
+    esc([0x1B, 0x40]);          // Initialize printer
+    esc([0x1B, 0x74, 0x02]);    // Code page PC850 (Latin-1)
+    esc([0x1B, 0x47, 0x01]);    // Double-strike ON → impression plus sombre
 
     // ── Logo (si disponible) ───────────────────────────────────────────────
     if (logoBytes.isNotEmpty) {
@@ -326,8 +327,9 @@ class BluetoothPrintService {
     void nl([int n = 1]) { for (var i = 0; i < n; i++) { buf.add(10); } }
     void dash() { text('-' * cols); nl(); }
 
-    esc([0x1B, 0x40]);
-    esc([0x1B, 0x74, 0x02]);
+    esc([0x1B, 0x40]);          // Initialize printer
+    esc([0x1B, 0x74, 0x02]);    // Code page PC850
+    esc([0x1B, 0x47, 0x01]);    // Double-strike ON → impression plus sombre
 
     if (logoBytes.isNotEmpty) {
       esc([0x1B, 0x61, 0x01]);

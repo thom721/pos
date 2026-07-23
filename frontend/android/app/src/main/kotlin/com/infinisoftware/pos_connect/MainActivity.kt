@@ -45,13 +45,21 @@ class MainActivity : FlutterActivity() {
 
                     "sendBytes" -> {
                         val bytes = call.argument<ByteArray>("bytes") ?: return@setMethodCallHandler result.error("NO_DATA", "Bytes requis", null)
-                        try {
-                            btOut?.write(bytes)
-                            btOut?.flush()
-                            result.success(true)
-                        } catch (e: Exception) {
-                            result.success(false)
-                        }
+                        Thread {
+                            try {
+                                val chunkSize = 4096
+                                var offset = 0
+                                while (offset < bytes.size) {
+                                    val end = minOf(offset + chunkSize, bytes.size)
+                                    btOut?.write(bytes, offset, end - offset)
+                                    btOut?.flush()
+                                    offset = end
+                                }
+                                result.success(true)
+                            } catch (e: Exception) {
+                                result.success(false)
+                            }
+                        }.start()
                     }
 
                     "disconnect" -> {
