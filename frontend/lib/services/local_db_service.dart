@@ -903,6 +903,24 @@ class LocalDbService {
       }
     }
     await batch.commit(noResult: true);
+
+    // Supprimer les doublons locaux temporaires : après upsert d'une vente cloud,
+    // la vente locale (UUID client) avec la même référence devient obsolète.
+    for (final s in sales) {
+      if (s.reference.isEmpty) continue;
+      final dupes = await db.query(
+        'sales',
+        columns: ['id'],
+        where: 'reference = ? AND id != ?',
+        whereArgs: [s.reference, s.id],
+      );
+      for (final row in dupes) {
+        final dupeId = row['id'] as String;
+        await db.delete('sale_items',    where: 'sale_id = ?', whereArgs: [dupeId]);
+        await db.delete('sale_payments', where: 'sale_id = ?', whereArgs: [dupeId]);
+        await db.delete('sales',         where: 'id = ?',      whereArgs: [dupeId]);
+      }
+    }
   }
 
   Future<PaginatedResponse<SaleModel>> getSales({

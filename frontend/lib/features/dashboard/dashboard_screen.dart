@@ -96,6 +96,8 @@ class DashboardScreen extends ConsumerWidget {
 
           // Stats cards
           salesAsync.when(
+            skipLoadingOnRefresh: true,
+            skipLoadingOnReload: true,
             data: (sales) {
               final totalRevenue =
                   sales.data.fold(0.0, (s, e) => s + e.finalAmount);
@@ -194,6 +196,8 @@ class DashboardScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           salesAsync.when(
+            skipLoadingOnRefresh: true,
+            skipLoadingOnReload: true,
             data: (sales) => Card(
               child: Column(
                 children: sales.data.take(5).map((sale) {
