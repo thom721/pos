@@ -880,8 +880,25 @@ class LocalDbService {
   Future<void> upsertSales(List<SaleModel> sales) async {
     final db = _safeDb;
     if (db == null) return;
+
+    // Récupérer les warehouse_id existants (l'API ne les renvoie pas toujours),
+    // afin de ne pas écraser un warehouse_id local valide avec null.
+    final ids = sales.map((s) => s.id).toList();
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final existingRows = ids.isEmpty
+        ? <Map<String, Object?>>[]
+        : await db.rawQuery(
+            'SELECT id, warehouse_id FROM sales WHERE id IN ($placeholders)',
+            ids,
+          );
+    final existingWarehouseIds = {
+      for (final row in existingRows)
+        row['id'] as String: row['warehouse_id'] as String?,
+    };
+
     final batch = db.batch();
     for (final s in sales) {
+      final warehouseId = s.warehouseId ?? existingWarehouseIds[s.id];
       batch.insert('sales', {
         'id':             s.id,
         'reference':      s.reference,
@@ -895,7 +912,7 @@ class LocalDbService {
         'payment_method': s.payments.isNotEmpty ? s.payments.first.method : 'CASH',
         'status':         s.status,
         'cashier_name':   s.userFullName,
-        'warehouse_id':   s.warehouseId,
+        'warehouse_id':   warehouseId,
         'created_at':     _haitiNaiveToUtcIso(s.createdAt),
         'synced':         1,
       }, conflictAlgorithm: ConflictAlgorithm.replace);

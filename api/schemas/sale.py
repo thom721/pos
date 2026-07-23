@@ -95,6 +95,7 @@ class SaleRead(BaseModel):
     paid_amount: Decimal
     status: str
     created_at: datetime
+    warehouse_id: Optional[str] = None
 
     customer: Optional[CustomerRead] = None
     user: Optional[UserRead] = None
