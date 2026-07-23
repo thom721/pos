@@ -430,6 +430,16 @@ class _TenantCard extends ConsumerWidget {
                   ),
                 ),
                 IconButton(
+                  onPressed: () => _showWarehousesDialog(context, ref, tenant),
+                  icon: const Icon(Icons.store_rounded, size: 18),
+                  tooltip: 'Gérer les dépôts',
+                  style: IconButton.styleFrom(
+                    foregroundColor: depotCount >= maxDepots
+                        ? AppColors.warning
+                        : AppColors.textSecondary,
+                  ),
+                ),
+                IconButton(
                   onPressed: () => _showPurgeDialog(context, ref, tenant),
                   icon: const Icon(Icons.cleaning_services_rounded, size: 18),
                   tooltip: 'Supprimer les dépôts non réclamés',
@@ -453,6 +463,21 @@ class _TenantCard extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _showWarehousesDialog(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> tenant) async {
+    final tenantId = tenant['id'] as String;
+    final name = tenant['business_name'] as String? ?? tenantId;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => _WarehousesDialog(
+        tenantId: tenantId,
+        tenantName: name,
+      ),
+    );
+    ref.invalidate(_tenantsProvider);
   }
 
   Future<void> _showRegistersDialog(
@@ -1796,6 +1821,272 @@ class _ErrorView extends StatelessWidget {
             label: const Text('Réessayer'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Warehouses management dialog ─────────────────────────────────────────────
+
+class _WarehousesDialog extends ConsumerStatefulWidget {
+  final String tenantId;
+  final String tenantName;
+
+  const _WarehousesDialog({required this.tenantId, required this.tenantName});
+
+  @override
+  ConsumerState<_WarehousesDialog> createState() => _WarehousesDialogState();
+}
+
+class _WarehousesDialogState extends ConsumerState<_WarehousesDialog> {
+  List<Map<String, dynamic>>? _warehouses;
+  String? _error;
+  bool _loading = true;
+  final Set<String> _busy = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      final res = await d.get('/api/admin/tenants/${widget.tenantId}/warehouses');
+      setState(() {
+        _warehouses = List<Map<String, dynamic>>.from(res.data as List);
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() { _error = extractAnyError(e); _loading = false; });
+    }
+  }
+
+  String _fmtDate(String? iso) {
+    if (iso == null) return '—';
+    final rawDt = DateTime.tryParse(iso);
+    if (rawDt == null) return '—';
+    final dt = toHaitiTime(rawDt);
+    return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} '
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _delete(String warehouseId, String warehouseName) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer le dépôt'),
+        content: Text(
+          'Supprimer définitivement "$warehouseName" ?\n\n'
+          'Les ventes, achats et mouvements liés à ce dépôt seront dissociés '
+          '(warehouse_id mis à NULL).',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _busy.add(warehouseId));
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      await d.delete('/api/admin/warehouses/$warehouseId');
+      setState(() => _warehouses!.removeWhere((w) => w['id'] == warehouseId));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('"$warehouseName" supprimé'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : ${extractAnyError(e)}'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _busy.remove(warehouseId));
+    }
+  }
+
+  Future<void> _unclaim(String warehouseId, String warehouseName) async {
+    setState(() => _busy.add(warehouseId));
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      await d.patch('/api/admin/warehouses/$warehouseId/unclaim');
+      setState(() {
+        _warehouses = _warehouses!.map((w) {
+          if (w['id'] == warehouseId) return {...w, 'is_claimed': false};
+          return w;
+        }).toList();
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('"$warehouseName" marqué non réclamé'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : ${extractAnyError(e)}'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _busy.remove(warehouseId));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Dépôts — ${widget.tenantName}'),
+      contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      content: SizedBox(
+        width: 520,
+        child: _loading
+            ? const Center(child: Padding(
+                padding: EdgeInsets.all(32),
+                child: CircularProgressIndicator(),
+              ))
+            : _error != null
+                ? Text('Erreur : $_error',
+                    style: const TextStyle(color: AppColors.error))
+                : (_warehouses == null || _warehouses!.isEmpty)
+                    ? const Text('Aucun dépôt enregistré.')
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _warehouses!.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (ctx, i) {
+                          final w = _warehouses![i];
+                          final id         = w['id'] as String;
+                          final name       = w['name'] as String? ?? id;
+                          final isClaimed  = w['is_claimed'] as bool? ?? false;
+                          final isActive   = w['is_active'] as bool? ?? true;
+                          final isDefault  = w['is_default'] as bool? ?? false;
+                          final createdAt  = _fmtDate(w['created_at'] as String?);
+                          final isBusy     = _busy.contains(id);
+
+                          return ListTile(
+                            dense: true,
+                            leading: Icon(
+                              isDefault
+                                  ? Icons.home_work_rounded
+                                  : Icons.store_rounded,
+                              color: isActive
+                                  ? AppColors.primary
+                                  : AppColors.textSecondary,
+                              size: 20,
+                            ),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(name,
+                                      style: const TextStyle(fontSize: 13)),
+                                ),
+                                if (isDefault)
+                                  _SmallBadge(
+                                      label: 'Principal',
+                                      color: AppColors.primary),
+                                const SizedBox(width: 4),
+                                _SmallBadge(
+                                  label: isClaimed ? 'Réclamé' : 'Libre',
+                                  color: isClaimed
+                                      ? AppColors.success
+                                      : AppColors.textSecondary,
+                                ),
+                              ],
+                            ),
+                            subtitle: Text(
+                              'Créé le $createdAt'
+                              '${!isActive ? '  •  Inactif' : ''}',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                            trailing: isBusy
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (isClaimed)
+                                        IconButton(
+                                          icon: const Icon(
+                                              Icons.link_off_rounded,
+                                              size: 18),
+                                          tooltip: 'Marquer non réclamé',
+                                          color: AppColors.warning,
+                                          onPressed: () =>
+                                              _unclaim(id, name),
+                                        ),
+                                      IconButton(
+                                        icon: const Icon(
+                                            Icons.delete_outline_rounded,
+                                            size: 18),
+                                        tooltip: 'Supprimer ce dépôt',
+                                        color: AppColors.error,
+                                        onPressed: () => _delete(id, name),
+                                      ),
+                                    ],
+                                  ),
+                          );
+                        },
+                      ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : _load,
+          child: const Text('Actualiser'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Fermer'),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Small badge helper ────────────────────────────────────────────────────────
+
+class _SmallBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _SmallBadge({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
       ),
     );
   }

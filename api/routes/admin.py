@@ -642,6 +642,81 @@ def purge_unclaimed_warehouses(
     return {"deleted": len(rows)}
 
 
+# ── Warehouse management (per tenant) ───────────────────────────────────────
+
+@router.get("/tenants/{tenant_id}/warehouses")
+def list_tenant_warehouses(
+    tenant_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """List all warehouses for a tenant, ordered newest first."""
+    whs = (
+        db.query(Warehouse)
+        .filter(Warehouse.tenant_id == tenant_id)
+        .order_by(Warehouse.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id":          wh.id,
+            "name":        wh.name,
+            "description": wh.description,
+            "is_active":   wh.is_active,
+            "is_default":  wh.is_default,
+            "is_claimed":  wh.is_claimed,
+            "created_at":  wh.created_at.isoformat() if wh.created_at else None,
+            "updated_at":  wh.updated_at.isoformat() if wh.updated_at else None,
+        }
+        for wh in whs
+    ]
+
+
+@router.delete("/warehouses/{warehouse_id}")
+def delete_warehouse(
+    warehouse_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """Delete a single warehouse; nullifies FK references first."""
+    from sqlalchemy import text as _text
+
+    wh = db.query(Warehouse).filter(Warehouse.id == warehouse_id).first()
+    if not wh:
+        raise HTTPException(status_code=404, detail="Dépôt introuvable")
+
+    for tbl in _WH_FK_TABLES:
+        try:
+            db.execute(_text(
+                f"UPDATE {tbl} SET warehouse_id = NULL "
+                f"WHERE warehouse_id = '{warehouse_id}'"
+            ))
+        except Exception:
+            pass
+
+    tenant_id = wh.tenant_id
+    db.delete(wh)
+    db.commit()
+    _log.info("Warehouse supprimé: %s (tenant=%s)", warehouse_id, tenant_id)
+    return {"deleted": 1}
+
+
+@router.patch("/warehouses/{warehouse_id}/unclaim")
+def unclaim_warehouse(
+    warehouse_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """Reset is_claimed to False so the depot can be claimed by a new installation."""
+    wh = db.query(Warehouse).filter(Warehouse.id == warehouse_id).first()
+    if not wh:
+        raise HTTPException(status_code=404, detail="Dépôt introuvable")
+    wh.is_claimed = False
+    db.commit()
+    _log.info("Warehouse non-réclamé: %s (tenant=%s)", warehouse_id, wh.tenant_id)
+    return {"id": wh.id, "is_claimed": False}
+
+
 # ── Register management (per tenant) ────────────────────────────────────────
 
 @router.get("/tenants/{tenant_id}/registers")
