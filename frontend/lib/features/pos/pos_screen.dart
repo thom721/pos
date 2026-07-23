@@ -27,6 +27,7 @@ import 'package:pos_connect/providers/pos_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
+import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/bluetooth_print_service.dart';
 import 'package:pos_connect/services/thermal_printer_service.dart';
@@ -1808,6 +1809,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                               warehouseId: warehouseId,
                               customerName: customerName);
                           if (!context.mounted || result.saleId == null) return;
+                          ref.read(syncEpochProvider.notifier).state++;
                           if (result.offline && context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
