@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import or_, func
 from fastapi import HTTPException
-from datetime import datetime
+from datetime import datetime, timezone
 
 from api.models.Sale import Sale
 from api.models.SaleItem import SaleItem
@@ -84,9 +84,13 @@ def list_sales(
         query = query.filter(Sale.status == status)
 
     if date_from:
+        if date_from.tzinfo is None:
+            date_from = date_from.replace(tzinfo=timezone.utc)
         query = query.filter(Sale.created_at >= date_from)
 
     if date_to:
+        if date_to.tzinfo is None:
+            date_to = date_to.replace(tzinfo=timezone.utc)
         query = query.filter(Sale.created_at <= date_to)
 
     total = query.count()
@@ -362,7 +366,7 @@ def create_sale(
         customer_id=str(data.customer_id) if data.customer_id else None,
         user_id=user_id,
         warehouse_id=wh_id,
-        reference=f"VNT-{int(datetime.utcnow().timestamp())}",
+        reference=f"VNT-{int(datetime.now(timezone.utc).timestamp())}",
         total_amount=total,
         discount=discount,
         final_amount=total_after_discount,

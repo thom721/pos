@@ -89,7 +89,7 @@ class ReceiptService:
 
         if completed:
             purchase.status = "paid"
-            purchase.received_at = datetime.utcnow()
+            purchase.received_at = datetime.now(timezone.utc)
         else:
             purchase.status = "partial"
 

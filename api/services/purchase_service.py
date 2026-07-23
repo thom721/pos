@@ -1,7 +1,7 @@
 import logging
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 from api.models.Product import Product
@@ -57,9 +57,13 @@ def list_purchases(
 
     # 📆 Filtre date
     if date_from:
+        if date_from.tzinfo is None:
+            date_from = date_from.replace(tzinfo=timezone.utc)
         query = query.filter(Purchase.created_at >= date_from)
 
     if date_to:
+        if date_to.tzinfo is None:
+            date_to = date_to.replace(tzinfo=timezone.utc)
         query = query.filter(Purchase.created_at <= date_to)
 
     total = query.count()
@@ -128,7 +132,7 @@ def create_purchase(db: Session, data, user_id: str, tenant_id: str | None = Non
         supplier_id=str(data.supplier_id) if data.supplier_id else None,
         user_id=user_id,
         warehouse_id=wh_id,
-        reference=f"PUR-{int(datetime.utcnow().timestamp())}",
+        reference=f"PUR-{int(datetime.now(timezone.utc).timestamp())}",
         total_amount=total,
         paid_amount=data.paid_amount,
         status=status

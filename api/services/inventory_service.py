@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from fastapi import HTTPException
@@ -112,7 +112,7 @@ def create_inventory(db: Session, data, user_id: str, tenant_id: str | None = No
     discrepancy_count = 0
 
     # Build record first to get its ID for source_id
-    reference = f"INV-{int(datetime.utcnow().timestamp())}"
+    reference = f"INV-{int(datetime.now(timezone.utc).timestamp())}"
     record = InventoryRecord(
         reference=reference,
         inventory_type=data.inventory_type,

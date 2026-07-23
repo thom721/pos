@@ -2,8 +2,10 @@ from pydantic import BaseModel, field_serializer
 from typing import List, Optional
 from uuid import UUID
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from .category import CategoryRead
+
+_HAITI = timezone(timedelta(hours=-5))
 
 
 class SaleItemInput(BaseModel):
@@ -103,7 +105,8 @@ class SaleRead(BaseModel):
 
     @field_serializer("created_at_str")
     def serialize_created_at_str(self, _):
-        return self.created_at.strftime("%d/%m/%Y à %H:%M")
+        haiti_dt = self.created_at.astimezone(_HAITI)
+        return haiti_dt.strftime("%d/%m/%Y à %H:%M")
 
     class Config:
         from_attributes = True

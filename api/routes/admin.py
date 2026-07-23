@@ -185,7 +185,7 @@ def admin_login(payload: AdminLogin):
 
     token_24h = _jwt.encode(
         {"sub": "superadmin", "role": "superadmin",
-         "exp": _dt.utcnow() + timedelta(hours=24)},
+         "exp": _dt.now(timezone.utc) + timedelta(hours=24)},
         settings.SECRET_KEY,
         algorithm=settings.ALGORITHM,
     )
