@@ -535,26 +535,43 @@ def on_startup():
         # 5. Dépôt par défaut — crée "Depot principal" si aucun dépôt n'existe
         _ensure_default_warehouse(db, local_tid)
         # Seed/sync built-in roles — crée ou met à jour les permissions
-        for rd in _BUILTIN_ROLES:
-            perms = rd["permissions"] if rd["permissions"] is not None \
-                else list(ROLE_PERMISSIONS.get(rd["name"], set()))
-            existing = db.query(RoleModel).filter(RoleModel.name == rd["name"]).first()
-            if not existing:
-                db.add(RoleModel(
-                    name=rd["name"],
-                    label=rd["label"],
-                    color=rd["color"],
-                    is_builtin=True,
-                    permissions=perms,
-                ))
+        try:
+            for rd in _BUILTIN_ROLES:
+                perms = rd["permissions"] if rd["permissions"] is not None \
+                    else list(ROLE_PERMISSIONS.get(rd["name"], set()))
+                existing = db.query(RoleModel).filter(RoleModel.name == rd["name"]).first()
+                if not existing:
+                    db.add(RoleModel(
+                        name=rd["name"],
+                        label=rd["label"],
+                        color=rd["color"],
+                        is_builtin=True,
+                        permissions=perms,
+                    ))
+                else:
+                    existing.label       = rd["label"]
+                    existing.color       = rd["color"]
+                    existing.permissions = perms
+            db.commit()
+        except Exception as _roles_exc:
+            _emsg = str(_roles_exc).lower()
+            if "readonly" in _emsg or "read only" in _emsg or "read-only" in _emsg:
+                _log.warning(
+                    "⚠️  SQLite en lecture seule — mise à jour des rôles ignorée. "
+                    "Vérifiez les permissions sur pos_connect.db "
+                    "(clic droit → Propriétés → Sécurité, ou icacls). "
+                    "Le serveur continue avec les rôles existants."
+                )
+                db.rollback()
             else:
-                existing.label       = rd["label"]
-                existing.color       = rd["color"]
-                existing.permissions = perms
-        db.commit()
+                _log.exception("ERREUR CRITIQUE on_startup — le serveur ne peut pas démarrer")
+                raise
 
-        # Load all roles (including custom ones) into ROLE_PERMISSIONS
-        load_roles_from_db(db.query(RoleModel).all())
+        # Load all roles into ROLE_PERMISSIONS — lecture seule, toujours possible
+        try:
+            load_roles_from_db(db.query(RoleModel).all())
+        except Exception as _load_exc:
+            _log.warning("Impossible de charger les rôles depuis la DB : %s", _load_exc)
     except Exception:
         _log.exception("ERREUR CRITIQUE on_startup — le serveur ne peut pas démarrer")
         raise
