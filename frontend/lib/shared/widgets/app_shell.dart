@@ -125,18 +125,21 @@ List<_NavItem> _resolveAndroidBottom(String businessType) {
 
 // ── Android nav (focused cashier workflow) ────────────────────────────────
 const _androidBottomNavItems = [
-  _NavItem('Caisse',  Icons.point_of_sale_rounded, '/pos'),
-  _NavItem('Ventes',  Icons.receipt_long_rounded,  '/sales'),
-  _NavItem('Clients', Icons.people_alt_rounded,    '/customers'),
-  _NavItem('Profil',  Icons.person_rounded,        '/profile'),
+  _NavItem('Accueil',  Icons.dashboard_rounded,      '/dashboard'),
+  _NavItem('Caisse',   Icons.point_of_sale_rounded,  '/pos'),
+  _NavItem('Ventes',   Icons.receipt_long_rounded,   '/sales'),
+  _NavItem('Clients',  Icons.people_alt_rounded,     '/customers'),
+  _NavItem('Profil',   Icons.person_rounded,         '/profile'),
 ];
 
 const _androidDrawerMainItems = [
-  _NavItem('Caisse',          Icons.point_of_sale_rounded,  '/pos'),
-  _NavItem('Ventes',          Icons.receipt_long_rounded,   '/sales'),
-  _NavItem('Clients',         Icons.people_alt_rounded,     '/customers'),
-  _NavItem('Produits',        Icons.inventory_2_rounded,    '/products'),
-  _NavItem('Factures / Devis',Icons.description_rounded,    '/events'),
+  _NavItem('Caisse',           Icons.point_of_sale_rounded,          '/pos'),
+  _NavItem('Ventes',           Icons.receipt_long_rounded,           '/sales'),
+  _NavItem('Clients',          Icons.people_alt_rounded,             '/customers'),
+  _NavItem('Dettes',           Icons.account_balance_wallet_rounded, '/debts'),
+  _NavItem('Retours',          Icons.assignment_return_rounded,      '/returns'),
+  _NavItem('Produits',         Icons.inventory_2_rounded,            '/products'),
+  _NavItem('Factures / Devis', Icons.description_rounded,            '/events'),
 ];
 
 // All items for title lookup (includes all business types)
@@ -804,25 +807,18 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
         : _resolveMainNav(businessType).take(5).toList();
 
     // Sur Android, _WarehouseSelector n'est pas affiché → initFromList n'est jamais
-    // appelé. On le fait ici pour que le dépôt actif soit correctement initialisé.
+    // appelé. On utilise ref.listen (une seule fois par changement réel de la liste)
+    // plutôt que Future.microtask dans build() qui déclenchait une boucle de rebuilds.
     if (_isAndroid) {
-      final warehouses = ref.watch(warehouseListProvider).valueOrNull ?? [];
-      final active = ref.watch(activeWarehouseProvider);
-      debugPrint('[WH-DEBUG] build: user=${user?.username} warehouseIds=${user?.warehouseIds} '
-          'active=${active?.name}(${active?.id}) warehouses=${warehouses.map((w) => "${w.name}:${w.id}").toList()}');
-      if (warehouses.isNotEmpty) {
-        Future.microtask(() async {
-          await ref.read(activeWarehouseProvider.notifier).initFromList(
-            warehouses,
-            userWarehouseIds: user?.warehouseIds ?? [],
-          );
-          final selected = ref.read(activeWarehouseProvider);
-          final hasRestriction = (user?.warehouseIds ?? []).isNotEmpty;
-          final apiWh = hasRestriction ? selected?.id : null;
-          debugPrint('[WH-DEBUG] initFromList done → selected=${selected?.name}(${selected?.id}) '
-              'hasRestriction=$hasRestriction apiWarehouseId=$apiWh');
-        });
-      }
+      ref.listen<AsyncValue<List<WarehouseModel>>>(warehouseListProvider, (_, next) {
+        final warehouses = next.valueOrNull;
+        if (warehouses == null || warehouses.isEmpty) return;
+        final userWarehouseIds = ref.read(authProvider).user?.warehouseIds ?? [];
+        ref.read(activeWarehouseProvider.notifier).initFromList(
+          warehouses,
+          userWarehouseIds: userWarehouseIds,
+        );
+      });
     }
 
     final currentIndex =
@@ -1483,6 +1479,23 @@ class _PrintSettingsSheetState extends ConsumerState<_PrintSettingsSheet> {
               onSelectionChanged: (val) async {
                 await ref.read(settingsProvider.notifier).save(
                       settings.copyWith(paperWidth: val.first),
+                    );
+              },
+            ),
+
+            // ── Impression automatique ─────────────────────────────────────
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Impression automatique',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              subtitle: const Text('Imprimer le reçu dès qu\'une vente est encaissée',
+                  style: TextStyle(fontSize: 12)),
+              value: settings.posAutoPrint,
+              onChanged: (val) async {
+                await ref.read(settingsProvider.notifier).save(
+                      settings.copyWith(posAutoPrint: val),
                     );
               },
             ),

@@ -51,7 +51,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 13,
+      version: 14,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -146,6 +146,23 @@ class LocalDbService {
     }
     if (oldVersion < 13) {
       try { await db.execute('ALTER TABLE products ADD COLUMN warehouse_id TEXT'); } catch (_) {}
+    }
+    if (oldVersion < 14) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS debts (
+          id            TEXT PRIMARY KEY,
+          reference     TEXT NOT NULL DEFAULT '',
+          partner_id    TEXT,
+          partner_name  TEXT,
+          total_amount  REAL NOT NULL DEFAULT 0,
+          paid_amount   REAL NOT NULL DEFAULT 0,
+          balance       REAL NOT NULL DEFAULT 0,
+          status        TEXT NOT NULL DEFAULT 'pending',
+          created_at    TEXT NOT NULL
+        )
+      ''');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_debts_status  ON debts (status)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_debts_partner ON debts (partner_id)');
     }
   }
 
