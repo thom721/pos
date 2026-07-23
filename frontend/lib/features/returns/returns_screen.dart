@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -10,6 +11,7 @@ import 'package:pos_connect/data/repositories/return_repository.dart';
 import 'package:pos_connect/providers/return_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/services/bluetooth_print_service.dart';
 import 'package:pos_connect/shared/utils/return_pdf.dart';
 
 final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
@@ -278,31 +280,60 @@ class _ReturnCardState extends ConsumerState<_ReturnCard> {
 
   Future<void> _print() async {
     setState(() => _printing = true);
+    final settings = ref.read(settingsProvider);
+    bool ok = false;
+    String? errMsg;
     try {
-      final settings = ref.read(settingsProvider);
-      final bytes = await buildReturnPdf(widget.ret, settings);
-      final s = ref.read(settingsProvider);
-      if (s.docPrinterName.isNotEmpty) {
-        final printers = await Printing.listPrinters();
-        final printer = printers.cast<Printer?>().firstWhere(
-          (p) => p?.url == s.docPrinterName,
-          orElse: () => null,
-        );
-        if (printer != null) {
-          await Printing.directPrintPdf(
-            printer: printer,
+      if (!kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.android &&
+          settings.bluetoothPrinterMac.isNotEmpty) {
+        ok = await BluetoothPrintService.instance
+            .printReturn(widget.ret, settings);
+        if (!ok) {
+          errMsg =
+              'Connexion imprimante échouée — vérifiez que l\'imprimante est allumée et appairée';
+        }
+      } else if (!kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.android &&
+          settings.bluetoothPrinterMac.isEmpty) {
+        errMsg = 'Aucune imprimante BT configurée — ouvrez les paramètres d\'impression';
+      } else {
+        final bytes = await buildReturnPdf(widget.ret, settings);
+        if (settings.docPrinterName.isNotEmpty) {
+          final printers = await Printing.listPrinters();
+          final printer = printers.cast<Printer?>().firstWhere(
+            (p) => p?.url == settings.docPrinterName,
+            orElse: () => null,
+          );
+          if (printer != null) {
+            await Printing.directPrintPdf(
+              printer: printer,
+              onLayout: (_) => bytes,
+              name: 'Retour_${widget.ret.docReference}',
+            );
+            ok = true;
+          }
+        }
+        if (!ok) {
+          await Printing.layoutPdf(
             onLayout: (_) => bytes,
             name: 'Retour_${widget.ret.docReference}',
           );
-          return;
+          ok = true;
         }
       }
-      await Printing.layoutPdf(
-        onLayout: (_) => bytes,
-        name: 'Retour_${widget.ret.docReference}',
-      );
+    } catch (e) {
+      errMsg = e.toString();
     } finally {
       if (mounted) setState(() => _printing = false);
+    }
+    if (!ok && errMsg != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(errMsg),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 4)),
+      );
     }
   }
 
@@ -600,30 +631,59 @@ class _NewSaleReturnDialogState extends ConsumerState<_NewSaleReturnDialog> {
     final ret = _localReturn;
     if (ret == null) return;
     setState(() => _printing = true);
+    final settings = ref.read(settingsProvider);
+    bool ok = false;
+    String? errMsg;
     try {
-      final settings = ref.read(settingsProvider);
-      final bytes = await buildReturnPdf(ret, settings);
-      if (settings.docPrinterName.isNotEmpty) {
-        final printers = await Printing.listPrinters();
-        final printer = printers.cast<Printer?>().firstWhere(
-          (p) => p?.url == settings.docPrinterName,
-          orElse: () => null,
-        );
-        if (printer != null) {
-          await Printing.directPrintPdf(
-            printer: printer,
+      if (!kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.android &&
+          settings.bluetoothPrinterMac.isNotEmpty) {
+        ok = await BluetoothPrintService.instance.printReturn(ret, settings);
+        if (!ok) {
+          errMsg =
+              'Connexion imprimante échouée — vérifiez que l\'imprimante est allumée et appairée';
+        }
+      } else if (!kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.android &&
+          settings.bluetoothPrinterMac.isEmpty) {
+        errMsg = 'Aucune imprimante BT configurée — ouvrez les paramètres d\'impression';
+      } else {
+        final bytes = await buildReturnPdf(ret, settings);
+        if (settings.docPrinterName.isNotEmpty) {
+          final printers = await Printing.listPrinters();
+          final printer = printers.cast<Printer?>().firstWhere(
+            (p) => p?.url == settings.docPrinterName,
+            orElse: () => null,
+          );
+          if (printer != null) {
+            await Printing.directPrintPdf(
+              printer: printer,
+              onLayout: (_) => bytes,
+              name: 'Retour_${ret.docReference}',
+            );
+            ok = true;
+          }
+        }
+        if (!ok) {
+          await Printing.layoutPdf(
             onLayout: (_) => bytes,
             name: 'Retour_${ret.docReference}',
           );
-          return;
+          ok = true;
         }
       }
-      await Printing.layoutPdf(
-        onLayout: (_) => bytes,
-        name: 'Retour_${ret.docReference}',
-      );
+    } catch (e) {
+      errMsg = e.toString();
     } finally {
       if (mounted) setState(() => _printing = false);
+    }
+    if (!ok && errMsg != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(errMsg),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 4)),
+      );
     }
   }
 

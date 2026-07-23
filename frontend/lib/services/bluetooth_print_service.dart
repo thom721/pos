@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
+import 'package:pos_connect/data/models/return_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 
@@ -75,6 +76,19 @@ class BluetoothPrintService {
 
     final logoBytes = await _logoToEscPos(settings);
     final bytes = _buildEscPos(sale, settings, logoBytes);
+    return _sendBytes(bytes);
+  }
+
+  Future<bool> printReturn(ReturnModel ret, AppSettings settings,
+      {String? mac}) async {
+    final printerMac = mac ?? settings.bluetoothPrinterMac;
+    if (printerMac.isEmpty) return false;
+
+    final connected = await connect(printerMac);
+    if (!connected) return false;
+
+    final logoBytes = await _logoToEscPos(settings);
+    final bytes = _buildEscPosReturn(ret, settings, logoBytes);
     return _sendBytes(bytes);
   }
 
@@ -182,7 +196,10 @@ class BluetoothPrintService {
     final labelW = cols - 16;
 
     void esc(List<int> cmd) => buf.addAll(cmd);
-    void text(String t) => buf.addAll(t.codeUnits);
+    // WPC1252 : les caractères français (U+00C0–U+00FF) ont le même octet que
+    // leur code point Unicode. Les chars hors Latin-1 sont remplacés par '?'.
+    void text(String t) =>
+        buf.addAll(t.codeUnits.map((c) => c <= 0xFF ? c : 0x3F));
     void nl([int n = 1]) {
       for (var i = 0; i < n; i++) {
         buf.add(10);
@@ -193,10 +210,12 @@ class BluetoothPrintService {
       nl();
     }
 
-    // Init + code page Latin-1 + double-strike (texte plus foncé)
-    esc([0x1B, 0x40]);          // Initialize printer
-    esc([0x1B, 0x74, 0x02]);    // Code page PC850 (Latin-1)
-    esc([0x1B, 0x47, 0x01]);    // Double-strike ON → impression plus sombre
+    // Init + code page WPC1252 + assombrissement maximum
+    esc([0x1B, 0x40]);                      // Initialize printer
+    esc([0x1B, 0x37, 0x07, 0x96, 0x02]);   // ESC 7: heating max dots=7, time=150µs×10, interval=2 → encre plus foncée
+    esc([0x1B, 0x74, 0x10]);               // Code page 16 = WPC1252 (é=0xE9, à=0xE0, ç=0xE7…)
+    esc([0x1B, 0x47, 0x01]);               // Double-strike ON
+    esc([0x1B, 0x45, 0x01]);               // Bold ON global
 
     // ── Logo (si disponible) ───────────────────────────────────────────────
     if (logoBytes.isNotEmpty) {
@@ -299,6 +318,119 @@ class BluetoothPrintService {
     return Uint8List.fromList(buf);
   }
 
+  // ── ESC/POS return receipt builder ───────────────────────────────────────
+
+  Uint8List _buildEscPosReturn(
+      ReturnModel ret, AppSettings settings, List<int> logoBytes) {
+    final buf = <int>[];
+    final numFmt = NumberFormat('#,##0.00', 'fr');
+    final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+    final sym = settings.currencySymbol.trim();
+
+    final cols = settings.paperWidth == 80 ? 48 : 32;
+    final nameW = settings.paperWidth == 80 ? 24 : 16;
+    final qtyW = settings.paperWidth == 80 ? 6 : 4;
+    final totW = cols - nameW - qtyW;
+    final labelW = cols - 16;
+
+    void esc(List<int> cmd) => buf.addAll(cmd);
+    void text(String t) =>
+        buf.addAll(t.codeUnits.map((c) => c <= 0xFF ? c : 0x3F));
+    void nl([int n = 1]) {
+      for (var i = 0; i < n; i++) {
+        buf.add(10);
+      }
+    }
+    void dash() {
+      text('-' * cols);
+      nl();
+    }
+
+    esc([0x1B, 0x40]);
+    esc([0x1B, 0x37, 0x07, 0x96, 0x02]);
+    esc([0x1B, 0x74, 0x10]);
+    esc([0x1B, 0x47, 0x01]);
+    esc([0x1B, 0x45, 0x01]);
+
+    if (logoBytes.isNotEmpty) {
+      esc([0x1B, 0x61, 0x01]);
+      buf.addAll(logoBytes);
+      nl();
+      esc([0x1B, 0x61, 0x00]);
+    }
+
+    esc([0x1B, 0x61, 0x01]);
+    esc([0x1D, 0x21, 0x10]);
+    text(settings.businessName);
+    nl();
+    esc([0x1D, 0x21, 0x00]);
+    if (settings.address.isNotEmpty) {
+      text(settings.address);
+      nl();
+    }
+    if (settings.phone.isNotEmpty) {
+      text('Tél: ${settings.phone}');
+      nl();
+    }
+    esc([0x1B, 0x61, 0x00]);
+    nl();
+    dash();
+
+    esc([0x1B, 0x61, 0x01]);
+    esc([0x1D, 0x21, 0x10]);
+    final typeLabel = ret.returnType == 'sale' ? 'RETOUR VENTE' : 'RETOUR ACHAT';
+    text(typeLabel);
+    nl();
+    esc([0x1D, 0x21, 0x00]);
+    esc([0x1B, 0x61, 0x00]);
+    nl();
+
+    text('Réf: ${ret.docReference}');
+    nl();
+    text('Date: ${dateFmt.format(ret.createdAt)}');
+    nl();
+    if (ret.reason != null && ret.reason!.isNotEmpty) {
+      text('Motif: ${ret.reason}');
+      nl();
+    }
+    dash();
+
+    for (final item in ret.items) {
+      final name = item.productName.padRight(nameW).substring(0, nameW);
+      final qty = '${item.quantity.toStringAsFixed(item.quantity % 1 == 0 ? 0 : 2)}x'.padLeft(qtyW);
+      final total = '$sym ${numFmt.format(item.subtotal)}'.padLeft(totW);
+      text('$name$qty$total');
+      nl();
+    }
+    dash();
+
+    text('Total retourné'.padRight(labelW) +
+        '$sym ${numFmt.format(ret.totalReturned)}'.padLeft(16));
+    nl();
+    esc([0x1B, 0x45, 0x01]);
+    text('Remboursement'.padRight(labelW) +
+        '$sym ${numFmt.format(ret.refundAmount)}'.padLeft(16));
+    nl();
+    esc([0x1B, 0x45, 0x00]);
+    dash();
+
+    esc([0x1B, 0x61, 0x01]);
+    text('*** RETOUR ACCEPTÉ ***');
+    nl();
+    esc([0x1B, 0x61, 0x00]);
+
+    if (settings.receiptFooter.isNotEmpty) {
+      nl();
+      text(settings.receiptFooter);
+      nl();
+    }
+
+    nl(4);
+    esc([0x1D, 0x56, 0x42, 0x00]);
+
+    return Uint8List.fromList(buf);
+  }
+
   // ── ESC/POS restaurant bill builder ──────────────────────────────────────
 
   Uint8List _buildEscPosRestaurantBill(
@@ -323,13 +455,16 @@ class BluetoothPrintService {
     final labelW = cols - 16;
 
     void esc(List<int> cmd) => buf.addAll(cmd);
-    void text(String t) => buf.addAll(t.codeUnits);
+    void text(String t) =>
+        buf.addAll(t.codeUnits.map((c) => c <= 0xFF ? c : 0x3F));
     void nl([int n = 1]) { for (var i = 0; i < n; i++) { buf.add(10); } }
     void dash() { text('-' * cols); nl(); }
 
-    esc([0x1B, 0x40]);          // Initialize printer
-    esc([0x1B, 0x74, 0x02]);    // Code page PC850
-    esc([0x1B, 0x47, 0x01]);    // Double-strike ON → impression plus sombre
+    esc([0x1B, 0x40]);                      // Initialize printer
+    esc([0x1B, 0x37, 0x07, 0x96, 0x02]);   // ESC 7: heating max dots=7, time=150µs×10, interval=2
+    esc([0x1B, 0x74, 0x10]);               // Code page 16 = WPC1252 (é=0xE9, à=0xE0, ç=0xE7…)
+    esc([0x1B, 0x47, 0x01]);               // Double-strike ON
+    esc([0x1B, 0x45, 0x01]);               // Bold ON global
 
     if (logoBytes.isNotEmpty) {
       esc([0x1B, 0x61, 0x01]);

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:dio/dio.dart' show FormData, Options, DioException, DioExceptionType;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -26,6 +27,7 @@ import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/services/bluetooth_print_service.dart';
 import 'package:pos_connect/services/thermal_printer_service.dart';
 
 final _fmt =
@@ -78,14 +80,36 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
     if (_sale == null) return;
     setState(() => _printing = true);
     final settings = ref.read(settingsProvider);
+    bool ok = false;
+    String? errMsg;
     try {
-      await ThermalPrinterService.instance.printReceipt(
-        _sale!,
-        settings,
-        printerUrl: settings.posPrinterName.isNotEmpty ? settings.posPrinterName : null,
-      );
+      if (!kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.android &&
+          settings.bluetoothPrinterMac.isNotEmpty) {
+        ok = await BluetoothPrintService.instance.printReceipt(_sale!, settings);
+        if (!ok) errMsg = 'Connexion imprimante échouée — vérifiez que l\'imprimante est allumée et appairée';
+      } else if (!kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.android &&
+          settings.bluetoothPrinterMac.isEmpty) {
+        errMsg = 'Aucune imprimante BT configurée — ouvrez les paramètres d\'impression';
+      } else {
+        await ThermalPrinterService.instance.printReceipt(
+          _sale!,
+          settings,
+          printerUrl: settings.posPrinterName.isNotEmpty ? settings.posPrinterName : null,
+        );
+        ok = true;
+      }
+    } catch (e) {
+      errMsg = e.toString();
     } finally {
       if (mounted) setState(() => _printing = false);
+    }
+    if (!ok && errMsg != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errMsg), backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 4)),
+      );
     }
   }
 
