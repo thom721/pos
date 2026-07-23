@@ -68,14 +68,29 @@ final saleDetailProvider =
 final dashboardSalesProvider =
     FutureProvider.autoDispose.family<PaginatedResponse<SaleModel>, bool>(
         (ref, isCashier) async {
-  ref.watch(syncEpochProvider); // rebuild après chaque sync SQLite
+  final epoch = ref.watch(syncEpochProvider);
   final warehouseId = ref.watch(activeWarehouseProvider)?.id;
   final repo = ref.read(saleRepositoryProvider);
   final todayUtc = haitiTodayStartUtc();
-  return repo.getSales(
+  final dateFrom = todayUtc;
+  final dateTo   = todayUtc.add(const Duration(days: 1));
+
+  // ignore: avoid_print
+  print('[DASH] epoch=$epoch wh=$warehouseId dateFrom=${dateFrom.toIso8601String()} dateTo=${dateTo.toIso8601String()}');
+
+  final result = await repo.getSales(
     limit: 50,
-    dateFrom: todayUtc,
-    dateTo: todayUtc.add(const Duration(days: 1)),
+    dateFrom: dateFrom,
+    dateTo: dateTo,
     warehouseId: warehouseId,
   );
+
+  // ignore: avoid_print
+  print('[DASH] → ${result.meta.total} ventes (données: ${result.data.length})');
+  for (final s in result.data) {
+    // ignore: avoid_print
+    print('[DASH]   ${s.reference} wh=${s.warehouseId} created=${s.createdAt}');
+  }
+
+  return result;
 });
