@@ -23,7 +23,10 @@ $MySqlZipUrl = "https://downloads.mysql.com/archives/get/p/23/file/mysql-$MySqlV
 $MySqlDir    = "$InstallDir\mysql"
 # Donnees MySQL dans un dossier separe -- survivent a toute suppression de POS_Connect
 $MySqlData   = "$env:ProgramData\POS_Connect_MySQL"
-$MyIni       = "$MySqlData\my.ini"   # chemin sans espace — NSSM gere mal les guillemets internes
+# my.ini dans le dossier BINAIRE (pas dans le datadir) :
+# MySQL 8 verifie la securite du --defaults-file et refuse d'ouvrir un fichier
+# situe dans le datadir ou dans un dossier trop permissif.
+$MyIni       = "$MySqlDir\my.ini"
 $MySqlBinDir = "$MySqlDir\bin"
 $MySqlPort   = 3307
 $IniTarget   = "$DataDir\pos_server.ini"
@@ -209,10 +212,14 @@ port = $MySqlPort
 port = $MySqlPort
 "@
 
-        & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure 2>&1 |
-            ForEach-Object { Write-Log "  [mysqld-init] $_" }
-        if ($LASTEXITCODE -ne 0) {
-            Write-Log "mysqld --initialize-insecure a echoue (code $LASTEXITCODE) -- verifiez les logs ci-dessus" "ERROR"
+        # Capturer la sortie d'abord, puis verifier $LASTEXITCODE.
+        # Le pipe direct (cmd | ForEach-Object) perd $LASTEXITCODE car ForEach-Object
+        # est un cmdlet PS qui remet LASTEXITCODE a 0 apres execution.
+        $_initOut  = & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure 2>&1
+        $_initCode = $LASTEXITCODE
+        $_initOut | ForEach-Object { Write-Log "  [mysqld-init] $_" }
+        if ($_initCode -ne 0) {
+            Write-Log "mysqld --initialize-insecure a echoue (code $_initCode) -- verifiez les logs ci-dessus" "ERROR"
         } else {
             Write-Log "MySQL initialise (root sans mot de passe)"
         }
@@ -404,6 +411,48 @@ if ($LASTEXITCODE -ne 0 -or "$svcApiStatus" -match "can't open service|No such s
     Write-Log "Service $SvcApi existe deja -- arret pour eviter conflit port 9003..."
     Stop-Service -Name $SvcApi -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
+}
+
+# -- 4b. Configuration Nginx : conf + certificats -------------------------------
+# Nginx lit ses fichiers relatifs a son prefix (dossier de nginx.exe).
+# Structure attendue :
+#   $InstallDir\nginx\conf\nginx.conf
+#   $InstallDir\nginx\certs\server.crt   (ssl_certificate)
+#   $InstallDir\nginx\certs\server.key   (ssl_certificate_key)
+#   $InstallDir\nginx\logs\              (access.log, error.log)
+#   $InstallDir\nginx\temp\              (fichiers temporaires)
+
+$NginxConfDir  = "$InstallDir\nginx\conf"
+$NginxCertsDir = "$InstallDir\nginx\certs"
+$NginxLogsDir  = "$InstallDir\nginx\logs"
+$NginxTempDir  = "$InstallDir\nginx\temp"
+
+foreach ($d in @($NginxConfDir, $NginxCertsDir, $NginxLogsDir, $NginxTempDir)) {
+    New-Item -ItemType Directory -Force -Path $d | Out-Null
+}
+
+# Copier les certificats SSL depuis le sous-dossier certificat\ du package
+$SrcCert = "$InstallDir\certificat\server.crt"
+$SrcKey  = "$InstallDir\certificat\server.key"
+$SrcConf = "$InstallDir\certificat\nginx-windows.conf"
+
+if (Test-Path $SrcCert) {
+    Copy-Item $SrcCert "$NginxCertsDir\server.crt" -Force
+    Write-Log "Certificat SSL nginx copie -> $NginxCertsDir\server.crt"
+} else {
+    Write-Log "server.crt introuvable ($SrcCert) -- nginx SSL ne fonctionnera pas" "WARN"
+}
+if (Test-Path $SrcKey) {
+    Copy-Item $SrcKey "$NginxCertsDir\server.key" -Force
+    Write-Log "Cle SSL nginx copiee -> $NginxCertsDir\server.key"
+} else {
+    Write-Log "server.key introuvable ($SrcKey) -- nginx SSL ne fonctionnera pas" "WARN"
+}
+if (Test-Path $SrcConf) {
+    Copy-Item $SrcConf "$NginxConfDir\nginx.conf" -Force
+    Write-Log "nginx.conf copie -> $NginxConfDir\nginx.conf"
+} else {
+    Write-Log "nginx-windows.conf introuvable ($SrcConf) -- nginx utilisera sa config par defaut" "WARN"
 }
 
 # -- 5. Service : Nginx ---------------------------------------------------------
