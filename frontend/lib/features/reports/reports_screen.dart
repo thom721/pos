@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:dio/dio.dart' show Options, ResponseType;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -1017,6 +1019,26 @@ Future<void> _generatePdf(
     return params.period.label;
   }();
 
+  // Charger le logo si disponible
+  pw.MemoryImage? logoImage;
+  if (settings.logoPath.isNotEmpty) {
+    try {
+      final logoRes = await dio
+          .get<List<int>>(
+            settings.logoPath.startsWith('http')
+                ? settings.logoPath
+                : '${dio.options.baseUrl.replaceAll(RegExp(r'/$'), '')}/${settings.logoPath.replaceAll(RegExp(r'^/'), '')}',
+            options: Options(responseType: ResponseType.bytes),
+          )
+          .timeout(const Duration(seconds: 4));
+      if (logoRes.data != null) {
+        logoImage = pw.MemoryImage(Uint8List.fromList(logoRes.data!));
+      }
+    } catch (_) {
+      // Logo non critique : on continue sans
+    }
+  }
+
   final doc = pw.Document(creator: 'POS Connect', title: 'Rapport de ventes');
 
   doc.addPage(
@@ -1031,60 +1053,78 @@ Future<void> _generatePdf(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // Business info
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(
-                    settings.businessName,
-                    style: pw.TextStyle(
-                        font: bold,
-                        fontSize: 17,
-                        color: PdfColors.grey900),
-                  ),
-                  if (settings.address.isNotEmpty)
-                    pw.Text(settings.address,
-                        style: const pw.TextStyle(
-                            fontSize: 9, color: PdfColors.grey700)),
-                  if (settings.phone.isNotEmpty)
-                    pw.Text(settings.phone,
-                        style: const pw.TextStyle(
-                            fontSize: 9, color: PdfColors.grey700)),
-                  if (settings.email.isNotEmpty)
-                    pw.Text(settings.email,
-                        style: const pw.TextStyle(
-                            fontSize: 9, color: PdfColors.grey700)),
-                ],
-              ),
-              // Report info
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                  pw.Text(
-                    'RAPPORT DE VENTES',
-                    style: pw.TextStyle(
-                        font: bold,
-                        fontSize: 14,
-                        color: PdfColors.blue800),
-                  ),
-                  pw.SizedBox(height: 4),
-                  pw.Text(
-                    'Période: $periodStr',
-                    style: const pw.TextStyle(
-                        fontSize: 9, color: PdfColors.grey700),
-                  ),
-                  if (params.userFilter != null)
-                    pw.Text(
-                      'Caissier: ${params.userFilter}',
-                      style: const pw.TextStyle(
-                          fontSize: 9, color: PdfColors.grey700),
+              // Business info (gauche)
+              pw.Expanded(
+                flex: 3,
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    if (logoImage != null) ...[
+                      pw.Image(logoImage, width: 48, height: 48, fit: pw.BoxFit.contain),
+                      pw.SizedBox(width: 10),
+                    ],
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            settings.businessName,
+                            style: pw.TextStyle(
+                                font: bold,
+                                fontSize: 15,
+                                color: PdfColors.grey900),
+                          ),
+                          if (settings.address.isNotEmpty)
+                            pw.Text(settings.address,
+                                style: const pw.TextStyle(
+                                    fontSize: 8, color: PdfColors.grey700)),
+                          if (settings.phone.isNotEmpty)
+                            pw.Text(settings.phone,
+                                style: const pw.TextStyle(
+                                    fontSize: 8, color: PdfColors.grey700)),
+                          if (settings.email.isNotEmpty)
+                            pw.Text(settings.email,
+                                style: const pw.TextStyle(
+                                    fontSize: 8, color: PdfColors.grey700)),
+                        ],
+                      ),
                     ),
-                  pw.Text(
-                    'Généré le: ${dtFmt.format(haitiNow())}',
-                    style: const pw.TextStyle(
-                        fontSize: 8, color: PdfColors.grey500),
-                  ),
-                ],
+                  ],
+                ),
+              ),
+              pw.SizedBox(width: 16),
+              // Report info (droite)
+              pw.Expanded(
+                flex: 2,
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text(
+                      'RAPPORT DE VENTES',
+                      style: pw.TextStyle(
+                          font: bold,
+                          fontSize: 13,
+                          color: PdfColors.blue800),
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      'Période: $periodStr',
+                      style: const pw.TextStyle(
+                          fontSize: 8, color: PdfColors.grey700),
+                    ),
+                    if (params.userFilter != null)
+                      pw.Text(
+                        'Caissier: ${params.userFilter}',
+                        style: const pw.TextStyle(
+                            fontSize: 8, color: PdfColors.grey700),
+                      ),
+                    pw.Text(
+                      'Généré le: ${dtFmt.format(haitiNow())}',
+                      style: const pw.TextStyle(
+                          fontSize: 8, color: PdfColors.grey500),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -1140,7 +1180,7 @@ Future<void> _generatePdf(
                   pw.Expanded(child: _pdfKpiCell('Encaissé', mon(paid), bold)),
                   pw.SizedBox(width: 10),
                   pw.Expanded(
-                      child: _pdfKpiCell('Reste à encaisser', mon(rev - paid), bold)),
+                      child: _pdfKpiCell('Reste à encaisser', mon((rev - paid).clamp(0.0, double.infinity)), bold)),
                 ],
               ),
               pw.SizedBox(height: 10),
