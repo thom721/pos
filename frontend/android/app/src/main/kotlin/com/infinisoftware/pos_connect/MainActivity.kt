@@ -33,7 +33,6 @@ class MainActivity : FlutterActivity() {
                                 val device = adapter.getRemoteDevice(mac)
                                 // Connexion non-sécurisée — compatible avec la majorité des imprimantes génériques
                                 val socket = device.createInsecureRfcommSocketToServiceRecord(SPP_UUID)
-                                adapter.cancelDiscovery()
                                 socket.connect()
                                 btSocket = socket
                                 btOut = socket.outputStream
