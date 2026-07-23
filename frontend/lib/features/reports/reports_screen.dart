@@ -974,8 +974,10 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
 
 Future<void> _generatePdf(
     List<SaleModel> sales, ReportParams params, AppSettings settings) async {
-  final regular = await PdfGoogleFonts.notoSansRegular();
-  final bold = await PdfGoogleFonts.notoSansBold();
+  final regular = await PdfGoogleFonts.notoSansRegular()
+      .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helvetica());
+  final bold = await PdfGoogleFonts.notoSansBold()
+      .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helveticaBold());
 
   final dateFmt = DateFormat('dd/MM/yyyy', 'fr');
   final dtFmt = DateFormat('dd/MM/yyyy HH:mm', 'fr');

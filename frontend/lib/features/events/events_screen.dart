@@ -385,8 +385,10 @@ String _pdfStatusLabel(String status) => switch (status) {
 Future<Uint8List> _buildInvoicePdf(
     Invoice invoice, AppSettings settings) async {
   final doc = pw.Document();
-  final font = await PdfGoogleFonts.notoSansRegular();
-  final fontBold = await PdfGoogleFonts.notoSansBold();
+  final font = await PdfGoogleFonts.notoSansRegular()
+      .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helvetica());
+  final fontBold = await PdfGoogleFonts.notoSansBold()
+      .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helveticaBold());
   final fmt = _fmtFor(invoice.currency);
   final df = DateFormat('dd/MM/yyyy');
 
@@ -673,8 +675,10 @@ Future<Uint8List> _buildInvoicePdf(
 Future<Uint8List> _buildProformaPdf(
     Proforma proforma, AppSettings settings) async {
   final doc = pw.Document();
-  final font = await PdfGoogleFonts.notoSansRegular();
-  final fontBold = await PdfGoogleFonts.notoSansBold();
+  final font = await PdfGoogleFonts.notoSansRegular()
+      .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helvetica());
+  final fontBold = await PdfGoogleFonts.notoSansBold()
+      .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helveticaBold());
   final fmt = _fmtFor(proforma.currency);
   final df = DateFormat('dd/MM/yyyy');
 
