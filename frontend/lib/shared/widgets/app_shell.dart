@@ -1731,12 +1731,27 @@ class _DesktopPrintDialogState extends ConsumerState<_DesktopPrintDialog> {
                 ..._printers.map((p) => DropdownMenuItem<Printer?>(
                   value: p,
                   child: Row(children: [
+                    // Point de couleur : vert = disponible, orange = hors ligne
+                    Container(
+                      width: 7, height: 7,
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: p.isAvailable ? AppColors.success : AppColors.warning,
+                      ),
+                    ),
                     Expanded(
                       child: Text(p.name,
-                          style: const TextStyle(fontSize: 13),
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: p.isAvailable ? null : AppColors.textSecondary),
                           overflow: TextOverflow.ellipsis),
                     ),
-                    if (p.isDefault) ...[
+                    if (!p.isAvailable) ...[
+                      const SizedBox(width: 6),
+                      const Text('hors ligne',
+                          style: TextStyle(fontSize: 10, color: AppColors.warning)),
+                    ] else if (p.isDefault) ...[
                       const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(

@@ -394,7 +394,7 @@ class ThermalPrinterService {
         (p) => p?.url == printerUrl,
         orElse: () => null,
       );
-      if (printer != null) {
+      if (printer != null && printer.isAvailable) {
         await Printing.directPrintPdf(
           printer: printer,
           onLayout: (_) => bytes,
@@ -424,7 +424,10 @@ class ThermalPrinterService {
         (p) => p?.url == printerUrl,
         orElse: () => null,
       );
-      if (printer != null) {
+      // directPrintPdf seulement si l'imprimante est joignable.
+      // Les imprimantes Bluetooth peuvent être dans la liste mais non connectées
+      // → job bloqué "Unable to locate". On tombe sur layoutPdf dans ce cas.
+      if (printer != null && printer.isAvailable) {
         await Printing.directPrintPdf(
           printer: printer,
           onLayout: (_) => bytes,
