@@ -17,6 +17,15 @@ import 'package:pos_connect/data/models/debt_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 
+/// Convertit un DateTime naïf "heure Haïti" en chaîne ISO UTC.
+/// [toHaitiTime] retourne un naïf non-UTC — .toUtc() utiliserait le fuseau
+/// du téléphone, pas Haiti (UTC-5). Cette fonction corrige ça.
+String _haitiNaiveToUtcIso(DateTime dt) {
+  final asUtc = DateTime.utc(dt.year, dt.month, dt.day,
+      dt.hour, dt.minute, dt.second, dt.millisecond);
+  return asUtc.add(const Duration(hours: 5)).toIso8601String();
+}
+
 /// Cache SQLite local pour les données critiques POS (produits, clients, catégories).
 ///
 /// Alimenté par [OfflineCacheService] lors des syncs.
@@ -870,7 +879,7 @@ class LocalDbService {
         'status':         s.status,
         'cashier_name':   s.userFullName,
         'warehouse_id':   s.warehouseId,
-        'created_at':     s.createdAt.toUtc().toIso8601String(),
+        'created_at':     _haitiNaiveToUtcIso(s.createdAt),
         'synced':         1,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
 
@@ -898,7 +907,7 @@ class LocalDbService {
           'sale_id':    s.id,
           'amount':     p.amount,
           'method':     p.method,
-          'created_at': p.createdAt.toUtc().toIso8601String(),
+          'created_at': _haitiNaiveToUtcIso(p.createdAt),
         });
       }
     }
@@ -1172,7 +1181,7 @@ class LocalDbService {
         'total_amount': p.totalAmount,
         'paid_amount':  p.paidAmount,
         'status':       p.status,
-        'created_at':   p.createdAt.toUtc().toIso8601String(),
+        'created_at':   _haitiNaiveToUtcIso(p.createdAt),
         'synced':       1,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
 
@@ -1268,7 +1277,7 @@ class LocalDbService {
         'paid_amount':    d.paidAmount,
         'balance':        d.balance,
         'status':         d.status,
-        'created_at':     d.createdAt.toUtc().toIso8601String(),
+        'created_at':     _haitiNaiveToUtcIso(d.createdAt),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
