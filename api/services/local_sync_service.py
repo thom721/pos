@@ -374,19 +374,27 @@ def _coerce_for_db(model: Any, record: dict) -> dict:
     SQLite's DateTime type rejects raw strings; MySQL accepts them silently.
     """
     from sqlalchemy import DateTime as _DT, inspect as _insp
+    from api.core.config import settings as _s
+
+    dt_keys: set[str] = set()
     try:
         mapper = _insp(model)
-        cols = {c.key: c for c in mapper.columns}
+        dt_keys = {c.key for c in mapper.columns if isinstance(c.type, _DT)}
     except Exception:
-        return record
+        # Inspection peut échouer (import circulaire, mapper non initialisé).
+        # Fallback heuristique : toute clé *_at ou *_date est probablement un datetime.
+        dt_keys = {k for k in record if k.endswith("_at") or k.endswith("_date")}
+
+    _sqlite = _s.DB_TYPE == "sqlite"
 
     result = {}
     for k, v in record.items():
-        if isinstance(v, str) and k in cols:
-            col_type = cols[k].type
-            if isinstance(col_type, _DT):
-                parsed = _parse_dt(v)
-                v = parsed if parsed is not None else v
+        if isinstance(v, str) and k in dt_keys:
+            parsed = _parse_dt(v)
+            if parsed is not None:
+                # SQLite DateTime n'accepte que des datetime naïfs (sans tzinfo).
+                # MySQL accepte les deux ; on strip systématiquement pour être sûr.
+                v = parsed.replace(tzinfo=None) if _sqlite else parsed
         result[k] = v
     return result
 

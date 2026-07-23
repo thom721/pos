@@ -481,13 +481,17 @@ def _ensure_db_ready():
             else:
                 _sqlite_path = "./pos_connect.db"
             sqlite_url = f"sqlite:///{_sqlite_path}"
-            new_engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
+            new_engine = create_engine(
+                sqlite_url,
+                connect_args={"check_same_thread": False, "timeout": 15},
+            )
 
             from sqlalchemy import event as _sa_event
             @_sa_event.listens_for(new_engine, "connect")
             def _set_sqlite_pragma(dbapi_conn, _):
                 cursor = dbapi_conn.cursor()
                 cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA busy_timeout=15000")
                 cursor.execute("PRAGMA foreign_keys=ON")
                 cursor.close()
 

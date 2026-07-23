@@ -7,7 +7,9 @@ SQLALCHEMY_DATABASE_URL = get_database_url()
 
 _connect_args = {}
 if settings.DB_TYPE == "sqlite":
-    _connect_args = {"check_same_thread": False}
+    # timeout=15 : sqlite3 attend 15 s avant SQLITE_BUSY (évite "database is locked"
+    # sur écritures concurrentes sync ↔ requêtes API).
+    _connect_args = {"check_same_thread": False, "timeout": 15}
 elif settings.DB_TYPE == "mysql":
     # connect_timeout évite que PyMySQL bloque indéfiniment si MySQL ne répond pas
     _connect_args = {"connect_timeout": 10}
@@ -29,6 +31,7 @@ if settings.DB_TYPE == "sqlite":
     def _set_sqlite_pragma(dbapi_conn, _):
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=15000")   # 15 s avant SQLITE_BUSY
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 elif settings.DB_TYPE == "mysql":
