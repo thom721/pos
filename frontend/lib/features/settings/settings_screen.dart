@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show toHaitiTime;
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/core/theme.dart';
@@ -1251,7 +1252,7 @@ class _EntityRow extends StatelessWidget {
     String? fmtPush;
     if (lastPush != null) {
       try {
-        fmtPush = DateFormat('dd/MM HH:mm').format(DateTime.parse(lastPush).toLocal());
+        fmtPush = DateFormat('dd/MM HH:mm').format(toHaitiTime(DateTime.parse(lastPush)));
       } catch (_) {}
     }
 

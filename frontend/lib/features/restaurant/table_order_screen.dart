@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:pos_connect/data/models/product_model.dart';
@@ -130,7 +131,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
 
   Future<void> _confirmHotelCheckIn() async {
     final table = _table!;
-    final today = DateTime.now();
+    final today = haitiNow();
     DateTime checkOut = today.add(const Duration(days: 1));
     final guestCtrl = TextEditingController();
     String rateType = table.price > 0 ? 'nuit' : (table.pricePerDay > 0 ? 'jour' : 'moment');

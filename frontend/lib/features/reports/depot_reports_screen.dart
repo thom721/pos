@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
@@ -25,7 +26,7 @@ extension _PeriodLabel on _Period {
       };
 
   (DateTime, DateTime) range([DateTimeRange? custom]) {
-    final now   = DateTime.now();
+    final now   = haitiNow();
     final today = DateTime(now.year, now.month, now.day);
     switch (this) {
       case _Period.today:
@@ -380,7 +381,7 @@ class _PeriodSelector extends StatelessWidget {
           selected: active,
           onSelected: (_) async {
             if (p == _Period.custom) {
-              final now = DateTime.now();
+              final now = haitiNow();
               final result = await showDateRangePicker(
                 context: context,
                 firstDate: DateTime(now.year - 3),

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:dio/dio.dart' show FormData, Options, DioException, DioExceptionType;
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -2489,7 +2490,7 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
   Widget build(BuildContext context) {
     final openedAt = widget.session['opened_at'] != null
         ? DateFormat('HH:mm').format(
-            DateTime.tryParse(widget.session['opened_at'].toString()) ?? DateTime.now())
+            DateTime.tryParse(widget.session['opened_at'].toString()) ?? haitiNow())
         : '—';
 
     final closing  = double.tryParse(_balanceCtrl.text) ?? 0;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart' show dio, extractAnyError;
 import 'package:pos_connect/data/models/restaurant_model.dart';
@@ -399,7 +400,7 @@ class _OrderCard extends StatelessWidget {
 
   String get _timeLabel {
     if (order.createdAt == null) return '';
-    final now = DateTime.now();
+    final now = haitiNow();
     final diff = now.difference(order.createdAt!);
     if (diff.inMinutes < 60) return 'il y a ${diff.inMinutes} min';
     return DateFormat('HH:mm').format(order.createdAt!);

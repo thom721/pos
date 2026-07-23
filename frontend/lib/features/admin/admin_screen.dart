@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:pos_connect/core/date_utils.dart' show toHaitiTime;
 import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -292,7 +293,7 @@ class _TenantCard extends ConsumerWidget {
     String? formattedDate;
     if (createdAt != null) {
       try {
-        formattedDate = DateFormat('dd/MM/yyyy').format(DateTime.parse(createdAt).toLocal());
+        formattedDate = DateFormat('dd/MM/yyyy').format(toHaitiTime(DateTime.parse(createdAt)));
       } catch (_) {}
     }
 
@@ -930,7 +931,7 @@ class _PaymentRow extends ConsumerWidget {
   String _fmt(String? iso) {
     if (iso == null) return '';
     try {
-      return DateFormat('dd/MM/yyyy HH:mm').format(DateTime.parse(iso).toLocal());
+      return DateFormat('dd/MM/yyyy HH:mm').format(toHaitiTime(DateTime.parse(iso)));
     } catch (_) {
       return '';
     }
@@ -1866,7 +1867,8 @@ class _RegistersDialogState extends ConsumerState<_RegistersDialog> {
 
   String _formatDate(String? iso) {
     if (iso == null) return 'Jamais';
-    final dt = DateTime.tryParse(iso)?.toLocal();
+    final rawDt = DateTime.tryParse(iso);
+    final dt = rawDt != null ? toHaitiTime(rawDt) : null;
     if (dt == null) return '—';
     return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} '
         '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';

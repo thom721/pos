@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show toHaitiTime;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
@@ -409,9 +410,10 @@ class _OpenSessionsTabState extends ConsumerState<_OpenSessionsTab> {
                 itemBuilder: (_, i) {
                   final s = sessions[i];
                   final id = s['id'] as String;
-                  final openedAt = s['opened_at'] != null
-                      ? DateTime.tryParse(s['opened_at'].toString())?.toLocal()
+                  final rawOpened = s['opened_at'] != null
+                      ? DateTime.tryParse(s['opened_at'].toString())
                       : null;
+                  final openedAt = rawOpened != null ? toHaitiTime(rawOpened) : null;
                   final isClosing = _closing.contains(id);
 
                   return ListTile(
@@ -493,9 +495,10 @@ class _AuditRow extends StatelessWidget {
     final resourceId   = entry['resource_id'] as String?;
     final userName     = entry['user_name'] as String? ?? 'Système';
     final detail       = entry['detail'] as String?;
-    final createdAt    = entry['created_at'] != null
-        ? DateTime.tryParse(entry['created_at'].toString())?.toLocal()
+    final rawCreated   = entry['created_at'] != null
+        ? DateTime.tryParse(entry['created_at'].toString())
         : null;
+    final createdAt    = rawCreated != null ? toHaitiTime(rawCreated) : null;
     final dateFmt = DateFormat('dd/MM/yyyy HH:mm', 'fr');
 
     return ListTile(

@@ -12,6 +12,7 @@ import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/purchase_model.dart';
+import 'package:pos_connect/core/date_utils.dart' show toHaitiTime;
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 
@@ -1044,7 +1045,7 @@ class LocalDbService {
       finalAmount:  (row['final_amount'] as num).toDouble(),
       paidAmount:   (row['paid_amount'] as num).toDouble(),
       status:       row['status'] as String,
-      createdAt:    DateTime.parse(row['created_at'] as String).toLocal(),
+      createdAt:    toHaitiTime(DateTime.parse(row['created_at'] as String)),
       customerName:  row['customer_name'] as String?,
       customerId:    row['customer_id'] as String?,
       userId:        row['user_id'] as String?,
@@ -1230,7 +1231,7 @@ class LocalDbService {
       totalAmount:  (row['total_amount'] as num).toDouble(),
       paidAmount:   (row['paid_amount'] as num).toDouble(),
       status:       row['status'] as String,
-      createdAt:    DateTime.parse(row['created_at'] as String).toLocal(),
+      createdAt:    toHaitiTime(DateTime.parse(row['created_at'] as String)),
       supplierName: row['supplier_name'] as String?,
       supplierId:   row['supplier_id'] as String?,
       items: itemRows.map((r) => PurchaseItemModel(

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -112,7 +113,7 @@ class Invoice {
 
   bool get isLate =>
       dueDate != null &&
-      DateTime.now().isAfter(dueDate!) &&
+      haitiNow().isAfter(dueDate!) &&
       status != 'paid' &&
       status != 'cancelled';
 }

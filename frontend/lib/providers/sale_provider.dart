@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiTodayStartUtc;
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
@@ -70,12 +71,11 @@ final dashboardSalesProvider =
   ref.watch(syncEpochProvider); // rebuild après chaque sync SQLite
   final warehouseId = ref.watch(activeWarehouseProvider)?.id;
   final repo = ref.read(saleRepositoryProvider);
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
+  final todayUtc = haitiTodayStartUtc();
   return repo.getSales(
     limit: 50,
-    dateFrom: today,
-    dateTo: today.add(const Duration(days: 1)),
+    dateFrom: todayUtc,
+    dateTo: todayUtc.add(const Duration(days: 1)),
     warehouseId: warehouseId,
   );
 });

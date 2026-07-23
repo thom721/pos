@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/core/constants.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow, toHaitiTime;
 import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
@@ -91,9 +92,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (warning == null) return null;
     final raw = warning['expires_at']?.toString();
     if (raw == null) return warning;
-    final expiresAt = DateTime.tryParse(raw)?.toLocal();
+    final rawExpiry = DateTime.tryParse(raw);
+    final expiresAt = rawExpiry != null ? toHaitiTime(rawExpiry) : null;
     if (expiresAt == null) return warning;
-    final daysLeft = expiresAt.difference(DateTime.now()).inDays;
+    final daysLeft = expiresAt.difference(haitiNow()).inDays;
     if (daysLeft < 0) return null; // expiré → le backend suspendra au prochain login
     return {...warning, 'days_left': daysLeft};
   }

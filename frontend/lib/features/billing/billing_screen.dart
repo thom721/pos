@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show toHaitiTime;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -107,7 +108,7 @@ Future<void> _printBillingInvoice(
       : 30;
 
   final expiryLine = periodEnd != null
-      ? 'Expire le ${periodEnd.toLocal().toIso8601String().substring(0, 10)} ($days jours)'
+      ? 'Expire le ${toHaitiTime(periodEnd).toIso8601String().substring(0, 10)} ($days jours)'
       : '';
 
   final methodLabel = switch (method) {
@@ -224,7 +225,7 @@ Future<void> _printBillingInvoice(
                   child: pw.Text('Date de paiement',
                       style: pw.TextStyle(fontSize: 10, color: grey)),
                 ),
-                pw.Text(paidAt != null ? fmtFull.format(paidAt.toLocal()) : '—',
+                pw.Text(paidAt != null ? fmtFull.format(toHaitiTime(paidAt)) : '—',
                     style: pw.TextStyle(fontSize: 10, color: darkTxt)),
               ]),
             ]),
@@ -292,7 +293,7 @@ Future<void> _printBillingInvoice(
 
         // ── 3. Résumé paiement ────────────────────────────────────────────────
         pw.Text(
-          '$amtStr payé le ${paidAt != null ? fmtFull.format(paidAt.toLocal()) : '—'}',
+          '$amtStr payé le ${paidAt != null ? fmtFull.format(toHaitiTime(paidAt)) : '—'}',
           style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold,
               color: darkTxt),
         ),
@@ -362,7 +363,7 @@ Future<void> _printBillingInvoice(
         pw.Row(children: [
           pw.Expanded(flex: 2, child: cell(methodLabel)),
           pw.Expanded(flex: 2, child: cell(
-              paidAt != null ? fmtFull.format(paidAt.toLocal()) : '—')),
+              paidAt != null ? fmtFull.format(toHaitiTime(paidAt)) : '—')),
           pw.Expanded(flex: 2, child: cell(amtStr)),
           pw.Expanded(flex: 2, child: cell(receiptNum)),
         ]),
@@ -645,7 +646,7 @@ class _StatusCard extends StatelessWidget {
                 icon: Icons.event_rounded,
                 label: 'Abonnement jusqu\'au',
                 value: DateFormat('dd MMM yyyy', 'fr_FR').format(
-                    DateTime.parse(subscriptionEndsAt!).toLocal()),
+                    toHaitiTime(DateTime.parse(subscriptionEndsAt!))),
               ),
             ],
           ],

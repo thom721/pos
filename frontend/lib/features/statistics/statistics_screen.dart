@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
@@ -98,7 +99,7 @@ final _customRangeProvider = StateProvider<DateTimeRange?>((ref) => null);
 
 /// KPI + top products + payment methods — always current month.
 final _statsProvider = FutureProvider.autoDispose<_StatsData>((ref) async {
-  final now = DateTime.now();
+  final now = haitiNow();
   final from = DateTime(now.year, now.month, 1);
   final sales = await _fetchAllSales(from, now.add(const Duration(days: 1)));
   return _StatsData.from(sales);
@@ -107,7 +108,7 @@ final _statsProvider = FutureProvider.autoDispose<_StatsData>((ref) async {
 /// Revenue chart — depends on period and optional custom range.
 final _revenueChartProvider = FutureProvider.family
     .autoDispose<List<_ChartPoint>, _RevParams>((ref, params) async {
-  final now = DateTime.now();
+  final now = haitiNow();
 
   final DateTime from;
   final DateTime to = now.add(const Duration(days: 1));
@@ -260,7 +261,7 @@ final _prodFilterProvider = StateProvider<String?>((ref) => null);
 
 final _prodChartProvider = FutureProvider.family
     .autoDispose<_ProdResult, _ProdParams>((ref, params) async {
-  final now = DateTime.now();
+  final now = haitiNow();
 
   final DateTime from;
   final DateTime toDate;
@@ -454,7 +455,7 @@ class StatisticsScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Statistiques · ${DateFormat('MMMM yyyy', 'fr').format(DateTime.now())}',
+              'Statistiques · ${DateFormat('MMMM yyyy', 'fr').format(haitiNow())}',
               style: const TextStyle(
                   fontSize: 13, color: AppColors.textSecondary),
             ),
@@ -612,7 +613,7 @@ class _PeriodTabs extends StatelessWidget {
         // Custom range button
         GestureDetector(
           onTap: () async {
-            final now = DateTime.now();
+            final now = haitiNow();
             final picked = await showDateRangePicker(
               context: context,
               firstDate: DateTime(now.year - 3),

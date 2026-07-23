@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
@@ -47,7 +48,7 @@ class DashboardScreen extends ConsumerWidget {
                 style: Theme.of(context).textTheme.displayMedium),
             const SizedBox(height: 2),
             Text(
-              DateFormat('EEEE d MMMM yyyy', 'fr').format(DateTime.now()),
+              DateFormat('EEEE d MMMM yyyy', 'fr').format(haitiNow()),
               style: Theme.of(context)
                   .textTheme
                   .bodyMedium
@@ -74,7 +75,7 @@ class DashboardScreen extends ConsumerWidget {
                         style: Theme.of(context).textTheme.displayMedium),
                     const SizedBox(height: 4),
                     Text(
-                      DateFormat('EEEE d MMMM yyyy', 'fr').format(DateTime.now()),
+                      DateFormat('EEEE d MMMM yyyy', 'fr').format(haitiNow()),
                       style: Theme.of(context)
                           .textTheme
                           .bodyMedium

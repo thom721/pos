@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
@@ -1076,7 +1077,7 @@ class _PayrollPeriodDialogState extends State<_PayrollPeriodDialog> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
+    final now = haitiNow();
     _start   = DateTime(now.year, now.month, 1);
     _end     = DateTime(now.year, now.month + 1, 0);
     _payDate = DateTime(now.year, now.month + 1, 5);

@@ -11,6 +11,7 @@ import 'package:printing/printing.dart';
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
@@ -56,7 +57,7 @@ extension ReportPeriodLabel on ReportPeriod {
   }
 
   (DateTime, DateTime) get range {
-    final now = DateTime.now();
+    final now = haitiNow();
     final today = DateTime(now.year, now.month, now.day);
     switch (this) {
       case ReportPeriod.today:
@@ -888,7 +889,7 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
       final csv = _buildCsv(filtered, sym);
       final bytes = utf8.encode(csv);
       final filename =
-          'rapport_ventes_${DateFormat('yyyyMMdd').format(DateTime.now())}.csv';
+          'rapport_ventes_${DateFormat('yyyyMMdd').format(haitiNow())}.csv';
 
       if (kIsWeb) {
         // Web: téléchargement direct via FilePicker
@@ -1077,7 +1078,7 @@ Future<void> _generatePdf(
                           fontSize: 9, color: PdfColors.grey700),
                     ),
                   pw.Text(
-                    'Généré le: ${dtFmt.format(DateTime.now())}',
+                    'Généré le: ${dtFmt.format(haitiNow())}',
                     style: const pw.TextStyle(
                         fontSize: 8, color: PdfColors.grey500),
                   ),
@@ -1227,7 +1228,7 @@ Future<void> _generatePdf(
   );
 
   final fileName =
-      'rapport_ventes_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf';
+      'rapport_ventes_${DateFormat('yyyyMMdd').format(haitiNow())}.pdf';
 
   if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
     // Desktop: let the user pick where to save, then open the file.
@@ -1368,9 +1369,9 @@ class _DatePickerField extends StatelessWidget {
       onTap: () async {
         final picked = await showDatePicker(
           context: context,
-          initialDate: date ?? DateTime.now(),
+          initialDate: date ?? haitiNow(),
           firstDate: DateTime(2020),
-          lastDate: DateTime.now(),
+          lastDate: haitiNow(),
         );
         if (picked != null) onPicked(picked);
       },
