@@ -128,7 +128,7 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                   StatCard(
                     label: 'Solde à recouvrer',
-                    value: _fmt.format(totalRevenue - totalPaid),
+                    value: _fmt.format((totalRevenue - totalPaid).clamp(0.0, double.infinity)),
                     icon: Icons.warning_amber_rounded,
                     color: AppColors.warning,
                   ),
