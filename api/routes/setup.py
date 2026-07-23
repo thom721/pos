@@ -23,6 +23,7 @@ from api.models.User import User
 from api.models.Tenant import Tenant
 from api.services.auth import get_password_hash
 from api.core.config import settings, write_ini_config
+from api.core.dt_coerce import coerce_datetimes as _coerce_dt
 
 router = APIRouter(prefix="/setup", tags=["Setup"])
 
@@ -932,13 +933,16 @@ def connect_tenant(data: ConnectTenantRequest):
                             if not rid:
                                 continue
                             existing_wh = db.get(_WH, rid)
+                            _strip = settings.DB_TYPE == "sqlite"
                             if existing_wh is None:
                                 clean = {k: v for k, v in rec.items()
                                          if k in {c.key for c in _WH.__table__.columns}}
+                                clean = _coerce_dt(clean, strip_tz=_strip)
                                 db.add(_WH(**clean))
                                 _cfg_svc.create_for_warehouse(db, local_tid, rid)
                             else:
-                                for k, v in rec.items():
+                                coerced = _coerce_dt(rec, strip_tz=_strip)
+                                for k, v in coerced.items():
                                     if k != "id" and hasattr(existing_wh, k):
                                         setattr(existing_wh, k, v)
                         db.commit()

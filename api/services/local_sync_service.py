@@ -17,6 +17,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from api.core.config import settings
+from api.core.dt_coerce import coerce_datetimes as _coerce_dt_shared
 from api.models.SyncState import SyncState
 from api.models.Category import Category
 from api.models.Product import Product
@@ -357,46 +358,17 @@ def _run_sync_inner(db: Session) -> dict:
 
 
 def _parse_dt(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        dt = datetime.fromisoformat(value)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except Exception:
-        return None
+    from api.core.dt_coerce import parse_dt
+    return parse_dt(value)
 
 
 def _coerce_for_db(model: Any, record: dict) -> dict:
     """
     Convert ISO datetime strings to Python datetime objects for DateTime columns.
-    SQLite's DateTime type rejects raw strings; MySQL accepts them silently.
+    Délègue à dt_coerce.coerce_datetimes avec fallback heuristique si le modèle
+    ne peut pas être inspecté.
     """
-    from sqlalchemy import DateTime as _DT, inspect as _insp
-    from api.core.config import settings as _s
-
-    dt_keys: set[str] = set()
-    try:
-        mapper = _insp(model)
-        dt_keys = {c.key for c in mapper.columns if isinstance(c.type, _DT)}
-    except Exception:
-        # Inspection peut échouer (import circulaire, mapper non initialisé).
-        # Fallback heuristique : toute clé *_at ou *_date est probablement un datetime.
-        dt_keys = {k for k in record if k.endswith("_at") or k.endswith("_date")}
-
-    _sqlite = _s.DB_TYPE == "sqlite"
-
-    result = {}
-    for k, v in record.items():
-        if isinstance(v, str) and k in dt_keys:
-            parsed = _parse_dt(v)
-            if parsed is not None:
-                # SQLite DateTime n'accepte que des datetime naïfs (sans tzinfo).
-                # MySQL accepte les deux ; on strip systématiquement pour être sûr.
-                v = parsed.replace(tzinfo=None) if _sqlite else parsed
-        result[k] = v
-    return result
+    return _coerce_dt_shared(record, strip_tz=(settings.DB_TYPE == "sqlite"))
 
 
 # ── Sync status ──────────────────────────────────────────────────────────────

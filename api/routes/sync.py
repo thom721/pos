@@ -23,6 +23,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from api.core.config import settings, write_ini_config
+from api.core.dt_coerce import coerce_datetimes as _coerce_dt
 from api.database import get_db
 from api.models.Category import Category
 from api.models.Customer import Customer
@@ -285,6 +286,9 @@ def sync_push(
         if not rid:
             skipped += 1
             continue
+
+        _strip = settings.DB_TYPE == "sqlite"
+        clean  = _coerce_dt(clean, strip_tz=_strip)
 
         existing = db.get(model, rid)
         if existing is None:
