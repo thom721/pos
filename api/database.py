@@ -34,6 +34,7 @@ if settings.DB_TYPE == "sqlite":
         cursor.execute("PRAGMA busy_timeout=15000")   # 15 s avant SQLITE_BUSY
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
+
 elif settings.DB_TYPE == "mysql":
     @event.listens_for(engine, "connect")
     def _set_mysql_utc(dbapi_conn, _):
@@ -44,6 +45,34 @@ elif settings.DB_TYPE == "mysql":
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+# ── Safety net : convertit les strings ISO → datetime naïf avant tout flush
+# SQLite. Fonctionne même quand le fallback SQLite est activé au runtime
+# (main.py remplace engine après l'import).  Aucun impact sur MySQL.
+from datetime import datetime as _dt_cls
+from sqlalchemy import DateTime as _DT, inspect as _sa_inspect
+from sqlalchemy.orm import Session as _Session
+
+@event.listens_for(_Session, "before_flush")
+def _coerce_dt_strings_sqlite(session, flush_context, instances):
+    # settings.DB_TYPE est mis à jour dynamiquement si le fallback SQLite s'active
+    if settings.DB_TYPE != "sqlite":
+        return
+    def _fix(obj):
+        try:
+            for col in _sa_inspect(type(obj)).columns:
+                if isinstance(col.type, _DT):
+                    val = getattr(obj, col.key, None)
+                    if isinstance(val, str):
+                        try:
+                            setattr(obj, col.key,
+                                    _dt_cls.fromisoformat(val).replace(tzinfo=None))
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+    for obj in list(session.new) + list(session.dirty):
+        _fix(obj)
 
 
 def get_db():
