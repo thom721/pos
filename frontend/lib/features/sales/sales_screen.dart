@@ -1273,7 +1273,7 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
-                      'Permission Bluetooth refusée.\nActivez "Appareils à proximité" dans les paramètres de l\'app.',
+                      'Permission Bluetooth refusée.\nParamètres → Apps → POS Connect → Permissions → Appareils à proximité',
                       style: TextStyle(fontSize: 12, color: AppColors.error),
                     ),
                   ),
