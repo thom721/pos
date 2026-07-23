@@ -149,10 +149,18 @@ def _run_alembic_migrations() -> None:
     advisory pour éviter les conflits entre workers Gunicorn qui démarrent en
     parallèle. Chaque worker attend son tour ; ceux qui arrivent après le premier
     trouvent les migrations déjà appliquées et terminent immédiatement.
+
+    Dans un exe PyInstaller (sys.frozen=True), Alembic ne peut pas trouver env.py
+    car les fichiers .py sont compilés en bytecode embarqué. On saute Alembic
+    entièrement — _sync_schema_from_models gère la sync de schéma à la place.
     """
-    import os
+    import sys, os
     from alembic.config import Config as AlembicConfig
     from alembic import command as alembic_command
+
+    if getattr(sys, "frozen", False):
+        _log.info("Exe PyInstaller — migrations Alembic ignorées (sync via _sync_schema_from_models)")
+        return
 
     ini_path = os.path.join(os.path.dirname(__file__), "alembic.ini")
     alembic_cfg = AlembicConfig(ini_path)
