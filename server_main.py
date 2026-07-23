@@ -41,6 +41,29 @@ def _fix_workdir() -> None:
         pass  # mode source normal
 
 
+def _write_crash_log(tb_text: str) -> str:
+    import datetime
+    log_path = pathlib.Path(sys.executable).parent / "posconnect-crash.log"
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(f"\n{'=' * 60}\n")
+        f.write(f"CRASH {datetime.datetime.now().isoformat()}\n")
+        f.write(tb_text)
+    return str(log_path)
+
+
+def _show_crash_popup(log_path: str, summary: str) -> None:
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(  # type: ignore[attr-defined]
+            0,
+            f"Le serveur n'a pas pu démarrer :\n\n{summary}\n\nDétails dans :\n{log_path}",
+            "POS Connect — Erreur de démarrage",
+            0x10,  # MB_ICONERROR
+        )
+    except Exception:
+        pass
+
+
 def main() -> None:
     _fix_workdir()
 
@@ -67,4 +90,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        import traceback
+        tb = traceback.format_exc()
+        log_path = _write_crash_log(tb)
+        summary = tb.strip().splitlines()[-1] if tb.strip() else "Erreur inconnue"
+        _show_crash_popup(log_path, summary)
+        sys.exit(1)
