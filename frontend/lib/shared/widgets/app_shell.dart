@@ -21,6 +21,7 @@ import 'package:pos_connect/shared/widgets/pos_logo.dart';
 import 'package:pos_connect/services/bluetooth_print_service.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:printing/printing.dart' show Printer, Printing;
 
 class _NavItem {
   final String label;
@@ -547,7 +548,17 @@ class _TopBar extends ConsumerWidget {
           ),
           const Spacer(),
           const _WarehouseSelector(),
-          const SizedBox(width: 12),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: const Icon(Icons.receipt_long_outlined,
+                size: 20, color: AppColors.textSecondary),
+            tooltip: 'Paramètres d\'impression',
+            onPressed: () => showDialog(
+              context: context,
+              builder: (_) => const _DesktopPrintDialog(),
+            ),
+          ),
+          const SizedBox(width: 4),
           Container(
             padding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -1613,6 +1624,220 @@ class _PrintSettingsSheetState extends ConsumerState<_PrintSettingsSheet> {
         ),
         ),
       ),
+    );
+  }
+}
+
+// ── Dialog impression bureau (web + desktop) ──────────────────────────────────
+
+class _DesktopPrintDialog extends ConsumerStatefulWidget {
+  const _DesktopPrintDialog();
+
+  @override
+  ConsumerState<_DesktopPrintDialog> createState() =>
+      _DesktopPrintDialogState();
+}
+
+class _DesktopPrintDialogState extends ConsumerState<_DesktopPrintDialog> {
+  List<Printer> _printers = [];
+  bool _loadingPrinters = !kIsWeb;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!kIsWeb) _loadPrinters();
+  }
+
+  Future<void> _loadPrinters() async {
+    setState(() => _loadingPrinters = true);
+    try {
+      final list = await Printing.listPrinters();
+      if (mounted) setState(() { _printers = list; _loadingPrinters = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingPrinters = false);
+    }
+  }
+
+  Printer? _find(String url) {
+    if (url.isEmpty) return null;
+    try { return _printers.firstWhere((p) => p.url == url); } catch (_) { return null; }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
+
+    Widget printerRow(String label, String sub, String current,
+        void Function(Printer?) onChanged) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600)),
+                Text(sub, style: const TextStyle(
+                    fontSize: 11, color: AppColors.textSecondary)),
+              ],
+            )),
+            if (_loadingPrinters)
+              const SizedBox(width: 16, height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+            else
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                tooltip: 'Actualiser',
+                onPressed: _loadPrinters,
+              ),
+          ]),
+          const SizedBox(height: 6),
+          InputDecorator(
+            decoration: const InputDecoration(
+              isDense: true,
+              prefixIcon: Icon(Icons.print_rounded, size: 18),
+              contentPadding: EdgeInsets.fromLTRB(0, 8, 12, 8),
+            ),
+            child: DropdownButton<Printer?>(
+              value: _find(current),
+              isExpanded: true,
+              underline: const SizedBox(),
+              hint: const Text('Boîte de dialogue système',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+              items: [
+                const DropdownMenuItem<Printer?>(
+                  value: null,
+                  child: Text('— Boîte de dialogue système —',
+                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                ),
+                ..._printers.map((p) => DropdownMenuItem<Printer?>(
+                  value: p,
+                  child: Row(children: [
+                    Expanded(
+                      child: Text(p.name,
+                          style: const TextStyle(fontSize: 13),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    if (p.isDefault) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text('défaut',
+                            style: TextStyle(
+                                fontSize: 10, color: AppColors.primary)),
+                      ),
+                    ],
+                  ]),
+                )),
+              ],
+              onChanged: onChanged,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return AlertDialog(
+      title: const Row(children: [
+        Icon(Icons.print_outlined, size: 20),
+        SizedBox(width: 8),
+        Text('Paramètres d\'impression'),
+      ]),
+      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Taille du papier ──────────────────────────────────────────
+              const Text('Taille du papier',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              const SizedBox(height: 8),
+              SegmentedButton<int>(
+                segments: const [
+                  ButtonSegment(value: 58,
+                      icon: Icon(Icons.receipt_outlined, size: 16),
+                      label: Text('58 mm')),
+                  ButtonSegment(value: 80,
+                      icon: Icon(Icons.receipt_long_outlined, size: 16),
+                      label: Text('80 mm')),
+                ],
+                selected: {settings.paperWidth},
+                onSelectionChanged: (val) =>
+                    notifier.save(settings.copyWith(paperWidth: val.first)),
+              ),
+
+              // ── Impression automatique ────────────────────────────────────
+              const SizedBox(height: 8),
+              const Divider(height: 24),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Impression automatique',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                subtitle: const Text(
+                    'Imprimer le reçu dès qu\'une vente est encaissée',
+                    style: TextStyle(fontSize: 12)),
+                value: settings.posAutoPrint,
+                onChanged: (val) =>
+                    notifier.save(settings.copyWith(posAutoPrint: val)),
+              ),
+
+              // ── Imprimantes système (non-web seulement) ───────────────────
+              if (!kIsWeb) ...[
+                const Divider(height: 24),
+                printerRow(
+                  'Imprimante reçus caisse',
+                  'Pour les tickets de caisse POS',
+                  settings.posPrinterName,
+                  (p) => notifier.save(
+                      settings.copyWith(posPrinterName: p?.url ?? '')),
+                ),
+                const SizedBox(height: 16),
+                printerRow(
+                  'Imprimante documents',
+                  'Pour les factures et devis',
+                  settings.docPrinterName,
+                  (p) => notifier.save(
+                      settings.copyWith(docPrinterName: p?.url ?? '')),
+                ),
+              ],
+
+              if (kIsWeb)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(children: [
+                    const Icon(Icons.info_outline_rounded,
+                        size: 15, color: AppColors.textSecondary),
+                    const SizedBox(width: 6),
+                    const Expanded(
+                      child: Text(
+                        'Sur web, l\'imprimante est choisie via la boîte de dialogue du navigateur.',
+                        style: TextStyle(
+                            fontSize: 11, color: AppColors.textSecondary),
+                      ),
+                    ),
+                  ]),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Fermer'),
+        ),
+      ],
     );
   }
 }
