@@ -504,6 +504,42 @@ def _ensure_db_ready():
             raise
 
 
+def _ensure_sqlite_writable(engine) -> bool:
+    """
+    Vérifie si le fichier SQLite est accessible en écriture.
+    Si lecture seule, tente de retirer l'attribut readonly (Windows + Unix).
+    Retourne True si l'écriture est possible, False sinon.
+    """
+    import os, stat as _stat
+    from api.core.config import settings as _s
+    if _s.DB_TYPE != "sqlite":
+        return True  # MySQL — pas de vérification fichier
+
+    db_path = str(engine.url.database or "")
+    if not db_path or db_path == ":memory:":
+        return True
+
+    if os.access(db_path, os.W_OK):
+        return True  # déjà accessible en écriture
+
+    # Tenter de retirer l'attribut lecture seule
+    try:
+        current_mode = os.stat(db_path).st_mode
+        os.chmod(db_path, current_mode | _stat.S_IWRITE | _stat.S_IWGRP | _stat.S_IWOTH)
+        if os.access(db_path, os.W_OK):
+            _log.info("✅  Permissions corrigées sur %s", db_path)
+            return True
+    except Exception as _chmod_exc:
+        _log.debug("chmod ignoré : %s", _chmod_exc)
+
+    _log.warning(
+        "⚠️  %s est en lecture seule — les mises à jour au démarrage seront ignorées. "
+        "Pour corriger (Windows) : icacls \"%s\" /grant Users:(F)",
+        db_path, db_path,
+    )
+    return False
+
+
 @app.on_event("startup")
 def on_startup():
     from api.database import SessionLocal
@@ -513,15 +549,21 @@ def on_startup():
     # 0. Vérifie la connexion DB — bascule sur SQLite si MySQL absent
     _active_engine = _ensure_db_ready()
 
+    # 0b. Vérifie si SQLite est accessible en écriture (une seule fois, avant tout)
+    _db_writable = _ensure_sqlite_writable(_active_engine)
+
     # 1. Crée les tables manquantes (nouveau déploiement ou nouvelle table ajoutée)
-    Base.metadata.create_all(bind=_active_engine)
-    # 2. Applique les migrations Alembic (ou stamp si premier démarrage)
-    try:
-        _run_alembic_migrations()
-    except Exception as exc:
-        _log.warning("Alembic migration warning: %s", exc)
-    # 2b. Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy
-    _sync_schema_from_models(_active_engine)
+    if _db_writable:
+        Base.metadata.create_all(bind=_active_engine)
+        # 2. Applique les migrations Alembic (ou stamp si premier démarrage)
+        try:
+            _run_alembic_migrations()
+        except Exception as exc:
+            _log.warning("Alembic migration warning: %s", exc)
+        # 2b. Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy
+        _sync_schema_from_models(_active_engine)
+    else:
+        _log.info("DB lecture seule — create_all / migrations ignorés.")
 
     import api.database as _db_module
     db = _db_module.SessionLocal()
@@ -530,12 +572,13 @@ def on_startup():
         from api.core.config import load_ini_config as _load_ini
         _ini = _load_ini()
         local_tid: str | None = (_ini.get("CLOUD_TENANT_ID") or _ini.get("cloud_tenant_id") or "").strip() or None
-        # 4. Superadmin — auto-génère les credentials si absent, crée le user
-        _ensure_cloud_admin(db, local_tid)
-        # 5. Dépôt par défaut — crée "Depot principal" si aucun dépôt n'existe
-        _ensure_default_warehouse(db, local_tid)
-        # Seed/sync built-in roles — crée ou met à jour les permissions
-        try:
+
+        if _db_writable:
+            # 4. Superadmin — auto-génère les credentials si absent, crée le user
+            _ensure_cloud_admin(db, local_tid)
+            # 5. Dépôt par défaut — crée "Depot principal" si aucun dépôt n'existe
+            _ensure_default_warehouse(db, local_tid)
+            # 6. Seed/sync built-in roles — crée ou met à jour les permissions
             for rd in _BUILTIN_ROLES:
                 perms = rd["permissions"] if rd["permissions"] is not None \
                     else list(ROLE_PERMISSIONS.get(rd["name"], set()))
@@ -553,21 +596,8 @@ def on_startup():
                     existing.color       = rd["color"]
                     existing.permissions = perms
             db.commit()
-        except Exception as _roles_exc:
-            _emsg = str(_roles_exc).lower()
-            if "readonly" in _emsg or "read only" in _emsg or "read-only" in _emsg:
-                _log.warning(
-                    "⚠️  SQLite en lecture seule — mise à jour des rôles ignorée. "
-                    "Vérifiez les permissions sur pos_connect.db "
-                    "(clic droit → Propriétés → Sécurité, ou icacls). "
-                    "Le serveur continue avec les rôles existants."
-                )
-                db.rollback()
-            else:
-                _log.exception("ERREUR CRITIQUE on_startup — le serveur ne peut pas démarrer")
-                raise
 
-        # Load all roles into ROLE_PERMISSIONS — lecture seule, toujours possible
+        # Charge les rôles en mémoire — lecture seule, toujours possible
         try:
             load_roles_from_db(db.query(RoleModel).all())
         except Exception as _load_exc:
