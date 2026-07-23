@@ -323,7 +323,17 @@ def _ensure_default_warehouse(db, tenant_id: str) -> None:
             _cfg_svc.create_for_warehouse(db, tenant_id, installer_wh_id)
             return
 
-        # Pas d'ID installer — comportement par défaut
+        # Pas d'ID installer — comportement par défaut.
+        # Si ce serveur est lié au cloud (cloud_sync_url configuré), ne pas créer
+        # de dépôt local : il viendra du sync pull avec le bon UUID cloud.
+        # Créer un dépôt local ici produirait un doublon sur le cloud après sync.
+        from api.core.config import load_ini_config as _lini
+        _ini_cfg = _lini()
+        _is_cloud_linked = bool((_ini_cfg.get("CLOUD_SYNC_URL") or _ini_cfg.get("cloud_sync_url") or "").strip())
+        if _is_cloud_linked:
+            _log.info("Serveur cloud-linked — pas de création de dépôt local (viendra du sync pull)")
+            return
+
         exists = db.query(WarehouseModel).filter(
             WarehouseModel.tenant_id == tenant_id
         ).first()
