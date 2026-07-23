@@ -237,10 +237,23 @@ port = $MySqlPort
 port = $MySqlPort
 "@
 
+        # init.sql execute par MySQL lors de l'initialisation :
+        # --initialize-insecure cree root@localhost uniquement.
+        # Les connexions TCP (--host=127.0.0.1) s'authentifient comme root@'127.0.0.1'
+        # qui n'existe pas → Access denied sur TOUT appel mysql/mysqladmin apres l'init.
+        # Ce fichier cree root@'127.0.0.1' pendant l'init pour que les connexions TCP
+        # fonctionnent immediatement sans etape supplementaire.
+        $InitSqlPath = "$MySqlDir\init.sql"
+        Write-UTF8NoBOM $InitSqlPath @"
+CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '';
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+"@
+
         # Capturer la sortie d'abord, puis verifier $LASTEXITCODE.
         # Le pipe direct (cmd | ForEach-Object) perd $LASTEXITCODE car ForEach-Object
         # est un cmdlet PS qui remet LASTEXITCODE a 0 apres execution.
-        $_initOut  = & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure 2>&1
+        $_initOut  = & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure --init-file="$InitSqlPath" 2>&1
         $_initCode = $LASTEXITCODE
         $_initOut | ForEach-Object { Write-Log "  [mysqld-init] $_" }
         if ($_initCode -ne 0) {
@@ -249,7 +262,7 @@ port = $MySqlPort
             Get-ChildItem "$MySqlData" -ErrorAction SilentlyContinue |
                 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 1
-            $_initOut2  = & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure 2>&1
+            $_initOut2  = & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure --init-file="$InitSqlPath" 2>&1
             $_initCode2 = $LASTEXITCODE
             $_initOut2 | ForEach-Object { Write-Log "  [mysqld-init-retry] $_" }
             if ($_initCode2 -ne 0) {
@@ -258,7 +271,7 @@ port = $MySqlPort
                 Write-Log "MySQL reinitialise avec succes apres nettoyage du datadir"
             }
         } else {
-            Write-Log "MySQL initialise (root sans mot de passe)"
+            Write-Log "MySQL initialise (root@localhost + root@127.0.0.1 sans mot de passe)"
         }
     } else {
         Write-Log "MySQL deja initialise"
@@ -318,7 +331,7 @@ port = $MySqlPort
     for ($i = 0; $i -lt 20; $i++) {
         Start-Sleep -Seconds 2
         $ping = & "$MySqlBinDir\mysqladmin.exe" --host=127.0.0.1 --port=$MySqlPort `
-                    --connect-timeout=2 ping 2>&1
+                    --user=root --connect-timeout=2 ping 2>&1
         if ("$ping" -match "mysqld is alive") {
             $MySqlReady = $true
             Write-Log "MySQL pret (${i}x2s)"
