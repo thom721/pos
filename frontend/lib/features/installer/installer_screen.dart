@@ -1497,10 +1497,15 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
 
     } on DioException catch (e) {
       final code = e.response?.statusCode;
-      final msg  = code == 403 || code == 401
+      final detail = e.response?.data is Map
+          ? (e.response!.data as Map)['detail']?.toString()
+          : null;
+      final msg = (code == 403 || code == 401)
           ? 'Identifiants incorrects ou compte inactif'
-          : e.response?.data?['detail']?.toString() ??
-            'Impossible de joindre le serveur ($url)';
+          : detail ??
+              (code != null
+                  ? 'Serveur inaccessible (HTTP $code) — l\'API n\'est peut-être pas démarrée'
+                  : 'Impossible de joindre le serveur ($url)');
       setState(() => _error = msg);
     } catch (e) {
       setState(() => _error = e.toString());
