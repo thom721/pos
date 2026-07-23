@@ -37,6 +37,7 @@ class DbTestRequest(BaseModel):
     user: str = "pos_user"
     password: str = ""
     path: str = "./pos_data.db"
+    root_password: str = ""   # Mot de passe root MySQL (optionnel, pour auto-fix Windows)
 
 
 class InitRequest(BaseModel):
@@ -189,10 +190,11 @@ def _auto_fix_mysql_socket(user: str, new_password: str) -> bool:
 
 
 def _auto_fix_mysql_windows(
-    host: str, port: int, db_name: str, pos_user: str, pos_password: str
+    host: str, port: int, db_name: str, pos_user: str, pos_password: str,
+    root_password: str = "",
 ) -> bool:
     """
-    Sur Windows avec MySQL local bundlé, tente de créer pos_user via root (sans mot de passe).
+    Sur Windows avec MySQL local bundlé, tente de créer pos_user via root.
     Crée l'utilisateur pour les deux hôtes 'localhost' et '127.0.0.1'.
     Retourne True si la création a réussi.
     """
@@ -208,7 +210,8 @@ def _auto_fix_mysql_windows(
         "..", "..", "mysql", "bin", "mysql.exe",
     ))
 
-    root_passwords = [""]  # Le MySQL bundlé n'a pas de mot de passe root par défaut
+    # Essaie le mot de passe fourni en premier, puis le mot de passe vide
+    root_passwords = list(dict.fromkeys([root_password, ""])) if root_password else [""]
     root_hosts = ["localhost", "127.0.0.1"]
 
     for root_pass in root_passwords:
@@ -425,7 +428,8 @@ def test_db_connection(data: DbTestRequest):
         # Sur Windows : tenter de créer pos_user via root MySQL bundlé (sans mot de passe)
         if platform.system() == "Windows":
             fixed = _auto_fix_mysql_windows(
-                data.host, data.port, data.name, data.user, data.password
+                data.host, data.port, data.name, data.user, data.password,
+                root_password=data.root_password,
             )
         else:
             # Sur Debian/Ubuntu : MySQL root utilise auth_socket
@@ -773,17 +777,12 @@ def connect_tenant(data: ConnectTenantRequest):
                             pass
                     db.execute(_sa_text("SET FOREIGN_KEY_CHECKS=1"))
                 else:
-                    # SQLite: PRAGMA foreign_keys = OFF is a no-op inside a transaction.
-                    # Strategy: INSERT clone with new UUID → UPDATE children → DELETE old.
-                    mapper = _sa_insp(type(local_tenant))
-                    cols = [c.key for c in mapper.columns]
-                    vals = {c: getattr(local_tenant, c) for c in cols}
-                    vals["id"] = cloud_tenant_id
-                    col_list = ", ".join(cols)
-                    ph_list = ", ".join(f":{c}" for c in cols)
+                    # SQLite: UPDATE le PK directement (FK non enforced par défaut).
+                    # On ne fait pas INSERT+DELETE car INSERT échoue sur la contrainte
+                    # UNIQUE(slug) si l'ancienne ligne existe encore.
                     db.execute(
-                        _sa_text(f"INSERT INTO tenants ({col_list}) VALUES ({ph_list})"),
-                        vals,
+                        _sa_text("UPDATE tenants SET id = :new WHERE id = :old"),
+                        {"new": cloud_tenant_id, "old": old_tid},
                     )
                     for _tbl in _child_tables:
                         try:
@@ -793,10 +792,6 @@ def connect_tenant(data: ConnectTenantRequest):
                             )
                         except Exception:
                             pass
-                    db.execute(
-                        _sa_text("DELETE FROM tenants WHERE id = :old"),
-                        {"old": old_tid},
-                    )
                 db.flush()
 
         local_tid = cloud_tenant_id or local_tenant.id

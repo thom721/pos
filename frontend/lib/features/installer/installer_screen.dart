@@ -647,7 +647,7 @@ class _MysqlSetupPage extends ConsumerStatefulWidget {
 
 class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
   final _formKey = GlobalKey<FormState>();
-  late TextEditingController _host, _port, _name, _user, _pass;
+  late TextEditingController _host, _port, _name, _user, _pass, _rootPass;
   String? _error;
   bool _isAccessDenied = false;
   bool _fixingSocket = false;
@@ -666,6 +666,7 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
     _name = TextEditingController(text: cfg.dbName);
     _user = TextEditingController(text: cfg.dbUser);
     _pass = TextEditingController(text: cfg.dbPassword);
+    _rootPass = TextEditingController();
     _detectMysql();
     _loadCurrentDbConfig();
   }
@@ -842,6 +843,7 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
         'name': _name.text.trim(),
         'user': _user.text.trim(),
         'password': _pass.text,
+        if (_rootPass.text.isNotEmpty) 'root_password': _rootPass.text,
       });
       final c = ref.read(_configProvider);
       ref.read(_configProvider.notifier).state = c
@@ -1023,6 +1025,17 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
                               ),
                             ),
                             const SizedBox(height: 12),
+                            TextField(
+                              controller: _rootPass,
+                              obscureText: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Mot de passe root MySQL',
+                                hintText: 'Laissez vide si pas de mot de passe',
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
                             SizedBox(
                               width: double.infinity,
                               child: FilledButton.icon(
