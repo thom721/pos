@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
@@ -388,13 +390,13 @@ class ThermalPrinterService {
         reference: reference, discount: discount,
         paidAmount: paidAmount, paymentMethod: paymentMethod);
 
-    if (printerUrl != null && printerUrl.isNotEmpty) {
+    if (!Platform.isMacOS && printerUrl != null && printerUrl.isNotEmpty) {
       final printers = await Printing.listPrinters();
       final printer = printers.cast<Printer?>().firstWhere(
         (p) => p?.url == printerUrl,
         orElse: () => null,
       );
-      if (printer != null && printer.isAvailable) {
+      if (printer != null) {
         await Printing.directPrintPdf(
           printer: printer,
           onLayout: (_) => bytes,
@@ -418,16 +420,16 @@ class ThermalPrinterService {
   }) async {
     final bytes = await buildReceiptPdf(sale, settings);
 
-    if (printerUrl != null && printerUrl.isNotEmpty) {
+    // Sur macOS, directPrintPdf envoie à la queue CUPS sans vérifier la
+    // connexion Bluetooth → job bloqué "Unable to locate printer" sans feedback.
+    // layoutPdf ouvre la boîte de dialogue système qui gère le BT activement.
+    if (!Platform.isMacOS && printerUrl != null && printerUrl.isNotEmpty) {
       final printers = await Printing.listPrinters();
       final printer = printers.cast<Printer?>().firstWhere(
         (p) => p?.url == printerUrl,
         orElse: () => null,
       );
-      // directPrintPdf seulement si l'imprimante est joignable.
-      // Les imprimantes Bluetooth peuvent être dans la liste mais non connectées
-      // → job bloqué "Unable to locate". On tombe sur layoutPdf dans ce cas.
-      if (printer != null && printer.isAvailable) {
+      if (printer != null) {
         await Printing.directPrintPdf(
           printer: printer,
           onLayout: (_) => bytes,
