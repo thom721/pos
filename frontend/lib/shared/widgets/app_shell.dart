@@ -18,6 +18,7 @@ import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/license_service.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/shared/widgets/pos_logo.dart';
+import 'dart:io' show Platform, Process;
 import 'package:pos_connect/services/bluetooth_print_service.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
@@ -1658,6 +1659,21 @@ class _DesktopPrintDialogState extends ConsumerState<_DesktopPrintDialog> {
     }
   }
 
+  Future<void> _openSystemPrinters() async {
+    try {
+      if (Platform.isMacOS) {
+        await Process.run('open',
+            ['x-apple.systempreferences:com.apple.Print-Scan-preference-pane']);
+      } else if (Platform.isWindows) {
+        await Process.run('rundll32',
+            ['shell32.dll,SHHelpShortcuts_RunDLL PrintersFolder']);
+      } else if (Platform.isLinux) {
+        await Process.run('system-config-printer', [],
+            runInShell: true);
+      }
+    } catch (_) {}
+  }
+
   Printer? _find(String url) {
     if (url.isEmpty) return null;
     try { return _printers.firstWhere((p) => p.url == url); } catch (_) { return null; }
@@ -1794,6 +1810,64 @@ class _DesktopPrintDialogState extends ConsumerState<_DesktopPrintDialog> {
               // ── Imprimantes système (non-web seulement) ───────────────────
               if (!kIsWeb) ...[
                 const Divider(height: 24),
+
+                // Bannière info : l'imprimante doit être ajoutée au système
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.info.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: AppColors.info.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.info_outline_rounded,
+                          size: 16, color: AppColors.info),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Seules les imprimantes enregistrées dans le système apparaissent ici.',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Si votre imprimante Bluetooth n\'apparaît pas, ajoutez-la d\'abord dans les réglages système, puis cliquez sur Actualiser.',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textSecondary),
+                            ),
+                            const SizedBox(height: 6),
+                            TextButton.icon(
+                              onPressed: _openSystemPrinters,
+                              icon: const Icon(Icons.open_in_new_rounded,
+                                  size: 14),
+                              label: Text(
+                                Platform.isMacOS
+                                    ? 'Ouvrir Imprimantes & Scanners'
+                                    : Platform.isWindows
+                                        ? 'Ouvrir Imprimantes Windows'
+                                        : 'Ouvrir gestionnaire d\'imprimantes',
+                              ),
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                                textStyle: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 printerRow(
                   'Imprimante reçus caisse',
                   'Pour les tickets de caisse POS',
