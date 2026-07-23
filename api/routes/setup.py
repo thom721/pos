@@ -898,7 +898,7 @@ def connect_tenant(data: ConnectTenantRequest):
 
         db.commit()
 
-        # ── Réclamer le warehouse sur le cloud — le sync pull l'apportera en local ──
+        # ── Réclamer le warehouse sur le cloud puis le puller immédiatement ──────
         if data.warehouse_id:
             try:
                 claim_resp = httpx.post(
@@ -913,6 +913,37 @@ def connect_tenant(data: ConnectTenantRequest):
                         "Ce dépôt est déjà utilisé par une autre installation. "
                         "Relancez l'installation et choisissez un autre dépôt."
                     )
+                # Sync pull immédiat du dépôt → disponible en local dès le démarrage,
+                # sans attendre le premier cycle de sync automatique.
+                try:
+                    pull_resp = httpx.get(
+                        f"{cloud_url}/api/sync/pull",
+                        params={"entity_type": "warehouse", "since": "1970-01-01T00:00:00+00:00"},
+                        headers={"Authorization": f"Bearer {sync_token}"},
+                        timeout=15,
+                    )
+                    if pull_resp.status_code == 200:
+                        from api.models.Warehouse import Warehouse as _WH
+                        from api.services import config_service as _cfg_svc
+                        records = pull_resp.json().get("records", [])
+                        for rec in records:
+                            rec["tenant_id"] = local_tid
+                            rid = rec.get("id")
+                            if not rid:
+                                continue
+                            existing_wh = db.get(_WH, rid)
+                            if existing_wh is None:
+                                clean = {k: v for k, v in rec.items()
+                                         if k in {c.key for c in _WH.__table__.columns}}
+                                db.add(_WH(**clean))
+                                _cfg_svc.create_for_warehouse(db, local_tid, rid)
+                            else:
+                                for k, v in rec.items():
+                                    if k != "id" and hasattr(existing_wh, k):
+                                        setattr(existing_wh, k, v)
+                        db.commit()
+                except Exception as pull_exc:
+                    _log_setup.warning("sync pull warehouse après claim: %s", pull_exc)
             except HTTPException:
                 raise
             except Exception:

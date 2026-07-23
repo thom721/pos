@@ -382,24 +382,35 @@ def create_tenant(
     )
     db.add(owner_user)
 
-    default_warehouse = Warehouse(
-        tenant_id=tenant.id,
-        name="Dépôt principal",
-        is_default=True,
-        is_active=True,
-        is_claimed=False,
-    )
-    db.add(default_warehouse)
-    db.flush()
+    # Ne créer le dépôt par défaut que si aucun n'existe déjà pour ce tenant.
+    existing_wh = db.query(Warehouse).filter(
+        Warehouse.tenant_id == tenant.id,
+    ).first()
+    if not existing_wh:
+        default_warehouse = Warehouse(
+            tenant_id=tenant.id,
+            name="Dépôt principal",
+            is_default=True,
+            is_active=True,
+            is_claimed=False,
+        )
+        db.add(default_warehouse)
+        db.flush()
+    else:
+        default_warehouse = existing_wh
 
     # Caisse par défaut — 1 par tenant, l'admin ou le tenant en créé d'autres jusqu'à max_caisses
-    default_register = PosRegister(
-        tenant_id=tenant.id,
-        warehouse_id=default_warehouse.id,
-        name="Caisse 1",
-        is_active=True,
-    )
-    db.add(default_register)
+    existing_reg = db.query(PosRegister).filter(
+        PosRegister.tenant_id == tenant.id,
+    ).first()
+    if not existing_reg:
+        default_register = PosRegister(
+            tenant_id=tenant.id,
+            warehouse_id=default_warehouse.id,
+            name="Caisse 1",
+            is_active=True,
+        )
+        db.add(default_register)
     db.commit()
     db.refresh(tenant)
 

@@ -283,57 +283,38 @@ def _ensure_schema_patches() -> None:
 
 
 def _ensure_default_warehouse(db, tenant_id: str) -> None:
-    """Crée ou identifie le dépôt par défaut pour ce tenant. Idempotent."""
+    """
+    Serveurs cloud-linked : les dépôts viennent du cloud via sync pull uniquement.
+    Ne crée rien en local. Si installer_wh_id est connu, marque juste le bon
+    dépôt comme is_default s'il existe déjà (après un premier pull).
+    Serveurs standalone (sans cloud_sync_url) : crée un dépôt par défaut si absent.
+    """
     from api.models.Warehouse import Warehouse as WarehouseModel
-    from api.core.config import settings as _cfg
+    from api.core.config import settings as _cfg, load_ini_config as _lini
     try:
-        installer_wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
+        _ini_cfg = _lini()
+        _is_cloud_linked = bool(
+            (_ini_cfg.get("CLOUD_SYNC_URL") or _ini_cfg.get("cloud_sync_url") or "").strip()
+        )
 
-        if installer_wh_id:
-            # Cherche le warehouse avec l'UUID cloud sélectionné à l'installation
-            wh = db.query(WarehouseModel).filter(
-                WarehouseModel.id == installer_wh_id,
-                WarehouseModel.tenant_id == tenant_id,
-            ).first()
-            if wh:
-                if not wh.is_default:
+        if _is_cloud_linked:
+            # Dépôts viennent du cloud seulement — juste aligner is_default si possible
+            installer_wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
+            if installer_wh_id:
+                wh = db.query(WarehouseModel).filter(
+                    WarehouseModel.id == installer_wh_id,
+                    WarehouseModel.tenant_id == tenant_id,
+                ).first()
+                if wh and not wh.is_default:
                     db.query(WarehouseModel).filter(
                         WarehouseModel.tenant_id == tenant_id,
                         WarehouseModel.is_default == True,  # noqa: E712
                     ).update({"is_default": False})
                     wh.is_default = True
                     db.commit()
-                return
-            # Warehouse pas encore syncsé — crée un placeholder avec l'UUID cloud
-            db.query(WarehouseModel).filter(
-                WarehouseModel.tenant_id == tenant_id,
-                WarehouseModel.is_default == True,  # noqa: E712
-            ).update({"is_default": False})
-            wh = WarehouseModel(
-                id=installer_wh_id,
-                tenant_id=tenant_id,
-                name="Depot principal",
-                is_default=True,
-                is_active=True,
-            )
-            db.add(wh)
-            db.commit()
-            _log.info("Depot installer cree (placeholder) ID=%s", installer_wh_id)
-            from api.services import config_service as _cfg_svc
-            _cfg_svc.create_for_warehouse(db, tenant_id, installer_wh_id)
-            return
+            return  # Jamais de création locale pour un serveur cloud-linked
 
-        # Pas d'ID installer — comportement par défaut.
-        # Si ce serveur est lié au cloud (cloud_sync_url configuré), ne pas créer
-        # de dépôt local : il viendra du sync pull avec le bon UUID cloud.
-        # Créer un dépôt local ici produirait un doublon sur le cloud après sync.
-        from api.core.config import load_ini_config as _lini
-        _ini_cfg = _lini()
-        _is_cloud_linked = bool((_ini_cfg.get("CLOUD_SYNC_URL") or _ini_cfg.get("cloud_sync_url") or "").strip())
-        if _is_cloud_linked:
-            _log.info("Serveur cloud-linked — pas de création de dépôt local (viendra du sync pull)")
-            return
-
+        # Serveur standalone — crée le dépôt par défaut seulement si absent
         exists = db.query(WarehouseModel).filter(
             WarehouseModel.tenant_id == tenant_id
         ).first()
@@ -346,7 +327,7 @@ def _ensure_default_warehouse(db, tenant_id: str) -> None:
             )
             db.add(wh)
             db.commit()
-            _log.info("Depot par defaut cree pour le tenant %s", tenant_id)
+            _log.info("Depot par defaut cree pour le tenant %s (standalone)", tenant_id)
             from api.services import config_service as _cfg_svc
             _cfg_svc.create_for_warehouse(db, tenant_id, wh.id)
     except Exception as exc:
