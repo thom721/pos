@@ -1205,18 +1205,34 @@ class LocalDbService {
   Future<void> upsertPurchases(List<PurchaseModel> purchases) async {
     final db = _safeDb;
     if (db == null) return;
+
+    final ids = purchases.map((p) => p.id).toList();
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final existingRows = ids.isEmpty
+        ? <Map<String, Object?>>[]
+        : await db.rawQuery(
+            'SELECT id, warehouse_id FROM purchases WHERE id IN ($placeholders)',
+            ids,
+          );
+    final existingWarehouseIds = {
+      for (final row in existingRows)
+        row['id'] as String: row['warehouse_id'] as String?,
+    };
+
     final batch = db.batch();
     for (final p in purchases) {
+      final warehouseId = p.warehouseId ?? existingWarehouseIds[p.id];
       batch.insert('purchases', {
-        'id':           p.id,
-        'reference':    p.reference,
-        'supplier_id':  p.supplierId,
+        'id':            p.id,
+        'reference':     p.reference,
+        'supplier_id':   p.supplierId,
         'supplier_name': p.supplierName,
-        'total_amount': p.totalAmount,
-        'paid_amount':  p.paidAmount,
-        'status':       p.status,
-        'created_at':   _haitiNaiveToUtcIso(p.createdAt),
-        'synced':       1,
+        'warehouse_id':  warehouseId,
+        'total_amount':  p.totalAmount,
+        'paid_amount':   p.paidAmount,
+        'status':        p.status,
+        'created_at':    _haitiNaiveToUtcIso(p.createdAt),
+        'synced':        1,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
 
       for (final item in p.items) {

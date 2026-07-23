@@ -1,3 +1,5 @@
+import 'package:pos_connect/core/date_utils.dart' show parseApiDate;
+
 class PurchaseItemModel {
   final String id;
   final String productId;
@@ -37,6 +39,7 @@ class PurchaseModel {
   final String? supplierName;
   final String? supplierId;
   final String? userFullName;
+  final String? warehouseId;
   final List<PurchaseItemModel> items;
 
   PurchaseModel({
@@ -49,6 +52,7 @@ class PurchaseModel {
     this.supplierName,
     this.supplierId,
     this.userFullName,
+    this.warehouseId,
     required this.items,
   });
 
@@ -62,14 +66,13 @@ class PurchaseModel {
         paidAmount:
             double.tryParse(json['paid_amount']?.toString() ?? '0') ?? 0,
         status: json['status']?.toString() ?? 'pending',
-        createdAt:
-            DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
-                DateTime.now(),
+        createdAt: parseApiDate(json['created_at']?.toString()),
         supplierName: json['supplier']?['name']?.toString(),
         supplierId: json['supplier']?['id']?.toString(),
         userFullName: json['user'] != null
             ? '${json['user']['fname']} ${json['user']['lname']}'
             : null,
+        warehouseId: json['warehouse_id']?.toString(),
         items: (json['items'] as List? ?? [])
             .map((e) => PurchaseItemModel.fromJson(e))
             .toList(),

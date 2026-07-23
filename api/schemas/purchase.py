@@ -66,6 +66,7 @@ class PurchaseRead(BaseModel):
     paid_amount: Decimal
     status: str
     created_at: datetime
+    warehouse_id: Optional[str] = None
 
     supplier: Optional[SupplierRead]
     user: Optional[UserRead]
