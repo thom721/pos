@@ -1513,12 +1513,16 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
       final detail = e.response?.data is Map
           ? (e.response!.data as Map)['detail']?.toString()
           : null;
-      final msg = (code == 403 || code == 401)
-          ? 'Identifiants incorrects ou compte inactif'
-          : detail ??
-              (code != null
-                  ? 'Serveur inaccessible (HTTP $code) — l\'API n\'est peut-être pas démarrée'
-                  : 'Impossible de joindre le serveur ($url)');
+      final String msg;
+      if (code == 401 || code == 403) {
+        msg = 'Mot de passe incorrect';
+      } else if (code == 404) {
+        msg = 'Aucun compte trouvé pour cet email. Vérifiez l\'adresse saisie.';
+      } else if (code != null) {
+        msg = detail ?? 'Erreur serveur (HTTP $code)';
+      } else {
+        msg = 'Impossible de joindre le serveur. Vérifiez votre connexion internet.';
+      }
       setState(() => _error = msg);
     } catch (e) {
       setState(() => _error = e.toString());
