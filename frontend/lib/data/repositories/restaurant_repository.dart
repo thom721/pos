@@ -1,6 +1,14 @@
+import 'package:dio/dio.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
+import 'package:pos_connect/services/local_db_service.dart';
+
+bool _isOffline(Object e) =>
+    e is DioException &&
+    (e.type == DioExceptionType.connectionError ||
+     e.type == DioExceptionType.connectionTimeout ||
+     e.type == DioExceptionType.unknown);
 
 class RestaurantRepository {
   // ── Waiters ─────────────────────────────────────────────────────────────────
@@ -22,11 +30,22 @@ class RestaurantRepository {
   // ── Tables ──────────────────────────────────────────────────────────────────
 
   Future<List<RestaurantTableModel>> getTables({String? warehouseId}) async {
-    final res = await dio.get('/api/restaurant/tables/',
-        queryParameters: warehouseId != null ? {'warehouse_id': warehouseId} : null);
-    return (res.data as List)
-        .map((e) => RestaurantTableModel.fromJson(e as Map<String, dynamic>))
-        .toList();
+    try {
+      final res = await dio.get('/api/restaurant/tables/',
+          queryParameters: warehouseId != null ? {'warehouse_id': warehouseId} : null);
+      final items = (res.data as List)
+          .map((e) => RestaurantTableModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await LocalDbService.instance.upsertRestaurantTables(
+          items, warehouseId: warehouseId);
+      return items;
+    } catch (e) {
+      if (_isOffline(e)) {
+        return LocalDbService.instance.getRestaurantTables(
+            warehouseId: warehouseId);
+      }
+      rethrow;
+    }
   }
 
   Future<RestaurantTableModel> createTable({
@@ -80,17 +99,37 @@ class RestaurantRepository {
   // ── Orders ──────────────────────────────────────────────────────────────────
 
   Future<List<RestaurantOrderModel>> getOpenOrders({String? warehouseId}) async {
-    final res = await dio.get('/api/restaurant/orders/',
-        queryParameters: warehouseId != null ? {'warehouse_id': warehouseId} : null);
-    return (res.data as List)
-        .map((e) => RestaurantOrderModel.fromJson(e as Map<String, dynamic>))
-        .toList();
+    try {
+      final res = await dio.get('/api/restaurant/orders/',
+          queryParameters: warehouseId != null ? {'warehouse_id': warehouseId} : null);
+      final items = (res.data as List)
+          .map((e) => RestaurantOrderModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await LocalDbService.instance.upsertRestaurantOrders(
+          items, warehouseId: warehouseId);
+      return items;
+    } catch (e) {
+      if (_isOffline(e)) {
+        return LocalDbService.instance.getOpenRestaurantOrders(
+            warehouseId: warehouseId);
+      }
+      rethrow;
+    }
   }
 
   Future<RestaurantOrderModel?> getTableOrder(String tableId) async {
-    final res = await dio.get('/api/restaurant/orders/table/$tableId');
-    if (res.data == null) return null;
-    return RestaurantOrderModel.fromJson(res.data as Map<String, dynamic>);
+    try {
+      final res = await dio.get('/api/restaurant/orders/table/$tableId');
+      if (res.data == null) return null;
+      final order = RestaurantOrderModel.fromJson(res.data as Map<String, dynamic>);
+      await LocalDbService.instance.upsertRestaurantOrders([order]);
+      return order;
+    } catch (e) {
+      if (_isOffline(e)) {
+        return LocalDbService.instance.getRestaurantOrderByTable(tableId);
+      }
+      rethrow;
+    }
   }
 
   Future<RestaurantOrderModel> getOrder(String orderId) async {
@@ -171,14 +210,25 @@ class RestaurantRepository {
     bool availableOnly = false,
     String? warehouseId,
   }) async {
-    final res = await dio.get('/api/restaurant/menu-items/', queryParameters: {
-      if (categoryId != null) 'category_id': categoryId,
-      if (availableOnly) 'available_only': true,
-      if (warehouseId != null) 'warehouse_id': warehouseId,
-    });
-    return (res.data as List)
-        .map((e) => MenuItemModel.fromJson(e as Map<String, dynamic>))
-        .toList();
+    try {
+      final res = await dio.get('/api/restaurant/menu-items/', queryParameters: {
+        if (categoryId != null) 'category_id': categoryId,
+        if (availableOnly) 'available_only': true,
+        if (warehouseId != null) 'warehouse_id': warehouseId,
+      });
+      final items = (res.data as List)
+          .map((e) => MenuItemModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await LocalDbService.instance.upsertMenuItems(
+          items, warehouseId: warehouseId);
+      return items;
+    } catch (e) {
+      if (_isOffline(e)) {
+        return LocalDbService.instance.getMenuItems(
+            warehouseId: warehouseId, availableOnly: availableOnly);
+      }
+      rethrow;
+    }
   }
 
   Future<MenuItemModel> createMenuItem({
@@ -358,12 +408,26 @@ class RestaurantRepository {
 
   // ── Housekeeping tasks ───────────────────────────────────────────────────────
 
-  Future<List<HousekeepingTaskModel>> getHousekeepingTasks({String? tableId}) async {
-    final res = await dio.get('/api/restaurant/housekeeping/tasks',
-        queryParameters: tableId != null ? {'table_id': tableId} : null);
-    return (res.data as List)
-        .map((e) => HousekeepingTaskModel.fromJson(e as Map<String, dynamic>))
-        .toList();
+  Future<List<HousekeepingTaskModel>> getHousekeepingTasks(
+      {String? tableId, String? warehouseId}) async {
+    try {
+      final res = await dio.get('/api/restaurant/housekeeping/tasks',
+          queryParameters: {
+            if (tableId != null) 'table_id': tableId,
+            if (warehouseId != null) 'warehouse_id': warehouseId,
+          });
+      final items = (res.data as List)
+          .map((e) => HousekeepingTaskModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await LocalDbService.instance.upsertHousekeepingTasks(items);
+      return items;
+    } catch (e) {
+      if (_isOffline(e)) {
+        return LocalDbService.instance.getHousekeepingTasks(
+            tableId: tableId, warehouseId: warehouseId);
+      }
+      rethrow;
+    }
   }
 
   Future<HousekeepingTaskModel> createHousekeepingTask({

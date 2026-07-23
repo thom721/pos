@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,12 +8,18 @@ import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/models/debt_model.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/purchase_model.dart';
+import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
+import 'package:pos_connect/data/models/supplier_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/services/local_db_service.dart';
 
 bool _isPermissionDenied(Object e) =>
     e is DioException && e.response?.statusCode == 403;
+
+/// Sur bureau (Windows/Linux/macOS) on cache tout sans filtre type.
+bool get _isDesktop =>
+    !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 
 /// Synchronise les données critiques API → SQLite local.
 ///
@@ -19,8 +27,10 @@ bool _isPermissionDenied(Object e) =>
 ///  - au login (warm-up initial du cache)
 ///  - à chaque cycle de sync automatique (toutes les 5 min dans app.dart)
 ///
-/// Ne lève jamais d'exception vers l'appelant : les erreurs sont silencieuses
-/// car le cache est un complément, pas un prérequis.
+/// [businessType] : 'commerce' | 'restaurant' | 'depot' | 'hotel'
+/// Sur desktop, tout est caché indépendamment du type.
+///
+/// Ne lève jamais d'exception vers l'appelant.
 class OfflineCacheService {
   OfflineCacheService._();
   static final OfflineCacheService instance = OfflineCacheService._();
@@ -29,11 +39,11 @@ class OfflineCacheService {
 
   // ── API publique ──────────────────────────────────────────────────────────
 
-  /// Lance la sync de toutes les entités. Ignoré si déjà en cours.
-  ///
-  /// Si [tenantId] ou [warehouseId] diffère de ce qui est en cache,
-  /// le cache local est vidé avant de resyncer (changement de compte/dépôt).
-  Future<void> syncAll({String? warehouseId, String? tenantId}) async {
+  Future<void> syncAll({
+    String? warehouseId,
+    String? tenantId,
+    String businessType = 'commerce',
+  }) async {
     if (kIsWeb || _running) return;
     _running = true;
     try {
@@ -60,6 +70,7 @@ class OfflineCacheService {
           await prefs.remove('_cache_warehouse_id');
         }
       }
+      // ── Base commune — tous les types ──────────────────────────────────
       await Future.wait([
         _syncProducts(),
         _syncCustomers(),
@@ -70,7 +81,28 @@ class OfflineCacheService {
         _syncDebts(),
         _syncUsers(warehouseId: warehouseId),
         _syncSessions(warehouseId: warehouseId),
+        _syncSuppliers(),               // fournisseurs utiles partout
       ]);
+
+      // ── Tables métier — selon type ou desktop ──────────────────────────
+      final syncRestaurant = _isDesktop ||
+          businessType == 'restaurant' ||
+          businessType == 'hotel';
+      final syncHotel      = _isDesktop || businessType == 'hotel';
+      final syncMenu       = _isDesktop || businessType == 'restaurant';
+
+      if (syncRestaurant) {
+        await Future.wait([
+          _syncRestaurantTables(warehouseId: warehouseId),
+          _syncRestaurantOrders(warehouseId: warehouseId),
+        ]);
+      }
+      if (syncMenu) {
+        await _syncMenuItems(warehouseId: warehouseId);
+      }
+      if (syncHotel) {
+        await _syncHousekeepingTasks(warehouseId: warehouseId);
+      }
     } catch (e) {
       debugPrint('[OfflineCache] syncAll error: $e');
     } finally {
@@ -318,6 +350,115 @@ class OfflineCacheService {
       debugPrint('[OfflineCache] sessions: ${items.length} mis en cache');
     } catch (e) {
       if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] sessions sync error: $e');
+    }
+  }
+
+  // ── Fournisseurs ──────────────────────────────────────────────────────────
+
+  Future<void> _syncSuppliers() async {
+    try {
+      final res = await dio.get('/api/suppliers/', options: kBackgroundOptions);
+      final raw = res.data;
+      final items = (raw is Map
+              ? (raw['data'] as List? ?? [])
+              : (raw as List? ?? []))
+          .map((e) => SupplierModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await LocalDbService.instance.upsertSuppliers(items);
+      await LocalDbService.instance.deleteStaleSuppliers(
+          items.map((s) => s.id).toList());
+      await LocalDbService.instance.setLastSynced('suppliers');
+      debugPrint('[OfflineCache] suppliers: ${items.length} mis en cache');
+    } catch (e) {
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] suppliers sync error: $e');
+    }
+  }
+
+  // ── Tables / Chambres restaurant ─────────────────────────────────────────
+
+  Future<void> _syncRestaurantTables({String? warehouseId}) async {
+    try {
+      final res = await dio.get('/api/restaurant/tables/',
+          queryParameters: warehouseId != null
+              ? {'warehouse_id': warehouseId} : null,
+          options: kBackgroundOptions);
+      final items = (res.data as List)
+          .map((e) => RestaurantTableModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await LocalDbService.instance.upsertRestaurantTables(
+          items, warehouseId: warehouseId);
+      await LocalDbService.instance.deleteStaleRestaurantTables(
+          items.map((t) => t.id).toList(), warehouseId: warehouseId);
+      await LocalDbService.instance.setLastSynced('restaurant_tables');
+      debugPrint('[OfflineCache] restaurant_tables: ${items.length} mis en cache');
+    } catch (e) {
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] tables sync error: $e');
+    }
+  }
+
+  // ── Commandes ouvertes restaurant ─────────────────────────────────────────
+
+  Future<void> _syncRestaurantOrders({String? warehouseId}) async {
+    try {
+      final res = await dio.get('/api/restaurant/orders/',
+          queryParameters: warehouseId != null
+              ? {'warehouse_id': warehouseId} : null,
+          options: kBackgroundOptions);
+      final items = (res.data as List)
+          .map((e) => RestaurantOrderModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await LocalDbService.instance.upsertRestaurantOrders(
+          items, warehouseId: warehouseId);
+      await LocalDbService.instance.deleteStaleRestaurantOrders(
+          items.map((o) => o.id).toList(), warehouseId: warehouseId);
+      await LocalDbService.instance.setLastSynced('restaurant_orders');
+      debugPrint('[OfflineCache] restaurant_orders: ${items.length} mis en cache');
+    } catch (e) {
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] orders sync error: $e');
+    }
+  }
+
+  // ── Menu items ────────────────────────────────────────────────────────────
+
+  Future<void> _syncMenuItems({String? warehouseId}) async {
+    try {
+      final res = await dio.get('/api/restaurant/menu-items/',
+          queryParameters: {
+            if (warehouseId != null) 'warehouse_id': warehouseId,
+          },
+          options: kBackgroundOptions);
+      final items = (res.data as List)
+          .map((e) => MenuItemModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await LocalDbService.instance.upsertMenuItems(
+          items, warehouseId: warehouseId);
+      await LocalDbService.instance.deleteStaleMenuItems(
+          items.map((m) => m.id).toList(), warehouseId: warehouseId);
+      await LocalDbService.instance.setLastSynced('menu_items');
+      debugPrint('[OfflineCache] menu_items: ${items.length} mis en cache');
+    } catch (e) {
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] menu_items sync error: $e');
+    }
+  }
+
+  // ── Tâches housekeeping ───────────────────────────────────────────────────
+
+  Future<void> _syncHousekeepingTasks({String? warehouseId}) async {
+    try {
+      final res = await dio.get('/api/restaurant/housekeeping/tasks',
+          queryParameters: warehouseId != null
+              ? {'warehouse_id': warehouseId} : null,
+          options: kBackgroundOptions);
+      final items = (res.data as List)
+          .map((e) => HousekeepingTaskModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await LocalDbService.instance.upsertHousekeepingTasks(items);
+      await LocalDbService.instance.deleteStaleHousekeepingTasks(
+          items.map((t) => t.id).toList(), warehouseId: warehouseId);
+      await LocalDbService.instance.setLastSynced('housekeeping_tasks');
+      debugPrint('[OfflineCache] housekeeping: ${items.length} mis en cache');
+    } catch (e) {
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] housekeeping sync error: $e');
     }
   }
 }

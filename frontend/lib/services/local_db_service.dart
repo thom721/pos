@@ -16,6 +16,8 @@ import 'package:pos_connect/core/date_utils.dart' show toHaitiTime;
 import 'package:pos_connect/data/models/debt_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
+import 'package:pos_connect/data/models/supplier_model.dart';
+import 'package:pos_connect/data/models/restaurant_model.dart';
 
 /// Convertit un DateTime naïf "heure Haïti" en chaîne ISO UTC.
 /// [toHaitiTime] retourne un naïf non-UTC — .toUtc() utiliserait le fuseau
@@ -51,7 +53,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 14,
+      version: 15,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -163,6 +165,9 @@ class LocalDbService {
       ''');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_debts_status  ON debts (status)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_debts_partner ON debts (partner_id)');
+    }
+    if (oldVersion < 15) {
+      await _createBusinessTables(db);
     }
   }
 
@@ -335,6 +340,7 @@ class LocalDbService {
       )
     ''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_purchase_items_purchase ON purchase_items (purchase_id)');
+    await _createBusinessTables(db);
     await db.execute('''
       CREATE TABLE IF NOT EXISTS cashier_sessions (
         id               TEXT PRIMARY KEY,
@@ -347,6 +353,140 @@ class LocalDbService {
         opened_at        TEXT,
         closed_at        TEXT
       )
+    ''');
+  }
+
+  // ── Tables métier : fournisseurs, restaurant, hôtel ───────────────────────
+  // Créées au onCreate ET à l'upgrade v14→v15.
+  // Le flag IF NOT EXISTS rend la méthode idempotente dans les deux cas.
+
+  Future<void> _createBusinessTables(Database db) async {
+    // ── Fournisseurs (tous les types) ───────────────────────────────────────
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id           TEXT PRIMARY KEY,
+        name         TEXT NOT NULL,
+        phone        TEXT,
+        email        TEXT,
+        address      TEXT,
+        warehouse_id TEXT
+      )
+    ''');
+
+    // ── Tables / Chambres (restaurant + hôtel) ──────────────────────────────
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS restaurant_tables (
+        id               TEXT PRIMARY KEY,
+        name             TEXT NOT NULL,
+        capacity         INTEGER NOT NULL DEFAULT 4,
+        status           TEXT NOT NULL DEFAULT 'free',
+        price            REAL NOT NULL DEFAULT 0,
+        price_per_day    REAL NOT NULL DEFAULT 0,
+        price_per_moment REAL NOT NULL DEFAULT 0,
+        waiter_id        TEXT,
+        waiter_name      TEXT,
+        warehouse_id     TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_rtables_wh
+        ON restaurant_tables (warehouse_id)
+    ''');
+
+    // ── Attributs chambre (hôtel) ────────────────────────────────────────────
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS room_attributes (
+        id       TEXT PRIMARY KEY,
+        table_id TEXT NOT NULL,
+        key      TEXT NOT NULL,
+        value    TEXT NOT NULL DEFAULT ''
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_roomattr_table
+        ON room_attributes (table_id)
+    ''');
+
+    // ── Commandes restaurant ─────────────────────────────────────────────────
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS restaurant_orders (
+        id           TEXT PRIMARY KEY,
+        table_id     TEXT,
+        table_name   TEXT,
+        waiter_name  TEXT,
+        status       TEXT NOT NULL DEFAULT 'open',
+        covers       INTEGER NOT NULL DEFAULT 1,
+        subtotal     REAL NOT NULL DEFAULT 0,
+        tip          REAL NOT NULL DEFAULT 0,
+        total        REAL NOT NULL DEFAULT 0,
+        notes        TEXT,
+        warehouse_id TEXT,
+        created_at   TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_rorders_table
+        ON restaurant_orders (table_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_rorders_status
+        ON restaurant_orders (status)
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS restaurant_order_items (
+        id           TEXT PRIMARY KEY,
+        order_id     TEXT NOT NULL,
+        product_id   TEXT,
+        menu_item_id TEXT,
+        product_name TEXT NOT NULL DEFAULT '',
+        quantity     REAL NOT NULL DEFAULT 1,
+        unit_price   REAL NOT NULL DEFAULT 0,
+        notes        TEXT,
+        status       TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_rorder_items_order
+        ON restaurant_order_items (order_id)
+    ''');
+
+    // ── Menu items (restaurant) ──────────────────────────────────────────────
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS menu_items (
+        id               TEXT PRIMARY KEY,
+        name             TEXT NOT NULL,
+        description      TEXT,
+        price            REAL NOT NULL DEFAULT 0,
+        category_id      TEXT,
+        category_name    TEXT,
+        product_id       TEXT,
+        available        INTEGER NOT NULL DEFAULT 1,
+        send_to_kitchen  INTEGER NOT NULL DEFAULT 1,
+        image_url        TEXT,
+        variants_json    TEXT,
+        warehouse_id     TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_menuitems_wh
+        ON menu_items (warehouse_id)
+    ''');
+
+    // ── Tâches housekeeping (hôtel) ──────────────────────────────────────────
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS housekeeping_tasks (
+        id           TEXT PRIMARY KEY,
+        table_id     TEXT NOT NULL,
+        warehouse_id TEXT,
+        description  TEXT NOT NULL,
+        status       TEXT NOT NULL DEFAULT 'pending',
+        created_at   TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_hktasks_table
+        ON housekeeping_tasks (table_id)
     ''');
   }
 
@@ -372,6 +512,13 @@ class LocalDbService {
       'products',
       'customers',
       'categories',
+      'suppliers',
+      'restaurant_order_items',
+      'restaurant_orders',
+      'restaurant_tables',
+      'room_attributes',
+      'menu_items',
+      'housekeeping_tasks',
       'sync_meta',
     ]) {
       batch.delete(table);
@@ -1426,5 +1573,405 @@ class LocalDbService {
         subtotal:    (r['subtotal'] as num).toDouble(),
       )).toList(),
     );
+  }
+
+  // ── Fournisseurs ──────────────────────────────────────────────────────────
+
+  Future<void> upsertSuppliers(List<SupplierModel> suppliers) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final s in suppliers) {
+      batch.insert('suppliers', {
+        'id':      s.id,
+        'name':    s.name,
+        'phone':   s.phone,
+        'email':   s.email,
+        'address': s.address,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<SupplierModel>> getSuppliers({String? search}) async {
+    final db = _safeDb;
+    if (db == null) return const [];
+    final rows = search != null && search.isNotEmpty
+        ? await db.query('suppliers',
+            where: 'name LIKE ?',
+            whereArgs: ['%$search%'],
+            orderBy: 'name ASC')
+        : await db.query('suppliers', orderBy: 'name ASC');
+    return rows.map((r) => SupplierModel(
+      id:      r['id'] as String,
+      name:    r['name'] as String,
+      phone:   r['phone'] as String?,
+      email:   r['email'] as String?,
+      address: r['address'] as String?,
+    )).toList();
+  }
+
+  Future<void> deleteStaleSuppliers(List<String> serverIds) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final ph = List.filled(serverIds.length, '?').join(',');
+    await db.delete('suppliers', where: 'id NOT IN ($ph)', whereArgs: serverIds);
+  }
+
+  // ── Tables / Chambres restaurant ─────────────────────────────────────────
+
+  Future<void> upsertRestaurantTables(
+      List<RestaurantTableModel> tables, {String? warehouseId}) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final t in tables) {
+      batch.insert('restaurant_tables', {
+        'id':               t.id,
+        'name':             t.name,
+        'capacity':         t.capacity,
+        'status':           t.status,
+        'price':            t.price,
+        'price_per_day':    t.pricePerDay,
+        'price_per_moment': t.pricePerMoment,
+        'waiter_id':        t.waiterId,
+        'waiter_name':      t.waiterName,
+        'warehouse_id':     warehouseId,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      // Attributs chambre : supprimer+réinsérer
+      batch.delete('room_attributes', where: 'table_id = ?', whereArgs: [t.id]);
+      for (final a in t.attributes) {
+        batch.insert('room_attributes', {
+          'id':       const Uuid().v4(),
+          'table_id': t.id,
+          'key':      a.key,
+          'value':    a.value,
+        });
+      }
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<RestaurantTableModel>> getRestaurantTables(
+      {String? warehouseId}) async {
+    final db = _safeDb;
+    if (db == null) return const [];
+    final rows = warehouseId != null
+        ? await db.query('restaurant_tables',
+            where: 'warehouse_id = ?',
+            whereArgs: [warehouseId],
+            orderBy: 'name ASC')
+        : await db.query('restaurant_tables', orderBy: 'name ASC');
+
+    final tables = <RestaurantTableModel>[];
+    for (final r in rows) {
+      final attrRows = await db.query('room_attributes',
+          where: 'table_id = ?', whereArgs: [r['id']]);
+      tables.add(RestaurantTableModel(
+        id:             r['id'] as String,
+        name:           r['name'] as String,
+        capacity:       r['capacity'] as int,
+        status:         r['status'] as String,
+        price:          (r['price'] as num).toDouble(),
+        pricePerDay:    (r['price_per_day'] as num).toDouble(),
+        pricePerMoment: (r['price_per_moment'] as num).toDouble(),
+        waiterId:       r['waiter_id'] as String?,
+        waiterName:     r['waiter_name'] as String?,
+        attributes: attrRows
+            .map((a) => RoomAttr(
+                key: a['key'] as String, value: a['value'] as String))
+            .toList(),
+      ));
+    }
+    return tables;
+  }
+
+  Future<void> deleteStaleRestaurantTables(
+      List<String> serverIds, {String? warehouseId}) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final ph = List.filled(serverIds.length, '?').join(',');
+    final where = warehouseId != null
+        ? 'id NOT IN ($ph) AND warehouse_id = ?'
+        : 'id NOT IN ($ph)';
+    final args = warehouseId != null
+        ? [...serverIds, warehouseId]
+        : serverIds;
+    await db.delete('restaurant_tables', where: where, whereArgs: args);
+  }
+
+  // ── Menu items ───────────────────────────────────────────────────────────
+
+  Future<void> upsertMenuItems(
+      List<MenuItemModel> items, {String? warehouseId}) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final m in items) {
+      batch.insert('menu_items', {
+        'id':              m.id,
+        'name':            m.name,
+        'description':     m.description,
+        'price':           m.price,
+        'category_id':     m.categoryId,
+        'category_name':   m.categoryName,
+        'product_id':      m.productId,
+        'available':       m.available ? 1 : 0,
+        'send_to_kitchen': m.sendToKitchen ? 1 : 0,
+        'image_url':       m.imageUrl,
+        'variants_json':   m.variantsData != null
+            ? jsonEncode(m.variantsData) : null,
+        'warehouse_id':    m.warehouseId ?? warehouseId,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<MenuItemModel>> getMenuItems(
+      {String? warehouseId, bool availableOnly = false}) async {
+    final db = _safeDb;
+    if (db == null) return const [];
+    final where = <String>[];
+    final args  = <dynamic>[];
+    if (availableOnly) { where.add('available = 1'); }
+    if (warehouseId != null) {
+      where.add('warehouse_id = ?');
+      args.add(warehouseId);
+    }
+    final rows = await db.query('menu_items',
+        where: where.isEmpty ? null : where.join(' AND '),
+        whereArgs: args.isEmpty ? null : args,
+        orderBy: 'name ASC');
+    return rows.map((r) {
+      Map<String, dynamic>? vd;
+      final vj = r['variants_json'] as String?;
+      if (vj != null) {
+        try { vd = jsonDecode(vj) as Map<String, dynamic>; } catch (_) {}
+      }
+      return MenuItemModel(
+        id:            r['id'] as String,
+        name:          r['name'] as String,
+        description:   r['description'] as String?,
+        price:         (r['price'] as num).toDouble(),
+        categoryId:    r['category_id'] as String?,
+        categoryName:  r['category_name'] as String?,
+        productId:     r['product_id'] as String?,
+        available:     (r['available'] as int) == 1,
+        sendToKitchen: (r['send_to_kitchen'] as int) == 1,
+        imageUrl:      r['image_url'] as String?,
+        variantsData:  vd,
+        warehouseId:   r['warehouse_id'] as String?,
+      );
+    }).toList();
+  }
+
+  Future<void> deleteStaleMenuItems(
+      List<String> serverIds, {String? warehouseId}) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final ph = List.filled(serverIds.length, '?').join(',');
+    final where = warehouseId != null
+        ? 'id NOT IN ($ph) AND warehouse_id = ?'
+        : 'id NOT IN ($ph)';
+    final args = warehouseId != null
+        ? [...serverIds, warehouseId]
+        : serverIds;
+    await db.delete('menu_items', where: where, whereArgs: args);
+  }
+
+  // ── Commandes restaurant (ouvertes) ──────────────────────────────────────
+
+  Future<void> upsertRestaurantOrders(
+      List<RestaurantOrderModel> orders, {String? warehouseId}) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final o in orders) {
+      batch.insert('restaurant_orders', {
+        'id':           o.id,
+        'table_id':     o.tableId,
+        'table_name':   o.tableName,
+        'waiter_name':  o.waiterName,
+        'status':       o.status,
+        'covers':       o.covers,
+        'subtotal':     o.subtotal,
+        'tip':          o.tip,
+        'total':        o.total,
+        'notes':        o.notes,
+        'warehouse_id': warehouseId,
+        'created_at':   o.createdAt?.toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.delete('restaurant_order_items',
+          where: 'order_id = ?', whereArgs: [o.id]);
+      for (final item in o.items) {
+        batch.insert('restaurant_order_items', {
+          'id':           item.id,
+          'order_id':     o.id,
+          'product_id':   item.productId,
+          'menu_item_id': item.menuItemId,
+          'product_name': item.productName,
+          'quantity':     item.quantity,
+          'unit_price':   item.unitPrice,
+          'notes':        item.notes,
+          'status':       item.status,
+        });
+      }
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<RestaurantOrderModel>> getOpenRestaurantOrders(
+      {String? warehouseId}) async {
+    final db = _safeDb;
+    if (db == null) return const [];
+    final rows = await db.query('restaurant_orders',
+        where: warehouseId != null
+            ? "status != 'closed' AND warehouse_id = ?"
+            : "status != 'closed'",
+        whereArgs: warehouseId != null ? [warehouseId] : null,
+        orderBy: 'created_at ASC');
+    final orders = <RestaurantOrderModel>[];
+    for (final r in rows) {
+      final itemRows = await db.query('restaurant_order_items',
+          where: 'order_id = ?', whereArgs: [r['id']]);
+      orders.add(RestaurantOrderModel(
+        id:         r['id'] as String,
+        tableId:    r['table_id'] as String?,
+        tableName:  r['table_name'] as String?,
+        waiterName: r['waiter_name'] as String?,
+        status:     r['status'] as String,
+        covers:     r['covers'] as int,
+        subtotal:   (r['subtotal'] as num).toDouble(),
+        tip:        (r['tip'] as num).toDouble(),
+        total:      (r['total'] as num).toDouble(),
+        notes:      r['notes'] as String?,
+        createdAt:  r['created_at'] != null
+            ? DateTime.tryParse(r['created_at'] as String) : null,
+        items: itemRows.map((i) => RestaurantOrderItemModel(
+          id:          i['id'] as String,
+          productId:   i['product_id'] as String?,
+          menuItemId:  i['menu_item_id'] as String?,
+          productName: i['product_name'] as String? ?? '',
+          quantity:    (i['quantity'] as num).toDouble(),
+          unitPrice:   (i['unit_price'] as num).toDouble(),
+          notes:       i['notes'] as String?,
+          status:      i['status'] as String? ?? 'pending',
+        )).toList(),
+      ));
+    }
+    return orders;
+  }
+
+  Future<RestaurantOrderModel?> getRestaurantOrderByTable(
+      String tableId) async {
+    final db = _safeDb;
+    if (db == null) return null;
+    final rows = await db.query('restaurant_orders',
+        where: "table_id = ? AND status != 'closed'",
+        whereArgs: [tableId],
+        limit: 1);
+    if (rows.isEmpty) return null;
+    final r = rows.first;
+    final itemRows = await db.query('restaurant_order_items',
+        where: 'order_id = ?', whereArgs: [r['id']]);
+    return RestaurantOrderModel(
+      id:         r['id'] as String,
+      tableId:    r['table_id'] as String?,
+      tableName:  r['table_name'] as String?,
+      waiterName: r['waiter_name'] as String?,
+      status:     r['status'] as String,
+      covers:     r['covers'] as int,
+      subtotal:   (r['subtotal'] as num).toDouble(),
+      tip:        (r['tip'] as num).toDouble(),
+      total:      (r['total'] as num).toDouble(),
+      notes:      r['notes'] as String?,
+      createdAt:  r['created_at'] != null
+          ? DateTime.tryParse(r['created_at'] as String) : null,
+      items: itemRows.map((i) => RestaurantOrderItemModel(
+        id:          i['id'] as String,
+        productId:   i['product_id'] as String?,
+        menuItemId:  i['menu_item_id'] as String?,
+        productName: i['product_name'] as String? ?? '',
+        quantity:    (i['quantity'] as num).toDouble(),
+        unitPrice:   (i['unit_price'] as num).toDouble(),
+        notes:       i['notes'] as String?,
+        status:      i['status'] as String? ?? 'pending',
+      )).toList(),
+    );
+  }
+
+  Future<void> deleteStaleRestaurantOrders(
+      List<String> serverIds, {String? warehouseId}) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final ph = List.filled(serverIds.length, '?').join(',');
+    final where = warehouseId != null
+        ? 'id NOT IN ($ph) AND warehouse_id = ?'
+        : 'id NOT IN ($ph)';
+    final args = warehouseId != null
+        ? [...serverIds, warehouseId]
+        : serverIds;
+    await db.delete('restaurant_orders', where: where, whereArgs: args);
+  }
+
+  // ── Tâches housekeeping ──────────────────────────────────────────────────
+
+  Future<void> upsertHousekeepingTasks(
+      List<HousekeepingTaskModel> tasks) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final t in tasks) {
+      batch.insert('housekeeping_tasks', {
+        'id':           t.id,
+        'table_id':     t.tableId,
+        'warehouse_id': t.warehouseId,
+        'description':  t.description,
+        'status':       t.status,
+        'created_at':   t.createdAt?.toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<HousekeepingTaskModel>> getHousekeepingTasks(
+      {String? tableId, String? warehouseId}) async {
+    final db = _safeDb;
+    if (db == null) return const [];
+    final where = <String>[];
+    final args  = <dynamic>[];
+    if (tableId != null) { where.add('table_id = ?'); args.add(tableId); }
+    if (warehouseId != null) {
+      where.add('warehouse_id = ?');
+      args.add(warehouseId);
+    }
+    final rows = await db.query('housekeeping_tasks',
+        where: where.isEmpty ? null : where.join(' AND '),
+        whereArgs: args.isEmpty ? null : args,
+        orderBy: 'created_at DESC');
+    return rows.map((r) => HousekeepingTaskModel(
+      id:          r['id'] as String,
+      tableId:     r['table_id'] as String,
+      warehouseId: r['warehouse_id'] as String?,
+      description: r['description'] as String,
+      status:      r['status'] as String,
+      createdAt:   r['created_at'] != null
+          ? DateTime.tryParse(r['created_at'] as String) : null,
+    )).toList();
+  }
+
+  Future<void> deleteStaleHousekeepingTasks(
+      List<String> serverIds, {String? warehouseId}) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final ph = List.filled(serverIds.length, '?').join(',');
+    final where = warehouseId != null
+        ? 'id NOT IN ($ph) AND warehouse_id = ?'
+        : 'id NOT IN ($ph)';
+    final args = warehouseId != null
+        ? [...serverIds, warehouseId]
+        : serverIds;
+    await db.delete('housekeeping_tasks',
+        where: where, whereArgs: args);
   }
 }
