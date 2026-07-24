@@ -50,7 +50,7 @@ SPEC CHECKSUMS:
   flutter_secure_storage_macos: 7f45e30f838cf2659862a4e4e3ee1c347c2b3b54
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   print_bluetooth_thermal: 4681888b4aa9db6ef0b9c2e4228b56258fe09dc8
-  printing: c4cf83c78fd684f9bc318e6aadc18972aa48f617
+  printing: 7916ffaaede65713863e621de9a4742d9fa723b9
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
   url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd

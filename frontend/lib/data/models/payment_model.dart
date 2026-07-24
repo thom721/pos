@@ -1,3 +1,5 @@
+import 'package:pos_connect/core/date_utils.dart' show parseApiDate;
+
 class PaymentModel {
   final String id;
   final String referenceType;
@@ -25,9 +27,7 @@ class PaymentModel {
       referenceId: json['reference_id']?.toString() ?? '',
       amount: double.tryParse(json['amount']?.toString() ?? '0') ?? 0,
       method: json['method']?.toString() ?? 'CASH',
-      createdAt:
-          DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
-              DateTime.now(),
+      createdAt: parseApiDate(json['created_at']?.toString()),
       userFullName: user != null
           ? '${user['fname'] ?? ''} ${user['lname'] ?? ''}'.trim()
           : null,

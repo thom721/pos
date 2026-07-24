@@ -329,4 +329,6 @@ cd fastapi/ && git pull && cd .. && docker compose down && docker compose up -d 
 cd /Users/kikipllc/development/pos_api/frontend
 flutter build apk --release
 
+flutter build appbundle --release.
+
 build/app/outputs/flutter-apk/app-release.apk

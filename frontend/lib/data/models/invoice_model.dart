@@ -1,3 +1,5 @@
+import 'package:pos_connect/core/date_utils.dart' show parseApiDate;
+
 class InvoiceItemModel {
   final String id;
   final String? productId;
@@ -77,9 +79,9 @@ class InvoiceModel {
   factory InvoiceModel.fromJson(Map<String, dynamic> j) => InvoiceModel(
         id: j['id']?.toString() ?? '',
         reference: j['reference']?.toString() ?? '',
-        date: DateTime.tryParse(j['date']?.toString() ?? '')?.toLocal() ?? DateTime.now(),
+        date: parseApiDate(j['date']?.toString()),
         dueDate: j['due_date'] != null
-            ? DateTime.tryParse(j['due_date'].toString())?.toLocal()
+            ? parseApiDate(j['due_date'].toString())
             : null,
         clientId: j['client_id']?.toString(),
         clientName: j['client_name']?.toString(),
@@ -91,7 +93,6 @@ class InvoiceModel {
         items: (j['items'] as List? ?? [])
             .map((e) => InvoiceItemModel.fromJson(e))
             .toList(),
-        createdAt:
-            DateTime.tryParse(j['created_at']?.toString() ?? '')?.toLocal() ?? DateTime.now(),
+        createdAt: parseApiDate(j['created_at']?.toString()),
       );
 }

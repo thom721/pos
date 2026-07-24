@@ -1,3 +1,5 @@
+import 'package:pos_connect/core/date_utils.dart' show parseApiDate;
+
 class InventoryPreviewItem {
   final String productId;
   final String productName;
@@ -90,8 +92,7 @@ class InventoryModel {
             int.tryParse(json['total_products']?.toString() ?? '0') ?? 0,
         discrepancyCount:
             int.tryParse(json['discrepancy_count']?.toString() ?? '0') ?? 0,
-        createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
-            DateTime.now(),
+        createdAt: parseApiDate(json['created_at']?.toString()),
         items: (json['items'] as List? ?? [])
             .map((e) => InventoryResultItem.fromJson(e))
             .toList(),

@@ -290,6 +290,20 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
         state = local;
       } catch (_) {}
     }
+    // Paramètres device-only depuis la clé fixe (non-scopée par warehouse)
+    // → lus UNE FOIS, jamais écrasés par la race condition du double _load().
+    int? devicePaperWidth;
+    String? deviceBtMac;
+    String? deviceBtName;
+    bool? deviceAutoPrint;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      devicePaperWidth = prefs.getInt('device_paper_width');
+      deviceBtMac     = prefs.getString('device_bt_mac');
+      deviceBtName    = prefs.getString('device_bt_name');
+      deviceAutoPrint = prefs.getBool('device_pos_auto_print');
+    } catch (_) {}
+
     // Sync from API (authoritative for shared fields only)
     try {
       var warehouseId = _ref.read(activeWarehouseProvider)?.id;
@@ -303,16 +317,26 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       final res = await dio.get('/api/config/$queryParams');
       if (res.statusCode == 200) {
         final apiSettings = AppSettings.fromApiJson(res.data as Map<String, dynamic>);
-        // Preserve device-specific fields that the API doesn't know about
+        // Paramètres device-only : clé fixe > clé scopée > état courant
         state = apiSettings.copyWith(
-          bluetoothPrinterMac: local?.bluetoothPrinterMac ?? state.bluetoothPrinterMac,
-          bluetoothPrinterName: local?.bluetoothPrinterName ?? state.bluetoothPrinterName,
-          paperWidth: local?.paperWidth ?? state.paperWidth,
+          bluetoothPrinterMac:  deviceBtMac    ?? local?.bluetoothPrinterMac  ?? state.bluetoothPrinterMac,
+          bluetoothPrinterName: deviceBtName   ?? local?.bluetoothPrinterName ?? state.bluetoothPrinterName,
+          paperWidth:           devicePaperWidth ?? local?.paperWidth          ?? state.paperWidth,
+          posAutoPrint:         deviceAutoPrint  ?? local?.posAutoPrint        ?? state.posAutoPrint,
         );
         await _storage.write(key: key, value: jsonEncode(state.toJson()));
       }
     } catch (_) {
       // Network unavailable — local cache already applied above
+      // Appliquer quand même les valeurs device-only sur le cache local
+      if (devicePaperWidth != null || deviceBtMac != null || deviceBtName != null || deviceAutoPrint != null) {
+        state = state.copyWith(
+          bluetoothPrinterMac:  deviceBtMac    ?? state.bluetoothPrinterMac,
+          bluetoothPrinterName: deviceBtName   ?? state.bluetoothPrinterName,
+          paperWidth:           devicePaperWidth ?? state.paperWidth,
+          posAutoPrint:         deviceAutoPrint  ?? state.posAutoPrint,
+        );
+      }
     }
 
     // Si businessName est toujours le placeholder, utiliser le nom du tenant
@@ -342,9 +366,19 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       final queryParams = warehouseId != null ? '?warehouse_id=$warehouseId' : '';
       await dio.put('/api/config/$queryParams', data: settings.toApiJson());
     } catch (_) {}
+    // Paramètres partagés → clé scopée par tenant/warehouse
     final key = await _cacheKey();
     try {
       await _storage.write(key: key, value: jsonEncode(settings.toJson()));
+    } catch (_) {}
+    // Paramètres device-only (papier, imprimante BT) → clé fixe non-scopée
+    // pour éviter la race condition entre les deux _load() au démarrage.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('device_paper_width', settings.paperWidth);
+      await prefs.setString('device_bt_mac', settings.bluetoothPrinterMac);
+      await prefs.setString('device_bt_name', settings.bluetoothPrinterName);
+      await prefs.setBool('device_pos_auto_print', settings.posAutoPrint);
     } catch (_) {}
   }
 }

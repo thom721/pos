@@ -1,3 +1,5 @@
+import 'package:pos_connect/core/date_utils.dart' show parseApiDate;
+
 List<SaleItemModel> _deduplicateById(Iterable<SaleItemModel> items) {
   final seen = <String>{};
   return items.where((i) => i.id.isNotEmpty && seen.add(i.id)).toList();
@@ -75,8 +77,7 @@ class SalePaymentModel {
         id: json['id']?.toString() ?? '',
         amount: double.tryParse(json['amount']?.toString() ?? '0') ?? 0,
         method: json['method']?.toString() ?? '',
-        createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
-            DateTime.now(),
+        createdAt: parseApiDate(json['created_at']?.toString()),
       );
 }
 
@@ -130,9 +131,7 @@ class SaleModel {
         paidAmount:
             double.tryParse(json['paid_amount']?.toString() ?? '0') ?? 0,
         status: json['status']?.toString() ?? 'UNPAID',
-        createdAt:
-            DateTime.tryParse(json['created_at']?.toString() ?? '')?.toLocal() ??
-                DateTime.now(),
+        createdAt: parseApiDate(json['created_at']?.toString()),
         customerName: json['customer']?['name']?.toString(),
         customerPhone: json['customer']?['phone']?.toString(),
         customerId: json['customer']?['id']?.toString(),

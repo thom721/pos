@@ -1,3 +1,5 @@
+import 'package:pos_connect/core/date_utils.dart' show parseApiDate;
+
 class ReturnItemModel {
   final String productName;
   final double quantity;
@@ -47,7 +49,7 @@ class ReturnModel {
         totalReturned: (j['total_returned'] as num?)?.toDouble() ?? 0,
         refundAmount: (j['refund_amount'] as num?)?.toDouble() ?? 0,
         reason: j['reason']?.toString(),
-        createdAt: DateTime.tryParse(j['created_at']?.toString() ?? '')?.toLocal() ?? DateTime.now(),
+        createdAt: parseApiDate(j['created_at']?.toString()),
         items: (j['items'] as List? ?? [])
             .map((e) => ReturnItemModel.fromJson(e as Map<String, dynamic>))
             .toList(),
