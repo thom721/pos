@@ -541,21 +541,6 @@ def patch_tenant(
             raise HTTPException(status_code=400, detail="max_caisses doit être >= 1")
         old_max = t.max_caisses
         t.max_caisses = body.max_caisses
-        # Créer les caisses manquantes si le quota augmente
-        if body.max_caisses > old_max:
-            existing = db.query(PosRegister).filter_by(
-                tenant_id=t.id, is_active=True
-            ).count()
-            default_wh = db.query(Warehouse).filter_by(
-                tenant_id=t.id, is_default=True
-            ).first()
-            for i in range(existing + 1, body.max_caisses + 1):
-                db.add(PosRegister(
-                    tenant_id=t.id,
-                    warehouse_id=default_wh.id if default_wh else None,
-                    name=f"Caisse {i}",
-                    is_active=True,
-                ))
 
     if body.max_depots is not None:
         if body.max_depots < 1:

@@ -15,10 +15,13 @@ class PosRegister(UUIDBase):
     session_token = Column(String(36), nullable=True)   # UUID rotated at each login; JWT sid must match
     last_seen     = Column(DateTime(timezone=True), nullable=True)  # updated by heartbeat every 2 min
 
-    # ── Abonnement par caisse (caisses supplémentaires) ──────────────────────────
-    # trial_ends_at     : fin de la période d'essai de cette caisse (NULL = caisse de base)
-    # subscription_ends_at : fin de l'abonnement payé pour cette caisse
-    # NULL = caisse de base incluse dans le plan tenant, pas de facturation individuelle
+    # ── Abonnement par caisse ────────────────────────────────────────────────────
+    # is_initial=True  : caisse créée automatiquement avec le tenant ou le warehouse.
+    #                    Couverte par le trial du tenant — pas de trial individuel.
+    #                    Identifiée dans la facturation par le nom du warehouse.
+    # is_initial=False : caisse supplémentaire créée manuellement par le tenant.
+    #                    Reçoit son propre trial_ends_at et subscription_ends_at.
+    is_initial           = Column(Boolean, nullable=False, default=False)
     trial_ends_at        = Column(DateTime(timezone=True), nullable=True)
     subscription_ends_at = Column(DateTime(timezone=True), nullable=True)
 

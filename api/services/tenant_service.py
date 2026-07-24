@@ -127,8 +127,9 @@ def register_tenant(db: Session, business_name: str, owner_email: str,
     register = PosRegister(
         tenant_id=tenant.id,
         warehouse_id=warehouse.id,
-        name="Caisse 1",
+        name=warehouse.name,   # nommée d'après le dépôt pour identification facturation
         is_active=True,
+        is_initial=True,       # couverte par le trial tenant, pas de trial individuel
         # device_id intentionally NULL — claimed by first device to log in
     )
     db.add(register)

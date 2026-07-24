@@ -50,6 +50,7 @@ class RegisterRead(BaseModel):
     name: str
     device_id: Optional[str] = None
     is_active: bool
+    is_initial: bool = False
     warehouse_id: Optional[str] = None
     trial_ends_at: Optional[datetime] = None
     subscription_ends_at: Optional[datetime] = None
@@ -186,13 +187,15 @@ def create_warehouse(
     # Créer automatiquement la config du nouveau dépôt
     _config.create_for_warehouse(db, current_user.tenant_id, wh.id)
 
-    # Créer une caisse par défaut (slot vide, réclamé par le 1er appareil)
-    # Chaque dépôt doit toujours avoir au moins une caisse, indépendamment de la limite.
+    # Caisse initiale du dépôt — nommée d'après le warehouse pour identification
+    # en facturation. is_initial=True → couverte par le trial du tenant (pas de
+    # trial individuel). Slot vide, réclamé par le 1er appareil à se connecter.
     db.add(PosRegister(
         tenant_id=current_user.tenant_id,
         warehouse_id=wh.id,
-        name="Caisse 1",
+        name=wh.name,
         is_active=True,
+        is_initial=True,
     ))
     db.commit()
 
