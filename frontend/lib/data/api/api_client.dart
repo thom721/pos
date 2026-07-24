@@ -99,8 +99,12 @@ Future<void> saveServerUrl(String url) async {
 }
 
 Dio createDio() {
+  // Web release: utilise Uri.base.origin dès la création (avant même initServerUrl).
+  // Web debug / natif: AppConstants.baseUrl (127.0.0.1:9003 par défaut en dev).
+  final initialBaseUrl =
+      (kIsWeb && kReleaseMode) ? Uri.base.origin : AppConstants.baseUrl;
   final dio = Dio(BaseOptions(
-    baseUrl: AppConstants.baseUrl,
+    baseUrl: initialBaseUrl,
     connectTimeout: const Duration(seconds: 15),
     receiveTimeout: const Duration(seconds: 30),
     contentType: 'application/json',
