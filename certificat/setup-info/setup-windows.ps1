@@ -270,9 +270,9 @@ innodb_flush_log_at_trx_commit = 2
 innodb_buffer_pool_instances = 2
 
 init-file = $InitSqlFwd
-# MySQL 8.0.34+ : mysql_native_password est un plugin chargeable, desactive par defaut.
-# 'ON' l'active sans modifier authentication_policy (qui controle le multi-facteur).
-mysql_native_password = ON
+# MySQL 8.0.34+ : loose- prefix evite l'erreur "unknown variable" sur les versions
+# qui ne connaissent pas encore cette option (ignoree silencieusement si inconnue).
+loose-mysql-native-password = ON
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
 sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
@@ -425,6 +425,24 @@ FLUSH PRIVILEGES;
         } else {
             Write-Log "mysql-error.log introuvable ($MySqlErrLog)" "WARN"
         }
+        # Bloquer l'installation avec une boite de dialogue explicite.
+        # Sans ce bloc, le setup continue et installe API/Nginx sur une base cassee.
+        Add-Type -AssemblyName System.Windows.Forms | Out-Null
+        [System.Windows.Forms.MessageBox]::Show(
+            "MySQL n'a pas demarrer correctement.`n`n" +
+            "L'installation ne peut pas continuer sans base de donnees.`n`n" +
+            "Consultez le log pour le detail :`n$DataDir\install.log`n`n" +
+            "Causes frequentes :`n" +
+            "  - Port $MySqlPort deja utilise par une autre instance MySQL`n" +
+            "  - Fichiers residuels dans le datadir ($MySqlData)`n" +
+            "  - Droits insuffisants sur le dossier de donnees`n`n" +
+            "Supprimez $MySqlData et relancez l'installation.",
+            "Erreur critique — POS Connect",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+        Write-Log "=== Configuration POS Connect terminee avec erreur MySQL ===" "ERROR"
+        exit 1
     }
 
     # -- pos_server.ini MySQL (seulement si MySQL tourne) -------------------------
@@ -513,13 +531,15 @@ if ($LASTEXITCODE -ne 0 -or "$svcApiStatus" -match "can't open service|No such s
 # Nginx lit ses fichiers relatifs a son prefix (dossier de nginx.exe).
 # Structure attendue :
 #   $InstallDir\nginx\conf\nginx.conf
-#   $InstallDir\nginx\certs\server.crt   (ssl_certificate)
-#   $InstallDir\nginx\certs\server.key   (ssl_certificate_key)
+#   $InstallDir\nginx\conf\certs\server.crt   (ssl_certificate)
+#   $InstallDir\nginx\conf\certs\server.key   (ssl_certificate_key)
+# nginx resout les chemins relatifs depuis le dossier conf\ -- les certs doivent
+# etre dans nginx\conf\certs\ pour que "certs/server.crt" fonctionne.
 #   $InstallDir\nginx\logs\              (access.log, error.log)
 #   $InstallDir\nginx\temp\              (fichiers temporaires)
 
 $NginxConfDir  = "$InstallDir\nginx\conf"
-$NginxCertsDir = "$InstallDir\nginx\certs"
+$NginxCertsDir = "$InstallDir\nginx\conf\certs"
 $NginxLogsDir  = "$InstallDir\nginx\logs"
 $NginxTempDir  = "$InstallDir\nginx\temp"
 
