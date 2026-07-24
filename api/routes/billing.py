@@ -101,6 +101,42 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
     total_htg = base_htg + prorated["total_htg"]
     total_usd = base_usd + prorated["total_usd"]
 
+    # Détail par caisse avec warehouse pour affichage dans la page abonnement
+    regs_q = (
+        db.query(PosRegister, Warehouse)
+        .outerjoin(Warehouse, PosRegister.warehouse_id == Warehouse.id)
+        .filter(
+            PosRegister.tenant_id == tenant.id,
+            PosRegister.is_active == True,  # noqa: E712
+        )
+        .all()
+    )
+    registers_detail = []
+    for reg, wh in regs_q:
+        if reg.is_initial:
+            reg_status   = "included"
+            monthly_htg  = 0.0
+        elif reg.subscription_ends_at:
+            reg_status   = "active"
+            monthly_htg  = xc_htg
+        elif reg.trial_ends_at:
+            reg_status   = "trial"
+            monthly_htg  = xc_htg
+        else:
+            reg_status   = "no_subscription"
+            monthly_htg  = xc_htg
+
+        registers_detail.append({
+            "id":                  reg.id,
+            "name":                reg.name,
+            "warehouse_name":      wh.name if wh else None,
+            "is_initial":          bool(reg.is_initial),
+            "trial_ends_at":       reg.trial_ends_at.isoformat() if reg.trial_ends_at else None,
+            "subscription_ends_at": reg.subscription_ends_at.isoformat() if reg.subscription_ends_at else None,
+            "monthly_htg":         monthly_htg,
+            "status":              reg_status,
+        })
+
     return {
         "max_caisses":                max_caisses,
         "current_caisses":            caisse_count,
@@ -121,6 +157,7 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
         "cycle_end":                  cycle_end.isoformat(),
         "total_monthly_htg":          total_htg,
         "total_monthly_usd":          total_usd,
+        "registers":                  registers_detail,
     }
 
 

@@ -754,12 +754,20 @@ class _StripeCardState extends State<_StripeCard> {
 
 // ── Détail utilisation du plan (caisses + dépôts) ────────────────────────────
 
-class _PlanUsageCard extends StatelessWidget {
+class _PlanUsageCard extends StatefulWidget {
   final Map<String, dynamic> usage;
   const _PlanUsageCard({required this.usage});
 
   @override
+  State<_PlanUsageCard> createState() => _PlanUsageCardState();
+}
+
+class _PlanUsageCardState extends State<_PlanUsageCard> {
+  bool _showRegisters = false;
+
+  @override
   Widget build(BuildContext context) {
+    final usage        = widget.usage;
     final maxCaisses   = usage['max_caisses']   as int?    ?? 1;
     final curCaisses   = usage['current_caisses'] as int?  ?? 0;
     final extraCaisses = usage['extra_caisses'] as int?    ?? 0;
@@ -771,6 +779,15 @@ class _PlanUsageCard extends StatelessWidget {
     final baseHtg      = (usage['base_price_htg']    as num? ?? 1500).toDouble();
     final totalHtg     = (usage['total_monthly_htg'] as num? ?? 1500).toDouble();
     final hasExtras    = extraCaisses > 0 || extraDepots > 0;
+    final registers    = (usage['registers'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+
+    // Group registers by warehouse_name
+    final Map<String, List<Map<String, dynamic>>> byWh = {};
+    for (final r in registers) {
+      final wh = r['warehouse_name'] as String? ?? 'Sans dépôt';
+      byWh.putIfAbsent(wh, () => []).add(r);
+    }
 
     return _Card(
       child: Column(
@@ -820,10 +837,162 @@ class _PlanUsageCard extends StatelessWidget {
                       color: AppColors.primary)),
             ],
           ),
+
+          // ── Détail par caisse ──────────────────────────────────────────
+          if (registers.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () => setState(() => _showRegisters = !_showRegisters),
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(children: [
+                  Icon(
+                    _showRegisters
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 16,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _showRegisters
+                        ? 'Masquer le détail des caisses'
+                        : 'Voir le détail des caisses (${registers.length})',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                ]),
+              ),
+            ),
+            if (_showRegisters) ...[
+              const SizedBox(height: 8),
+              ...byWh.entries.map((entry) => _RegisterUsageGroup(
+                    warehouseName: entry.key,
+                    registers: entry.value,
+                  )),
+            ],
+          ],
         ],
       ),
     );
   }
+}
+
+// ── Groupe de caisses dans le plan usage ─────────────────────────────────────
+
+class _RegisterUsageGroup extends StatelessWidget {
+  final String warehouseName;
+  final List<Map<String, dynamic>> registers;
+  const _RegisterUsageGroup(
+      {required this.warehouseName, required this.registers});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(
+            warehouseName,
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+                letterSpacing: 0.3),
+          ),
+        ),
+        ...registers.map((r) {
+          final name       = r['name'] as String? ?? '';
+          final isInitial  = r['is_initial'] as bool? ?? false;
+          final status     = r['status'] as String? ?? '';
+          final monthlyHtg = (r['monthly_htg'] as num? ?? 0).toDouble();
+
+          final (statusLabel, statusColor) = switch (status) {
+            'included'        => ('Incluse', AppColors.success),
+            'trial'           => ('Essai', AppColors.accent),
+            'active'          => ('Active', AppColors.success),
+            'no_subscription' => ('Sans abonnement', AppColors.error),
+            _                 => (status, AppColors.textSecondary),
+          };
+
+          final expiry = _parseDate(r['subscription_ends_at'] as String?)
+              ?? _parseDate(r['trial_ends_at'] as String?);
+          final daysLeft = expiry?.difference(DateTime.now()).inDays;
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: [
+                Icon(Icons.point_of_sale_rounded,
+                    size: 13,
+                    color: isInitial
+                        ? AppColors.primary
+                        : AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500)),
+                      Row(children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(statusLabel,
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: statusColor,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                        if (expiry != null) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            'exp. ${DateFormat('dd/MM/yy').format(expiry.toLocal())}'
+                            '${daysLeft != null ? ' (${daysLeft < 0 ? 'expiré' : '$daysLeft j'})' : ''}',
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: daysLeft != null && daysLeft <= 5
+                                    ? AppColors.error
+                                    : daysLeft != null && daysLeft <= 30
+                                        ? Colors.orange
+                                        : AppColors.textSecondary),
+                          ),
+                        ],
+                      ]),
+                    ],
+                  ),
+                ),
+                Text(
+                  monthlyHtg == 0
+                      ? '— HTG'
+                      : '${monthlyHtg.toStringAsFixed(0)} HTG/mois',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: monthlyHtg == 0
+                          ? AppColors.textSecondary
+                          : AppColors.textPrimary),
+                ),
+              ],
+            ),
+          );
+        }),
+        const SizedBox(height: 4),
+      ],
+    );
+  }
+
+  DateTime? _parseDate(String? s) =>
+      s != null ? DateTime.tryParse(s) : null;
 }
 
 class _UsageRow extends StatelessWidget {
@@ -1789,9 +1958,7 @@ class _RegisterPaymentSectionState
               final groups = whRegs
                   .map((w) => _WhWithRegs(
                       w.warehouse,
-                      w.registers
-                          .where((r) => !r.isInitial && r.isActive)
-                          .toList()))
+                      w.registers.where((r) => r.isActive).toList()))
                   .where((w) => w.registers.isNotEmpty)
                   .toList();
 
@@ -1799,8 +1966,7 @@ class _RegisterPaymentSectionState
                 return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
                   child: Text(
-                      'Aucune caisse supplémentaire — les caisses initiales '
-                      'sont couvertes par votre abonnement principal.',
+                      'Aucune caisse active.',
                       style: TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary)),
@@ -1910,6 +2076,37 @@ class _WhRegisterGroup extends StatelessWidget {
           ),
         ),
         ...group.registers.map((reg) {
+          // Caisses initiales : couvertes par le plan tenant — non sélectionnables
+          if (reg.isInitial) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Row(children: [
+                const SizedBox(width: 4),
+                Icon(Icons.point_of_sale_rounded,
+                    size: 14, color: AppColors.textSecondary.withValues(alpha: 0.5)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(reg.name,
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary.withValues(alpha: 0.7))),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text('Incluse dans le plan',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: AppColors.success,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ]),
+            );
+          }
+
           final isSelected = selected.contains(reg.id);
           final expiry = reg.effectiveExpiry;
           final daysLeft = reg.daysLeft;
