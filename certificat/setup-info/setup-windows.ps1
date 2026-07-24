@@ -270,29 +270,34 @@ port = $MySqlPort
 port = $MySqlPort
 "@
 
+        # ibdata1 absent = pas de donnees utilisateur => nettoyer AVANT d'initialiser.
+        # MySQL refuse "--initialize" sur un dossier non vide (meme des residus d'init
+        # avortee comme #innodb_redo, #innodb_temp, ib_buffer_pool, etc.).
+        # On nettoie d'abord, puis on initialise une seule fois proprement.
+        $residus = @(Get-ChildItem -Path "$MySqlData" -Force -ErrorAction SilentlyContinue)
+        if ($residus.Count -gt 0) {
+            Write-Log "Nettoyage de $($residus.Count) fichier(s) residuel(s) dans le datadir..."
+            $residus | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+            # Reappliquer les permissions sur le dossier maintenant vide
+            try {
+                $aclR = New-Object System.Security.AccessControl.DirectorySecurity
+                $aclR.SetAccessRuleProtection($true, $false)
+                $aclR.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+                    "SYSTEM", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")))
+                $aclR.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+                    "Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")))
+                Set-Acl -Path $MySqlData -AclObject $aclR
+            } catch {}
+        }
+
         # PAS de --defaults-file ici : MySQL trouve my.ini automatiquement
-        # dans le dossier parent de bin/ (= $MySqlDir), exactement comme
-        # MySQLInstaller (Main_run.py) qui n'utilise pas --defaults-file
-        # lors de l'initialisation. Passer --defaults-file avec un chemin
-        # absolu en PowerShell peut echouer silencieusement selon la facon
-        # dont InnoSetup invoque le script.
+        # dans le dossier parent de bin/ (= $MySqlDir).
         $_initOut  = & "$MySqlBinDir\mysqld.exe" --initialize-insecure --console 2>&1
         $_initCode = $LASTEXITCODE
         $_initOut | ForEach-Object { Write-Log "  [mysqld-init] $_" }
         if ($_initCode -ne 0) {
-            Write-Log "mysqld --initialize-insecure a echoue (code $_initCode) -- nettoyage datadir et retry..." "ERROR"
-            # Nettoyer le datadir partiel puis reessayer une seule fois
-            Get-ChildItem "$MySqlData" -ErrorAction SilentlyContinue |
-                Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 1
-            $_initOut2  = & "$MySqlBinDir\mysqld.exe" --initialize-insecure --console 2>&1
-            $_initCode2 = $LASTEXITCODE
-            $_initOut2 | ForEach-Object { Write-Log "  [mysqld-init-retry] $_" }
-            if ($_initCode2 -ne 0) {
-                Write-Log "Reinitialisation aussi echouee (code $_initCode2) -- MySQL ne pourra pas demarrer" "ERROR"
-            } else {
-                Write-Log "MySQL reinitialise avec succes apres nettoyage du datadir"
-            }
+            Write-Log "mysqld --initialize-insecure a echoue (code $_initCode) -- MySQL ne pourra pas demarrer" "ERROR"
         } else {
             Write-Log "MySQL initialise -- init.sql s'executera au premier demarrage du service"
         }
