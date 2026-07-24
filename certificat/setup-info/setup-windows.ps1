@@ -246,14 +246,14 @@ FLUSH PRIVILEGES;
 
         # my.ini dans le dossier d'installation (pas dans le datadir).
         # init-file : MySQL execute init.sql a CHAQUE demarrage normal.
-        $basedirFwd = $MySqlDir   -replace '\\', '/'
-        $datadirFwd = $MySqlData  -replace '\\', '/'
+        # Pas de guillemets autour de basedir/datadir -- meme format que Main_run.py
+        # (datadir={self.data_dir} sans guillemets, barres obliques inverses).
         Write-UTF8NoBOM $MyIni @"
 [mysqld]
-basedir   = "$basedirFwd"
-datadir   = "$datadirFwd"
-port      = $MySqlPort
-init-file = "$InitSqlFwd"
+basedir = $MySqlDir
+datadir = $MySqlData
+port = $MySqlPort
+init-file = $InitSqlFwd
 max_allowed_packet = 64M
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
@@ -277,10 +277,20 @@ port = $MySqlPort
         $residus = @(Get-ChildItem -Path "$MySqlData" -Force -ErrorAction SilentlyContinue)
         if ($residus.Count -gt 0) {
             Write-Log "Nettoyage de $($residus.Count) fichier(s) residuel(s) dans le datadir (rd /s /q)..."
-            # Supprimer le dossier entier + recreer proprement
-            cmd.exe /c "rd /s /q `"$MySqlData`"" 2>&1 | Out-Null
+            # Supprimer le dossier entier + recreer proprement.
+            # Remove-Item echoue silencieusement sur les fichiers systeme MySQL
+            # (#innodb_redo, #innodb_temp, ib_buffer_pool). rd /s /q les supprime.
+            cmd.exe /c "rd /s /q `"$MySqlData`"" 2>&1 | ForEach-Object { Write-Log "  [rd] $_" }
             Start-Sleep -Seconds 3
             New-Item -ItemType Directory -Force -Path $MySqlData | Out-Null
+            # Verifier que le dossier est bien vide apres suppression
+            $apresNettoyage = @(Get-ChildItem -Path "$MySqlData" -Force -ErrorAction SilentlyContinue)
+            if ($apresNettoyage.Count -gt 0) {
+                Write-Log "ATTENTION : $($apresNettoyage.Count) fichier(s) encore presents apres rd /s /q -- init risque d'echouer" "WARN"
+                $apresNettoyage | ForEach-Object { Write-Log "  residuel: $($_.Name)" "WARN" }
+            } else {
+                Write-Log "Datadir vide apres nettoyage -- pret pour init"
+            }
             # Reappliquer les permissions sur le nouveau dossier vide
             try {
                 $aclR = New-Object System.Security.AccessControl.DirectorySecurity
@@ -296,9 +306,10 @@ port = $MySqlPort
             }
         }
 
-        # PAS de --defaults-file ici : MySQL trouve my.ini automatiquement
-        # dans le dossier parent de bin/ (= $MySqlDir).
-        $_initOut  = & "$MySqlBinDir\mysqld.exe" --initialize-insecure --console 2>&1
+        # --defaults-file obligatoire : sans lui mysqld cherche my.ini dans C:\Windows\
+        # et pourrait trouver un fichier d'une ancienne installation pointant vers un
+        # autre datadir -- rendant le nettoyage de $MySqlData totalement inutile.
+        $_initOut  = & "$MySqlBinDir\mysqld.exe" "--defaults-file=$MyIni" --initialize-insecure --console 2>&1
         $_initCode = $LASTEXITCODE
         $_initOut | ForEach-Object { Write-Log "  [mysqld-init] $_" }
         if ($_initCode -ne 0) {
@@ -310,14 +321,12 @@ port = $MySqlPort
         Write-Log "MySQL deja initialise -- mise a jour my.ini + init.sql"
         # Toujours reecrire my.ini pour s'assurer que init-file est present
         # (les anciennes installations n'avaient pas cette ligne)
-        $basedirFwd = $MySqlDir  -replace '\\', '/'
-        $datadirFwd = $MySqlData -replace '\\', '/'
         Write-UTF8NoBOM $MyIni @"
 [mysqld]
-basedir   = "$basedirFwd"
-datadir   = "$datadirFwd"
-port      = $MySqlPort
-init-file = "$InitSqlFwd"
+basedir = $MySqlDir
+datadir = $MySqlData
+port = $MySqlPort
+init-file = $InitSqlFwd
 max_allowed_packet = 64M
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
