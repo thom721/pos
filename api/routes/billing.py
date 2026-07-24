@@ -48,25 +48,39 @@ def _get_tenant(db: Session, user: User) -> Tenant:
 
 
 def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None) -> dict:
-    """Calcule le détail d'utilisation du plan et le total du cycle en cours (avec prorata)."""
-    # Caisses = PosRegisters actifs (cohérent avec l'enforcement de limite)
+    """Calcule le détail d'utilisation du plan.
+
+    Modèle : 1 caisse initiale par dépôt est incluse. Seules les caisses
+    supplémentaires (is_initial=False) sont facturées.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Toutes les caisses actives
     caisse_count = db.query(PosRegister).filter(
         PosRegister.tenant_id == tenant.id,
         PosRegister.is_active == True,  # noqa: E712
     ).count()
-    # Dépôts = warehouses actifs
+
+    # Caisses initiales — 1 par dépôt, incluses dans le plan
+    initial_count = db.query(PosRegister).filter(
+        PosRegister.tenant_id == tenant.id,
+        PosRegister.is_active == True,  # noqa: E712
+        PosRegister.is_initial == True,  # noqa: E712
+    ).count()
+
+    extra_caisse_count = caisse_count - initial_count
+
+    # Dépôts = warehouses actifs (illimités, sans surcharge)
     depot_count = db.query(Warehouse).filter(
         Warehouse.tenant_id == tenant.id,
         Warehouse.is_active == True,  # noqa: E712
     ).count()
 
-    # Facturation uniquement par caisse — dépôts illimités sans surcharge.
+    # Prix — seules les caisses supplémentaires sont facturées.
     xc_htg = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
     xc_usd = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
-
-    # Toutes les caisses actives sont facturables (y compris caisses initiales).
-    total_htg = xc_htg * caisse_count
-    total_usd = xc_usd * caisse_count
+    total_htg = xc_htg * extra_caisse_count
+    total_usd = xc_usd * extra_caisse_count
 
     # Détail par caisse avec warehouse pour affichage dans la page abonnement
     regs_q = (
@@ -78,14 +92,27 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
         )
         .all()
     )
+
     registers_detail = []
     for reg, wh in regs_q:
-        if reg.subscription_ends_at:
-            reg_status = "active"
-        elif reg.trial_ends_at:
-            reg_status = "trial"
+        if reg.is_initial:
+            # Couverte par le plan du tenant — pas d'abonnement individuel requis.
+            reg_status  = "included"
+            monthly_htg = 0.0
         else:
-            reg_status = "no_subscription"
+            sub_end   = reg.subscription_ends_at
+            trial_end = reg.trial_ends_at
+            if sub_end:
+                if sub_end.tzinfo is None:
+                    sub_end = sub_end.replace(tzinfo=timezone.utc)
+                reg_status = "active" if sub_end > now else "expired"
+            elif trial_end:
+                if trial_end.tzinfo is None:
+                    trial_end = trial_end.replace(tzinfo=timezone.utc)
+                reg_status = "trial" if trial_end > now else "expired"
+            else:
+                reg_status = "no_subscription"
+            monthly_htg = xc_htg
 
         registers_detail.append({
             "id":                   reg.id,
@@ -94,15 +121,20 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
             "is_initial":           bool(reg.is_initial),
             "trial_ends_at":        reg.trial_ends_at.isoformat() if reg.trial_ends_at else None,
             "subscription_ends_at": reg.subscription_ends_at.isoformat() if reg.subscription_ends_at else None,
-            "monthly_htg":          xc_htg,
+            "monthly_htg":          monthly_htg,
             "status":               reg_status,
         })
 
     return {
         "current_caisses":            caisse_count,
+        "extra_caisses":              extra_caisse_count,
+        "extra_depots":               0,
+        "max_caisses":                initial_count,
         "current_depots":             depot_count,
         "price_per_caisse_htg":       xc_htg,
         "price_per_caisse_usd":       xc_usd,
+        "price_per_extra_caisse_htg": xc_htg,
+        "price_per_extra_caisse_usd": xc_usd,
         "total_monthly_htg":          total_htg,
         "total_monthly_usd":          total_usd,
         "registers":                  registers_detail,
@@ -136,8 +168,12 @@ def get_billing_config(
         "support_whatsapp":  cfg.support_whatsapp,
         "price_per_extra_caisse_htg": float(cfg.price_per_extra_caisse_htg),
         "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
-        "price_per_extra_depot_htg":  float(getattr(cfg, "price_per_extra_depot_htg", 500.0)),
-        "price_per_extra_depot_usd":  float(getattr(cfg, "price_per_extra_depot_usd", 4.0)),
+        "annual_discount_pct": int(getattr(cfg, "annual_discount_pct", 20)),
+        # Méthodes de paiement activées
+        "cash_enabled":    bool(getattr(cfg, "cash_enabled",    True)),
+        "moncash_enabled": bool(getattr(cfg, "moncash_enabled", True)),
+        "natcash_enabled": bool(getattr(cfg, "natcash_enabled", True)),
+        "card_enabled":    bool(getattr(cfg, "card_enabled",    True)),
     }
 
 

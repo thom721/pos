@@ -104,6 +104,8 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
         final message = e.response?.data?['message'] as String?;
         if (detail == 'caisse_disabled') {
           msg = 'Cette caisse a été désactivée. Contactez votre administrateur.';
+        } else if (detail == 'register_no_subscription') {
+          msg = message ?? 'Cette caisse n\'a pas d\'abonnement actif. Payez l\'abonnement depuis la page Abonnement.';
         } else if (detail == 'no_registers') {
           msg = message ?? 'Aucune caisse configurée. Contactez l\'administrateur.';
         } else if (detail == 'no_registered_devices') {

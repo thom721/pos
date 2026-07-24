@@ -767,12 +767,14 @@ class _PlanUsageCardState extends State<_PlanUsageCard> {
 
   @override
   Widget build(BuildContext context) {
-    final usage      = widget.usage;
-    final curCaisses = usage['current_caisses'] as int? ?? 0;
-    final curDepots  = usage['current_depots']  as int? ?? 0;
-    final xCaisseHtg = (usage['price_per_caisse_htg'] as num? ?? 500).toDouble();
-    final totalHtg   = (usage['total_monthly_htg'] as num? ?? 0).toDouble();
-    final registers  = (usage['registers'] as List<dynamic>? ?? [])
+    final usage         = widget.usage;
+    final curCaisses    = usage['current_caisses'] as int? ?? 0;
+    final maxCaisses    = usage['max_caisses']     as int? ?? 0;  // initial = 1 par dépôt
+    final extraCaisses  = usage['extra_caisses']   as int? ?? (curCaisses - maxCaisses).clamp(0, curCaisses);
+    final curDepots     = usage['current_depots']  as int? ?? 0;
+    final xCaisseHtg    = (usage['price_per_caisse_htg'] as num? ?? 500).toDouble();
+    final totalHtg      = (usage['total_monthly_htg'] as num? ?? 0).toDouble();
+    final registers     = (usage['registers'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
 
     // Grouper par warehouse_name
@@ -787,18 +789,33 @@ class _PlanUsageCardState extends State<_PlanUsageCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Résumé ────────────────────────────────────────────────────
+          // Caisses initiales (1 par dépôt, incluses dans le plan)
           Row(children: [
             const Icon(Icons.point_of_sale_rounded,
-                size: 14, color: AppColors.textSecondary),
+                size: 14, color: AppColors.primary),
             const SizedBox(width: 6),
-            Text('$curCaisses caisse${curCaisses != 1 ? 's' : ''}',
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w500)),
+            Text(
+              '$maxCaisses caisse${maxCaisses != 1 ? 's' : ''} incluse${maxCaisses != 1 ? 's' : ''} (1 par dépôt)',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
             const Spacer(),
-            Text('${xCaisseHtg.toStringAsFixed(0)} HTG / caisse / mois',
-                style: const TextStyle(
-                    fontSize: 12, color: AppColors.textSecondary)),
+            const Text('Incluses', style: TextStyle(fontSize: 12, color: AppColors.success)),
           ]),
+          if (extraCaisses > 0) ...[
+            const SizedBox(height: 6),
+            Row(children: [
+              const Icon(Icons.point_of_sale_rounded,
+                  size: 14, color: AppColors.textSecondary),
+              const SizedBox(width: 6),
+              Text(
+                '$extraCaisses caisse${extraCaisses != 1 ? 's' : ''} supplémentaire${extraCaisses != 1 ? 's' : ''}',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+              const Spacer(),
+              Text('${xCaisseHtg.toStringAsFixed(0)} HTG / caisse / mois',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            ]),
+          ],
           const SizedBox(height: 6),
           Row(children: [
             const Icon(Icons.warehouse_rounded,
@@ -817,11 +834,15 @@ class _PlanUsageCardState extends State<_PlanUsageCard> {
             children: [
               const Text('Total / mois',
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              Text('${totalHtg.toStringAsFixed(0)} HTG',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                      color: AppColors.primary)),
+              Text(
+                extraCaisses > 0
+                    ? '${totalHtg.toStringAsFixed(0)} HTG'
+                    : 'Inclus',
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: extraCaisses > 0 ? AppColors.primary : AppColors.success),
+              ),
             ],
           ),
 
@@ -900,6 +921,7 @@ class _RegisterUsageGroup extends StatelessWidget {
             'included'        => ('Incluse', AppColors.success),
             'trial'           => ('Essai', AppColors.accent),
             'active'          => ('Active', AppColors.success),
+            'expired'         => ('Expiré', AppColors.error),
             'no_subscription' => ('Sans abonnement', AppColors.error),
             _                 => (status, AppColors.textSecondary),
           };
@@ -1889,7 +1911,8 @@ class _RegisterPaymentSectionState
               final groups = whRegs
                   .map((w) => _WhWithRegs(
                       w.warehouse,
-                      w.registers.where((r) => r.isActive).toList()))
+                      // Caisses initiales incluses dans le plan — pas de paiement requis.
+                      w.registers.where((r) => r.isActive && !r.isInitial).toList()))
                   .where((w) => w.registers.isNotEmpty)
                   .toList();
 
