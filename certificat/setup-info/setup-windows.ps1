@@ -271,15 +271,17 @@ port = $MySqlPort
 "@
 
         # ibdata1 absent = pas de donnees utilisateur => nettoyer AVANT d'initialiser.
-        # MySQL refuse "--initialize" sur un dossier non vide (meme des residus d'init
-        # avortee comme #innodb_redo, #innodb_temp, ib_buffer_pool, etc.).
-        # On nettoie d'abord, puis on initialise une seule fois proprement.
+        # MySQL refuse "--initialize" sur un dossier non vide (#innodb_redo, etc.).
+        # Remove-Item echoue silencieusement sur les fichiers systeme MySQL.
+        # "rd /s /q" (cmd.exe) force la suppression meme sur ces fichiers.
         $residus = @(Get-ChildItem -Path "$MySqlData" -Force -ErrorAction SilentlyContinue)
         if ($residus.Count -gt 0) {
-            Write-Log "Nettoyage de $($residus.Count) fichier(s) residuel(s) dans le datadir..."
-            $residus | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-            # Reappliquer les permissions sur le dossier maintenant vide
+            Write-Log "Nettoyage de $($residus.Count) fichier(s) residuel(s) dans le datadir (rd /s /q)..."
+            # Supprimer le dossier entier + recreer proprement
+            cmd.exe /c "rd /s /q `"$MySqlData`"" 2>&1 | Out-Null
+            Start-Sleep -Seconds 3
+            New-Item -ItemType Directory -Force -Path $MySqlData | Out-Null
+            # Reappliquer les permissions sur le nouveau dossier vide
             try {
                 $aclR = New-Object System.Security.AccessControl.DirectorySecurity
                 $aclR.SetAccessRuleProtection($true, $false)
@@ -288,7 +290,10 @@ port = $MySqlPort
                 $aclR.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
                     "Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")))
                 Set-Acl -Path $MySqlData -AclObject $aclR
-            } catch {}
+                Write-Log "Datadir reinitiase et permissions reappliquees"
+            } catch {
+                Write-Log "ACL apres nettoyage : $_" "WARN"
+            }
         }
 
         # PAS de --defaults-file ici : MySQL trouve my.ini automatiquement
