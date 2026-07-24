@@ -118,7 +118,8 @@ class _PosAppState extends ConsumerState<PosApp> {
     final tenantId = tenant?['id'] as String?;
     final businessType = ref.read(settingsProvider).businessType;
     if (_isAndroid) {
-      // Sur Android : attendre la fin de la sync pour notifier les providers
+      // Android : attendre la fin de la sync SQLite avant de notifier les providers
+      // (les repos lisent depuis SQLite, il faut que le cache soit à jour)
       await OfflineCacheService.instance.syncAll(
           warehouseId: warehouseId,
           tenantId: tenantId,
@@ -127,10 +128,16 @@ class _PosAppState extends ConsumerState<PosApp> {
         ref.read(syncEpochProvider.notifier).state++;
       }
     } else {
+      // Bureau / Web : fire-and-forget, puis notifier les providers une fois terminé
+      // (les repos lisent l'API directement, pas SQLite, donc le refresh déclenche
+      // simplement un rechargement API — correct et non bloquant)
       OfflineCacheService.instance.syncAll(
           warehouseId: warehouseId,
           tenantId: tenantId,
-          businessType: businessType).ignore();
+          businessType: businessType)
+        .whenComplete(() {
+          if (mounted) ref.read(syncEpochProvider.notifier).state++;
+        }).ignore();
     }
   }
 
