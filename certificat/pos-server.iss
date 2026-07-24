@@ -80,9 +80,10 @@ Source: "nssm\*"; DestDir: "{app}\nssm"; \
 ; NB : le ZIP MySQL n'est PAS bundlé — setup-windows.ps1 le télécharge
 ; automatiquement lors de l'installation si absent ($MySqlZipUrl).
 
-; Certificat SSL (à la racine de certificat/, commités dans git)
-Source: "server.crt"; DestDir: "{app}\certificat"; Flags: ignoreversion
-Source: "server.key"; DestDir: "{app}\certificat"; Flags: ignoreversion
+; Certificat SSL et config nginx (à la racine de certificat/, commités dans git)
+Source: "server.crt";            DestDir: "{app}\certificat"; Flags: ignoreversion
+Source: "server.key";            DestDir: "{app}\certificat"; Flags: ignoreversion
+Source: "nginx-windows.conf";    DestDir: "{app}\certificat"; Flags: ignoreversion
 
 ; Icône de l'application
 Source: "setup-info\pos.ico"; DestDir: "{app}"; Flags: ignoreversion
