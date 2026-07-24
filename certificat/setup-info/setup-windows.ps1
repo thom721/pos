@@ -270,7 +270,9 @@ innodb_flush_log_at_trx_commit = 2
 innodb_buffer_pool_instances = 2
 
 init-file = $InitSqlFwd
-authentication_policy = caching_sha2_password,mysql_native_password
+# MySQL 8.0.34+ : mysql_native_password est un plugin chargeable, desactive par defaut.
+# 'ON' l'active sans modifier authentication_policy (qui controle le multi-facteur).
+mysql_native_password = ON
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
 sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
