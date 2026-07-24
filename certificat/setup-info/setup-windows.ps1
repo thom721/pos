@@ -245,21 +245,45 @@ FLUSH PRIVILEGES;
         Write-Log "Initialisation du datadir MySQL ($MySqlData)..."
 
         # my.ini dans le dossier d'installation (pas dans le datadir).
-        # init-file : MySQL execute init.sql a CHAQUE demarrage normal.
-        # Pas de guillemets autour de basedir/datadir -- meme format que Main_run.py
-        # (datadir={self.data_dir} sans guillemets, barres obliques inverses).
+        # Parametres alignes avec Main_run.py (memes valeurs, meme ordre).
+        # innodb_flush_method=normal est OBLIGATOIRE sur Windows (pas O_DIRECT).
         Write-UTF8NoBOM $MyIni @"
 [mysqld]
 basedir = $MySqlDir
 datadir = $MySqlData
+bind-address = 0.0.0.0
 port = $MySqlPort
+socket = mysql${MySqlPort}.sock
+skip_shared_memory = ON
+shared_memory = OFF
+skip_name_resolve = ON
+log_bin_trust_function_creators = 1
+
+# InnoDB
+innodb_force_recovery = 0
+innodb_flush_method = normal
+innodb_buffer_pool_size = 512M
+innodb_redo_log_capacity = 268435456
+innodb_file_per_table = ON
+innodb_flush_log_at_trx_commit = 2
+innodb_buffer_pool_instances = 2
+
 init-file = $InitSqlFwd
-max_allowed_packet = 64M
+authentication_policy = caching_sha2_password
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
-authentication_policy = caching_sha2_password
 sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
-innodb_buffer_pool_size = 64M
+
+# Journaux
+log_error = $DataDir\logs\mysql-error.log
+general_log_file = $DataDir\logs\mysql-query.log
+general_log = 1
+
+# Memoire
+key_buffer_size = 232M
+max_allowed_packet = 464M
+thread_cache_size = 10
+table_open_cache = 2000
 max_connections = 50
 
 [mysql]
@@ -319,18 +343,44 @@ port = $MySqlPort
         }
     } else {
         Write-Log "MySQL deja initialise -- mise a jour my.ini + init.sql"
-        # Toujours reecrire my.ini pour s'assurer que init-file est present
-        # (les anciennes installations n'avaient pas cette ligne)
         Write-UTF8NoBOM $MyIni @"
 [mysqld]
 basedir = $MySqlDir
 datadir = $MySqlData
+bind-address = 0.0.0.0
 port = $MySqlPort
+socket = mysql${MySqlPort}.sock
+skip_shared_memory = ON
+shared_memory = OFF
+skip_name_resolve = ON
+log_bin_trust_function_creators = 1
+
+# InnoDB
+innodb_force_recovery = 0
+innodb_flush_method = normal
+innodb_buffer_pool_size = 512M
+innodb_redo_log_capacity = 268435456
+innodb_file_per_table = ON
+innodb_flush_log_at_trx_commit = 2
+innodb_buffer_pool_instances = 2
+
 init-file = $InitSqlFwd
-max_allowed_packet = 64M
+authentication_policy = caching_sha2_password
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
-authentication_policy = caching_sha2_password
+sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+
+# Journaux
+log_error = $DataDir\logs\mysql-error.log
+general_log_file = $DataDir\logs\mysql-query.log
+general_log = 1
+
+# Memoire
+key_buffer_size = 232M
+max_allowed_packet = 464M
+thread_cache_size = 10
+table_open_cache = 2000
+max_connections = 50
 
 [mysql]
 default-character-set = utf8mb4
