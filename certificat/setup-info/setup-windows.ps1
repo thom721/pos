@@ -571,23 +571,13 @@ if (Test-Path $SrcConf) {
     Write-Log "nginx-windows.conf introuvable ($SrcConf) -- nginx utilisera sa config par defaut" "WARN"
 }
 
-# -- 4c. Liberation ports 80/443 de HTTP.sys ------------------------------------
-# Sur Windows, HTTP.sys (pilote noyau) peut reserver les ports 80/443.
+# -- 4c. Liberation port 443 de HTTP.sys ----------------------------------------
+# Sur Windows, HTTP.sys (pilote noyau) peut reserver le port 443.
 # nginx se lie directement (sans HTTP.sys) et obtient WSAEACCES (10013) si le port
 # est deja revendique. On supprime la reservation HTTP.sys avant de demarrer nginx.
-# (La commande echoue silencieusement si aucune reservation n'existe.)
-Write-Log "Liberation ports 80/443 de HTTP.sys (evite erreur bind 10013)..."
-& netsh http delete urlacl url="http://+:80/"   2>&1 | Out-Null
+# Le redirect HTTP utilise le port 8080 (evite tout conflit avec Apache/IIS sur 80).
+Write-Log "Liberation port 443 de HTTP.sys (evite erreur bind 10013)..."
 & netsh http delete urlacl url="https://+:443/" 2>&1 | Out-Null
-# Verifier si port 80 est deja occupe par un autre processus
-$_p80 = & netstat -ano 2>&1 | Select-String ":80\s.*LISTEN"
-if ($_p80) {
-    Write-Log "WARN: Port 80 occupe par un autre processus -- redirect HTTP ne fonctionnera pas" "WARN"
-    Write-Log "  $_p80" "WARN"
-    Write-Log "  Desactivez IIS ou tout service utilisant le port 80, puis relancez le setup" "WARN"
-} else {
-    Write-Log "Port 80 libre"
-}
 
 # -- 5. Service : Nginx ---------------------------------------------------------
 $SvcNginx = "POS_Connect_Nginx"
@@ -656,7 +646,7 @@ function Add-FwRule {
 }
 
 Add-FwRule -Name "POS Connect Serveur API (9003)" -Port 9003
-Add-FwRule -Name "POS Connect Nginx HTTP (80)"    -Port 80
+Add-FwRule -Name "POS Connect Nginx HTTP (8080)"   -Port 8080
 Add-FwRule -Name "POS Connect Nginx HTTPS (443)"  -Port 443
 
 Write-Log "=== Configuration POS Connect terminee ==="
