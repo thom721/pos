@@ -1,12 +1,14 @@
 <#
 .SYNOPSIS
     Configure POS Connect apres installation Inno Setup.
-    - Telecharge MySQL si le ZIP est absent
-    - Extrait et installe MySQL localement dans {app}\mysql\ (port 3307)
-    - Cree pos_db + pos_user avec mot de passe
-    - Installe les services Windows via NSSM
-    - Ecrit pos_server.ini dans ProgramData
+    -DbType mysql  : telecharge MySQL (si absent), extrait, initialise, cree les services
+    -DbType sqlite : cree pos_server.ini SQLite uniquement, pas de MySQL
+    Dans les deux cas : installe les services API + Nginx, ecrit pos_server.ini.
 #>
+param(
+    [ValidateSet("mysql", "sqlite")]
+    [string]$DbType = "mysql"
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Continue"
@@ -29,8 +31,9 @@ $MySqlData   = "$env:ProgramData\POS_Connect_MySQL\data"
 $MyIni       = "$MySqlDir\my.ini"
 $MySqlBinDir = "$MySqlDir\bin"
 $MySqlPort   = 3307
-$IniTarget   = "$DataDir\pos_server.ini"
-$LogFile     = "$DataDir\install.log"
+$IniTarget    = "$DataDir\pos_server.ini"
+$LogFile      = "$DataDir\install.log"
+$InitFlagFile = "$DataDir\mysql_init_ok.flag"
 
 # -- Journalisation -------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
@@ -135,48 +138,50 @@ foreach ($killSvc in @("POS_Connect_Nginx", "POS_Connect_API", "POS_Connect_MySQ
         }
     }
 }
-$zomb = @(Get-Process -Name "mysqld" -ErrorAction SilentlyContinue)
-if ($zomb.Count -gt 0) {
-    Write-Log "Arret force $($zomb.Count) processus mysqld avant extraction..."
-    $zomb | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 3
-}
-
-# -- 2b. MySQL : telecharger si ZIP absent -------------------------------------
-if (-not (Test-Path "$MySqlBinDir\mysqld.exe")) {
-    if (-not (Test-Path $MySqlZip)) {
-        Write-Log "MySQL ZIP absent -- telechargement depuis MySQL officiel..."
-        try {
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            $wc = New-Object System.Net.WebClient
-            $wc.DownloadFile($MySqlZipUrl, $MySqlZip)
-            $sizeMb = [math]::Round((Get-Item $MySqlZip).Length / 1MB, 1)
-            Write-Log "MySQL $MySqlVersion telecharge ($sizeMb Mo)"
-        } catch {
-            Write-Log "Impossible de telecharger MySQL : $_" "WARN"
-        }
+if ($DbType -eq "mysql") {
+    # Tuer tout processus mysqld residuel avant d'ecraser les binaires
+    $zomb = @(Get-Process -Name "mysqld" -ErrorAction SilentlyContinue)
+    if ($zomb.Count -gt 0) {
+        Write-Log "Arret force $($zomb.Count) processus mysqld avant extraction..."
+        $zomb | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
     }
 
-    # Extraire
-    if (Test-Path $MySqlZip) {
-        Write-Log "Extraction de MySQL dans $InstallDir ..."
-        try {
-            Expand-Archive -Path $MySqlZip -DestinationPath $InstallDir -Force
-            $Extracted = Get-ChildItem -Path $InstallDir -Directory -Filter "mysql-*" |
-                         Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($Extracted -and $Extracted.FullName -ne $MySqlDir) {
-                if (Test-Path $MySqlDir) { Remove-Item $MySqlDir -Recurse -Force }
-                Rename-Item -Path $Extracted.FullName -NewName "mysql" -Force
+    # -- 2b. MySQL : telecharger si ZIP absent ------------------------------------
+    if (-not (Test-Path "$MySqlBinDir\mysqld.exe")) {
+        if (-not (Test-Path $MySqlZip)) {
+            Write-Log "MySQL ZIP absent -- telechargement depuis MySQL officiel..."
+            try {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                $wc = New-Object System.Net.WebClient
+                $wc.DownloadFile($MySqlZipUrl, $MySqlZip)
+                $sizeMb = [math]::Round((Get-Item $MySqlZip).Length / 1MB, 1)
+                Write-Log "MySQL $MySqlVersion telecharge ($sizeMb Mo)"
+            } catch {
+                Write-Log "Impossible de telecharger MySQL : $_" "WARN"
             }
-            Write-Log "MySQL extrait dans $MySqlDir"
-        } catch {
-            Write-Log "Extraction MySQL : $_" "WARN"
+        }
+
+        if (Test-Path $MySqlZip) {
+            Write-Log "Extraction de MySQL dans $InstallDir ..."
+            try {
+                Expand-Archive -Path $MySqlZip -DestinationPath $InstallDir -Force
+                $Extracted = Get-ChildItem -Path $InstallDir -Directory -Filter "mysql-*" |
+                             Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                if ($Extracted -and $Extracted.FullName -ne $MySqlDir) {
+                    if (Test-Path $MySqlDir) { Remove-Item $MySqlDir -Recurse -Force }
+                    Rename-Item -Path $Extracted.FullName -NewName "mysql" -Force
+                }
+                Write-Log "MySQL extrait dans $MySqlDir"
+            } catch {
+                Write-Log "Extraction MySQL : $_" "WARN"
+            }
         }
     }
 }
 
-# -- 3. Initialiser MySQL -------------------------------------------------------
-if (Test-Path "$MySqlBinDir\mysqld.exe") {
+# -- 3. Base de donnees : MySQL ou SQLite ---------------------------------------
+if ($DbType -eq "mysql") {
     # Creer le datadir avec permissions strictes via API .NET.
     # Fait TOUJOURS (fresh install ET reinstallation) car :
     # - InnoSetup ne cree plus ce dossier (evite l'heritage des ACL de C:\ProgramData)
@@ -427,12 +432,9 @@ port = $MySqlPort
         Write-Log "MySQL n'a pas repondu dans les 40s -- verifiez les logs" "WARN"
     }
 
-    # -- Ecrire pos_server.ini ---------------------------------------------------
-    # init.sql (execute automatiquement par MySQL au demarrage) cree deja
-    # la DB et l'utilisateur -- aucun appel mysql.exe supplementaire necessaire.
-    # On ecrit pos_server.ini apres confirmation que MySQL tourne.
+    # -- pos_server.ini MySQL (seulement si MySQL tourne) -------------------------
     if ($MySqlReady) {
-        Write-Log "Base '$DbName' et utilisateur '$DbUser' configures via init.sql (automatique)"
+        Write-Log "Base '$DbName' et utilisateur '$DbUser' configures via init.sql"
         Write-UTF8NoBOM $IniTarget @"
 [database]
 type     = mysql
@@ -449,29 +451,17 @@ port = 9003
         Write-Log "pos_server.ini ecrit (MySQL 127.0.0.1:$MySqlPort, db=$DbName, user=$DbUser)"
         icacls $IniTarget /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" 2>&1 | Out-Null
         Write-Log "Permissions pos_server.ini restreintes (SYSTEM + Administrateurs)"
+        # Flag : MySQL completement operationnel -- la prochaine execution ne reinit pas
+        Write-UTF8NoBOM $InitFlagFile "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') MySQL initialise et operationnel"
+        Write-Log "Flag d'init MySQL ecrit : $InitFlagFile"
     } else {
-        # MySQL non pret -- garder SQLite si ini existe, sinon creer SQLite minimal
-        Write-Log "MySQL non demarre -- pos_server.ini reste en SQLite" "WARN"
-        if (-not (Test-Path $IniTarget)) {
-            Write-UTF8NoBOM $IniTarget @"
-[database]
-type = sqlite
-path = $DataDir\pos_connect.db
-
-[server]
-host = 0.0.0.0
-port = 9003
-"@
-            Write-Log "pos_server.ini minimal cree (SQLite -- MySQL non demarre)"
-            icacls $IniTarget /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" 2>&1 | Out-Null
-        }
+        Write-Log "MySQL non demarre -- pos_server.ini NON ecrit, flag NON ecrit" "WARN"
     }
 
 } else {
-    # MySQL absent -- fallback SQLite
-    Write-Log "MySQL non disponible -- configuration SQLite" "WARN"
-    if (-not (Test-Path $IniTarget)) {
-        Write-UTF8NoBOM $IniTarget @"
+    # -- SQLite -------------------------------------------------------------------
+    Write-Log "Configuration SQLite..."
+    Write-UTF8NoBOM $IniTarget @"
 [database]
 type = sqlite
 path = $DataDir\pos_connect.db
@@ -480,14 +470,9 @@ path = $DataDir\pos_connect.db
 host = 0.0.0.0
 port = 9003
 "@
-        Write-Log "pos_server.ini minimal cree (SQLite)"
-        try {
-            icacls $IniTarget /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" | Out-Null
-            Write-Log "Permissions pos_server.ini restreintes (SYSTEM + Administrateurs)"
-        } catch {
-            Write-Log "Impossible de restreindre les permissions de pos_server.ini : $_" "WARN"
-        }
-    }
+    Write-Log "pos_server.ini ecrit (SQLite : $DataDir\pos_connect.db)"
+    icacls $IniTarget /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" 2>&1 | Out-Null
+    Write-Log "Permissions pos_server.ini restreintes (SYSTEM + Administrateurs)"
 }
 
 # -- 3b. Permissions dossier de données (SQLite fallback inscriptible par SYSTEM) --
@@ -514,7 +499,7 @@ if ($LASTEXITCODE -ne 0 -or "$svcApiStatus" -match "can't open service|No such s
     & $NssmExe set    $SvcApi Start         SERVICE_AUTO_START
     & $NssmExe set    $SvcApi AppStdout     "$DataDir\api-stdout.log"
     & $NssmExe set    $SvcApi AppStderr     "$DataDir\api-stderr.log"
-    if (Test-Path "$MySqlBinDir\mysqld.exe") {
+    if ($DbType -eq "mysql") {
         & $NssmExe set $SvcApi DependOnService "POS_Connect_MySQL"
     }
     Write-Log "Service $SvcApi installe"

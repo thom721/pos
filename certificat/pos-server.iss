@@ -141,9 +141,10 @@ Name: "{autodesktop}\{#MyAppName}";  Filename: "{app}\{#MyAppExeName}"; IconFile
 
 ; ── Commandes après installation ──────────────────────────────────────────────
 [Run]
-; Tout est géré par setup-windows.ps1 : pos_server.ini, certificat SSL, services NSSM
+; setup-windows.ps1 reçoit -DbType mysql ou sqlite selon le choix de l'utilisateur.
+; Il gère : téléchargement MySQL (si absent + MySQL choisi), extraction, init, services.
 Filename: "powershell.exe"; \
-  Parameters: "-NonInteractive -ExecutionPolicy Bypass -File ""{app}\setup-windows.ps1"""; \
+  Parameters: "-NonInteractive -ExecutionPolicy Bypass -File ""{app}\setup-windows.ps1"" -DbType ""{code:GetDbType}"""; \
   StatusMsg: "Configuration de POS Connect (services, certificat, base de données)..."; \
   Flags: runhidden waituntilterminated
 
@@ -157,9 +158,37 @@ Filename: "{app}\{#MyAppExeName}"; \
 ; Arrêter et supprimer les services Windows (une seule ligne, pas de \ imbriqués)
 Filename: "powershell.exe"; Parameters: "-NonInteractive -ExecutionPolicy Bypass -Command ""Stop-Service 'POS_Connect_Nginx','POS_Connect_API','POS_Connect_MySQL' -Force -ErrorAction SilentlyContinue; & '{app}\nssm\nssm.exe' remove POS_Connect_Nginx confirm; & '{app}\nssm\nssm.exe' remove POS_Connect_API confirm; & '{app}\nssm\nssm.exe' remove POS_Connect_MySQL confirm"""; Flags: runhidden waituntilterminated
 
-; ── Code Pascal — désinstallation ────────────────────────────────────────────
-; Note : le contrôle 64-bit est déjà géré par ArchitecturesAllowed=x64compatible
+; ── Code Pascal — wizard + désinstallation ───────────────────────────────────
 [Code]
+var
+  DbTypePage: TInputOptionWizardPage;
+
+procedure InitializeWizard;
+begin
+  DbTypePage := CreateInputOptionPage(
+    wpSelectTasks,
+    'Base de données',
+    'Choisissez comment POS Connect stockera vos données',
+    'Ce choix détermine le moteur de base de données utilisé.' + #13#10 +
+    'Il peut être modifié ultérieurement en relançant l''installateur.',
+    True,
+    False
+  );
+  DbTypePage.Add(
+    'MySQL  —  Multi-poste, synchronisation cloud (recommandé)' + #13#10 +
+    '         Télécharge MySQL 8 (~200 Mo) si absent.');
+  DbTypePage.Add(
+    'SQLite  —  Mono-poste, simple, aucune configuration réseau' + #13#10 +
+    '           Idéal pour un seul terminal de caisse.');
+  DbTypePage.Values[0] := True;
+end;
+
+function GetDbType(Param: String): String;
+begin
+  if DbTypePage.Values[0] then Result := 'mysql'
+  else Result := 'sqlite';
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   // Les données MySQL (C:\ProgramData\POS_Connect_MySQL\) ne sont JAMAIS supprimées
