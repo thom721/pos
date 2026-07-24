@@ -41,8 +41,14 @@ Future<String> getEffectiveBaseUrl() async {
 }
 
 Future<void> initServerUrl() async {
+  // Web: always use the origin the app was loaded from (same server).
+  // Ignores any cached URL so the app works wherever it's deployed.
+  if (kIsWeb) {
+    dio.options.baseUrl = Uri.base.origin;
+    return;
+  }
   // Android is cloud-only: ignore any saved local server URL, always use cloud
-  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+  if (defaultTargetPlatform == TargetPlatform.android) {
     dio.options.baseUrl = AppConstants.cloudUrl;
     return;
   }
