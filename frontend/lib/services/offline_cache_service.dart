@@ -117,6 +117,7 @@ class OfflineCacheService {
       final all = <ProductModel>[];
       int page = 1;
       while (true) {
+        if (page > 200) break;
         final res = await dio.get('/api/products/',
             queryParameters: {'page': page, 'per_page': 100},
             options: kBackgroundOptions);
@@ -206,6 +207,7 @@ class OfflineCacheService {
       final all = <SaleModel>[];
       int page = 1;
       while (true) {
+        if (page > 200) break;
         final res = await dio.get('/api/sales/',
             queryParameters: {
               'page': page,
@@ -223,6 +225,8 @@ class OfflineCacheService {
         page++;
       }
       await LocalDbService.instance.upsertSales(all);
+      await LocalDbService.instance.deleteStaleSales(
+          all.map((s) => s.id).toList(), warehouseId: warehouseId);
       await LocalDbService.instance.setLastSynced('sales');
       debugPrint('[OfflineCache] sales: ${all.length} mis en cache');
     } catch (e) {
@@ -237,6 +241,7 @@ class OfflineCacheService {
       final all = <PurchaseModel>[];
       int page = 1;
       while (true) {
+        if (page > 200) break;
         final res = await dio.get('/api/purchases/',
             queryParameters: {
               'page': page,
@@ -254,6 +259,8 @@ class OfflineCacheService {
         page++;
       }
       await LocalDbService.instance.upsertPurchases(all);
+      await LocalDbService.instance.deleteStalePurchases(
+          all.map((p) => p.id).toList(), warehouseId: warehouseId);
       await LocalDbService.instance.setLastSynced('purchases');
       debugPrint('[OfflineCache] purchases: ${all.length} mis en cache');
     } catch (e) {

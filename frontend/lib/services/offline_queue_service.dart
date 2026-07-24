@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -64,6 +65,10 @@ class OfflineQueueService {
 
   static const _prefKey     = 'offline_ops_queue_v1';
   static const _maxRetries  = 5;
+
+  // Stream d'items abandonnés (max retries atteint) — l'UI peut s'y abonner
+  static final _droppedCtrl = StreamController<OfflineQueueItem>.broadcast();
+  static Stream<OfflineQueueItem> get dropped => _droppedCtrl.stream;
 
   // Paths never queued offline (auth + sync endpoints)
   static const _skipPaths = [
@@ -144,6 +149,7 @@ class OfflineQueueService {
           remaining.add(next);
         } else {
           debugPrint('[OfflineQueue] dropped after $_maxRetries retries: ${item.path}');
+          _droppedCtrl.add(item);
         }
       }
     }

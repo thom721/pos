@@ -53,7 +53,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 15,
+      version: 16,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -169,6 +169,9 @@ class LocalDbService {
     if (oldVersion < 15) {
       await _createBusinessTables(db);
     }
+    if (oldVersion < 16) {
+      try { await db.execute('ALTER TABLE warehouses ADD COLUMN is_claimed INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -236,7 +239,8 @@ class LocalDbService {
         name        TEXT NOT NULL,
         description TEXT,
         is_default  INTEGER NOT NULL DEFAULT 0,
-        is_active   INTEGER NOT NULL DEFAULT 1
+        is_active   INTEGER NOT NULL DEFAULT 1,
+        is_claimed  INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -850,6 +854,7 @@ class LocalDbService {
           'description': w.description,
           'is_default': w.isDefault ? 1 : 0,
           'is_active': w.isActive ? 1 : 0,
+          'is_claimed': w.isClaimed ? 1 : 0,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -871,6 +876,7 @@ class LocalDbService {
           description: r['description'] as String?,
           isDefault: (r['is_default'] as int) == 1,
           isActive: (r['is_active'] as int) == 1,
+          isClaimed: (r['is_claimed'] as int? ?? 0) == 1,
         )).toList();
   }
 
@@ -1111,6 +1117,18 @@ class LocalDbService {
         await db.delete('sales',         where: 'id = ?',      whereArgs: [dupeId]);
       }
     }
+  }
+
+  Future<void> deleteStaleSales(List<String> serverIds, {String? warehouseId}) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final ph = List.filled(serverIds.length, '?').join(',');
+    final args = <dynamic>[...serverIds];
+    final warehouseClause = warehouseId != null ? ' AND warehouse_id = ?' : '';
+    if (warehouseId != null) args.add(warehouseId);
+    await db.delete('sales',
+        where: 'id NOT IN ($ph) AND synced = 1$warehouseClause',
+        whereArgs: args);
   }
 
   Future<PaginatedResponse<SaleModel>> getSales({
@@ -1395,6 +1413,18 @@ class LocalDbService {
       }
     }
     await batch.commit(noResult: true);
+  }
+
+  Future<void> deleteStalePurchases(List<String> serverIds, {String? warehouseId}) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final ph = List.filled(serverIds.length, '?').join(',');
+    final args = <dynamic>[...serverIds];
+    final warehouseClause = warehouseId != null ? ' AND warehouse_id = ?' : '';
+    if (warehouseId != null) args.add(warehouseId);
+    await db.delete('purchases',
+        where: 'id NOT IN ($ph)$warehouseClause',
+        whereArgs: args);
   }
 
   Future<PaginatedResponse<PurchaseModel>> getPurchases({

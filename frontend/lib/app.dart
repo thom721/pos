@@ -33,8 +33,10 @@ class PosApp extends ConsumerStatefulWidget {
 
 class _PosAppState extends ConsumerState<PosApp> {
   late final StreamSubscription<void> _authSub;
+  late final StreamSubscription<OfflineQueueItem> _droppedSub;
   Timer? _syncTimer;
   Timer? _heartbeatTimer;
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
 
   @override
   void initState() {
@@ -43,6 +45,15 @@ class _PosAppState extends ConsumerState<PosApp> {
       // Preserve cached user so offline recovery can restore the session
       ref.read(authProvider.notifier).logoutDueToExpiry();
       _stopAutoSync();
+    });
+    _droppedSub = OfflineQueueService.dropped.listen((item) {
+      _messengerKey.currentState?.showSnackBar(SnackBar(
+        content: Text(
+          'Opération hors-ligne perdue : ${item.method} ${item.path}',
+        ),
+        backgroundColor: Colors.orange[800],
+        duration: const Duration(seconds: 5),
+      ));
     });
   }
 
@@ -95,8 +106,8 @@ class _PosAppState extends ConsumerState<PosApp> {
       }
       // 2. Sync bidirectionnelle avec le cloud
       await dio.post('/api/sync/run', options: kBackgroundOptions);
-    } catch (_) {
-      // Erreurs de sync serveur non fatales
+    } catch (e) {
+      debugPrint('[AutoSync] cloud sync error: $e');
     }
     // 3. Rafraîchir le cache SQLite local
     // activeWarehouseProvider peut être null au 1er démarrage (avant que la liste
@@ -126,6 +137,7 @@ class _PosAppState extends ConsumerState<PosApp> {
   @override
   void dispose() {
     _authSub.cancel();
+    _droppedSub.cancel();
     _stopAutoSync();
     super.dispose();
   }
@@ -145,6 +157,7 @@ class _PosAppState extends ConsumerState<PosApp> {
     return MaterialApp.router(
       title: 'POS Connect',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: _messengerKey,
       theme: AppTheme.light,
       routerConfig: router,
       localizationsDelegates: const [
