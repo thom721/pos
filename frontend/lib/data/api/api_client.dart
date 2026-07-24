@@ -41,10 +41,10 @@ Future<String> getEffectiveBaseUrl() async {
 }
 
 Future<void> initServerUrl() async {
-  // Web: always use the origin the app was loaded from (same server).
-  // Ignores any cached URL so the app works wherever it's deployed.
+  // Web release: app is served by FastAPI itself → origin IS the API server.
+  // Web debug: Flutter dev server ≠ FastAPI → use compiled AppConstants.baseUrl.
   if (kIsWeb) {
-    dio.options.baseUrl = Uri.base.origin;
+    dio.options.baseUrl = kReleaseMode ? Uri.base.origin : AppConstants.baseUrl;
     return;
   }
   // Android is cloud-only: ignore any saved local server URL, always use cloud

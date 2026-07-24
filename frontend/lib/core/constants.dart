@@ -5,11 +5,11 @@ class AppConstants {
   //   --dart-define=SERVER_IP=pos.infini-software.cloud \
   //   --dart-define=SERVER_PORT=443
   static const _serverScheme =
-      String.fromEnvironment('SERVER_SCHEME', defaultValue: 'https');
+      String.fromEnvironment('SERVER_SCHEME', defaultValue: 'http');
   static const _serverIp =
-      String.fromEnvironment('SERVER_IP', defaultValue: 'pos.infini-software.cloud');
+      String.fromEnvironment('SERVER_IP', defaultValue: '127.0.0.1');
   static const _serverPort =
-      String.fromEnvironment('SERVER_PORT', defaultValue: '443');
+      String.fromEnvironment('SERVER_PORT', defaultValue: '9003');
   static String get baseUrl => '$_serverScheme://$_serverIp:$_serverPort';
 
   // ── Cloud SaaS URL (wizard + identity check) ───────────────────────────
