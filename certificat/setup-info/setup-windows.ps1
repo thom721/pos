@@ -22,7 +22,7 @@ $MySqlZip    = "$InstallDir\mysql-$MySqlVersion-winx64.zip"
 $MySqlZipUrl = "https://downloads.mysql.com/archives/get/p/23/file/mysql-$MySqlVersion-winx64.zip"
 $MySqlDir    = "$InstallDir\mysql"
 # Donnees MySQL dans un dossier separe -- survivent a toute suppression de POS_Connect
-$MySqlData   = "$env:ProgramData\POS_Connect_MySQL"
+$MySqlData   = "$env:ProgramData\POS_Connect_MySQL\data"
 # my.ini dans le dossier BINAIRE (pas dans le datadir) :
 # MySQL 8 verifie la securite du --defaults-file et refuse d'ouvrir un fichier
 # situe dans le datadir ou dans un dossier trop permissif.
