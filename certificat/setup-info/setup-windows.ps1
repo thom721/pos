@@ -118,7 +118,31 @@ if (Test-Path $CertFile) {
     Write-Log "Certificat absent ($CertFile) -- ignore" "WARN"
 }
 
-# -- 2. MySQL : telecharger si ZIP absent --------------------------------------
+# -- 2. Arreter tous les services POS avant toute operation sur les fichiers ---
+# Fait ICI (avant extraction) pour que mysqld.exe ne soit pas verrouille
+# lors de la reinstallation -- un service actif empeche d'ecraser le binaire.
+foreach ($killSvc in @("POS_Connect_Nginx", "POS_Connect_API", "POS_Connect_MySQL")) {
+    $ks = Get-Service -Name $killSvc -ErrorAction SilentlyContinue
+    if ($ks) {
+        if ($ks.Status -eq "Paused") {
+            Resume-Service -Name $killSvc -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
+        }
+        if ((Get-Service -Name $killSvc -ErrorAction SilentlyContinue).Status -ne "Stopped") {
+            Write-Log "Arret $killSvc avant extraction..."
+            Stop-Service -Name $killSvc -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
+    }
+}
+$zomb = @(Get-Process -Name "mysqld" -ErrorAction SilentlyContinue)
+if ($zomb.Count -gt 0) {
+    Write-Log "Arret force $($zomb.Count) processus mysqld avant extraction..."
+    $zomb | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
+}
+
+# -- 2b. MySQL : telecharger si ZIP absent -------------------------------------
 if (-not (Test-Path "$MySqlBinDir\mysqld.exe")) {
     if (-not (Test-Path $MySqlZip)) {
         Write-Log "MySQL ZIP absent -- telechargement depuis MySQL officiel..."
@@ -196,41 +220,6 @@ GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'localhost';
 FLUSH PRIVILEGES;
 "@
     Write-Log "init.sql cree -- sera execute par MySQL a chaque demarrage"
-
-    # Arreter les services dependants pour eviter les conflits de port pendant la reinit
-    foreach ($depSvc in @("POS_Connect_API", "POS_Connect_Nginx")) {
-        $ds = Get-Service -Name $depSvc -ErrorAction SilentlyContinue
-        if ($ds -and $ds.Status -ne "Stopped") {
-            Write-Log "Arret de $depSvc avant reconfiguration MySQL..."
-            Stop-Service -Name $depSvc -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-        }
-    }
-
-    # Arreter le service MySQL s'il existe (PAUSED compris) + tuer tout mysqld
-    # residuel AVANT de toucher au datadir.
-    # Un service PAUSED garde le processus mysqld vivant avec des verrous sur le
-    # datadir -- c'est la cause principale de l'echec de --initialize-insecure.
-    $preMysqlSvc = Get-Service -Name "POS_Connect_MySQL" -ErrorAction SilentlyContinue
-    if ($preMysqlSvc) {
-        if ($preMysqlSvc.Status -eq "Paused") {
-            Write-Log "Service POS_Connect_MySQL en pause -- reprise avant arret..."
-            Resume-Service -Name "POS_Connect_MySQL" -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-        }
-        if ((Get-Service -Name "POS_Connect_MySQL" -ErrorAction SilentlyContinue).Status -ne "Stopped") {
-            Write-Log "Arret service POS_Connect_MySQL avant initialisation..."
-            Stop-Service -Name "POS_Connect_MySQL" -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 3
-        }
-    }
-    # Tuer tout processus mysqld residuel (service stoppe mais processus zombie)
-    $zombies = @(Get-Process -Name "mysqld" -ErrorAction SilentlyContinue)
-    if ($zombies.Count -gt 0) {
-        Write-Log "Arret force de $($zombies.Count) processus mysqld residuel(s)..."
-        $zombies | ForEach-Object { $_ | Stop-Process -Force -ErrorAction SilentlyContinue }
-        Start-Sleep -Seconds 3
-    }
 
     if (-not (Test-Path "$MySqlData\ibdata1")) {
         Write-Log "Initialisation du datadir MySQL ($MySqlData)..."
@@ -345,19 +334,7 @@ port = $MySqlPort
         & $NssmExe set    $SvcMySQL AppStderr     "$DataDir\mysql-stderr.log"
         Write-Log "Service $SvcMySQL installe"
     } else {
-        Write-Log "Service $SvcMySQL existe deja ($svcStatus)"
-        # Gerer PAUSED : Stop-Service ne fonctionne pas sur un service en pause
-        $winSvc2 = Get-Service -Name $SvcMySQL -ErrorAction SilentlyContinue
-        if ($winSvc2 -and $winSvc2.Status -eq "Paused") {
-            Resume-Service -Name $SvcMySQL -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 1
-        }
-        Stop-Service -Name $SvcMySQL -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 3
-        # Tuer tout mysqld residuel apres Stop-Service
-        Get-Process -Name "mysqld" -ErrorAction SilentlyContinue |
-            Stop-Process -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
+        Write-Log "Service $SvcMySQL existe deja ($svcStatus) -- deja arrete en section 2"
     }
     # Toujours mettre a jour AppParameters pour corriger le chemin my.ini (reinstallation)
     & $NssmExe set $SvcMySQL AppParameters "--defaults-file=$MyIni"
