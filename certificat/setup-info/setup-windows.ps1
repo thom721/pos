@@ -398,7 +398,16 @@ FLUSH PRIVILEGES;
         }
     }
     if (-not $MySqlReady) {
-        Write-Log "MySQL n'a pas repondu dans les 40s -- verifiez les logs" "WARN"
+        Write-Log "MySQL n'a pas repondu dans les 40s" "WARN"
+        # Lire les dernieres lignes du log MySQL pour faciliter le diagnostic
+        $MySqlErrLog = "$DataDir\logs\mysql-error.log"
+        if (Test-Path $MySqlErrLog) {
+            Write-Log "--- Dernieres lignes de mysql-error.log ---" "WARN"
+            Get-Content $MySqlErrLog -Tail 20 | ForEach-Object { Write-Log "  [mysql] $_" "WARN" }
+            Write-Log "--- Fin mysql-error.log ---" "WARN"
+        } else {
+            Write-Log "mysql-error.log introuvable ($MySqlErrLog)" "WARN"
+        }
     }
 
     # -- pos_server.ini MySQL (seulement si MySQL tourne) -------------------------
