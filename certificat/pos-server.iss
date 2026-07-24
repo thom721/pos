@@ -3,7 +3,7 @@
 ;  Génère : POSConnect-Setup-1.0.0.exe
 ; ============================================================
 
-#define MyAppName    "POS Connect"
+#define MyAppName    "POS Serveur"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "POS Connect"
 #define MyAppURL     "https://posconnect.ht"
@@ -85,6 +85,9 @@ Source: "server.crt";            DestDir: "{app}\certificat"; Flags: ignoreversi
 Source: "server.key";            DestDir: "{app}\certificat"; Flags: ignoreversion
 Source: "nginx-windows.conf";    DestDir: "{app}\certificat"; Flags: ignoreversion
 
+; Gestionnaire de services (interface admin — lancee via l'icone bureau)
+Source: "posconnect-manager.ps1"; DestDir: "{app}"; Flags: ignoreversion
+
 ; Icône de l'application
 Source: "setup-info\pos.ico"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -134,10 +137,17 @@ Root: HKLM; \
   Flags: uninsdeletevalue
 
 ; ── Icônes ────────────────────────────────────────────────────────────────────
+; L'icone pointe vers le gestionnaire PS1 (pas vers posconnect-server.exe qui
+; tourne deja comme service NSSM -- double-cliquer l'exe causerait un conflit de port).
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\pos.ico"
-Name: "{autodesktop}\{#MyAppName}";  Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\pos.ico"; \
-  Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; \
+  Filename: "powershell.exe"; \
+  Parameters: "-WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -File ""{app}\posconnect-manager.ps1"""; \
+  IconFilename: "{app}\pos.ico"; WorkingDir: "{app}"
+Name: "{autodesktop}\{#MyAppName}"; \
+  Filename: "powershell.exe"; \
+  Parameters: "-WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -File ""{app}\posconnect-manager.ps1"""; \
+  IconFilename: "{app}\pos.ico"; WorkingDir: "{app}"; Tasks: desktopicon
 
 ; ── Commandes après installation ──────────────────────────────────────────────
 [Run]
@@ -148,10 +158,11 @@ Filename: "powershell.exe"; \
   StatusMsg: "Configuration de POS Connect (services, certificat, base de données)..."; \
   Flags: runhidden waituntilterminated
 
-; Proposer de lancer l'app après installation
-Filename: "{app}\{#MyAppExeName}"; \
-  Description: "Démarrer POS Connect maintenant"; \
-  Flags: nowait postinstall skipifsilent
+; Proposer d'ouvrir le gestionnaire après installation
+Filename: "powershell.exe"; \
+  Parameters: "-WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -File ""{app}\posconnect-manager.ps1"""; \
+  Description: "Ouvrir le gestionnaire POS Serveur"; \
+  WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
 
 ; ── Commandes à la désinstallation ────────────────────────────────────────────
 [UninstallRun]
