@@ -75,6 +75,11 @@ dependencies:
   # Cache offline SQLite — produits, clients, catégories disponibles sans réseau
   sqflite: ^2.4.1
   sqflite_common_ffi: ^2.3.4  # requis pour Windows / macOS / Linux
+  # sqlite3 3.x utilise Dart native assets (compile depuis les sources) qui echoue
+  # sur Windows/Linux CI (native_toolchain_c ne trouve pas le compilateur).
+  # 2.x utilise le chargement dynamique via sqlite3_flutter_libs (binaires precompiles).
+  sqlite3: ^2.5.4
+  sqlite3_flutter_libs: ^0.5.26  # fournit sqlite3.dll (Windows), libsqlite3.so (Linux)
   path: ^1.9.1
 
   # Splash natif — preserve/remove API utilisée au runtime
