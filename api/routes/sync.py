@@ -359,6 +359,28 @@ def sync_pull(
     return {"entity_type": entity_type, "count": len(records), "records": records}
 
 
+# ── CLOUD: tenant billing state ──────────────────────────────────────────────
+
+@router.get("/tenant-billing")
+def tenant_billing(
+    claims: dict = Depends(require_sync_token),
+    db:     Session = Depends(get_db),
+):
+    """Return current billing/subscription state for the authenticated tenant.
+    Called by the local sync service at each cycle to keep trial_ends_at in sync.
+    """
+    from api.models.Tenant import Tenant
+    tenant = db.query(Tenant).filter(Tenant.id == claims["tenant_id"]).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant introuvable")
+    return {
+        "trial_ends_at": tenant.trial_ends_at.isoformat() if tenant.trial_ends_at else None,
+        "status":        tenant.status,
+        "max_caisses":   tenant.max_caisses,
+        "max_depots":    getattr(tenant, "max_depots", 1),
+    }
+
+
 # ── LOCAL: status ─────────────────────────────────────────────────────────────
 
 @router.get("/status")

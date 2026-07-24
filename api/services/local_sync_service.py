@@ -353,6 +353,39 @@ def _run_sync_inner(db: Session) -> dict:
                 summary["errors"].append(msg)
 
     db.commit()
+
+    # ── Sync tenant billing (trial_ends_at, status, limits) ──────────────────
+    # Tenant is not a generic SYNC_ENTITIES model; update its billing fields
+    # separately so changes made via admin panel (trial extension, status change)
+    # are reflected on every local installation without requiring a re-configure.
+    try:
+        billing_resp = _http_get(
+            f"{url}/api/sync/tenant-billing",
+            params={},
+            headers=_headers(token),
+        )
+        b = billing_resp.json()
+        from api.models.Tenant import Tenant as _Tenant
+        from api.core.config import load_ini_config as _load_ini
+        _ini = _load_ini()
+        cloud_tid = (_ini.get("CLOUD_TENANT_ID") or _ini.get("cloud_tenant_id") or "").strip()
+        local_tenant = (
+            db.query(_Tenant).filter(_Tenant.id == cloud_tid).first()
+            if cloud_tid else None
+        )
+        if local_tenant:
+            if b.get("trial_ends_at"):
+                local_tenant.trial_ends_at = _parse_dt(b["trial_ends_at"])
+            if b.get("status"):
+                local_tenant.status = b["status"]
+            if b.get("max_caisses") is not None:
+                local_tenant.max_caisses = int(b["max_caisses"])
+            if b.get("max_depots") is not None and hasattr(local_tenant, "max_depots"):
+                local_tenant.max_depots = int(b["max_depots"])
+            db.commit()
+    except Exception as exc:
+        _log.warning("sync tenant-billing: %s", exc)
+
     summary["ok"] = len(summary["errors"]) == 0
     return summary
 
