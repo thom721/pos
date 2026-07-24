@@ -23,6 +23,20 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
+# -- Port API (lu depuis pos_server.ini) ---------------------------------------
+$ApiPort = 9003
+$IniPath = "$env:ProgramData\POS_Connect\pos_server.ini"
+if (Test-Path $IniPath) {
+    $inServer = $false
+    foreach ($line in (Get-Content $IniPath -Encoding UTF8)) {
+        if ($line -match '^\[server\]')   { $inServer = $true;  continue }
+        if ($line -match '^\[')           { $inServer = $false; continue }
+        if ($inServer -and $line -match '^\s*port\s*=\s*(\d+)') {
+            $ApiPort = [int]$Matches[1]; break
+        }
+    }
+}
+
 # -- Services (ordre de demarrage) ---------------------------------------------
 $SVCS = [ordered]@{
     "POS_Connect_MySQL" = "MySQL        (base de donnees)"
@@ -33,6 +47,7 @@ $SVCS = [ordered]@{
 # -- Palette -------------------------------------------------------------------
 $clrBg      = [System.Drawing.Color]::FromArgb(27,  42,  59)
 $clrPanel   = [System.Drawing.Color]::FromArgb(38,  56,  76)
+$clrInput   = [System.Drawing.Color]::FromArgb(20,  30,  44)
 $clrText    = [System.Drawing.Color]::White
 $clrSub     = [System.Drawing.Color]::FromArgb(160, 175, 190)
 $clrGreen   = [System.Drawing.Color]::FromArgb(46,  204, 113)
@@ -43,6 +58,7 @@ $clrBtnDark = [System.Drawing.Color]::FromArgb(52,  73,  94)
 $clrBtnGrn  = [System.Drawing.Color]::FromArgb(39,  174,  96)
 $clrBtnBlue = [System.Drawing.Color]::FromArgb(41,  128, 185)
 $clrBtnRed  = [System.Drawing.Color]::FromArgb(192,  57,  43)
+$clrError   = [System.Drawing.Color]::FromArgb(231,  76,  60)
 
 function Get-StatusColor($st) {
     switch ($st) {
@@ -69,7 +85,157 @@ function Get-SvcStatus($name) {
     return $s.Status.ToString()
 }
 
-# -- Formulaire ----------------------------------------------------------------
+# -- Verification admin POS (appel API) ----------------------------------------
+# Retourne $true si l'utilisateur a le role "admin", $false sinon.
+# L'API attend un POST form-encoded : username (ou email) + password.
+function Confirm-AdminCredentials($loginVal, $password) {
+    try {
+        $body = "username=$([Uri]::EscapeDataString($loginVal))&password=$([Uri]::EscapeDataString($password))"
+        $resp = Invoke-RestMethod `
+            -Uri          "http://127.0.0.1:$ApiPort/api/auth/login" `
+            -Method       Post `
+            -ContentType  "application/x-www-form-urlencoded" `
+            -Body         $body `
+            -ErrorAction  Stop
+        # La reponse contient user.roles (ex: ["admin","cashier"])
+        $roles = $resp.user.roles
+        return ($roles -contains "admin")
+    } catch {
+        return $false
+    }
+}
+
+# -- Dialog d'authentification -------------------------------------------------
+# Retourne $true si authentifie comme admin, $false si annule ou echec.
+function Show-AuthDialog {
+    param([string]$ActionLabel)
+
+    $dlg                 = New-Object System.Windows.Forms.Form
+    $dlg.Text            = "Authentification requise"
+    $dlg.ClientSize      = New-Object System.Drawing.Size(360, 250)
+    $dlg.StartPosition   = "CenterParent"
+    $dlg.FormBorderStyle = "FixedDialog"
+    $dlg.MaximizeBox     = $false
+    $dlg.MinimizeBox     = $false
+    $dlg.BackColor       = $clrBg
+    $dlg.Font            = New-Object System.Drawing.Font("Segoe UI", 9)
+
+    $lAction = New-Object System.Windows.Forms.Label
+    $lAction.Text      = "Action : $ActionLabel"
+    $lAction.ForeColor = $clrOrange
+    $lAction.Font      = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $lAction.Location  = New-Object System.Drawing.Point(18, 14)
+    $lAction.Size      = New-Object System.Drawing.Size(320, 20)
+    $dlg.Controls.Add($lAction)
+
+    $lInfo = New-Object System.Windows.Forms.Label
+    $lInfo.Text      = "Un compte administrateur POS est requis."
+    $lInfo.ForeColor = $clrSub
+    $lInfo.Location  = New-Object System.Drawing.Point(18, 36)
+    $lInfo.Size      = New-Object System.Drawing.Size(320, 18)
+    $dlg.Controls.Add($lInfo)
+
+    # Champ email / username
+    $lLogin = New-Object System.Windows.Forms.Label
+    $lLogin.Text      = "Email ou nom d'utilisateur :"
+    $lLogin.ForeColor = $clrText
+    $lLogin.Location  = New-Object System.Drawing.Point(18, 68)
+    $lLogin.Size      = New-Object System.Drawing.Size(240, 18)
+    $dlg.Controls.Add($lLogin)
+
+    $tbLogin               = New-Object System.Windows.Forms.TextBox
+    $tbLogin.Location      = New-Object System.Drawing.Point(18, 88)
+    $tbLogin.Size          = New-Object System.Drawing.Size(320, 24)
+    $tbLogin.BackColor     = $clrInput
+    $tbLogin.ForeColor     = $clrText
+    $tbLogin.BorderStyle   = "FixedSingle"
+    $dlg.Controls.Add($tbLogin)
+
+    # Champ mot de passe
+    $lPwd = New-Object System.Windows.Forms.Label
+    $lPwd.Text      = "Mot de passe :"
+    $lPwd.ForeColor = $clrText
+    $lPwd.Location  = New-Object System.Drawing.Point(18, 124)
+    $lPwd.Size      = New-Object System.Drawing.Size(240, 18)
+    $dlg.Controls.Add($lPwd)
+
+    $tbPwd               = New-Object System.Windows.Forms.TextBox
+    $tbPwd.Location      = New-Object System.Drawing.Point(18, 144)
+    $tbPwd.Size          = New-Object System.Drawing.Size(320, 24)
+    $tbPwd.BackColor     = $clrInput
+    $tbPwd.ForeColor     = $clrText
+    $tbPwd.BorderStyle   = "FixedSingle"
+    $tbPwd.UseSystemPasswordChar = $true
+    $dlg.Controls.Add($tbPwd)
+
+    # Message erreur
+    $lErr = New-Object System.Windows.Forms.Label
+    $lErr.Text      = ""
+    $lErr.ForeColor = $clrError
+    $lErr.Font      = New-Object System.Drawing.Font("Segoe UI", 8)
+    $lErr.Location  = New-Object System.Drawing.Point(18, 176)
+    $lErr.Size      = New-Object System.Drawing.Size(320, 18)
+    $dlg.Controls.Add($lErr)
+
+    # Boutons
+    $btnCancel              = New-Object System.Windows.Forms.Button
+    $btnCancel.Text         = "Annuler"
+    $btnCancel.Size         = New-Object System.Drawing.Size(100, 32)
+    $btnCancel.Location     = New-Object System.Drawing.Point(18, 202)
+    $btnCancel.BackColor    = $clrBtnDark
+    $btnCancel.ForeColor    = $clrText
+    $btnCancel.FlatStyle    = "Flat"
+    $btnCancel.FlatAppearance.BorderSize = 0
+    $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $dlg.Controls.Add($btnCancel)
+    $dlg.CancelButton = $btnCancel
+
+    $btnOk              = New-Object System.Windows.Forms.Button
+    $btnOk.Text         = "Confirmer"
+    $btnOk.Size         = New-Object System.Drawing.Size(110, 32)
+    $btnOk.Location     = New-Object System.Drawing.Point(228, 202)
+    $btnOk.BackColor    = $clrBtnBlue
+    $btnOk.ForeColor    = $clrText
+    $btnOk.FlatStyle    = "Flat"
+    $btnOk.FlatAppearance.BorderSize = 0
+    $btnOk.Font         = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
+    $dlg.Controls.Add($btnOk)
+    $dlg.AcceptButton = $btnOk
+
+    $authResult = $false
+
+    $btnOk.Add_Click({
+        $login = $tbLogin.Text.Trim()
+        $pwd   = $tbPwd.Text
+        if (-not $login -or -not $pwd) {
+            $lErr.Text = "Veuillez remplir tous les champs."
+            return
+        }
+        $btnOk.Enabled    = $false
+        $btnOk.Text       = "Verification..."
+        $lErr.Text        = ""
+        $dlg.Refresh()
+        [System.Windows.Forms.Application]::DoEvents()
+
+        $ok = Confirm-AdminCredentials $login $pwd
+        if ($ok) {
+            $script:authResult = $true
+            $dlg.DialogResult  = [System.Windows.Forms.DialogResult]::OK
+            $dlg.Close()
+        } else {
+            $lErr.Text      = "Identifiants incorrects ou role admin requis."
+            $btnOk.Enabled  = $true
+            $btnOk.Text     = "Confirmer"
+            $tbPwd.Text     = ""
+            $tbPwd.Focus()
+        }
+    })
+
+    $dlg.ShowDialog($form) | Out-Null
+    return $authResult
+}
+
+# -- Formulaire principal ------------------------------------------------------
 $form                  = New-Object System.Windows.Forms.Form
 $form.Text             = "POS Serveur — Etat des services"
 $form.ClientSize       = New-Object System.Drawing.Size(420, 310)
@@ -79,7 +245,6 @@ $form.MaximizeBox      = $false
 $form.BackColor        = $clrBg
 $form.Font             = New-Object System.Drawing.Font("Segoe UI", 9)
 
-# Titre
 $lTitle = New-Object System.Windows.Forms.Label
 $lTitle.Text      = "POS Serveur"
 $lTitle.Font      = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
@@ -96,11 +261,11 @@ $lSub.AutoSize  = $true
 $form.Controls.Add($lSub)
 
 # Panel statuts
-$panel              = New-Object System.Windows.Forms.Panel
-$panel.Location     = New-Object System.Drawing.Point(14, 68)
-$panel.Size         = New-Object System.Drawing.Size(392, 136)
-$panel.BackColor    = $clrPanel
-$panel.BorderStyle  = "None"
+$panel             = New-Object System.Windows.Forms.Panel
+$panel.Location    = New-Object System.Drawing.Point(14, 68)
+$panel.Size        = New-Object System.Drawing.Size(392, 136)
+$panel.BackColor   = $clrPanel
+$panel.BorderStyle = "None"
 $form.Controls.Add($panel)
 
 $dotLabels    = @{}
@@ -110,7 +275,7 @@ foreach ($svcName in $SVCS.Keys) {
     $y = 14 + ($row * 38)
 
     $dot           = New-Object System.Windows.Forms.Label
-    $dot.Text      = [char]0x25CF   # ●
+    $dot.Text      = [char]0x25CF
     $dot.Font      = New-Object System.Drawing.Font("Segoe UI", 11)
     $dot.ForeColor = $clrGray
     $dot.Location  = New-Object System.Drawing.Point(12, $y)
@@ -139,7 +304,7 @@ foreach ($svcName in $SVCS.Keys) {
 # Message avertissement / progression
 $lWarn           = New-Object System.Windows.Forms.Label
 $lWarn.Text      = ""
-$lWarn.ForeColor = [System.Drawing.Color]::FromArgb(230, 126, 34)
+$lWarn.ForeColor = $clrOrange
 $lWarn.Location  = New-Object System.Drawing.Point(14, 210)
 $lWarn.Size      = New-Object System.Drawing.Size(392, 36)
 $lWarn.Font      = New-Object System.Drawing.Font("Segoe UI", 8)
@@ -147,15 +312,15 @@ $form.Controls.Add($lWarn)
 
 # Boutons
 function New-Btn($text, $bgColor, $x) {
-    $b             = New-Object System.Windows.Forms.Button
-    $b.Text        = $text
-    $b.Size        = New-Object System.Drawing.Size(92, 34)
-    $b.Location    = New-Object System.Drawing.Point($x, 254)
-    $b.BackColor   = $bgColor
-    $b.ForeColor   = [System.Drawing.Color]::White
-    $b.FlatStyle   = "Flat"
+    $b          = New-Object System.Windows.Forms.Button
+    $b.Text     = $text
+    $b.Size     = New-Object System.Drawing.Size(92, 34)
+    $b.Location = New-Object System.Drawing.Point($x, 254)
+    $b.BackColor = $bgColor
+    $b.ForeColor = $clrText
+    $b.FlatStyle = "Flat"
     $b.FlatAppearance.BorderSize = 0
-    $b.Font        = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+    $b.Font     = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
     $form.Controls.Add($b)
     return $b
 }
@@ -199,6 +364,8 @@ $btnRefresh.Add_Click({
 })
 
 $btnStart.Add_Click({
+    # Demarrer ne necessite pas d'auth : les services sont arretes donc l'API
+    # n'est pas accessible. Le droits admin Windows (UAC) suffisent.
     Set-Busy "Demarrage en cours..."
     Start-Service "POS_Connect_MySQL" -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 4
@@ -213,6 +380,10 @@ $btnStart.Add_Click({
 })
 
 $btnStop.Add_Click({
+    # Verifier les droits admin POS avant d'arreter
+    $ok = Show-AuthDialog "Arreter tous les services POS"
+    if (-not $ok) { return }
+
     $r = [System.Windows.Forms.MessageBox]::Show(
         "Arreter les services interrompra TOUTES les caisses connectees." + [System.Environment]::NewLine +
         "Les ventes en cours peuvent etre perdues." + [System.Environment]::NewLine + [System.Environment]::NewLine +
@@ -222,6 +393,7 @@ $btnStop.Add_Click({
         [System.Windows.Forms.MessageBoxIcon]::Warning
     )
     if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
     Set-Busy "Arret en cours..."
     Stop-Service "POS_Connect_Nginx","POS_Connect_API","POS_Connect_MySQL" -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 3
@@ -230,6 +402,10 @@ $btnStop.Add_Click({
 })
 
 $btnRestart.Add_Click({
+    # Verifier les droits admin POS avant de redemarrer
+    $ok = Show-AuthDialog "Redemarrer tous les services POS"
+    if (-not $ok) { return }
+
     $r = [System.Windows.Forms.MessageBox]::Show(
         "Le redemarrage causera une interruption de 15 a 30 secondes" + [System.Environment]::NewLine +
         "pour toutes les caisses connectees." + [System.Environment]::NewLine + [System.Environment]::NewLine +
@@ -239,6 +415,7 @@ $btnRestart.Add_Click({
         [System.Windows.Forms.MessageBoxIcon]::Warning
     )
     if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
     Set-Busy "Arret des services..."
     Stop-Service "POS_Connect_Nginx","POS_Connect_API","POS_Connect_MySQL" -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 4
