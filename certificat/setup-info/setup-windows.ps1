@@ -280,10 +280,13 @@ port = $MySqlPort
 port = $MySqlPort
 "@
 
-        # Capturer la sortie d'abord, puis verifier $LASTEXITCODE.
-        # Le pipe direct (cmd | ForEach-Object) perd $LASTEXITCODE car ForEach-Object
-        # est un cmdlet PS qui remet LASTEXITCODE a 0 apres execution.
-        $_initOut  = & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure 2>&1
+        # PAS de --defaults-file ici : MySQL trouve my.ini automatiquement
+        # dans le dossier parent de bin/ (= $MySqlDir), exactement comme
+        # MySQLInstaller (Main_run.py) qui n'utilise pas --defaults-file
+        # lors de l'initialisation. Passer --defaults-file avec un chemin
+        # absolu en PowerShell peut echouer silencieusement selon la facon
+        # dont InnoSetup invoque le script.
+        $_initOut  = & "$MySqlBinDir\mysqld.exe" --initialize-insecure --console 2>&1
         $_initCode = $LASTEXITCODE
         $_initOut | ForEach-Object { Write-Log "  [mysqld-init] $_" }
         if ($_initCode -ne 0) {
@@ -292,7 +295,7 @@ port = $MySqlPort
             Get-ChildItem "$MySqlData" -ErrorAction SilentlyContinue |
                 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 1
-            $_initOut2  = & "$MySqlBinDir\mysqld.exe" --defaults-file="$MyIni" --initialize-insecure 2>&1
+            $_initOut2  = & "$MySqlBinDir\mysqld.exe" --initialize-insecure --console 2>&1
             $_initCode2 = $LASTEXITCODE
             $_initOut2 | ForEach-Object { Write-Log "  [mysqld-init-retry] $_" }
             if ($_initCode2 -ne 0) {
@@ -301,7 +304,7 @@ port = $MySqlPort
                 Write-Log "MySQL reinitialise avec succes apres nettoyage du datadir"
             }
         } else {
-            Write-Log "MySQL initialise -- init.sql sera execute au premier demarrage"
+            Write-Log "MySQL initialise -- init.sql s'executera au premier demarrage du service"
         }
     } else {
         Write-Log "MySQL deja initialise -- mise a jour my.ini + init.sql"
