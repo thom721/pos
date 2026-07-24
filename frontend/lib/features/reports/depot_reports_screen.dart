@@ -270,7 +270,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
             Row(
               children: [
                 const Text(
-                  'Rapports par dépôt',
+                  'Rapports par business',
                   style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
@@ -289,7 +289,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Comparez la rentabilité de chaque dépôt et les produits les plus écoulés.',
+              'Comparez la rentabilité de chaque business et les produits les plus écoulés.',
               style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 20),
@@ -317,7 +317,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
             // ── Classement dépôts ──────────────────────────────────────────
             _SectionTitle(
               icon: Icons.leaderboard_rounded,
-              title: 'Classement des dépôts',
+              title: 'Classement des business',
               subtitle: 'Par chiffre d\'affaires sur la période',
             ),
             const SizedBox(height: 12),
@@ -454,7 +454,7 @@ class _GlobalSummary extends StatelessWidget {
         _SectionTitle(
           icon: Icons.bar_chart_rounded,
           title: 'Résumé global',
-          subtitle: 'Tous dépôts confondus',
+          subtitle: 'Tous business confondus',
         ),
         const SizedBox(height: 12),
         LayoutBuilder(builder: (_, constraints) {
@@ -529,7 +529,8 @@ class _WarehouseRanking extends StatelessWidget {
             child: Row(
               children: [
                 _th('#', flex: 1),
-                _th('Dépôt', flex: 5),
+                _th('Business', flex: 5,
+                    tooltip: 'Nom du business / point de vente'),
                 _th('CA', flex: 4, right: true,
                     tooltip: 'Chiffre d\'affaires total sur la période'),
                 _th('Marge', flex: 3, right: true,
@@ -881,12 +882,12 @@ class _WarehouseFilterDropdown extends StatelessWidget {
     return DropdownButton<String?>(
       value: selected,
       underline: const SizedBox(),
-      hint: const Text('Tous les dépôts',
+      hint: const Text('Tous les business',
           style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
       items: [
         const DropdownMenuItem<String?>(
           value: null,
-          child: Text('Tous les dépôts', style: TextStyle(fontSize: 13)),
+          child: Text('Tous les business', style: TextStyle(fontSize: 13)),
         ),
         ...warehouses.map((wh) => DropdownMenuItem<String?>(
           value: wh.id,
