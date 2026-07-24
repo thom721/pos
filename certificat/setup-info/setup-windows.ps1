@@ -227,10 +227,70 @@ if ($DbType -eq "mysql") {
 
     $InitSqlFwd  = ($MySqlDir -replace '\\', '/') + '/init.sql'
     $InitSqlPath = "$MySqlDir\init.sql"
+    $hasFlag     = Test-Path $InitFlagFile
+    $hasIbdata   = Test-Path "$MySqlData\ibdata1"
 
-    if (-not (Test-Path $InitFlagFile)) {
-        # Ecrire init.sql avec credentials UNIQUEMENT pour la premiere init.
-        # Apres confirmation operationnelle, le contenu sensible sera efface.
+    # my.ini : identique dans les trois cas (flag / recuperation / fresh init).
+    # Toujours ecrit pour garantir que les parametres sont a jour.
+    # innodb_flush_method=normal est OBLIGATOIRE sur Windows (pas O_DIRECT).
+    Write-UTF8NoBOM $MyIni @"
+[mysqld]
+basedir = $MySqlDir
+datadir = $MySqlData
+bind-address = 0.0.0.0
+port = $MySqlPort
+socket = mysql${MySqlPort}.sock
+skip_shared_memory = ON
+shared_memory = OFF
+skip_name_resolve = ON
+log_bin_trust_function_creators = 1
+
+# InnoDB
+innodb_force_recovery = 0
+innodb_flush_method = normal
+innodb_buffer_pool_size = 512M
+innodb_redo_log_capacity = 268435456
+innodb_file_per_table = ON
+innodb_flush_log_at_trx_commit = 2
+innodb_buffer_pool_instances = 2
+
+init-file = $InitSqlFwd
+authentication_policy = caching_sha2_password,mysql_native_password
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+
+# Journaux
+log_error = $DataDir\logs\mysql-error.log
+general_log_file = $DataDir\logs\mysql-query.log
+general_log = 1
+
+# Memoire
+key_buffer_size = 232M
+max_allowed_packet = 464M
+thread_cache_size = 10
+table_open_cache = 2000
+max_connections = 50
+
+[mysql]
+default-character-set = utf8mb4
+port = $MySqlPort
+
+[client]
+port = $MySqlPort
+"@
+
+    if ($hasFlag) {
+        # -- CAS 1 : installation connue comme operationnelle --------------------
+        Write-Log "MySQL connu operationnel (flag present) -- my.ini mis a jour, donnees intactes"
+
+    } elseif ($hasIbdata) {
+        # -- CAS 2 : donnees presentes mais flag absent (ancien install ou flag supprime)
+        # SECURITE : on ne touche PAS aux donnees. On tente juste de demarrer MySQL
+        # avec les donnees existantes. Si ca marche, le flag sera ecrit plus bas.
+        Write-Log "Recuperation MySQL : ibdata1 detecte dans le datadir -- flag absent" "WARN"
+        Write-Log "SECURITE : les donnees MySQL existantes sont conservees -- pas de reinitialisation"
+        # init.sql avec IF NOT EXISTS : inoffensif si user/db existent deja
         Write-UTF8NoBOM $InitSqlPath @"
 CREATE DATABASE IF NOT EXISTS ``$DbName`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'root'@'127.0.0.1'   IDENTIFIED WITH caching_sha2_password BY '';
@@ -243,81 +303,42 @@ GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'127.0.0.1';
 GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'localhost';
 FLUSH PRIVILEGES;
 "@
-        Write-Log "init.sql cree pour initialisation (contenu sera efface apres confirmation)"
-        Write-Log "Initialisation du datadir MySQL ($MySqlData)..."
+        Write-Log "init.sql (re)ecrit pour recuperation -- sera efface apres confirmation"
 
-        # my.ini dans le dossier d'installation (pas dans le datadir).
-        # Parametres alignes avec Main_run.py (memes valeurs, meme ordre).
-        # innodb_flush_method=normal est OBLIGATOIRE sur Windows (pas O_DIRECT).
-        Write-UTF8NoBOM $MyIni @"
-[mysqld]
-basedir = $MySqlDir
-datadir = $MySqlData
-bind-address = 0.0.0.0
-port = $MySqlPort
-socket = mysql${MySqlPort}.sock
-skip_shared_memory = ON
-shared_memory = OFF
-skip_name_resolve = ON
-log_bin_trust_function_creators = 1
-
-# InnoDB
-innodb_force_recovery = 0
-innodb_flush_method = normal
-innodb_buffer_pool_size = 512M
-innodb_redo_log_capacity = 268435456
-innodb_file_per_table = ON
-innodb_flush_log_at_trx_commit = 2
-innodb_buffer_pool_instances = 2
-
-init-file = $InitSqlFwd
-authentication_policy = caching_sha2_password,mysql_native_password
-character-set-server = utf8mb4
-collation-server = utf8mb4_unicode_ci
-sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
-
-# Journaux
-log_error = $DataDir\logs\mysql-error.log
-general_log_file = $DataDir\logs\mysql-query.log
-general_log = 1
-
-# Memoire
-key_buffer_size = 232M
-max_allowed_packet = 464M
-thread_cache_size = 10
-table_open_cache = 2000
-max_connections = 50
-
-[mysql]
-default-character-set = utf8mb4
-port = $MySqlPort
-
-[client]
-port = $MySqlPort
+    } else {
+        # -- CAS 3 : datadir vide ou absent -- initialisation fraiche -----------
+        Write-Log "Initialisation MySQL (datadir vide ou absent)..."
+        # init.sql avec credentials -- sera efface apres confirmation operationnelle
+        Write-UTF8NoBOM $InitSqlPath @"
+CREATE DATABASE IF NOT EXISTS ``$DbName`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'root'@'127.0.0.1'   IDENTIFIED WITH caching_sha2_password BY '';
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;
+CREATE USER IF NOT EXISTS '$DbUser'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '$DbPass';
+CREATE USER IF NOT EXISTS '$DbUser'@'localhost'  IDENTIFIED WITH mysql_native_password BY '$DbPass';
+ALTER USER '$DbUser'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '$DbPass';
+ALTER USER '$DbUser'@'localhost'  IDENTIFIED WITH mysql_native_password BY '$DbPass';
+GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'localhost';
+FLUSH PRIVILEGES;
 "@
+        Write-Log "init.sql cree (contenu sera efface apres confirmation)"
 
-        # ibdata1 absent = pas de donnees utilisateur => nettoyer AVANT d'initialiser.
-        # MySQL refuse "--initialize" sur un dossier non vide (#innodb_redo, etc.).
-        # Remove-Item echoue silencieusement sur les fichiers systeme MySQL.
-        # "rd /s /q" (cmd.exe) force la suppression meme sur ces fichiers.
+        # Nettoyer les residus d'une init incomplete (#innodb_redo, #innodb_temp...).
+        # Remove-Item echoue silencieusement sur ces fichiers systeme MySQL.
+        # rd /s /q (cmd.exe) les supprime de force.
         $residus = @(Get-ChildItem -Path "$MySqlData" -Force -ErrorAction SilentlyContinue)
         if ($residus.Count -gt 0) {
             Write-Log "Nettoyage de $($residus.Count) fichier(s) residuel(s) dans le datadir (rd /s /q)..."
-            # Supprimer le dossier entier + recreer proprement.
-            # Remove-Item echoue silencieusement sur les fichiers systeme MySQL
-            # (#innodb_redo, #innodb_temp, ib_buffer_pool). rd /s /q les supprime.
             cmd.exe /c "rd /s /q `"$MySqlData`"" 2>&1 | ForEach-Object { Write-Log "  [rd] $_" }
             Start-Sleep -Seconds 3
             New-Item -ItemType Directory -Force -Path $MySqlData | Out-Null
-            # Verifier que le dossier est bien vide apres suppression
             $apresNettoyage = @(Get-ChildItem -Path "$MySqlData" -Force -ErrorAction SilentlyContinue)
             if ($apresNettoyage.Count -gt 0) {
-                Write-Log "ATTENTION : $($apresNettoyage.Count) fichier(s) encore presents apres rd /s /q -- init risque d'echouer" "WARN"
+                Write-Log "ATTENTION : $($apresNettoyage.Count) fichier(s) encore presents -- init risque d'echouer" "WARN"
                 $apresNettoyage | ForEach-Object { Write-Log "  residuel: $($_.Name)" "WARN" }
             } else {
                 Write-Log "Datadir vide apres nettoyage -- pret pour init"
             }
-            # Reappliquer les permissions sur le nouveau dossier vide
             try {
                 $aclR = New-Object System.Security.AccessControl.DirectorySecurity
                 $aclR.SetAccessRuleProtection($true, $false)
@@ -326,71 +347,22 @@ port = $MySqlPort
                 $aclR.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
                     "Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")))
                 Set-Acl -Path $MySqlData -AclObject $aclR
-                Write-Log "Datadir reinitiase et permissions reappliquees"
+                Write-Log "Permissions reappliquees sur datadir vide"
             } catch {
                 Write-Log "ACL apres nettoyage : $_" "WARN"
             }
         }
 
         # --defaults-file obligatoire : sans lui mysqld cherche my.ini dans C:\Windows\
-        # et pourrait trouver un fichier d'une ancienne installation pointant vers un
-        # autre datadir -- rendant le nettoyage de $MySqlData totalement inutile.
+        # et pourrait trouver un fichier d'une ancienne installation.
         $_initOut  = & "$MySqlBinDir\mysqld.exe" "--defaults-file=$MyIni" --initialize-insecure --console 2>&1
         $_initCode = $LASTEXITCODE
         $_initOut | ForEach-Object { Write-Log "  [mysqld-init] $_" }
         if ($_initCode -ne 0) {
-            Write-Log "mysqld --initialize-insecure a echoue (code $_initCode) -- MySQL ne pourra pas demarrer" "ERROR"
+            Write-Log "mysqld --initialize-insecure a echoue (code $_initCode)" "ERROR"
         } else {
             Write-Log "MySQL initialise -- init.sql s'executera au premier demarrage du service"
         }
-    } else {
-        Write-Log "MySQL deja initialise (flag present) -- mise a jour my.ini uniquement"
-        Write-UTF8NoBOM $MyIni @"
-[mysqld]
-basedir = $MySqlDir
-datadir = $MySqlData
-bind-address = 0.0.0.0
-port = $MySqlPort
-socket = mysql${MySqlPort}.sock
-skip_shared_memory = ON
-shared_memory = OFF
-skip_name_resolve = ON
-log_bin_trust_function_creators = 1
-
-# InnoDB
-innodb_force_recovery = 0
-innodb_flush_method = normal
-innodb_buffer_pool_size = 512M
-innodb_redo_log_capacity = 268435456
-innodb_file_per_table = ON
-innodb_flush_log_at_trx_commit = 2
-innodb_buffer_pool_instances = 2
-
-init-file = $InitSqlFwd
-authentication_policy = caching_sha2_password,mysql_native_password
-character-set-server = utf8mb4
-collation-server = utf8mb4_unicode_ci
-sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
-
-# Journaux
-log_error = $DataDir\logs\mysql-error.log
-general_log_file = $DataDir\logs\mysql-query.log
-general_log = 1
-
-# Memoire
-key_buffer_size = 232M
-max_allowed_packet = 464M
-thread_cache_size = 10
-table_open_cache = 2000
-max_connections = 50
-
-[mysql]
-default-character-set = utf8mb4
-port = $MySqlPort
-
-[client]
-port = $MySqlPort
-"@
     }
 
     # -- Service MySQL ----------------------------------------------------------
