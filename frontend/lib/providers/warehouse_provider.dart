@@ -15,6 +15,8 @@ final warehouseListProvider = FutureProvider.autoDispose<List<WarehouseModel>>((
 // ── Active warehouse (persisted in SharedPreferences) ────────────────────────
 
 class ActiveWarehouseNotifier extends StateNotifier<WarehouseModel?> {
+  bool _userChoseAll = false;
+
   ActiveWarehouseNotifier() : super(null) {
     _load();
   }
@@ -22,6 +24,10 @@ class ActiveWarehouseNotifier extends StateNotifier<WarehouseModel?> {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_kActiveWarehouseKey);
+    if (raw == '__all__') {
+      _userChoseAll = true;
+      return;
+    }
     if (raw != null) {
       try {
         state = WarehouseModel.fromJson(jsonDecode(raw));
@@ -32,6 +38,7 @@ class ActiveWarehouseNotifier extends StateNotifier<WarehouseModel?> {
   }
 
   Future<void> setWarehouse(WarehouseModel? warehouse) async {
+    _userChoseAll = false;
     state = warehouse;
     final prefs = await SharedPreferences.getInstance();
     if (warehouse == null) {
@@ -48,6 +55,8 @@ class ActiveWarehouseNotifier extends StateNotifier<WarehouseModel?> {
     List<String> userWarehouseIds = const [],
   }) async {
     if (warehouses.isEmpty) return;
+    // User explicitly chose "Tous les dépôts" — respect the choice
+    if (_userChoseAll) return;
 
     // Filter to user-assigned warehouses when the user has restrictions
     final allowed = userWarehouseIds.isEmpty
@@ -67,8 +76,10 @@ class ActiveWarehouseNotifier extends StateNotifier<WarehouseModel?> {
   }
 
   void clear() {
+    _userChoseAll = true;
     state = null;
-    SharedPreferences.getInstance().then((p) => p.remove(_kActiveWarehouseKey));
+    SharedPreferences.getInstance()
+        .then((p) => p.setString(_kActiveWarehouseKey, '__all__'));
   }
 }
 

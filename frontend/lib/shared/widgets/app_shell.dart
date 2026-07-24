@@ -610,19 +610,18 @@ class _WarehouseSelector extends ConsumerWidget {
           ));
     }
 
-    // Toujours résoudre le dépôt courant (fallback sur défaut ou premier)
-    final current = warehouses.isEmpty
+    // null = "Tous les dépôts" (user chose all), otherwise resolve active depot
+    final current = warehouses.isEmpty || active == null
         ? null
         : warehouses.firstWhere(
-            (w) => w.id == (active?.id ?? ''),
+            (w) => w.id == active.id,
             orElse: () => warehouses.firstWhere(
               (w) => w.isDefault,
               orElse: () => warehouses.first,
             ),
           );
 
-    // Afficher toujours le nom du dépôt courant (même s'il n'y en a qu'un)
-    final label = current?.name ?? active?.name ?? 'Dépôt';
+    final label = current?.name ?? 'Tous les dépôts';
     final isDefault = current?.isDefault ?? false;
 
     final canChange = canSwitch && warehouses.length > 1;
@@ -672,7 +671,7 @@ class _WarehouseSelector extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: decoration,
       child: DropdownButtonHideUnderline(
-        child: DropdownButton<WarehouseModel>(
+        child: DropdownButton<WarehouseModel?>(
           value: current,
           isDense: true,
           icon: const Icon(Icons.expand_more, size: 16, color: AppColors.textSecondary),
@@ -681,20 +680,35 @@ class _WarehouseSelector extends ConsumerWidget {
             fontWeight: FontWeight.w500,
             color: AppColors.textPrimary,
           ),
-          items: warehouses.map((w) => DropdownMenuItem(
-            value: w,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.warehouse_outlined, size: 14, color: AppColors.textSecondary),
-                const SizedBox(width: 6),
-                Text(w.name),
-                if (w.isDefault) ...[const SizedBox(width: 4), defaultBadge()],
-              ],
+          items: [
+            const DropdownMenuItem<WarehouseModel?>(
+              value: null,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.layers_outlined, size: 14, color: AppColors.textSecondary),
+                  SizedBox(width: 6),
+                  Text('Tous les dépôts'),
+                ],
+              ),
             ),
-          )).toList(),
+            ...warehouses.map((w) => DropdownMenuItem<WarehouseModel?>(
+              value: w,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.warehouse_outlined, size: 14, color: AppColors.textSecondary),
+                  const SizedBox(width: 6),
+                  Text(w.name),
+                  if (w.isDefault) ...[const SizedBox(width: 4), defaultBadge()],
+                ],
+              ),
+            )),
+          ],
           onChanged: (w) {
-            if (w != null) {
+            if (w == null) {
+              ref.read(activeWarehouseProvider.notifier).clear();
+            } else {
               ref.read(activeWarehouseProvider.notifier).setWarehouse(w);
             }
           },

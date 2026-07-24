@@ -7,6 +7,7 @@ import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 
 // ── Period enum ────────────────────────────────────────────────────────────
 
@@ -56,13 +57,14 @@ class _ChartPoint {
 
 // ── Shared paginated fetch ─────────────────────────────────────────────────
 
-Future<List<SaleModel>> _fetchAllSales(DateTime from, DateTime to) async {
+Future<List<SaleModel>> _fetchAllSales(DateTime from, DateTime to, {String? warehouseId}) async {
   final dateFmt = DateFormat('yyyy-MM-dd');
   const limit = 100;
-  final base = {
+  final base = <String, dynamic>{
     'limit': limit,
     'date_from': dateFmt.format(from),
     'date_to': dateFmt.format(to),
+    if (warehouseId != null) 'warehouse_id': warehouseId,
   };
 
   final first =
@@ -99,15 +101,17 @@ final _customRangeProvider = StateProvider<DateTimeRange?>((ref) => null);
 
 /// KPI + top products + payment methods — always current month.
 final _statsProvider = FutureProvider.autoDispose<_StatsData>((ref) async {
+  final warehouseId = ref.watch(activeWarehouseProvider)?.id;
   final now = haitiNow();
   final from = DateTime(now.year, now.month, 1);
-  final sales = await _fetchAllSales(from, now.add(const Duration(days: 1)));
+  final sales = await _fetchAllSales(from, now.add(const Duration(days: 1)), warehouseId: warehouseId);
   return _StatsData.from(sales);
 });
 
 /// Revenue chart — depends on period and optional custom range.
 final _revenueChartProvider = FutureProvider.family
     .autoDispose<List<_ChartPoint>, _RevParams>((ref, params) async {
+  final warehouseId = ref.watch(activeWarehouseProvider)?.id;
   final now = haitiNow();
 
   final DateTime from;
@@ -130,7 +134,7 @@ final _revenueChartProvider = FutureProvider.family
       ? params.customRange!.end.add(const Duration(days: 1))
       : to;
 
-  final sales = await _fetchAllSales(from, toDate);
+  final sales = await _fetchAllSales(from, toDate, warehouseId: warehouseId);
 
   switch (params.period) {
     case _RevPeriod.week:
@@ -269,6 +273,7 @@ final _statCategoriesProvider = FutureProvider.autoDispose<List<Map<String, dyna
 
 final _prodChartProvider = FutureProvider.family
     .autoDispose<_ProdResult, _ProdParams>((ref, params) async {
+  final warehouseId = ref.watch(activeWarehouseProvider)?.id;
   final now = haitiNow();
 
   final DateTime from;
@@ -291,7 +296,7 @@ final _prodChartProvider = FutureProvider.family
       toDate = params.customRange!.end.add(const Duration(days: 1));
   }
 
-  final sales = await _fetchAllSales(from, toDate);
+  final sales = await _fetchAllSales(from, toDate, warehouseId: warehouseId);
 
   // If category filter active, resolve product names in that category
   Set<String>? categoryProductNames;

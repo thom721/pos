@@ -9,6 +9,7 @@ import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/repositories/warehouse_repository.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  Période
@@ -216,6 +217,13 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
   String? _productWarehouseFilter;
   String? _productCategoryFilter;
 
+  @override
+  void initState() {
+    super.initState();
+    // Initialize product filter from the globally selected depot
+    _productWarehouseFilter = ref.read(activeWarehouseProvider)?.id;
+  }
+
   (DateTime, DateTime) get _range => _period.range(_customRange);
 
   _ReportParams get _reportParams =>
@@ -226,6 +234,11 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Keep local depot filter in sync with the global selector
+    ref.listen(activeWarehouseProvider, (_, next) {
+      setState(() => _productWarehouseFilter = next?.id);
+    });
+
     final settings       = ref.watch(settingsProvider);
     final user           = ref.watch(authProvider).user;
     final canRead        = user?.hasPermission(Perm.salesRead) ?? false;
