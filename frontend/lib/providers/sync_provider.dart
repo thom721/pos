@@ -69,8 +69,8 @@ class SyncNotifier extends StateNotifier<SyncState> {
           'Impossible de joindre le serveur cloud';
       state = state.copyWith(isConfiguring: false, error: msg);
       return false;
-    } catch (_) {
-      state = state.copyWith(isConfiguring: false, error: 'Erreur inattendue');
+    } catch (e) {
+      state = state.copyWith(isConfiguring: false, error: extractAnyError(e));
       return false;
     }
   }
@@ -92,8 +92,8 @@ class SyncNotifier extends StateNotifier<SyncState> {
       final msg = e.response?.data?['detail']?.toString() ?? 'Sync échoué';
       state = state.copyWith(isRunning: false, error: msg);
       return false;
-    } catch (_) {
-      state = state.copyWith(isRunning: false, error: 'Erreur inattendue');
+    } catch (e) {
+      state = state.copyWith(isRunning: false, error: extractAnyError(e));
       return false;
     }
   }

@@ -37,6 +37,12 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         user = auth.get_user(username=sub)
     if user is None:
         raise credentials_exception
+    if not getattr(user, 'is_active', True):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Compte désactivé — contactez votre administrateur",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     # Validate session token for device-based logins (cloud JWTs include device_id + sid)
     device_id = payload.get("device_id")

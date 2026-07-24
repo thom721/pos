@@ -306,18 +306,24 @@ def list_tenants(
          .all()
     }
 
+    payment_stats = {
+        row.tenant_id: row
+        for row in db.query(
+            BillingPayment.tenant_id,
+            func.count(BillingPayment.id).label("payment_count"),
+            func.max(BillingPayment.paid_at).label("last_payment_at"),
+        ).filter(
+            BillingPayment.tenant_id.in_(tenant_ids),
+        )
+         .group_by(BillingPayment.tenant_id)
+         .all()
+    }
+
     result = []
     for t in tenants:
-        # payment stats
-        payments = db.query(BillingPayment).filter(
-            BillingPayment.tenant_id == t.id
-        ).all()
-        payment_count = len(payments)
-        last_payment_at = None
-        if payments:
-            paid_ats = [p.paid_at for p in payments if p.paid_at]
-            if paid_ats:
-                last_payment_at = max(paid_ats).isoformat()
+        ps = payment_stats.get(t.id)
+        payment_count = ps.payment_count if ps else 0
+        last_payment_at = ps.last_payment_at.isoformat() if ps and ps.last_payment_at else None
 
         result.append({
             "id":                     t.id,
@@ -644,15 +650,15 @@ def purge_unclaimed_warehouses(
         return {"deleted": 0}
 
     wh_ids = [wh.id for wh in rows]
-    placeholders = ", ".join(f"'{wid}'" for wid in wh_ids)
 
     # Nullify FK references so DELETE succeeds regardless of DB engine
     for tbl in _WH_FK_TABLES:
         try:
-            db.execute(_text(
-                f"UPDATE {tbl} SET warehouse_id = NULL "
-                f"WHERE warehouse_id IN ({placeholders})"
-            ))
+            for wid in wh_ids:
+                db.execute(
+                    _text(f"UPDATE {tbl} SET warehouse_id = NULL WHERE warehouse_id = :wid"),
+                    {"wid": wid},
+                )
         except Exception:
             pass
 
@@ -707,10 +713,10 @@ def delete_warehouse(
 
     for tbl in _WH_FK_TABLES:
         try:
-            db.execute(_text(
-                f"UPDATE {tbl} SET warehouse_id = NULL "
-                f"WHERE warehouse_id = '{warehouse_id}'"
-            ))
+            db.execute(
+                _text(f"UPDATE {tbl} SET warehouse_id = NULL WHERE warehouse_id = :wid"),
+                {"wid": warehouse_id},
+            )
         except Exception:
             pass
 
@@ -941,7 +947,7 @@ def get_platform_config(
         "smtp_host":             getattr(cfg, "smtp_host",             ""),
         "smtp_port":             getattr(cfg, "smtp_port",             587),
         "smtp_user":             getattr(cfg, "smtp_user",             ""),
-        "smtp_password":         getattr(cfg, "smtp_password",         ""),
+        "smtp_password":         "**masked**" if getattr(cfg, "smtp_password", "") else "",
         "smtp_from":             getattr(cfg, "smtp_from",             ""),
         "pricing_plans_json": getattr(cfg, "pricing_plans_json", None),
         "logo_url":           getattr(cfg, "logo_url", None),
@@ -1029,7 +1035,7 @@ def update_platform_config(
         "smtp_host":             getattr(cfg, "smtp_host",             ""),
         "smtp_port":             getattr(cfg, "smtp_port",             587),
         "smtp_user":             getattr(cfg, "smtp_user",             ""),
-        "smtp_password":         getattr(cfg, "smtp_password",         ""),
+        "smtp_password":         "**masked**" if getattr(cfg, "smtp_password", "") else "",
         "smtp_from":             getattr(cfg, "smtp_from",             ""),
         "pricing_plans_json":    getattr(cfg, "pricing_plans_json",    None),
         "logo_url":              getattr(cfg, "logo_url",              None),

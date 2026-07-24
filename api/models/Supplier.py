@@ -16,11 +16,7 @@ class Supplier(UUIDBase):
 
     debts = relationship(
         "Debt",
-        primaryjoin=(
-            "and_("
-            "foreign(Debt.reference_id) == Supplier.id, "
-            "Debt.reference_type == 'SUPPLIER'"
-            ")"
-        ),back_populates="supplier",foreign_keys="[Debt.reference_id]", 
-        viewonly=True
+        primaryjoin="and_(foreign(Debt.partner_id) == Supplier.id, Debt.partner_type == 'SUPPLIER')",
+        foreign_keys="[Debt.partner_id]",
+        viewonly=True,
     )

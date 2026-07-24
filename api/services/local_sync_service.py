@@ -116,7 +116,7 @@ SYNC_ENTITIES: list[dict] = [
 ]
 
 # Columns excluded when sending to cloud (cloud assigns its own tenant_id via sync token)
-_EXCLUDE_PUSH = {"tenant_id", "password", "password_hash"}  # never push credentials to cloud
+_EXCLUDE_PUSH = {"tenant_id", "password", "password_hash", "offline_hash"}  # never push credentials/hashes to cloud
 _EXCLUDE_PULL: set[str] = set()
 _PUSH_CHUNK   = 500   # max records per HTTP push request
 
@@ -295,12 +295,22 @@ def _run_sync_inner(db: Session) -> dict:
         if direction in ("pull", "both"):
             try:
                 since = state.last_pull_at.isoformat() if state.last_pull_at else "1970-01-01T00:00:00+00:00"
-                resp = _http_get(
-                    f"{url}/api/sync/pull",
-                    params={"entity_type": etype, "since": since},
-                    headers=_headers(token),
-                )
-                records = resp.json().get("records", [])
+                records: list = []
+                # Paginate until has_more is False (server returns 500 records max per page)
+                _page_cursor = since
+                for _safety in range(200):  # hard cap: 200 pages × 500 = 100k records
+                    resp = _http_get(
+                        f"{url}/api/sync/pull",
+                        params={"entity_type": etype, "since": _page_cursor},
+                        headers=_headers(token),
+                    )
+                    page = resp.json()
+                    records.extend(page.get("records", []))
+                    if not page.get("has_more"):
+                        break
+                    _page_cursor = page.get("next_since", _page_cursor)
+                    if _page_cursor == since:
+                        break  # no progress — exit to avoid infinite loop
 
                 col_names = {c.key for c in sa_inspect(model).columns}
 

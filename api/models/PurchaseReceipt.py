@@ -17,7 +17,7 @@ class PurchaseReceipt(UUIDBase):
     purchase_id  = Column(ForeignKey("purchases.id"), nullable=False)
     warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=True, index=True)
 
-    received_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    received_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     received_by = Column(String(36), nullable=True)
     note        = Column(Text, nullable=True)
 

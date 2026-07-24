@@ -621,7 +621,7 @@ class _WarehouseSelector extends ConsumerWidget {
             ),
           );
 
-    final label = current?.name ?? 'Tous les dépôts';
+    final label = current?.name ?? 'Tous les business';
     final isDefault = current?.isDefault ?? false;
 
     final canChange = canSwitch && warehouses.length > 1;
@@ -688,7 +688,7 @@ class _WarehouseSelector extends ConsumerWidget {
                 children: [
                   Icon(Icons.layers_outlined, size: 14, color: AppColors.textSecondary),
                   SizedBox(width: 6),
-                  Text('Tous les dépôts'),
+                  Text('Tous les business'),
                 ],
               ),
             ),

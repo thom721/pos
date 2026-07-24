@@ -25,6 +25,7 @@ class ProductRepository {
           final all = <ProductModel>[];
           int p = 1;
           while (true) {
+            if (p > 200) break;
             final res = await dio.get('/api/products/',
                 queryParameters: {'page': p, 'per_page': 100});
             final data = res.data as Map<String, dynamic>;

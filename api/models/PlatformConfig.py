@@ -55,3 +55,10 @@ class PlatformConfig(UUIDBase):
     # Rabais plan annuel (%) — appliqué sur prix_mensuel × 12
     # Ex : annual_discount_pct=20 → prix annuel = mensuel × 12 × 0.80
     annual_discount_pct = Column(Integer, nullable=False, default=20)
+
+    # ── Méthodes de paiement activées ───────────────────────────────────────────
+    # False = méthode désactivée (grisée côté client, refusée côté serveur).
+    cash_enabled    = Column(Boolean, nullable=False, default=True)
+    moncash_enabled = Column(Boolean, nullable=False, default=True)
+    natcash_enabled = Column(Boolean, nullable=False, default=True)
+    card_enabled    = Column(Boolean, nullable=False, default=True)

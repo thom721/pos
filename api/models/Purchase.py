@@ -22,8 +22,8 @@ class Purchase(UUIDBase):
     total_amount = Column(Numeric(12, 2))
     paid_amount  = Column(Numeric(12, 2), default=0)
     status       = Column(Enum(PurchaseStatus), default=PurchaseStatus.pending)
-    ordered_at   = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    received_at  = Column(DateTime, nullable=True)
+    ordered_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    received_at  = Column(DateTime(timezone=True), nullable=True)
 
     supplier  = relationship("Supplier",   back_populates="purchases")
     user      = relationship("User",       back_populates="purchases")

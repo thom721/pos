@@ -110,7 +110,7 @@ def adjust_stock(
     payload: StockAdjustRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
+    current_user: User = Depends(require_permission(P.STOCK_ADJUST)),
 ):
     product = (
         db.query(Product)
@@ -159,9 +159,22 @@ async def upload_product_image(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
+    _MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
+    _MAGIC = {
+        b"\xff\xd8\xff": "jpg",
+        b"\x89PNG":       "png",
+        b"RIFF":          "webp",
+    }
+
     ext = os.path.splitext(file.filename or '')[1].lower()
     if ext not in _ALLOWED_EXTS:
         raise HTTPException(status_code=400, detail="Format non supporté. Utilisez jpg, png ou webp.")
+
+    contents = await file.read()
+    if len(contents) > _MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image trop volumineuse (max 5 Mo).")
+    if not any(contents[:4].startswith(sig) for sig in _MAGIC):
+        raise HTTPException(status_code=400, detail="Fichier invalide : octets magiques non reconnus.")
 
     if product.image_url:
         old_path = os.path.join("api", product.image_url.lstrip("/"))
@@ -173,7 +186,7 @@ async def upload_product_image(
     save_path = os.path.join(_PRODUCTS_DIR, filename)
 
     with open(save_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        f.write(contents)
 
     product.image_url = f"/static/products/{filename}"
     db.commit()

@@ -477,7 +477,7 @@ def create_stripe_checkout(
 def submit_payment(
     body: SubmitPaymentRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(P.CONFIG_READ)),
+    current_user: User = Depends(require_permission(P.CONFIG_UPDATE)),
 ):
     """
     Tenant submits proof of a MonCash/NatCash payment.

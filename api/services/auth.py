@@ -56,7 +56,7 @@ class Auth:
             # Fallback: accept email in the username field
             if user is None:
                 user = self.db.query(Out).filter(Out.email == username).first()
-            if not user or not self.verify_password(password, user.password):
+            if not user or not getattr(user, 'is_active', True) or not self.verify_password(password, user.password):
                 return None
             return user
         except Exception as e:
@@ -71,7 +71,7 @@ class Auth:
         # Fallback: accept username (tenant users may have no email set)
         if user is None:
             user = self.db.query(Out).filter(Out.username == email).first()
-        if not user or not self.verify_password(password, user.password):
+        if not user or not getattr(user, 'is_active', True) or not self.verify_password(password, user.password):
             return None
         return user
 

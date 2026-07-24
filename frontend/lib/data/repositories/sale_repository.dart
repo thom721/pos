@@ -145,13 +145,21 @@ class SaleRepository {
   }
 
   Future<void> cancelSale(String id) async {
-    await dio.patch('/api/sales/$id/cancel');
+    try {
+      await dio.patch('/api/sales/$id/cancel');
+    } catch (e) {
+      throw Exception(extractAnyError(e));
+    }
   }
 
   Future<Map<String, dynamic>> updateSale(
       String id, Map<String, dynamic> data) async {
-    final res = await dio.put('/api/sales/$id', data: data);
-    return res.data;
+    try {
+      final res = await dio.put('/api/sales/$id', data: data);
+      return res.data;
+    } catch (e) {
+      throw Exception(extractAnyError(e));
+    }
   }
 
   Future<void> addPayment({
@@ -160,11 +168,15 @@ class SaleRepository {
     required double amount,
     required String method,
   }) async {
-    await dio.post('/api/payments/', data: {
-      'reference_type': referenceType,
-      'reference_id':   referenceId,
-      'amount':         amount,
-      'method':         method,
-    });
+    try {
+      await dio.post('/api/payments/', data: {
+        'reference_type': referenceType,
+        'reference_id':   referenceId,
+        'amount':         amount,
+        'method':         method,
+      });
+    } catch (e) {
+      throw Exception(extractAnyError(e));
+    }
   }
 }

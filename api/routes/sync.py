@@ -24,7 +24,9 @@ from sqlalchemy.orm import Session
 
 from api.core.config import settings, write_ini_config
 from api.core.dt_coerce import coerce_datetimes as _coerce_dt
+from api.core.permissions import P
 from api.database import get_db
+from api.dependencies.auth import require_permission
 from api.models.Category import Category
 from api.models.Customer import Customer
 from api.models.Payment import Payment
@@ -152,7 +154,7 @@ def _make_sync_token(tenant_id: str, device_id: str, tenant_type: str = "shared"
         "tenant_id":   tenant_id,
         "device_id":   device_id,
         "tenant_type": tenant_type,
-        "exp":         datetime.utcnow() + timedelta(days=365),
+        "exp":         datetime.now(timezone.utc) + timedelta(days=365),
     }
     return _jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
@@ -323,6 +325,8 @@ def sync_push(
 
 # ── CLOUD: serve pull ─────────────────────────────────────────────────────────
 
+_PULL_PAGE_SIZE = 500  # safe batch size — avoids 2000-record truncation data loss
+
 @router.get("/pull")
 def sync_pull(
     entity_type: str = Query(...),
@@ -331,6 +335,7 @@ def sync_pull(
     db:          Session = Depends(get_db),
 ):
     """Return records updated since `since` for the authenticated tenant.
+    Paginated via has_more + next_since cursor — loop until has_more is False.
     Self-hosted tenants: business data pull is rejected.
     """
     tenant_id   = claims["tenant_id"]
@@ -349,14 +354,28 @@ def sync_pull(
     col_names = {c.key for c in sa_inspect(model).columns}
     since_dt  = _parse_dt(since)
 
-    query = db.query(model)
+    query = db.query(model).order_by(model.updated_at.asc())
     if "tenant_id" in col_names:
         query = query.filter(model.tenant_id == tenant_id)
     if since_dt:
         query = query.filter(model.updated_at > since_dt)
 
-    records = [_row_to_dict(r) for r in query.limit(2000).all()]
-    return {"entity_type": entity_type, "count": len(records), "records": records}
+    rows = query.limit(_PULL_PAGE_SIZE + 1).all()
+    has_more = len(rows) > _PULL_PAGE_SIZE
+    rows = rows[:_PULL_PAGE_SIZE]
+    records = [_row_to_dict(r) for r in rows]
+
+    # next_since = updated_at of last returned record, so the next page picks up exactly there
+    next_since = (
+        records[-1]["updated_at"] if records and has_more else None
+    )
+    return {
+        "entity_type": entity_type,
+        "count":       len(records),
+        "records":     records,
+        "has_more":    has_more,
+        "next_since":  next_since,
+    }
 
 
 # ── CLOUD: tenant billing state ──────────────────────────────────────────────
@@ -384,7 +403,10 @@ def tenant_billing(
 # ── LOCAL: status ─────────────────────────────────────────────────────────────
 
 @router.get("/status")
-def sync_status(db: Session = Depends(get_db)):
+def sync_status(
+    db: Session = Depends(get_db),
+    _: object = Depends(require_permission(P.CONFIG_READ)),
+):
     from api.services.local_sync_service import get_sync_status
     return get_sync_status(db)
 
@@ -392,7 +414,10 @@ def sync_status(db: Session = Depends(get_db)):
 # ── LOCAL: trigger sync ───────────────────────────────────────────────────────
 
 @router.post("/run")
-def sync_run(db: Session = Depends(get_db)):
+def sync_run(
+    db: Session = Depends(get_db),
+    _: object = Depends(require_permission(P.CONFIG_UPDATE)),
+):
     from api.services.local_sync_service import run_sync
     result = run_sync(db)
     if not result.get("ok") and not result.get("pushed") and not result.get("pulled"):
@@ -417,7 +442,12 @@ def _bg_run_sync():
 
 
 @router.post("/configure")
-def sync_configure(body: SyncConfigRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def sync_configure(
+    body: SyncConfigRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_permission(P.CONFIG_UPDATE)),
+):
     """Exchange credentials with cloud, save sync token to pos_server.ini."""
     import httpx
 
@@ -470,12 +500,11 @@ def sync_configure(body: SyncConfigRequest, background_tasks: BackgroundTasks, d
 
 
 @router.post("/configure-billing")
-def configure_billing(body: BillingConfigRequest):
-    """
-    Saves the billing_url (posconnect.ht) to pos_server.ini so this local
-    server can proxy /api/billing/license requests to the SaaS.
-    No authentication required — called by the settings screen.
-    """
+def configure_billing(
+    body: BillingConfigRequest,
+    _: object = Depends(require_permission(P.CONFIG_UPDATE)),
+):
+    """Saves the billing_url to pos_server.ini. Requires CONFIG_UPDATE."""
     billing_url = body.billing_url.rstrip("/")
     if not billing_url.startswith("http"):
         raise HTTPException(status_code=400, detail="URL invalide — doit commencer par http(s)://")
