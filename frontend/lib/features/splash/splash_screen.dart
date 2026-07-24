@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, Tar
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
@@ -28,20 +29,19 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     FlutterNativeSplash.remove();
 
     if (kIsWeb) {
-      // Web: attendre que authProvider finisse d'initialiser (lecture storage),
-      // puis naviguer selon l'état réel — évite la course avec le redirect router.
-      while (ref.read(authProvider).isLoading) {
-        await Future.delayed(const Duration(milliseconds: 30));
-        if (!mounted) return;
-      }
+      // Web fast-path: lire le token directement depuis FlutterSecureStorage
+      // (localStorage sur web — quasi-instantané, évite d'attendre authProvider._init()).
+      // authProvider continue son init en arrière-plan ; le router guard prendra
+      // le relais si le token s'avère invalide côté serveur.
+      const storage = FlutterSecureStorage(
+        aOptions: AndroidOptions(encryptedSharedPreferences: true),
+      );
+      final token = await storage.read(key: AppConstants.tokenKey);
       if (!mounted) return;
-      if (ref.read(authProvider).isAuthenticated) {
+      if (token != null && !AuthNotifier.isTokenExpired(token)) {
         context.go('/dashboard');
         return;
       }
-      // Naviguer immédiatement sans bloquer sur le health check.
-      // Le check setup tourne en arrière-plan : si le serveur n'est pas configuré
-      // il redirigera vers /install une fois la réponse reçue.
       context.go('/home');
       _checkSetupInBackground();
       return;
