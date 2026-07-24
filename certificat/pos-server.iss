@@ -200,6 +200,39 @@ begin
   else Result := 'sqlite';
 end;
 
+// ── Arrêt des services avant copie des fichiers ───────────────────────────────
+// PrepareToInstall s'exécute juste avant la copie — idéal pour libérer les
+// fichiers verrouillés par les services en cours d'exécution.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Result := '';
+
+  // Vérifier si POS_Connect_API existe déjà (= réinstallation ou mise à jour).
+  // sc.exe query retourne 0 si le service existe (peu importe son état).
+  Exec(ExpandConstant('{sys}\sc.exe'), 'query POS_Connect_API',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  if ResultCode = 0 then
+  begin
+    if MsgBox(
+      'Des services POS Serveur sont détectés sur ce système.' + #13#10 + #13#10 +
+      'Il est fortement recommandé de les arrêter maintenant' + #13#10 +
+      'pour éviter des erreurs lors de la mise à jour des fichiers.' + #13#10 + #13#10 +
+      'Arrêter les services POS Serveur avant de continuer ?',
+      mbConfirmation, MB_YESNO
+    ) = IDYES then
+    begin
+      Exec('powershell.exe',
+        '-NonInteractive -ExecutionPolicy Bypass -Command ' +
+        '"Stop-Service POS_Connect_Nginx,POS_Connect_API,POS_Connect_MySQL ' +
+        '-Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 3"',
+        '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   // Les données MySQL (C:\ProgramData\POS_Connect_MySQL\) ne sont JAMAIS supprimées
