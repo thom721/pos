@@ -164,7 +164,7 @@ def get_database_url() -> str:
     return (
         f"mysql+pymysql://{settings.DB_USER}:{pw}"
         f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
-        f"?charset=utf8mb4&get_server_public_key=true"
+        f"?charset=utf8mb4"
     )
 
 

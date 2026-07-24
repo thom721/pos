@@ -236,17 +236,17 @@ if ($DbType -eq "mysql") {
 CREATE DATABASE IF NOT EXISTS ``$DbName`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'root'@'127.0.0.1'   IDENTIFIED WITH caching_sha2_password BY '';
 GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;
-CREATE USER IF NOT EXISTS '$DbUser'@'127.0.0.1' IDENTIFIED WITH caching_sha2_password BY '$DbPass';
-CREATE USER IF NOT EXISTS '$DbUser'@'localhost'  IDENTIFIED WITH caching_sha2_password BY '$DbPass';
-ALTER USER '$DbUser'@'127.0.0.1' IDENTIFIED WITH caching_sha2_password BY '$DbPass';
-ALTER USER '$DbUser'@'localhost'  IDENTIFIED WITH caching_sha2_password BY '$DbPass';
+CREATE USER IF NOT EXISTS '$DbUser'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '$DbPass';
+CREATE USER IF NOT EXISTS '$DbUser'@'localhost'  IDENTIFIED WITH mysql_native_password BY '$DbPass';
+ALTER USER '$DbUser'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '$DbPass';
+ALTER USER '$DbUser'@'localhost'  IDENTIFIED WITH mysql_native_password BY '$DbPass';
 GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'127.0.0.1';
 GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'localhost';
 FLUSH PRIVILEGES;
 "@
     Write-Log "init.sql cree -- sera execute par MySQL a chaque demarrage"
 
-    if (-not (Test-Path "$MySqlData\ibdata1")) {
+    if (-not (Test-Path $InitFlagFile)) {
         Write-Log "Initialisation du datadir MySQL ($MySqlData)..."
 
         # my.ini dans le dossier d'installation (pas dans le datadir).
@@ -274,7 +274,7 @@ innodb_flush_log_at_trx_commit = 2
 innodb_buffer_pool_instances = 2
 
 init-file = $InitSqlFwd
-authentication_policy = caching_sha2_password
+authentication_policy = caching_sha2_password,mysql_native_password
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
 sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
@@ -370,7 +370,7 @@ innodb_flush_log_at_trx_commit = 2
 innodb_buffer_pool_instances = 2
 
 init-file = $InitSqlFwd
-authentication_policy = caching_sha2_password
+authentication_policy = caching_sha2_password,mysql_native_password
 character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
 sql_mode = STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
