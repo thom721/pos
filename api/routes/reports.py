@@ -10,6 +10,7 @@ from api.models.Sale import Sale
 from api.models.SaleItem import SaleItem
 from api.models.Product import Product
 from api.models.Warehouse import Warehouse
+from api.models.Category import Category
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
 
@@ -135,11 +136,12 @@ def top_products(
     date_from:    Optional[datetime] = Query(None),
     date_to:      Optional[datetime] = Query(None),
     warehouse_id: Optional[str]      = Query(None),
+    category_id:  Optional[str]      = Query(None),
     limit:        int                = Query(20, le=50),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_READ)),
 ):
-    """Top produits écoulés (quantité + CA + marge), filtrables par dépôt."""
+    """Top produits écoulés (quantité + CA + marge), filtrables par dépôt et catégorie."""
     tid = current_user.tenant_id
 
     q = (
@@ -159,6 +161,9 @@ def top_products(
 
     if warehouse_id:
         q = q.filter(Sale.warehouse_id == warehouse_id)
+
+    if category_id:
+        q = q.filter(Product.category_id == category_id)
 
     rows = (
         q.group_by(Product.id, Product.name)

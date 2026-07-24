@@ -230,20 +230,22 @@ final _revenueChartProvider = FutureProvider.family
 class _ProdParams {
   final _RevPeriod period;
   final DateTimeRange? customRange;
-  final String? product; // null = tous les produits
-  const _ProdParams(this.period, [this.customRange, this.product]);
+  final String? product;    // null = tous les produits
+  final String? categoryId; // null = toutes les catégories
+  const _ProdParams(this.period, [this.customRange, this.product, this.categoryId]);
 
   @override
   bool operator ==(Object other) =>
       other is _ProdParams &&
       other.period == period &&
       other.product == product &&
+      other.categoryId == categoryId &&
       other.customRange?.start == customRange?.start &&
       other.customRange?.end == customRange?.end;
 
   @override
   int get hashCode =>
-      Object.hash(period, customRange?.start, customRange?.end, product);
+      Object.hash(period, customRange?.start, customRange?.end, product, categoryId);
 }
 
 class _ProdResult {
@@ -257,7 +259,13 @@ class _ProdResult {
 final _prodPeriodProvider =
     StateProvider<_RevPeriod>((ref) => _RevPeriod.month);
 final _prodCustomRangeProvider = StateProvider<DateTimeRange?>((ref) => null);
-final _prodFilterProvider = StateProvider<String?>((ref) => null);
+final _prodFilterProvider        = StateProvider<String?>((ref) => null);
+final _prodCategoryFilterProvider = StateProvider<String?>((ref) => null);
+
+final _statCategoriesProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final res = await dio.get('/api/categories/');
+  return List<Map<String, dynamic>>.from(res.data as List);
+});
 
 final _prodChartProvider = FutureProvider.family
     .autoDispose<_ProdResult, _ProdParams>((ref, params) async {
@@ -285,23 +293,42 @@ final _prodChartProvider = FutureProvider.family
 
   final sales = await _fetchAllSales(from, toDate);
 
-  // Collect all product names for the dropdown
+  // If category filter active, resolve product names in that category
+  Set<String>? categoryProductNames;
+  if (params.categoryId != null) {
+    final res = await dio.get('/api/products/', queryParameters: {
+      'category_id': params.categoryId,
+      'per_page': 200,
+    });
+    final items = (res.data['items'] ?? res.data) as List;
+    categoryProductNames = {
+      for (final p in items)
+        if (p['name'] != null) p['name'] as String,
+    };
+  }
+
+  // Collect all product names for the dropdown (respects category filter)
   final allProducts = <String>{};
   for (final sale in sales) {
     for (final item in sale.items) {
-      allProducts.add(item.productName ?? 'Produit');
+      final name = item.productName ?? 'Produit';
+      if (categoryProductNames == null || categoryProductNames.contains(name)) {
+        allProducts.add(name);
+      }
     }
   }
   final productList = allProducts.toList()..sort();
 
-  // Helper: sum quantity sold in a time slot (respects product filter)
+  // Helper: sum quantity sold in a time slot (respects product + category filter)
   double qty(DateTime start, DateTime end) {
     double total = 0;
     for (final sale in sales) {
       if (!sale.createdAt.isBefore(start) && sale.createdAt.isBefore(end)) {
         for (final item in sale.items) {
-          if (params.product == null ||
-              item.productName == params.product) {
+          final name = item.productName;
+          if (categoryProductNames != null &&
+              !categoryProductNames.contains(name)) { continue; }
+          if (params.product == null || name == params.product) {
             total += item.quantity;
           }
         }
@@ -1109,8 +1136,10 @@ class _ProductEcoulementSectionState
     final period      = ref.watch(_prodPeriodProvider);
     final customRange = ref.watch(_prodCustomRangeProvider);
     final product     = ref.watch(_prodFilterProvider);
-    final params      = _ProdParams(period, customRange, product);
+    final categoryId  = ref.watch(_prodCategoryFilterProvider);
+    final params      = _ProdParams(period, customRange, product, categoryId);
     final chartAsync  = ref.watch(_prodChartProvider(params));
+    final catsAsync   = ref.watch(_statCategoriesProvider);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1149,25 +1178,46 @@ class _ProductEcoulementSectionState
 
           const SizedBox(height: 12),
 
-          // Product filter + best-period badge
+          // Category + product filter + best-period badge
           chartAsync.when(
-            data: (result) => Row(children: [
-              // Product dropdown
-              Container(
-                height: 32,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10),
-                decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.divider),
-                  borderRadius: BorderRadius.circular(8),
-                  color: AppColors.background,
-                ),
-                child: DropdownButtonHideUnderline(
+            data: (result) => Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+              // Category dropdown
+              catsAsync.maybeWhen(
+                data: (cats) => _FilterChip(
                   child: DropdownButton<String?>(
+                    value: categoryId,
+                    isDense: true,
+                    underline: const SizedBox(),
+                    style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+                    hint: const Text('Toutes catégories', style: TextStyle(fontSize: 12)),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('Toutes catégories')),
+                      ...cats.map((c) => DropdownMenuItem(
+                        value: c['id'] as String?,
+                        child: Text(c['name'] as String? ?? '', style: const TextStyle(fontSize: 12)),
+                      )),
+                    ],
+                    onChanged: (v) {
+                      ref.read(_prodCategoryFilterProvider.notifier).state = v;
+                      ref.read(_prodFilterProvider.notifier).state = null;
+                    },
+                  ),
+                ),
+                orElse: () => const SizedBox.shrink(),
+              ),
+              // Product dropdown
+              _FilterChip(
+                child: DropdownButton<String?>(
                     value: product,
                     isDense: true,
+                    underline: const SizedBox(),
                     style: const TextStyle(
                         fontSize: 12, color: AppColors.textPrimary),
+                    hint: const Text('Tous les produits', style: TextStyle(fontSize: 12)),
                     items: [
                       const DropdownMenuItem(
                           value: null,
@@ -1178,7 +1228,6 @@ class _ProductEcoulementSectionState
                     onChanged: (v) =>
                         ref.read(_prodFilterProvider.notifier).state = v,
                   ),
-                ),
               ),
               const SizedBox(width: 12),
               // Best-period badge
@@ -1331,4 +1380,23 @@ class _ProdBarChart extends StatelessWidget {
       }).toList(),
     ));
   }
+}
+
+// ── Filtre dropdown container ──────────────────────────────────────────────
+
+class _FilterChip extends StatelessWidget {
+  final Widget child;
+  const _FilterChip({required this.child});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 32,
+    padding: const EdgeInsets.symmetric(horizontal: 10),
+    decoration: BoxDecoration(
+      border: Border.all(color: AppColors.divider),
+      borderRadius: BorderRadius.circular(8),
+      color: AppColors.background,
+    ),
+    child: child,
+  );
 }

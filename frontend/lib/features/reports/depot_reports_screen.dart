@@ -142,17 +142,19 @@ class _ProductParams {
   final DateTime from;
   final DateTime to;
   final String? warehouseId;
+  final String? categoryId;
 
-  const _ProductParams(this.from, this.to, this.warehouseId);
+  const _ProductParams(this.from, this.to, this.warehouseId, [this.categoryId]);
 
   @override
   bool operator ==(Object other) =>
       other is _ProductParams &&
       other.from == from && other.to == to &&
-      other.warehouseId == warehouseId;
+      other.warehouseId == warehouseId &&
+      other.categoryId == categoryId;
 
   @override
-  int get hashCode => Object.hash(from, to, warehouseId);
+  int get hashCode => Object.hash(from, to, warehouseId, categoryId);
 }
 
 final _warehouseStatsProvider = FutureProvider.autoDispose
@@ -179,10 +181,16 @@ final _topProductsProvider = FutureProvider.autoDispose
     'date_to':   params.to.toIso8601String(),
     'limit':     20,
     if (params.warehouseId != null) 'warehouse_id': params.warehouseId,
+    if (params.categoryId  != null) 'category_id':  params.categoryId,
   });
   return (res.data as List)
       .map((e) => _ProductStat.fromJson(e as Map<String, dynamic>))
       .toList();
+});
+
+final _categoriesProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final res = await dio.get('/api/categories/');
+  return List<Map<String, dynamic>>.from(res.data as List);
 });
 
 final _warehouseListProvider =
@@ -205,7 +213,8 @@ class DepotReportsScreen extends ConsumerStatefulWidget {
 class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
   _Period _period = _Period.month;
   DateTimeRange? _customRange;
-  String? _productWarehouseFilter; // null = Tous
+  String? _productWarehouseFilter;
+  String? _productCategoryFilter;
 
   (DateTime, DateTime) get _range => _period.range(_customRange);
 
@@ -213,7 +222,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
       _ReportParams(_range.$1, _range.$2);
 
   _ProductParams get _productParams =>
-      _ProductParams(_range.$1, _range.$2, _productWarehouseFilter);
+      _ProductParams(_range.$1, _range.$2, _productWarehouseFilter, _productCategoryFilter);
 
   @override
   Widget build(BuildContext context) {
@@ -318,8 +327,18 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
                     subtitle: 'Produits les plus vendus sur la période',
                   ),
                 ),
-                const SizedBox(width: 12),
-                // Filtre dépôt pour les produits
+                const SizedBox(width: 8),
+                // Filtre catégorie
+                ref.watch(_categoriesProvider).maybeWhen(
+                  data: (cats) => _CategoryFilterDropdown(
+                    categories: cats,
+                    selected: _productCategoryFilter,
+                    onChanged: (v) => setState(() => _productCategoryFilter = v),
+                  ),
+                  orElse: () => const SizedBox.shrink(),
+                ),
+                const SizedBox(width: 8),
+                // Filtre dépôt
                 warehousesAsync.maybeWhen(
                   data: (warehouses) => _WarehouseFilterDropdown(
                     warehouses: warehouses,
@@ -498,10 +517,14 @@ class _WarehouseRanking extends StatelessWidget {
               children: [
                 _th('#', flex: 1),
                 _th('Dépôt', flex: 5),
-                _th('CA', flex: 4, right: true),
-                _th('Marge', flex: 3, right: true),
-                _th('Ventes', flex: 2, right: true),
-                _th('Articles', flex: 2, right: true),
+                _th('CA', flex: 4, right: true,
+                    tooltip: 'Chiffre d\'affaires total sur la période'),
+                _th('Marge', flex: 3, right: true,
+                    tooltip: 'Marge brute = (CA − coût des ventes) / CA'),
+                _th('Ventes', flex: 2, right: true,
+                    tooltip: 'Nombre de transactions complétées'),
+                _th('Articles', flex: 2, right: true,
+                    tooltip: 'Quantité totale d\'articles vendus'),
               ],
             ),
           ),
@@ -523,17 +546,37 @@ class _WarehouseRanking extends StatelessWidget {
     );
   }
 
-  Widget _th(String text, {int flex = 1, bool right = false}) => Expanded(
-    flex: flex,
-    child: Text(
+  Widget _th(String text, {int flex = 1, bool right = false, String? tooltip}) {
+    final label = Text(
       text,
       textAlign: right ? TextAlign.right : TextAlign.left,
       style: const TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
           color: AppColors.textSecondary),
-    ),
-  );
+    );
+    final content = tooltip == null
+        ? label
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment:
+                right ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              if (!right) label,
+              Tooltip(
+                message: tooltip,
+                preferBelow: false,
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 3, right: 3),
+                  child: Icon(Icons.info_outline_rounded,
+                      size: 11, color: AppColors.textSecondary),
+                ),
+              ),
+              if (right) label,
+            ],
+          );
+    return Expanded(flex: flex, child: content);
+  }
 }
 
 class _WarehouseRow extends StatelessWidget {
@@ -695,9 +738,12 @@ class _TopProductsTable extends StatelessWidget {
             child: Row(children: [
               _th('#', flex: 1),
               _th('Produit', flex: 5),
-              _th('Qté vendue', flex: 2, right: true),
-              _th('CA', flex: 3, right: true),
-              _th('Marge', flex: 2, right: true),
+              _th('Qté vendue', flex: 2, right: true,
+                  tooltip: 'Quantité totale vendue sur la période'),
+              _th('CA', flex: 3, right: true,
+                  tooltip: 'Chiffre d\'affaires généré par ce produit'),
+              _th('Marge', flex: 2, right: true,
+                  tooltip: 'Marge brute = (CA − coût) / CA'),
             ]),
           ),
           const Divider(height: 1, color: AppColors.divider),
@@ -769,17 +815,37 @@ class _TopProductsTable extends StatelessWidget {
     );
   }
 
-  Widget _th(String text, {int flex = 1, bool right = false}) => Expanded(
-    flex: flex,
-    child: Text(
+  Widget _th(String text, {int flex = 1, bool right = false, String? tooltip}) {
+    final label = Text(
       text,
       textAlign: right ? TextAlign.right : TextAlign.left,
       style: const TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
           color: AppColors.textSecondary),
-    ),
-  );
+    );
+    final content = tooltip == null
+        ? label
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment:
+                right ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              if (!right) label,
+              Tooltip(
+                message: tooltip,
+                preferBelow: false,
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 3, right: 3),
+                  child: Icon(Icons.info_outline_rounded,
+                      size: 11, color: AppColors.textSecondary),
+                ),
+              ),
+              if (right) label,
+            ],
+          );
+    return Expanded(flex: flex, child: content);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -807,12 +873,44 @@ class _WarehouseFilterDropdown extends StatelessWidget {
       items: [
         const DropdownMenuItem<String?>(
           value: null,
-          child: Text('Tous les dépôts',
-              style: TextStyle(fontSize: 13)),
+          child: Text('Tous les dépôts', style: TextStyle(fontSize: 13)),
         ),
         ...warehouses.map((wh) => DropdownMenuItem<String?>(
           value: wh.id,
           child: Text(wh.name, style: const TextStyle(fontSize: 13)),
+        )),
+      ],
+      onChanged: onChanged,
+    );
+  }
+}
+
+class _CategoryFilterDropdown extends StatelessWidget {
+  final List<Map<String, dynamic>> categories;
+  final String? selected;
+  final ValueChanged<String?> onChanged;
+
+  const _CategoryFilterDropdown({
+    required this.categories,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButton<String?>(
+      value: selected,
+      underline: const SizedBox(),
+      hint: const Text('Toutes catégories',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+      items: [
+        const DropdownMenuItem<String?>(
+          value: null,
+          child: Text('Toutes catégories', style: TextStyle(fontSize: 13)),
+        ),
+        ...categories.map((c) => DropdownMenuItem<String?>(
+          value: c['id'] as String?,
+          child: Text(c['name'] as String? ?? '', style: const TextStyle(fontSize: 13)),
         )),
       ],
       onChanged: onChanged,
