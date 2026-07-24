@@ -679,6 +679,7 @@ class _TenantCard extends ConsumerWidget {
         text: (tenant['max_caisses'] as int? ?? 1).toString());
     final maxDepotCtrl = TextEditingController(
         text: (tenant['max_depots'] as int? ?? 1).toString());
+    final extraTrialCtrl = TextEditingController();
     bool canManage = tenant['can_manage_tenants'] as bool? ?? false;
     final formKey = GlobalKey<FormState>();
 
@@ -717,6 +718,21 @@ class _TenantCard extends ConsumerWidget {
                     return (n == null || n < 1) ? 'Minimum 1' : null;
                   },
                 ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: extraTrialCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Ajouter des jours d\'essai (optionnel)',
+                    prefixIcon: Icon(Icons.hourglass_top_rounded),
+                    hintText: 'ex: 7',
+                  ),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return null;
+                    final n = int.tryParse(v);
+                    return (n == null || n < 1) ? 'Nombre positif requis' : null;
+                  },
+                ),
                 const SizedBox(height: 16),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -741,12 +757,15 @@ class _TenantCard extends ConsumerWidget {
                 Navigator.pop(ctx);
                 try {
                   final d = await ref.read(adminDioProvider.future);
+                  final extraDays = int.tryParse(extraTrialCtrl.text.trim());
                   await d.patch(
                     '/api/admin/tenants/${tenant['id']}',
                     data: {
                       'max_caisses': int.parse(maxCaisseCtrl.text),
                       'max_depots':  int.parse(maxDepotCtrl.text),
                       'can_manage_tenants': canManage,
+                      if (extraDays != null && extraDays > 0)
+                        'extra_trial_days': extraDays,
                     },
                   );
                   ref.invalidate(_tenantsProvider);
@@ -775,6 +794,7 @@ class _TenantCard extends ConsumerWidget {
         );
       }),
     );
+    extraTrialCtrl.dispose();
   }
 }
 
@@ -1994,6 +2014,35 @@ class _WarehousesDialogState extends ConsumerState<_WarehousesDialog> {
     }
   }
 
+  Future<void> _claim(String warehouseId, String warehouseName) async {
+    setState(() => _busy.add(warehouseId));
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      await d.patch('/api/admin/warehouses/$warehouseId/claim');
+      setState(() {
+        _warehouses = _warehouses!.map((w) {
+          if (w['id'] == warehouseId) return {...w, 'is_claimed': true};
+          return w;
+        }).toList();
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('"$warehouseName" marqué réclamé'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : ${extractAnyError(e)}'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _busy.remove(warehouseId));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -2079,6 +2128,16 @@ class _WarehousesDialogState extends ConsumerState<_WarehousesDialog> {
                                           color: AppColors.warning,
                                           onPressed: () =>
                                               _unclaim(id, name),
+                                        )
+                                      else
+                                        IconButton(
+                                          icon: const Icon(
+                                              Icons.link_rounded,
+                                              size: 18),
+                                          tooltip: 'Marquer réclamé',
+                                          color: AppColors.success,
+                                          onPressed: () =>
+                                              _claim(id, name),
                                         ),
                                       IconButton(
                                         icon: const Icon(

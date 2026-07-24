@@ -92,6 +92,11 @@ class PlatformConfigUpdate(BaseModel):
     smtp_port:             int | None = None
     smtp_user:             str | None = None
     smtp_password:         str | None = None
+    # Méthodes de paiement activées
+    cash_enabled:    bool | None = None
+    moncash_enabled: bool | None = None
+    natcash_enabled: bool | None = None
+    card_enabled:    bool | None = None
     smtp_from:             str | None = None
     pricing_plans_json:    str | None = None
     logo_url:              str | None = None
@@ -732,6 +737,22 @@ def unclaim_warehouse(
     return {"id": wh.id, "is_claimed": False}
 
 
+@router.patch("/warehouses/{warehouse_id}/claim")
+def claim_warehouse(
+    warehouse_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """Mark a depot as claimed (is_claimed=True)."""
+    wh = db.query(Warehouse).filter(Warehouse.id == warehouse_id).first()
+    if not wh:
+        raise HTTPException(status_code=404, detail="Dépôt introuvable")
+    wh.is_claimed = True
+    db.commit()
+    _log.info("Warehouse marqué réclamé: %s (tenant=%s)", warehouse_id, wh.tenant_id)
+    return {"id": wh.id, "is_claimed": True}
+
+
 # ── Register management (per tenant) ────────────────────────────────────────
 
 @router.get("/tenants/{tenant_id}/registers")
@@ -924,6 +945,10 @@ def get_platform_config(
         "smtp_from":             getattr(cfg, "smtp_from",             ""),
         "pricing_plans_json": getattr(cfg, "pricing_plans_json", None),
         "logo_url":           getattr(cfg, "logo_url", None),
+        "cash_enabled":    bool(getattr(cfg, "cash_enabled",    True)),
+        "moncash_enabled": bool(getattr(cfg, "moncash_enabled", True)),
+        "natcash_enabled": bool(getattr(cfg, "natcash_enabled", True)),
+        "card_enabled":    bool(getattr(cfg, "card_enabled",    True)),
         "created_at":        cfg.created_at.isoformat() if cfg.created_at else None,
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }
@@ -973,6 +998,10 @@ def update_platform_config(
     if body.smtp_from             is not None: cfg.smtp_from             = body.smtp_from
     if body.pricing_plans_json    is not None: cfg.pricing_plans_json    = body.pricing_plans_json
     if body.logo_url              is not None: cfg.logo_url              = body.logo_url
+    if body.cash_enabled    is not None: cfg.cash_enabled    = body.cash_enabled
+    if body.moncash_enabled is not None: cfg.moncash_enabled = body.moncash_enabled
+    if body.natcash_enabled is not None: cfg.natcash_enabled = body.natcash_enabled
+    if body.card_enabled    is not None: cfg.card_enabled    = body.card_enabled
 
     db.commit()
     db.refresh(cfg)
