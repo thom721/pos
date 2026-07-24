@@ -15,6 +15,13 @@ class PosRegister(UUIDBase):
     session_token = Column(String(36), nullable=True)   # UUID rotated at each login; JWT sid must match
     last_seen     = Column(DateTime(timezone=True), nullable=True)  # updated by heartbeat every 2 min
 
+    # ── Abonnement par caisse (caisses supplémentaires) ──────────────────────────
+    # trial_ends_at     : fin de la période d'essai de cette caisse (NULL = caisse de base)
+    # subscription_ends_at : fin de l'abonnement payé pour cette caisse
+    # NULL = caisse de base incluse dans le plan tenant, pas de facturation individuelle
+    trial_ends_at        = Column(DateTime(timezone=True), nullable=True)
+    subscription_ends_at = Column(DateTime(timezone=True), nullable=True)
+
     warehouse = relationship("Warehouse", back_populates="pos_registers")
 
     __table_args__ = (

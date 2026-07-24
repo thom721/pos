@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Integer, Numeric, Boolean, Text
 from .base import UUIDBase
 
+
 class PlatformConfig(UUIDBase):
     """Single-row platform-wide configuration (singleton)."""
     __tablename__ = "platform_config"
@@ -44,3 +45,13 @@ class PlatformConfig(UUIDBase):
     # Cards de tarification affichées sur la page publique (JSON array)
     pricing_plans_json    = Column(Text, nullable=True, default=None)
     logo_url              = Column(String(512), nullable=True, default=None)
+
+    # ── Facturation ─────────────────────────────────────────────────────────────
+    # Si True : les jours d'essai sont inclus dans le premier mois payé
+    # (l'abonnement démarre à la date de création, pas à la date de paiement).
+    # Si False (défaut) : l'essai est offert, le mois payé commence au paiement.
+    trial_included_in_billing = Column(Boolean, nullable=False, default=False)
+
+    # Rabais plan annuel (%) — appliqué sur prix_mensuel × 12
+    # Ex : annual_discount_pct=20 → prix annuel = mensuel × 12 × 0.80
+    annual_discount_pct = Column(Integer, nullable=False, default=20)

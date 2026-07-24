@@ -19,3 +19,10 @@ class BillingPayment(UUIDBase):
     # Fernet-encrypted ISO datetimes — key = HKDF(SECRET_KEY, salt=tenant_id)
     period_start   = Column(Text, nullable=True)
     period_end     = Column(Text, nullable=True)
+
+    # ── Plan & caisses ───────────────────────────────────────────────────────────
+    # plan_type      : 'monthly' | 'annual'
+    # register_ids_json : JSON list des UUIDs de PosRegister couverts par ce paiement
+    #                     NULL = paiement pour l'abonnement tenant entier (comportement historique)
+    plan_type         = Column(String(10), nullable=False, default='monthly')
+    register_ids_json = Column(Text, nullable=True)   # JSON array : ["uuid1","uuid2"]

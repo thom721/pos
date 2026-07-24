@@ -1,6 +1,6 @@
 import json as _json
 import uuid as _uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -51,6 +51,8 @@ class RegisterRead(BaseModel):
     device_id: Optional[str] = None
     is_active: bool
     warehouse_id: Optional[str] = None
+    trial_ends_at: Optional[datetime] = None
+    subscription_ends_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -314,12 +316,20 @@ def create_register(
                 return _limit_response("caisse", current_count, tenant.max_caisses, _pricing(db))
 
     device_id = data.device_id or str(_uuid.uuid4())
+
+    # Période d'essai individuelle pour chaque caisse supplémentaire.
+    # La durée d'essai provient de PlatformConfig.trial_days (défaut 30 j).
+    cfg = db.query(PlatformConfig).first()
+    trial_days = int(cfg.trial_days) if cfg and cfg.trial_days else 30
+    now = datetime.now(timezone.utc)
+
     reg = PosRegister(
         tenant_id=current_user.tenant_id,
         warehouse_id=warehouse_id,
         name=data.name,
         device_id=device_id,
         is_active=True,
+        trial_ends_at=now + timedelta(days=trial_days),
     )
     db.add(reg)
     db.commit()

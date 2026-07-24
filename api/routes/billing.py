@@ -22,8 +22,18 @@ from api.services import billing_extra_service as _billing
 
 class SubmitPaymentRequest(BaseModel):
     method: str = "manual"        # moncash | natcash | manual
-    months: int = 1               # 1–12
+    months: int = 1               # 1–12 (ignoré si plan_type='annual')
     reference: str | None = None  # preuve de transaction optionnelle
+    plan_type: str = "monthly"    # 'monthly' | 'annual'
+
+
+class SubmitRegisterPaymentRequest(BaseModel):
+    """Paiement pour une ou plusieurs caisses spécifiques (par warehouse)."""
+    register_ids: list[str]        # UUIDs de PosRegister à payer
+    method: str = "manual"
+    months: int = 1                # ignoré si plan_type='annual'
+    reference: str | None = None
+    plan_type: str = "monthly"
 
 router = APIRouter(prefix="/api/billing", tags=["Billing"])
 
@@ -434,15 +444,18 @@ def submit_payment(
     Creates a BillingPayment with status='pending'.
     A superadmin must confirm it via PATCH /api/admin/payments/{id}/confirm.
     """
-    if not 1 <= body.months <= 12:
-        raise HTTPException(status_code=400, detail="Nombre de mois invalide (1–12)")
+    plan_type = body.plan_type if body.plan_type in ("monthly", "annual") else "monthly"
+    months = 12 if plan_type == "annual" else max(1, min(body.months, 12))
 
     tenant = _get_tenant(db, current_user)
-
-    # Total mensuel = base + extras caisses + extras dépôts
     cfg    = db.query(PlatformConfig).first()
     usage  = _compute_plan_usage(tenant, db, cfg)
-    amount = usage["total_monthly_htg"] * body.months
+
+    if plan_type == "annual":
+        discount_pct = float(getattr(cfg, "annual_discount_pct", 20) if cfg else 20)
+        amount = usage["total_monthly_htg"] * 12 * (1 - discount_pct / 100)
+    else:
+        amount = usage["total_monthly_htg"] * months
 
     now = datetime.now(timezone.utc)
     year   = now.year
@@ -453,21 +466,24 @@ def submit_payment(
     ).count()
     invoice_number = f"{prefix}{count + 1:04d}"
 
-    months_label = f"{body.months} mois" if body.months > 1 else "1 mois"
+    plan_label   = "Annuel (-{}%)".format(int(getattr(cfg, "annual_discount_pct", 20) if cfg else 20)) if plan_type == "annual" else f"{months} mois"
     method_label = {"moncash": "MonCash", "natcash": "NatCash"}.get(body.method, "Manuel")
+    days = 365 if plan_type == "annual" else 30 * months
+
     payment = BillingPayment(
         tenant_id=tenant.id,
         invoice_number=invoice_number,
         method=body.method,
         amount=amount,
         currency="HTG",
-        months=body.months,
+        months=months,
         status="pending",
         reference=body.reference,
-        description=f"Demande {method_label} — {months_label} ({amount:.0f} HTG) — en attente de paiement",
+        plan_type=plan_type,
+        description=f"Demande {method_label} — {plan_label} ({amount:.0f} HTG) — en attente de validation",
         paid_at=None,
         period_start=encrypt_date(now, tenant.id),
-        period_end=encrypt_date(now + timedelta(days=30 * body.months), tenant.id),
+        period_end=encrypt_date(now + timedelta(days=days), tenant.id),
     )
     db.add(payment)
     db.commit()
@@ -477,5 +493,87 @@ def submit_payment(
         "status":         "pending",
         "invoice_number": payment.invoice_number,
         "payment_id":     payment.id,
+        "plan_type":      plan_type,
+        "amount_htg":     round(amount, 2),
         "message":        "Votre paiement a été soumis. Un administrateur le validera sous peu.",
+    }
+
+
+@router.post("/submit-register-payment", status_code=201)
+def submit_register_payment(
+    body: SubmitRegisterPaymentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.CONFIG_READ)),
+):
+    """
+    Tenant soumet un paiement pour une ou plusieurs caisses spécifiques.
+    Le superadmin confirme via PATCH /api/admin/payments/{id}/confirm.
+    Les jours restants de chaque caisse sont additionnés lors de la confirmation.
+    """
+    if not body.register_ids:
+        raise HTTPException(status_code=400, detail="Aucune caisse spécifiée")
+
+    tenant = _get_tenant(db, current_user)
+    plan_type = body.plan_type if body.plan_type in ("monthly", "annual") else "monthly"
+    months = 12 if plan_type == "annual" else max(1, min(body.months, 12))
+
+    # Vérifier que toutes les caisses appartiennent bien à ce tenant
+    registers = db.query(PosRegister).filter(
+        PosRegister.id.in_(body.register_ids),
+        PosRegister.tenant_id == tenant.id,
+    ).all()
+    if len(registers) != len(body.register_ids):
+        raise HTTPException(status_code=404, detail="Une ou plusieurs caisses introuvables")
+
+    cfg = db.query(PlatformConfig).first()
+    price_per_caisse_htg = float(getattr(cfg, "price_per_extra_caisse_htg", 500) if cfg else 500)
+
+    if plan_type == "annual":
+        discount_pct = float(getattr(cfg, "annual_discount_pct", 20) if cfg else 20)
+        amount = price_per_caisse_htg * 12 * len(registers) * (1 - discount_pct / 100)
+    else:
+        amount = price_per_caisse_htg * months * len(registers)
+
+    now = datetime.now(timezone.utc)
+    year   = now.year
+    prefix = f"REG-{year}-"
+    count  = db.query(BillingPayment).filter(
+        BillingPayment.tenant_id == tenant.id,
+        BillingPayment.invoice_number.like(f"{prefix}%"),
+    ).count()
+    invoice_number = f"{prefix}{count + 1:04d}"
+
+    import json as _json
+    plan_label   = "Annuel" if plan_type == "annual" else f"{months} mois"
+    method_label = {"moncash": "MonCash", "natcash": "NatCash"}.get(body.method, "Manuel")
+    days = 365 if plan_type == "annual" else 30 * months
+
+    payment = BillingPayment(
+        tenant_id=tenant.id,
+        invoice_number=invoice_number,
+        method=body.method,
+        amount=amount,
+        currency="HTG",
+        months=months,
+        status="pending",
+        reference=body.reference,
+        plan_type=plan_type,
+        register_ids_json=_json.dumps(body.register_ids),
+        description=f"Caisses ({len(registers)}) — {method_label} — {plan_label} ({amount:.0f} HTG)",
+        paid_at=None,
+        period_start=encrypt_date(now, tenant.id),
+        period_end=encrypt_date(now + timedelta(days=days), tenant.id),
+    )
+    db.add(payment)
+    db.commit()
+    db.refresh(payment)
+
+    return {
+        "status":         "pending",
+        "invoice_number": payment.invoice_number,
+        "payment_id":     payment.id,
+        "plan_type":      plan_type,
+        "register_count": len(registers),
+        "amount_htg":     round(amount, 2),
+        "message":        "Paiement soumis. Un administrateur le validera sous peu.",
     }

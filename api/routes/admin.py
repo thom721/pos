@@ -65,7 +65,8 @@ class ManualActivatePayload(BaseModel):
 
 
 class ConfirmPaymentPayload(BaseModel):
-    months: int | None = None  # None = use months stored on the payment
+    months: int | None = None       # None = use months stored on the payment
+    plan_type: str | None = None    # 'monthly' | 'annual' — None = use value on payment
 
 
 class PlatformConfigUpdate(BaseModel):
@@ -108,22 +109,51 @@ def _next_invoice_number(db: Session, tenant_id: str) -> str:
     return f"{prefix}{count + 1:04d}"
 
 
-def _activate_tenant(db: Session, tenant: Tenant, months: int = 1) -> None:
+def _activate_tenant(db: Session, tenant: Tenant, months: int = 1,
+                     plan_type: str = "monthly") -> None:
+    """
+    Active ou renouvelle l'abonnement d'un tenant.
+
+    trial_included_in_billing (PlatformConfig) :
+      - False (défaut) : le mois payé commence à la date de paiement.
+      - True           : le premier mois part de la création du compte — les jours
+                         d'essai consommés sont déduits. Si le compte a plus de 30 jours,
+                         on retombe sur `now` pour ne pas générer une date passée.
+
+    plan_type :
+      - 'monthly' : months × 30 jours.
+      - 'annual'  : 12 mois × 30 jours avec rabais (le rabais est calculé côté prix,
+                    ici on prolonge de 365 jours pour couvrir l'année complète).
+    """
     now = datetime.now(timezone.utc)
-    # Si déjà actif et pas encore expiré, prolonger depuis la fin actuelle
+    cfg = db.query(PlatformConfig).first()
+    trial_included = bool(cfg.trial_included_in_billing) if cfg else False
+    days = 365 if plan_type == "annual" else 30 * months
+
     current_end = getattr(tenant, "subscription_ends_at", None)
     if current_end:
         if current_end.tzinfo is None:
             current_end = current_end.replace(tzinfo=timezone.utc)
-        base = current_end if current_end > now else now
+
+    if current_end and current_end > now:
+        # Renouvellement en cours de cycle : prolonger depuis la fin actuelle
+        base = current_end
+    elif trial_included and not tenant.subscription_started_at:
+        # Premier paiement avec essai inclus : partir de la création du compte
+        created = getattr(tenant, "created_at", None) or now
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        # Si le compte a déjà plus de <days> jours, on repart de now
+        base = created if (created + timedelta(days=days)) > now else now
     else:
         base = now
+
     tenant.status = "active"
     tenant.subscription_started_at = tenant.subscription_started_at or now
-    tenant.subscription_ends_at    = base + timedelta(days=30 * months)
+    tenant.subscription_ends_at    = base + timedelta(days=days)
     db.commit()
-    _log.info("Tenant activé : %s (%s) — %d mois → fin %s",
-              tenant.slug, tenant.id, months, tenant.subscription_ends_at.date())
+    _log.info("Tenant activé : %s (%s) — plan=%s %d j → fin %s",
+              tenant.slug, tenant.id, plan_type, days, tenant.subscription_ends_at.date())
 
 
 def _days_left(tenant: Tenant) -> int | None:
@@ -781,24 +811,68 @@ def confirm_payment(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant introuvable")
 
-    now      = datetime.now(timezone.utc)
+    now        = datetime.now(timezone.utc)
+    plan_type  = body.plan_type or getattr(payment, "plan_type", "monthly") or "monthly"
     stored_months = getattr(payment, "months", 1) or 1
-    months   = max(1, body.months if body.months is not None else stored_months)
-    period_end = now + timedelta(days=30 * months)
+    months    = max(1, body.months if body.months is not None else stored_months)
+    if plan_type == "annual":
+        months = 12
+    days = 365 if plan_type == "annual" else 30 * months
+    period_end = now + timedelta(days=days)
 
     payment.status     = "paid"
     payment.paid_at    = now
     payment.months     = months
+    payment.plan_type  = plan_type
     payment.period_end = encrypt_date(period_end, payment.tenant_id)
     db.flush()
 
-    _activate_tenant(db, tenant, months=months)
+    # ── Paiement par caisse(s) ────────────────────────────────────────────────
+    import json as _json
+    register_ids_json = getattr(payment, "register_ids_json", None)
+    if register_ids_json:
+        try:
+            register_ids = _json.loads(register_ids_json)
+        except Exception:
+            register_ids = []
+        register_results = []
+        for reg_id in register_ids:
+            reg = db.query(PosRegister).filter_by(id=reg_id, tenant_id=tenant.id).first()
+            if not reg:
+                continue
+            current_end = reg.subscription_ends_at
+            if current_end:
+                if current_end.tzinfo is None:
+                    current_end = current_end.replace(tzinfo=timezone.utc)
+                remaining = max(0, (current_end - now).days)
+            else:
+                remaining = 0
+            reg.subscription_ends_at = now + timedelta(days=days + remaining)
+            register_results.append({
+                "register_id":            reg.id,
+                "name":                   reg.name,
+                "remaining_days_carried": remaining,
+                "subscription_ends_at":   reg.subscription_ends_at.isoformat(),
+            })
+        db.commit()
+        return {
+            "status":           "ok",
+            "payment_id":       payment.id,
+            "invoice_number":   payment.invoice_number,
+            "tenant":           tenant.slug,
+            "plan_type":        plan_type,
+            "registers":        register_results,
+        }
+
+    # ── Paiement abonnement tenant ────────────────────────────────────────────
+    _activate_tenant(db, tenant, months=months, plan_type=plan_type)
 
     return {
         "status":               "ok",
         "payment_id":           payment.id,
         "invoice_number":       payment.invoice_number,
         "tenant":               tenant.slug,
+        "plan_type":            plan_type,
         "new_tenant_status":    tenant.status,
         "subscription_ends_at": tenant.subscription_ends_at.isoformat(),
     }
