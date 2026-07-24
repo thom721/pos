@@ -23,7 +23,7 @@ $MySqlVersion = "8.0.41"
 $MySqlZip    = "$InstallDir\mysql-$MySqlVersion-winx64.zip"
 $MySqlZipUrl = "https://downloads.mysql.com/archives/get/p/23/file/mysql-$MySqlVersion-winx64.zip"
 $MySqlDir    = "$InstallDir\mysql"
-# Donnees MySQL dans un dossier separe -- survivent a toute suppression de POS_Connect
+# Chemin datadir provisoire -- sera precise apres journalisation (detection migration)
 $MySqlData   = "$env:ProgramData\POS_Connect_MySQL\data"
 # my.ini dans le dossier BINAIRE (pas dans le datadir) :
 # MySQL 8 verifie la securite du --defaults-file et refuse d'ouvrir un fichier
@@ -57,6 +57,21 @@ function Write-UTF8NoBOM {
 Write-Log "=== Debut de la configuration POS Connect ==="
 Write-Log "InstallDir : $InstallDir"
 Write-Log "DataDir    : $DataDir"
+
+# -- Detection datadir reel (migration ancien chemin sans \data) ----------------
+# Ancien PS1 (< v1.1) initialisait MySQL directement dans POS_Connect_MySQL\.
+# Nouveau PS1 utilise POS_Connect_MySQL\data\. Si ibdata1 existe dans l'ancien
+# chemin et pas dans le nouveau, on utilise l'ancien pour ne pas casser les donnees.
+$_dataDirOld = "$env:ProgramData\POS_Connect_MySQL"
+$_dataDirNew = "$env:ProgramData\POS_Connect_MySQL\data"
+if ((Test-Path "$_dataDirOld\ibdata1") -and -not (Test-Path "$_dataDirNew\ibdata1")) {
+    $MySqlData = $_dataDirOld
+    Write-Log "Migration datadir : ibdata1 detecte dans $MySqlData (ancien chemin sans \data)" "WARN"
+    Write-Log "Astuce : deplacez les donnees vers $_dataDirNew pour adopter le nouveau standard" "WARN"
+} else {
+    $MySqlData = $_dataDirNew
+}
+Write-Log "Datadir MySQL : $MySqlData"
 
 # -- Verification droits Administrateur ----------------------------------------
 $isAdmin = ([Security.Principal.WindowsPrincipal] `
