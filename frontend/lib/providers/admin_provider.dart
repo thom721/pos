@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
@@ -18,6 +19,7 @@ Dio _buildAdminDio({required String baseUrl, String token = ''}) {
 }
 
 Future<String> _resolveBaseUrl() async {
+  if (kIsWeb && kReleaseMode) return Uri.base.origin;
   final prefs = await SharedPreferences.getInstance();
   final saved = prefs.getString(AppConstants.serverUrlKey);
   return (saved != null && saved.isNotEmpty) ? saved : AppConstants.baseUrl;
