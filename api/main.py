@@ -514,35 +514,50 @@ def _ensure_db_ready():
 
 def _ensure_sqlite_writable(engine) -> bool:
     """
-    Vérifie si le fichier SQLite est accessible en écriture.
-    Si lecture seule, tente de retirer l'attribut readonly (Windows + Unix).
-    Retourne True si l'écriture est possible, False sinon.
+    Vérifie si le fichier SQLite est réellement accessible en écriture.
+    os.access() vérifie les ACL Windows mais PAS l'attribut fichier read-only
+    (FILE_ATTRIBUTE_READONLY), ce qui peut tromper SQLite. On tente une écriture
+    réelle plutôt que de se fier à os.access().
     """
     import os, stat as _stat
+    import subprocess as _sp
     from api.core.config import settings as _s
     if _s.DB_TYPE != "sqlite":
-        return True  # MySQL — pas de vérification fichier
+        return True
 
     db_path = str(engine.url.database or "")
     if not db_path or db_path == ":memory:":
         return True
 
-    if os.access(db_path, os.W_OK):
-        return True  # déjà accessible en écriture
-
-    # Tenter de retirer l'attribut lecture seule
+    # Toujours tenter chmod + icacls avant le test réel.
+    # chmod sur Windows efface l'attribut FILE_ATTRIBUTE_READONLY, os.access ne le fait pas.
     try:
-        current_mode = os.stat(db_path).st_mode
-        os.chmod(db_path, current_mode | _stat.S_IWRITE | _stat.S_IWGRP | _stat.S_IWOTH)
-        if os.access(db_path, os.W_OK):
-            _log.info("✅  Permissions corrigées sur %s", db_path)
-            return True
-    except Exception as _chmod_exc:
-        _log.debug("chmod ignoré : %s", _chmod_exc)
+        if os.path.exists(db_path):
+            current_mode = os.stat(db_path).st_mode
+            os.chmod(db_path, current_mode | _stat.S_IWRITE | _stat.S_IWGRP | _stat.S_IWOTH)
+    except Exception:
+        pass
+
+    if os.name == "nt":
+        try:
+            _sp.run(
+                ["icacls", db_path, "/grant", "SYSTEM:(F)", "/grant", "Administrators:(F)"],
+                capture_output=True, timeout=5,
+            )
+        except Exception:
+            pass
+
+    # Test d'écriture réelle : seule garantie fiable sur Windows.
+    try:
+        with open(db_path, "ab"):
+            pass
+        return True
+    except OSError:
+        pass
 
     _log.warning(
-        "⚠️  %s est en lecture seule — les mises à jour au démarrage seront ignorées. "
-        "Pour corriger (Windows) : icacls \"%s\" /grant Users:(F)",
+        "⚠️  %s est en lecture seule — create_all ignoré. "
+        "Corrigez avec : icacls \"%s\" /grant SYSTEM:(F)",
         db_path, db_path,
     )
     return False
@@ -562,14 +577,25 @@ def on_startup():
 
     # 1. Crée les tables manquantes (nouveau déploiement ou nouvelle table ajoutée)
     if _db_writable:
-        Base.metadata.create_all(bind=_active_engine)
-        # 2. Applique les migrations Alembic (ou stamp si premier démarrage)
         try:
-            _run_alembic_migrations()
-        except Exception as exc:
-            _log.warning("Alembic migration warning: %s", exc)
-        # 2b. Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy
-        _sync_schema_from_models(_active_engine)
+            Base.metadata.create_all(bind=_active_engine)
+        except Exception as _cae:
+            _log.error(
+                "❌ create_all() échoué (%s). "
+                "Vérifiez les permissions de la base de données. "
+                "MySQL: pos_server.ini [database] type=mysql. "
+                "SQLite: icacls pos_connect.db /grant SYSTEM:(F)",
+                _cae,
+            )
+            _log.info("Démarrage en mode dégradé — schéma non synchronisé.")
+        else:
+            # 2. Applique les migrations Alembic (ou stamp si premier démarrage)
+            try:
+                _run_alembic_migrations()
+            except Exception as exc:
+                _log.warning("Alembic migration warning: %s", exc)
+            # 2b. Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy
+            _sync_schema_from_models(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
 
