@@ -193,7 +193,7 @@ def create_warehouse(
     db.add(PosRegister(
         tenant_id=current_user.tenant_id,
         warehouse_id=wh.id,
-        name=wh.name,
+        name="Caisse principale",
         is_active=True,
         is_initial=True,
     ))

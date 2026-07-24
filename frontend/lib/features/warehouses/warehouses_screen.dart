@@ -1,14 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/pos_register_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/repositories/warehouse_repository.dart';
+import 'package:pos_connect/features/billing/billing_screen.dart'
+    show preSelectedRegisterIdsProvider;
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/shared/widgets/limit_exceeded_dialog.dart';
+
+// Provider partagé : expiry du tenant (pour les caisses initiales is_initial=true).
+final _tenantSubscriptionProvider =
+    FutureProvider.autoDispose<DateTime?>((ref) async {
+  try {
+    final res = await dio.get('/api/billing/status');
+    final raw = res.data['subscription_ends_at'] as String?;
+    return raw != null ? DateTime.tryParse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+});
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -505,7 +521,7 @@ class _RegistersList extends StatelessWidget {
 //  Tuile individuelle caisse
 // ══════════════════════════════════════════════════════════════════════════════
 
-class _RegisterTile extends StatelessWidget {
+class _RegisterTile extends ConsumerWidget {
   final String warehouseId;
   final PosRegisterModel register;
   final bool canUpdate;
@@ -521,7 +537,44 @@ class _RegisterTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Pour les caisses initiales, la date d'expiration est celle du tenant.
+    final tenantExpiry = register.isInitial
+        ? ref.watch(_tenantSubscriptionProvider).valueOrNull
+        : null;
+
+    final effectiveExpiry = register.isInitial
+        ? tenantExpiry
+        : register.effectiveExpiry;
+
+    final daysLeft =
+        effectiveExpiry?.difference(DateTime.now()).inDays;
+
+    final expiryColor = daysLeft == null
+        ? AppColors.textSecondary
+        : daysLeft <= 5
+            ? AppColors.error
+            : daysLeft <= 30
+                ? Colors.orange
+                : AppColors.textSecondary;
+
+    String expiryText = '';
+    if (effectiveExpiry != null) {
+      final label = register.isInitial
+          ? 'Plan'
+          : register.isTrial
+              ? 'Essai'
+              : 'Abonnement';
+      final dayStr = daysLeft != null && daysLeft < 0
+          ? 'expiré'
+          : daysLeft != null
+              ? '$daysLeft j restants'
+              : '';
+      expiryText =
+          '$label exp. ${DateFormat('dd/MM/yy').format(effectiveExpiry.toLocal())}'
+          '${dayStr.isNotEmpty ? ' · $dayStr' : ''}';
+    }
+
     return Container(
       decoration: const BoxDecoration(
         border:
@@ -558,11 +611,27 @@ class _RegisterTile extends StatelessWidget {
                 : AppColors.textSecondary,
           ),
         ),
-        subtitle: Text(
-          'ID appareil : ${_shortId(register.deviceId)}',
-          style: const TextStyle(
-              fontSize: 11, color: AppColors.textSecondary),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'ID appareil : ${_shortId(register.deviceId)}',
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary),
+            ),
+            if (expiryText.isNotEmpty)
+              Text(
+                expiryText,
+                style: TextStyle(
+                    fontSize: 11,
+                    color: expiryColor,
+                    fontWeight: daysLeft != null && daysLeft <= 5
+                        ? FontWeight.w600
+                        : FontWeight.w400),
+              ),
+          ],
         ),
+        isThreeLine: expiryText.isNotEmpty,
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -573,6 +642,17 @@ class _RegisterTile extends StatelessWidget {
                 icon: const Icon(Icons.more_vert,
                     size: 18, color: AppColors.textSecondary),
                 itemBuilder: (_) => [
+                  if (!register.isInitial)
+                    const PopupMenuItem(
+                      value: 'pay',
+                      child: Row(children: [
+                        Icon(Icons.payment_rounded,
+                            size: 16, color: AppColors.primary),
+                        SizedBox(width: 8),
+                        Text('Payer',
+                            style: TextStyle(color: AppColors.primary)),
+                      ]),
+                    ),
                   if (canUpdate)
                     const PopupMenuItem(
                         value: 'edit', child: Text('Renommer')),
@@ -590,7 +670,7 @@ class _RegisterTile extends StatelessWidget {
                           style: TextStyle(color: AppColors.error)),
                     ),
                 ],
-                onSelected: (a) => _handleAction(context, a),
+                onSelected: (a) => _handleAction(context, ref, a),
               ),
           ],
         ),
@@ -603,10 +683,16 @@ class _RegisterTile extends StatelessWidget {
     return '${id.substring(0, 8)}…';
   }
 
-  Future<void> _handleAction(BuildContext context, String action) async {
+  Future<void> _handleAction(
+      BuildContext context, WidgetRef ref, String action) async {
     final repo = WarehouseRepository();
     try {
       switch (action) {
+        case 'pay':
+          // Pré-sélectionner cette caisse sur la page abonnement.
+          ref.read(preSelectedRegisterIdsProvider.notifier).state =
+              [register.id];
+          if (context.mounted) context.go('/billing');
         case 'edit':
           await showDialog<void>(
             context: context,

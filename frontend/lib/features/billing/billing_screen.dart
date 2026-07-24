@@ -10,6 +10,9 @@ import 'package:printing/printing.dart';
 import 'package:dio/dio.dart' show DioException;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/data/models/warehouse_model.dart';
+import 'package:pos_connect/data/models/pos_register_model.dart';
+import 'package:pos_connect/data/repositories/warehouse_repository.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -31,6 +34,28 @@ final _billingConfigProvider = FutureProvider<Map<String, dynamic>>((ref) async 
 final _planUsageProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final res = await dio.get('/api/billing/plan-usage');
   return res.data as Map<String, dynamic>;
+});
+
+/// Pré-sélection des caisses depuis la page Dépôts&Caisses (bouton "Payer").
+/// Remis à [] après lecture dans _RegisterPaymentSection.initState.
+final preSelectedRegisterIdsProvider = StateProvider<List<String>>((ref) => []);
+
+class _WhWithRegs {
+  final WarehouseModel warehouse;
+  final List<PosRegisterModel> registers;
+  const _WhWithRegs(this.warehouse, this.registers);
+}
+
+final _allWarehouseRegistersProvider =
+    FutureProvider.autoDispose<List<_WhWithRegs>>((ref) async {
+  final repo = WarehouseRepository();
+  final whs = await repo.listWarehouses();
+  final result = <_WhWithRegs>[];
+  for (final wh in whs) {
+    final regs = await repo.listRegisters(wh.id);
+    result.add(_WhWithRegs(wh, regs));
+  }
+  return result;
 });
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -429,6 +454,20 @@ class _BillingContent extends ConsumerWidget {
           loading: () => const LinearProgressIndicator(),
           error:   (_, __) => const SizedBox.shrink(),
           data: (usage) => _PlanUsageCard(usage: usage),
+        ),
+        const SizedBox(height: 24),
+
+        // ── Paiement par caisse ────────────────────────────────────────────
+        ref.watch(_billingConfigProvider).when(
+          loading: () => const SizedBox.shrink(),
+          error:   (_, __) => const SizedBox.shrink(),
+          data: (cfg) {
+            final pricePerCaisse = (cfg['price_per_extra_caisse_htg'] as num? ?? 500).toDouble();
+            final discountPct    = (cfg['annual_discount_pct']        as num? ??  20).toDouble();
+            return _RegisterPaymentSection(
+                pricePerCaisse: pricePerCaisse,
+                annualDiscountPct: discountPct);
+          },
         ),
         const SizedBox(height: 24),
 
@@ -1556,6 +1595,353 @@ class _ErrorCard extends StatelessWidget {
             child: Text(message,
                 style: const TextStyle(color: AppColors.error))),
       ]),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  Section paiement par caisse (caisses supplémentaires uniquement)
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _RegisterPaymentSection extends ConsumerStatefulWidget {
+  final double pricePerCaisse;
+  final double annualDiscountPct;
+
+  const _RegisterPaymentSection({
+    required this.pricePerCaisse,
+    required this.annualDiscountPct,
+  });
+
+  @override
+  ConsumerState<_RegisterPaymentSection> createState() =>
+      _RegisterPaymentSectionState();
+}
+
+class _RegisterPaymentSectionState
+    extends ConsumerState<_RegisterPaymentSection> {
+  Set<String> _selected = {};
+  String _planType = 'monthly';
+  int _months = 1;
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pré-sélection depuis la page Dépôts&Caisses (bouton "Payer" par caisse).
+    final preSelected = ref.read(preSelectedRegisterIdsProvider);
+    if (preSelected.isNotEmpty) {
+      _selected = Set.from(preSelected);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(preSelectedRegisterIdsProvider.notifier).state = [];
+      });
+    }
+  }
+
+  double get _totalAmount {
+    final n = _selected.length.toDouble();
+    if (_planType == 'annual') {
+      return widget.pricePerCaisse * 12 * n *
+          (1 - widget.annualDiscountPct / 100);
+    }
+    return widget.pricePerCaisse * _months * n;
+  }
+
+  Future<void> _submit() async {
+    if (_selected.isEmpty) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await dio.post('/api/billing/submit-register-payment', data: {
+        'register_ids': _selected.toList(),
+        'method': 'manual',
+        'months': _months,
+        'plan_type': _planType,
+      });
+      ref.invalidate(_billingPaymentsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Demande de paiement soumise — en attente de confirmation admin.'),
+          backgroundColor: AppColors.success,
+        ));
+        setState(() => _selected = {});
+      }
+    } catch (e) {
+      setState(() {
+        _error = e is DioException
+            ? extractErrorMessage(e)
+            : e.toString();
+      });
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final whRegsAsync = ref.watch(_allWarehouseRegistersProvider);
+
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── En-tête section ────────────────────────────────────────────
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.point_of_sale_rounded,
+                  color: AppColors.primary, size: 18),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Payer des caisses supplémentaires',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                  Text(
+                      'Chaque caisse supplémentaire a sa propre période d\'abonnement.',
+                      style: TextStyle(
+                          fontSize: 11, color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+          ]),
+          const SizedBox(height: 16),
+
+          // ── Plan type ─────────────────────────────────────────────────
+          SegmentedButton<String>(
+            segments: [
+              const ButtonSegment(
+                  value: 'monthly',
+                  label: Text('Mensuel'),
+                  icon: Icon(Icons.calendar_today, size: 14)),
+              ButtonSegment(
+                  value: 'annual',
+                  label: Text(
+                      'Annuel −${widget.annualDiscountPct.toStringAsFixed(0)}%'),
+                  icon: const Icon(Icons.event_available, size: 14)),
+            ],
+            selected: {_planType},
+            onSelectionChanged: (s) =>
+                setState(() => _planType = s.first),
+            style: const ButtonStyle(
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+
+          // ── Durée (mensuel) ────────────────────────────────────────────
+          if (_planType == 'monthly') ...[
+            const SizedBox(height: 10),
+            Row(children: [
+              const Text('Durée :',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              const SizedBox(width: 10),
+              ...[1, 3, 6].map((m) => Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: FilterChip(
+                      label: Text('$m mois'),
+                      selected: _months == m,
+                      onSelected: (_) => setState(() => _months = m),
+                      showCheckmark: false,
+                      visualDensity: VisualDensity.compact,
+                      selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                      labelStyle: TextStyle(
+                        fontSize: 11,
+                        color: _months == m
+                            ? AppColors.primary
+                            : AppColors.textSecondary,
+                        fontWeight: _months == m
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                      ),
+                    ),
+                  )),
+            ]),
+          ],
+
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+
+          // ── Liste des caisses par warehouse ────────────────────────────
+          whRegsAsync.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                  child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))),
+            ),
+            error: (e, _) => Text('Erreur : $e',
+                style:
+                    const TextStyle(color: AppColors.error, fontSize: 12)),
+            data: (whRegs) {
+              final groups = whRegs
+                  .map((w) => _WhWithRegs(
+                      w.warehouse,
+                      w.registers
+                          .where((r) => !r.isInitial && r.isActive)
+                          .toList()))
+                  .where((w) => w.registers.isNotEmpty)
+                  .toList();
+
+              if (groups.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                      'Aucune caisse supplémentaire — les caisses initiales '
+                      'sont couvertes par votre abonnement principal.',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary)),
+                );
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: groups
+                    .map((g) => _WhRegisterGroup(
+                          group: g,
+                          selected: _selected,
+                          onToggle: (id, checked) => setState(() {
+                            if (checked) {
+                              _selected.add(id);
+                            } else {
+                              _selected.remove(id);
+                            }
+                          }),
+                        ))
+                    .toList(),
+              );
+            },
+          ),
+
+          // ── Total + bouton soumettre ───────────────────────────────────
+          if (_selected.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${_selected.length} caisse${_selected.length > 1 ? 's' : ''}'
+                  ' × ${_planType == 'annual' ? '12 mois −${widget.annualDiscountPct.toStringAsFixed(0)}%' : '$_months mois'}',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary),
+                ),
+                Text(
+                  '${_totalAmount.toStringAsFixed(0)} HTG',
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(_error!,
+                    style: const TextStyle(
+                        color: AppColors.error, fontSize: 12)),
+              ),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _submitting ? null : _submit,
+                style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(42)),
+                child: _submitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2))
+                    : Text(
+                        'Soumettre le paiement — ${_totalAmount.toStringAsFixed(0)} HTG'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Groupe de caisses par dépôt ───────────────────────────────────────────────
+
+class _WhRegisterGroup extends StatelessWidget {
+  final _WhWithRegs group;
+  final Set<String> selected;
+  final void Function(String id, bool checked) onToggle;
+
+  const _WhRegisterGroup({
+    required this.group,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(
+            group.warehouse.name,
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+                letterSpacing: 0.3),
+          ),
+        ),
+        ...group.registers.map((reg) {
+          final isSelected = selected.contains(reg.id);
+          final expiry = reg.effectiveExpiry;
+          final daysLeft = reg.daysLeft;
+          final expiryColor = daysLeft == null
+              ? AppColors.textSecondary
+              : daysLeft <= 5
+                  ? AppColors.error
+                  : daysLeft <= 30
+                      ? Colors.orange
+                      : AppColors.success;
+          final expiryStr = expiry == null
+              ? ''
+              : '${reg.isTrial ? 'Essai ' : ''}exp. ${DateFormat('dd/MM/yy').format(expiry.toLocal())} (${daysLeft != null && daysLeft < 0 ? 'expiré' : '$daysLeft j'})';
+
+          return CheckboxListTile(
+            dense: true,
+            value: isSelected,
+            onChanged: (v) => onToggle(reg.id, v ?? false),
+            title: Text(reg.name,
+                style:
+                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+            subtitle: expiryStr.isEmpty
+                ? null
+                : Text(expiryStr,
+                    style: TextStyle(fontSize: 11, color: expiryColor)),
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            activeColor: AppColors.primary,
+          );
+        }),
+        const SizedBox(height: 4),
+      ],
     );
   }
 }

@@ -527,53 +527,71 @@ def submit_register_payment(
 
     cfg = db.query(PlatformConfig).first()
     price_per_caisse_htg = float(getattr(cfg, "price_per_extra_caisse_htg", 500) if cfg else 500)
-
-    if plan_type == "annual":
-        discount_pct = float(getattr(cfg, "annual_discount_pct", 20) if cfg else 20)
-        amount = price_per_caisse_htg * 12 * len(registers) * (1 - discount_pct / 100)
-    else:
-        amount = price_per_caisse_htg * months * len(registers)
-
-    now = datetime.now(timezone.utc)
-    year   = now.year
-    prefix = f"REG-{year}-"
-    count  = db.query(BillingPayment).filter(
-        BillingPayment.tenant_id == tenant.id,
-        BillingPayment.invoice_number.like(f"{prefix}%"),
-    ).count()
-    invoice_number = f"{prefix}{count + 1:04d}"
+    discount_pct = float(getattr(cfg, "annual_discount_pct", 20) if cfg else 20)
 
     import json as _json
+    from collections import defaultdict as _defaultdict
+
     plan_label   = "Annuel" if plan_type == "annual" else f"{months} mois"
     method_label = {"moncash": "MonCash", "natcash": "NatCash"}.get(body.method, "Manuel")
     days = 365 if plan_type == "annual" else 30 * months
+    now  = datetime.now(timezone.utc)
+    year = now.year
+    prefix = f"REG-{year}-"
 
-    payment = BillingPayment(
-        tenant_id=tenant.id,
-        invoice_number=invoice_number,
-        method=body.method,
-        amount=amount,
-        currency="HTG",
-        months=months,
-        status="pending",
-        reference=body.reference,
-        plan_type=plan_type,
-        register_ids_json=_json.dumps(body.register_ids),
-        description=f"Caisses ({len(registers)}) — {method_label} — {plan_label} ({amount:.0f} HTG)",
-        paid_at=None,
-        period_start=encrypt_date(now, tenant.id),
-        period_end=encrypt_date(now + timedelta(days=days), tenant.id),
-    )
-    db.add(payment)
+    # Grouper par warehouse → une ligne dans l'historique par dépôt
+    by_wh: dict[str, list] = _defaultdict(list)
+    for reg in registers:
+        by_wh[reg.warehouse_id or "__none__"].append(reg)
+
+    base_count = db.query(BillingPayment).filter(
+        BillingPayment.tenant_id == tenant.id,
+        BillingPayment.invoice_number.like(f"{prefix}%"),
+    ).count()
+
+    payments_created = []
+    for idx, (wh_id, wh_regs) in enumerate(by_wh.items()):
+        if plan_type == "annual":
+            wh_amount = price_per_caisse_htg * 12 * len(wh_regs) * (1 - discount_pct / 100)
+        else:
+            wh_amount = price_per_caisse_htg * months * len(wh_regs)
+
+        wh_name = "Sans dépôt"
+        if wh_id != "__none__":
+            wh_obj = db.query(Warehouse).filter_by(id=wh_id, tenant_id=tenant.id).first()
+            if wh_obj:
+                wh_name = wh_obj.name
+
+        invoice_number = f"{prefix}{base_count + idx + 1:04d}"
+        reg_names = ", ".join(r.name for r in wh_regs)
+
+        payment = BillingPayment(
+            tenant_id=tenant.id,
+            invoice_number=invoice_number,
+            method=body.method,
+            amount=wh_amount,
+            currency="HTG",
+            months=months,
+            status="pending",
+            reference=body.reference,
+            plan_type=plan_type,
+            register_ids_json=_json.dumps([r.id for r in wh_regs]),
+            description=f"{wh_name} — {reg_names} — {method_label} — {plan_label} ({wh_amount:.0f} HTG)",
+            paid_at=None,
+            period_start=encrypt_date(now, tenant.id),
+            period_end=encrypt_date(now + timedelta(days=days), tenant.id),
+        )
+        db.add(payment)
+        payments_created.append(payment)
+
     db.commit()
-    db.refresh(payment)
+    total_amount = sum(p.amount for p in payments_created)
 
     return {
         "status":         "pending",
-        "invoice_number": payment.invoice_number,
-        "payment_id":     payment.id,
+        "payment_count":  len(payments_created),
         "plan_type":      plan_type,
         "register_count": len(registers),
-        "amount_htg":     round(amount, 2),
+        "amount_htg":     round(total_amount, 2),
         "message":        "Paiement soumis. Un administrateur le validera sous peu.",
     }
