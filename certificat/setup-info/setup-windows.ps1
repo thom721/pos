@@ -47,7 +47,7 @@ function Write-Log {
 # PowerShell 5.1 (natif Windows) ecrit un BOM avec -Encoding UTF8 / Out-File.
 # [System.IO.File]::WriteAllText avec UTF8Encoding($false) garantit l'absence de BOM
 # sur toutes les versions de PowerShell, ce qui est requis par Python configparser
-# et par mysqld qui rejettent les fichiers debutant par ﻿.
+# et par mysqld qui rejettent les fichiers debutant par BOM (U+FEFF).
 function Write-UTF8NoBOM {
     param([string]$Path, [string]$Content)
     $enc = New-Object System.Text.UTF8Encoding($false)
@@ -437,7 +437,7 @@ FLUSH PRIVILEGES;
             "  - Fichiers residuels dans le datadir ($MySqlData)`n" +
             "  - Droits insuffisants sur le dossier de donnees`n`n" +
             "Supprimez $MySqlData et relancez l'installation.",
-            "Erreur critique — POS Connect",
+            "Erreur critique -- POS Connect",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Error
         ) | Out-Null
@@ -493,9 +493,9 @@ port = 9003
     Write-Log "Permissions pos_server.ini restreintes (SYSTEM + Administrateurs)"
 }
 
-# -- 3b. Permissions dossier de données (SQLite fallback inscriptible par SYSTEM) --
+# -- 3b. Permissions dossier de donnees (SQLite fallback inscriptible par SYSTEM) --
 # Cas frequent : pos_connect.db cree par une installation precedente avec des
-# permissions restrictives → SYSTEM ne peut pas ecrire → SQLITE_READONLY au demarrage.
+# permissions restrictives - SYSTEM ne peut pas ecrire - SQLITE_READONLY au demarrage.
 Write-Log "Correction permissions $DataDir (SYSTEM + Administrateurs)..."
 takeown /F "$DataDir" /R /D Y 2>&1 | Out-Null
 icacls "$DataDir" /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F" /T /C /Q 2>&1 | Out-Null
@@ -619,7 +619,7 @@ foreach ($svc in @($SvcApi, $SvcNginx)) {
         if ($s -and $s.Status -eq "Running") {
             Write-Log "  OK $svc demarre"
         } else {
-            Write-Log "  WARN $svc n'a pas demarré (verifiez les logs)" "WARN"
+            Write-Log "  WARN $svc n'a pas demarre (verifiez les logs)" "WARN"
         }
     } catch {
         Write-Log "  FAIL $svc : $_" "WARN"
