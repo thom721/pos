@@ -225,14 +225,13 @@ if ($DbType -eq "mysql") {
         $DbPass = -join ((1..16) | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
     }
 
-    # init.sql : execute par MySQL a CHAQUE demarrage normal grace a
-    # "init-file" dans [mysqld] de my.ini.
-    # CREATE USER IF NOT EXISTS + ALTER USER = idempotent, safe sur reinstall.
-    # Cree aussi root@127.0.0.1 pour que les connexions TCP fonctionnent
-    # (--initialize-insecure cree uniquement root@localhost).
     $InitSqlFwd  = ($MySqlDir -replace '\\', '/') + '/init.sql'
     $InitSqlPath = "$MySqlDir\init.sql"
-    Write-UTF8NoBOM $InitSqlPath @"
+
+    if (-not (Test-Path $InitFlagFile)) {
+        # Ecrire init.sql avec credentials UNIQUEMENT pour la premiere init.
+        # Apres confirmation operationnelle, le contenu sensible sera efface.
+        Write-UTF8NoBOM $InitSqlPath @"
 CREATE DATABASE IF NOT EXISTS ``$DbName`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'root'@'127.0.0.1'   IDENTIFIED WITH caching_sha2_password BY '';
 GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;
@@ -244,9 +243,7 @@ GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'127.0.0.1';
 GRANT ALL PRIVILEGES ON ``$DbName``.* TO '$DbUser'@'localhost';
 FLUSH PRIVILEGES;
 "@
-    Write-Log "init.sql cree -- sera execute par MySQL a chaque demarrage"
-
-    if (-not (Test-Path $InitFlagFile)) {
+        Write-Log "init.sql cree pour initialisation (contenu sera efface apres confirmation)"
         Write-Log "Initialisation du datadir MySQL ($MySqlData)..."
 
         # my.ini dans le dossier d'installation (pas dans le datadir).
@@ -347,7 +344,7 @@ port = $MySqlPort
             Write-Log "MySQL initialise -- init.sql s'executera au premier demarrage du service"
         }
     } else {
-        Write-Log "MySQL deja initialise -- mise a jour my.ini + init.sql"
+        Write-Log "MySQL deja initialise (flag present) -- mise a jour my.ini uniquement"
         Write-UTF8NoBOM $MyIni @"
 [mysqld]
 basedir = $MySqlDir
@@ -454,6 +451,11 @@ port = 9003
         # Flag : MySQL completement operationnel -- la prochaine execution ne reinit pas
         Write-UTF8NoBOM $InitFlagFile "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') MySQL initialise et operationnel"
         Write-Log "Flag d'init MySQL ecrit : $InitFlagFile"
+        # Effacer le contenu sensible de init.sql (mot de passe en clair).
+        # MySQL continuera de trouver le fichier reference dans init-file de my.ini
+        # mais n'executera rien -- les grants sont deja persistes dans mysql.user.
+        Write-UTF8NoBOM $InitSqlPath "-- initialisation terminee $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        Write-Log "init.sql securise (contenu sensible efface)"
     } else {
         Write-Log "MySQL non demarre -- pos_server.ini NON ecrit, flag NON ecrit" "WARN"
     }
