@@ -1150,6 +1150,10 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
 
   String _moncashMode = 'manual';
   String _natcashMode = 'manual';
+  bool _cashEnabled    = true;
+  bool _moncashEnabled = true;
+  bool _natcashEnabled = true;
+  bool _cardEnabled    = true;
   bool _loaded = false;
 
   // Pricing plans
@@ -1180,8 +1184,12 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _smtpPasswordCtrl.text      = cfg['smtp_password']?.toString()              ?? '';
     _smtpFromCtrl.text          = cfg['smtp_from']?.toString()                  ?? '';
     _logoUrlCtrl.text           = cfg['logo_url']?.toString()                  ?? '';
-    _moncashMode = cfg['moncash_mode']?.toString() == 'api' ? 'api' : 'manual';
-    _natcashMode = cfg['natcash_mode']?.toString() == 'api' ? 'api' : 'manual';
+    _moncashMode    = cfg['moncash_mode']?.toString() == 'api' ? 'api' : 'manual';
+    _natcashMode    = cfg['natcash_mode']?.toString() == 'api' ? 'api' : 'manual';
+    _cashEnabled    = cfg['cash_enabled']    as bool? ?? true;
+    _moncashEnabled = cfg['moncash_enabled'] as bool? ?? true;
+    _natcashEnabled = cfg['natcash_enabled'] as bool? ?? true;
+    _cardEnabled    = cfg['card_enabled']    as bool? ?? true;
     _loaded = true;
 
     if (!_plansLoaded) {
@@ -1259,6 +1267,10 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
         'smtp_from':                   _smtpFromCtrl.text.trim(),
         'moncash_mode':                _moncashMode,
         'natcash_mode':                _natcashMode,
+        'cash_enabled':                _cashEnabled,
+        'moncash_enabled':             _moncashEnabled,
+        'natcash_enabled':             _natcashEnabled,
+        'card_enabled':                _cardEnabled,
         'pricing_plans_json': jsonEncode(_planEditors.map((e) => e.toMap()).toList()),
         'logo_url': _logoUrlCtrl.text.trim().isEmpty ? null : _logoUrlCtrl.text.trim(),
       });
@@ -1335,6 +1347,38 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                     label: 'Mode NatCash',
                     value: _natcashMode,
                     onChanged: (v) => setState(() => _natcashMode = v),
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Méthodes de paiement activées',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  SwitchListTile(
+                    title: const Text('Espèces (Cash)'),
+                    subtitle: const Text('Paiement en espèces remis à l\'administrateur'),
+                    value: _cashEnabled,
+                    onChanged: (v) => setState(() => _cashEnabled = v),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  SwitchListTile(
+                    title: const Text('MonCash'),
+                    subtitle: const Text('Paiement mobile MonCash (Digicel)'),
+                    value: _moncashEnabled,
+                    onChanged: (v) => setState(() => _moncashEnabled = v),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  SwitchListTile(
+                    title: const Text('NatCash'),
+                    subtitle: const Text('Paiement mobile NatCash (Natcom)'),
+                    value: _natcashEnabled,
+                    onChanged: (v) => setState(() => _natcashEnabled = v),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  SwitchListTile(
+                    title: const Text('Carte bancaire (Stripe)'),
+                    subtitle: const Text('Visa, Mastercard, American Express'),
+                    value: _cardEnabled,
+                    onChanged: (v) => setState(() => _cardEnabled = v),
+                    contentPadding: EdgeInsets.zero,
                   ),
                   const SizedBox(height: 24),
                   Text('Tarification',

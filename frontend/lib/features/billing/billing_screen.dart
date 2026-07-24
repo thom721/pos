@@ -983,83 +983,104 @@ class _RegisterUsageGroup extends StatelessWidget {
 }
 
 
-// ── Cartes de paiement (MonCash + NatCash) ────────────────────────────────────
+// ── 4 méthodes de paiement (Cash / MonCash / NatCash / Card) ─────────────────
+// Chaque carte est grisée si sa méthode est désactivée dans platform_config.
 
-class _PaymentCards extends StatelessWidget {
-  final double              priceHtg;
+class _PaymentCards extends ConsumerWidget {
+  final double               priceHtg;
   final Map<String, dynamic> config;
 
   const _PaymentCards({required this.priceHtg, required this.config});
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _MoncashCard(priceHtg: priceHtg, config: config),
-        const SizedBox(height: 12),
-        _NatcashCard(priceHtg: priceHtg, config: config),
-      ],
-    );
-  }
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cashEnabled    = config['cash_enabled']    as bool? ?? true;
+    final moncashEnabled = config['moncash_enabled'] as bool? ?? true;
+    final natcashEnabled = config['natcash_enabled'] as bool? ?? true;
+    final cardEnabled    = config['card_enabled']    as bool? ?? true;
+    final moncashMode    = config['moncash_mode']    as String? ?? 'manual';
+    final natcashMode    = config['natcash_mode']    as String? ?? 'manual';
 
-// ── MonCash card ──────────────────────────────────────────────────────────────
+    return Column(children: [
+      // ── Cash ────────────────────────────────────────────────────────────
+      Opacity(
+        opacity: cashEnabled ? 1.0 : 0.4,
+        child: _PaymentCard(
+          icon: Icons.payments_rounded,
+          iconColor: const Color(0xFF2E7D32),
+          title: 'Espèces (Cash)',
+          subtitle: 'Paiement en espèces — remise à l\'administrateur',
+          disabled: !cashEnabled,
+          action: cashEnabled
+              ? _ManualPaymentForm(method: 'cash', priceHtg: priceHtg)
+              : const SizedBox.shrink(),
+        ),
+      ),
+      const SizedBox(height: 12),
 
-class _MoncashCard extends StatelessWidget {
-  final double              priceHtg;
-  final Map<String, dynamic> config;
-  const _MoncashCard({required this.priceHtg, required this.config});
+      // ── MonCash ──────────────────────────────────────────────────────────
+      Opacity(
+        opacity: moncashEnabled ? 1.0 : 0.4,
+        child: _PaymentCard(
+          icon: Icons.phone_android_rounded,
+          iconColor: const Color(0xFFE53935),
+          title: 'MonCash',
+          subtitle: moncashMode == 'api'
+              ? 'Paiement automatique MonCash (Digicel)'
+              : 'Paiement mobile MonCash (Digicel)',
+          disabled: !moncashEnabled,
+          action: !moncashEnabled
+              ? const SizedBox.shrink()
+              : moncashMode == 'api'
+                  ? _ApiModeAction(
+                      priceLabel: '${priceHtg.toStringAsFixed(0)} HTG / mois',
+                      buttonLabel: 'Payer avec MonCash',
+                      color: const Color(0xFFE53935),
+                    )
+                  : _ManualPaymentForm(method: 'moncash', priceHtg: priceHtg),
+        ),
+      ),
+      const SizedBox(height: 12),
 
-  @override
-  Widget build(BuildContext context) {
-    final mode  = config['moncash_mode'] as String? ?? 'manual';
-    final isApi = mode == 'api';
+      // ── NatCash ──────────────────────────────────────────────────────────
+      Opacity(
+        opacity: natcashEnabled ? 1.0 : 0.4,
+        child: _PaymentCard(
+          icon: Icons.smartphone_rounded,
+          iconColor: const Color(0xFF1565C0),
+          title: 'NatCash',
+          subtitle: natcashMode == 'api'
+              ? 'Paiement automatique NatCash (Natcom)'
+              : 'Paiement mobile NatCash (Natcom)',
+          disabled: !natcashEnabled,
+          action: !natcashEnabled
+              ? const SizedBox.shrink()
+              : natcashMode == 'api'
+                  ? _ApiModeAction(
+                      priceLabel: '${priceHtg.toStringAsFixed(0)} HTG / mois',
+                      buttonLabel: 'Payer avec NatCash',
+                      color: const Color(0xFF1565C0),
+                    )
+                  : _ManualPaymentForm(method: 'natcash', priceHtg: priceHtg),
+        ),
+      ),
+      const SizedBox(height: 12),
 
-    return _PaymentCard(
-      icon: Icons.phone_android_rounded,
-      iconColor: const Color(0xFFE53935),
-      title: 'MonCash',
-      subtitle: isApi
-          ? 'Paiement automatique MonCash (Digicel)'
-          : 'Paiement mobile MonCash (Digicel)',
-      action: isApi
-          ? _ApiModeAction(
-              priceLabel: '${priceHtg.toStringAsFixed(0)} HTG / mois',
-              buttonLabel: 'Payer avec MonCash',
-              color: const Color(0xFFE53935),
-            )
-          : _ManualPaymentForm(method: 'moncash', priceHtg: priceHtg),
-    );
-  }
-}
-
-// ── NatCash card ──────────────────────────────────────────────────────────────
-
-class _NatcashCard extends StatelessWidget {
-  final double              priceHtg;
-  final Map<String, dynamic> config;
-  const _NatcashCard({required this.priceHtg, required this.config});
-
-  @override
-  Widget build(BuildContext context) {
-    final mode  = config['natcash_mode'] as String? ?? 'manual';
-    final isApi = mode == 'api';
-
-    return _PaymentCard(
-      icon: Icons.smartphone_rounded,
-      iconColor: const Color(0xFF1565C0),
-      title: 'NatCash',
-      subtitle: isApi
-          ? 'Paiement automatique NatCash (Natcom)'
-          : 'Paiement mobile NatCash (Natcom)',
-      action: isApi
-          ? _ApiModeAction(
-              priceLabel: '${priceHtg.toStringAsFixed(0)} HTG / mois',
-              buttonLabel: 'Payer avec NatCash',
-              color: const Color(0xFF1565C0),
-            )
-          : _ManualPaymentForm(method: 'natcash', priceHtg: priceHtg),
-    );
+      // ── Card (Stripe) ────────────────────────────────────────────────────
+      Opacity(
+        opacity: cardEnabled ? 1.0 : 0.4,
+        child: cardEnabled
+            ? _StripeCard(ref: ref)
+            : _PaymentCard(
+                icon: Icons.credit_card_rounded,
+                iconColor: const Color(0xFF635BFF),
+                title: 'Carte bancaire (Stripe)',
+                subtitle: 'Visa, Mastercard, American Express',
+                disabled: true,
+                action: const SizedBox.shrink(),
+              ),
+      ),
+    ]);
   }
 }
 
@@ -1170,6 +1191,7 @@ class _PaymentCard extends StatelessWidget {
   final String subtitle;
   final Widget action;
   final String? errorMessage;
+  final bool disabled;
 
   const _PaymentCard({
     required this.icon,
@@ -1178,6 +1200,7 @@ class _PaymentCard extends StatelessWidget {
     required this.subtitle,
     required this.action,
     this.errorMessage,
+    this.disabled = false,
   });
 
   @override
@@ -1209,6 +1232,16 @@ class _PaymentCard extends StatelessWidget {
                 ],
               ),
             ),
+            if (disabled)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.textSecondary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text('Non disponible',
+                    style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+              ),
           ]),
           if (errorMessage != null) ...[
             const SizedBox(height: 12),
