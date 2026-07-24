@@ -789,17 +789,18 @@ class _PlanUsageCardState extends State<_PlanUsageCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Résumé ────────────────────────────────────────────────────
-          // Caisses initiales (1 par dépôt, incluses dans le plan)
+          // Caisses de base (1 par dépôt) — mêmes règles d'abonnement
           Row(children: [
             const Icon(Icons.point_of_sale_rounded,
                 size: 14, color: AppColors.primary),
             const SizedBox(width: 6),
             Text(
-              '$maxCaisses caisse${maxCaisses != 1 ? 's' : ''} incluse${maxCaisses != 1 ? 's' : ''} (1 par dépôt)',
+              '$maxCaisses caisse${maxCaisses != 1 ? 's' : ''} de base (1 par dépôt)',
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
             ),
             const Spacer(),
-            const Text('Incluses', style: TextStyle(fontSize: 12, color: AppColors.success)),
+            Text('${xCaisseHtg.toStringAsFixed(0)} HTG / caisse / mois',
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           ]),
           if (extraCaisses > 0) ...[
             const SizedBox(height: 6),
@@ -835,13 +836,11 @@ class _PlanUsageCardState extends State<_PlanUsageCard> {
               const Text('Total / mois',
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
               Text(
-                extraCaisses > 0
-                    ? '${totalHtg.toStringAsFixed(0)} HTG'
-                    : 'Inclus',
-                style: TextStyle(
+                '${totalHtg.toStringAsFixed(0)} HTG',
+                style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
-                    color: extraCaisses > 0 ? AppColors.primary : AppColors.success),
+                    color: AppColors.primary),
               ),
             ],
           ),

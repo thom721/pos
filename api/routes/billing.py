@@ -76,11 +76,28 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
         Warehouse.is_active == True,  # noqa: E712
     ).count()
 
-    # Prix — seules les caisses supplémentaires sont facturées.
+    # Toutes les caisses (initiales et supplémentaires) sont facturées au même prix.
     xc_htg = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
     xc_usd = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
-    total_htg = xc_htg * extra_caisse_count
-    total_usd = xc_usd * extra_caisse_count
+    total_htg = xc_htg * caisse_count
+    total_usd = xc_usd * caisse_count
+
+    # Statut et dates d'expiration du tenant (pour les caisses initiales).
+    tenant_sub_end   = getattr(tenant, "subscription_ends_at", None)
+    tenant_trial_end = tenant.trial_ends_at
+    if tenant_sub_end and tenant_sub_end.tzinfo is None:
+        tenant_sub_end = tenant_sub_end.replace(tzinfo=timezone.utc)
+    if tenant_trial_end and tenant_trial_end.tzinfo is None:
+        tenant_trial_end = tenant_trial_end.replace(tzinfo=timezone.utc)
+
+    if tenant_sub_end and tenant_sub_end > now:
+        tenant_reg_status = "active"
+    elif tenant_trial_end and tenant_trial_end > now:
+        tenant_reg_status = "trial"
+    elif tenant.status == "active":
+        tenant_reg_status = "active"
+    else:
+        tenant_reg_status = "expired" if (tenant_sub_end or tenant_trial_end) else "no_subscription"
 
     # Détail par caisse avec warehouse pour affichage dans la page abonnement
     regs_q = (
@@ -96,9 +113,10 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
     registers_detail = []
     for reg, wh in regs_q:
         if reg.is_initial:
-            # Couverte par le plan du tenant — pas d'abonnement individuel requis.
-            reg_status  = "included"
-            monthly_htg = 0.0
+            # Couverte par le plan du tenant — statut et dates dérivés du tenant.
+            reg_status        = tenant_reg_status
+            reg_trial_end_iso = tenant_trial_end.isoformat() if tenant_trial_end else None
+            reg_sub_end_iso   = tenant_sub_end.isoformat()   if tenant_sub_end   else None
         else:
             sub_end   = reg.subscription_ends_at
             trial_end = reg.trial_ends_at
@@ -112,16 +130,17 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
                 reg_status = "trial" if trial_end > now else "expired"
             else:
                 reg_status = "no_subscription"
-            monthly_htg = xc_htg
+            reg_trial_end_iso = reg.trial_ends_at.isoformat()        if reg.trial_ends_at        else None
+            reg_sub_end_iso   = reg.subscription_ends_at.isoformat() if reg.subscription_ends_at else None
 
         registers_detail.append({
             "id":                   reg.id,
             "name":                 reg.name,
             "warehouse_name":       wh.name if wh else None,
             "is_initial":           bool(reg.is_initial),
-            "trial_ends_at":        reg.trial_ends_at.isoformat() if reg.trial_ends_at else None,
-            "subscription_ends_at": reg.subscription_ends_at.isoformat() if reg.subscription_ends_at else None,
-            "monthly_htg":          monthly_htg,
+            "trial_ends_at":        reg_trial_end_iso,
+            "subscription_ends_at": reg_sub_end_iso,
+            "monthly_htg":          xc_htg,
             "status":               reg_status,
         })
 
