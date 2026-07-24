@@ -549,6 +549,24 @@ if (Test-Path $SrcConf) {
     Write-Log "nginx-windows.conf introuvable ($SrcConf) -- nginx utilisera sa config par defaut" "WARN"
 }
 
+# -- 4c. Liberation ports 80/443 de HTTP.sys ------------------------------------
+# Sur Windows, HTTP.sys (pilote noyau) peut reserver les ports 80/443.
+# nginx se lie directement (sans HTTP.sys) et obtient WSAEACCES (10013) si le port
+# est deja revendique. On supprime la reservation HTTP.sys avant de demarrer nginx.
+# (La commande echoue silencieusement si aucune reservation n'existe.)
+Write-Log "Liberation ports 80/443 de HTTP.sys (evite erreur bind 10013)..."
+& netsh http delete urlacl url="http://+:80/"   2>&1 | Out-Null
+& netsh http delete urlacl url="https://+:443/" 2>&1 | Out-Null
+# Verifier si port 80 est deja occupe par un autre processus
+$_p80 = & netstat -ano 2>&1 | Select-String ":80\s.*LISTEN"
+if ($_p80) {
+    Write-Log "WARN: Port 80 occupe par un autre processus -- redirect HTTP ne fonctionnera pas" "WARN"
+    Write-Log "  $_p80" "WARN"
+    Write-Log "  Desactivez IIS ou tout service utilisant le port 80, puis relancez le setup" "WARN"
+} else {
+    Write-Log "Port 80 libre"
+}
+
 # -- 5. Service : Nginx ---------------------------------------------------------
 $SvcNginx = "POS_Connect_Nginx"
 $svcNginxStatus = & $NssmExe status $SvcNginx 2>&1

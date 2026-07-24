@@ -115,5 +115,12 @@ if __name__ == "__main__":
         tb = traceback.format_exc()
         log_path = _write_crash_log(tb)
         summary = tb.strip().splitlines()[-1] if tb.strip() else "Erreur inconnue"
+        print(f"\n{'='*60}\nCRASH: {summary}\nLog: {log_path}\n{'='*60}\n", flush=True)
         _show_crash_popup(log_path, summary)
+        # Garder la console ouverte pour lire l'erreur (mode interactif uniquement)
+        try:
+            if sys.stdin and sys.stdin.isatty():
+                input("Appuyez sur Entrée pour fermer...")
+        except Exception:
+            pass
         sys.exit(getattr(_exc, "code", 1) or 1)
