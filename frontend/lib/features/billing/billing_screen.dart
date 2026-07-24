@@ -767,22 +767,15 @@ class _PlanUsageCardState extends State<_PlanUsageCard> {
 
   @override
   Widget build(BuildContext context) {
-    final usage        = widget.usage;
-    final maxCaisses   = usage['max_caisses']   as int?    ?? 1;
-    final curCaisses   = usage['current_caisses'] as int?  ?? 0;
-    final extraCaisses = usage['extra_caisses'] as int?    ?? 0;
-    final xCaisseHtg   = (usage['price_per_extra_caisse_htg'] as num? ?? 500).toDouble();
-    final maxDepots    = usage['max_depots']    as int?    ?? 1;
-    final curDepots    = usage['current_depots'] as int?   ?? 0;
-    final extraDepots  = usage['extra_depots']  as int?    ?? 0;
-    final xDepotHtg    = (usage['price_per_extra_depot_htg'] as num? ?? 500).toDouble();
-    final baseHtg      = (usage['base_price_htg']    as num? ?? 1500).toDouble();
-    final totalHtg     = (usage['total_monthly_htg'] as num? ?? 1500).toDouble();
-    final hasExtras    = extraCaisses > 0 || extraDepots > 0;
-    final registers    = (usage['registers'] as List<dynamic>? ?? [])
+    final usage      = widget.usage;
+    final curCaisses = usage['current_caisses'] as int? ?? 0;
+    final curDepots  = usage['current_depots']  as int? ?? 0;
+    final xCaisseHtg = (usage['price_per_caisse_htg'] as num? ?? 500).toDouble();
+    final totalHtg   = (usage['total_monthly_htg'] as num? ?? 0).toDouble();
+    final registers  = (usage['registers'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
 
-    // Group registers by warehouse_name
+    // Grouper par warehouse_name
     final Map<String, List<Map<String, dynamic>>> byWh = {};
     for (final r in registers) {
       final wh = r['warehouse_name'] as String? ?? 'Sans dépôt';
@@ -793,38 +786,32 @@ class _PlanUsageCardState extends State<_PlanUsageCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _UsageRow(
-            icon: Icons.point_of_sale_rounded,
-            label: 'Caisses',
-            current: curCaisses,
-            max: maxCaisses,
-            extra: extraCaisses,
-            extraPriceHtg: xCaisseHtg,
-          ),
-          const SizedBox(height: 10),
-          _UsageRow(
-            icon: Icons.warehouse_rounded,
-            label: 'Dépôts',
-            current: curDepots,
-            max: maxDepots,
-            extra: extraDepots,
-            extraPriceHtg: xDepotHtg,
-          ),
-          const Divider(height: 24),
-          if (hasExtras) ...[
-            _PriceBreakRow('Plan de base', baseHtg),
-            if (extraCaisses > 0)
-              _PriceBreakRow(
-                '$extraCaisses caisse${extraCaisses > 1 ? "s" : ""} supplémentaire${extraCaisses > 1 ? "s" : ""}',
-                extraCaisses * xCaisseHtg,
-              ),
-            if (extraDepots > 0)
-              _PriceBreakRow(
-                '$extraDepots dépôt${extraDepots > 1 ? "s" : ""} supplémentaire${extraDepots > 1 ? "s" : ""}',
-                extraDepots * xDepotHtg,
-              ),
-            const Divider(height: 16),
-          ],
+          // ── Résumé ────────────────────────────────────────────────────
+          Row(children: [
+            const Icon(Icons.point_of_sale_rounded,
+                size: 14, color: AppColors.textSecondary),
+            const SizedBox(width: 6),
+            Text('$curCaisses caisse${curCaisses != 1 ? 's' : ''}',
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w500)),
+            const Spacer(),
+            Text('${xCaisseHtg.toStringAsFixed(0)} HTG / caisse / mois',
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary)),
+          ]),
+          const SizedBox(height: 6),
+          Row(children: [
+            const Icon(Icons.warehouse_rounded,
+                size: 14, color: AppColors.textSecondary),
+            const SizedBox(width: 6),
+            Text('$curDepots dépôt${curDepots != 1 ? 's' : ''}',
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w500)),
+            const Spacer(),
+            const Text('Illimités — sans surcharge',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          ]),
+          const Divider(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -838,7 +825,7 @@ class _PlanUsageCardState extends State<_PlanUsageCard> {
             ],
           ),
 
-          // ── Détail par caisse ──────────────────────────────────────────
+          // ── Détail par caisse (accordion) ──────────────────────────────
           if (registers.isNotEmpty) ...[
             const SizedBox(height: 8),
             InkWell(
@@ -857,8 +844,8 @@ class _PlanUsageCardState extends State<_PlanUsageCard> {
                   const SizedBox(width: 4),
                   Text(
                     _showRegisters
-                        ? 'Masquer le détail des caisses'
-                        : 'Voir le détail des caisses (${registers.length})',
+                        ? 'Masquer le détail'
+                        : 'Détail par caisse (${registers.length})',
                     style: const TextStyle(
                         fontSize: 12, color: AppColors.textSecondary),
                   ),
@@ -995,95 +982,6 @@ class _RegisterUsageGroup extends StatelessWidget {
       s != null ? DateTime.tryParse(s) : null;
 }
 
-class _UsageRow extends StatelessWidget {
-  final IconData icon;
-  final String   label;
-  final int      current;
-  final int      max;
-  final int      extra;
-  final double   extraPriceHtg;
-
-  const _UsageRow({
-    required this.icon,
-    required this.label,
-    required this.current,
-    required this.max,
-    required this.extra,
-    required this.extraPriceHtg,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isOver  = extra > 0;
-    final barFrac = max == 0 ? 1.0 : (current / max).clamp(0.0, 1.0);
-    final color   = isOver ? AppColors.error : AppColors.success;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(children: [
-          Icon(icon, size: 14, color: AppColors.textSecondary),
-          const SizedBox(width: 6),
-          Text(label,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-          const Spacer(),
-          Text('$current / $max inclus',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: isOver ? AppColors.error : AppColors.textSecondary,
-                  fontWeight: isOver ? FontWeight.w600 : FontWeight.w400)),
-          if (isOver) ...[
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(
-                color: AppColors.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text('+$extra × ${extraPriceHtg.toStringAsFixed(0)} HTG',
-                  style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.error)),
-            ),
-          ],
-        ]),
-        const SizedBox(height: 5),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: barFrac,
-            minHeight: 5,
-            backgroundColor: AppColors.divider,
-            valueColor: AlwaysStoppedAnimation<Color>(color),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PriceBreakRow extends StatelessWidget {
-  final String label;
-  final double amount;
-  const _PriceBreakRow(this.label, this.amount);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-          Text('${amount.toStringAsFixed(0)} HTG',
-              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-        ],
-      ),
-    );
-  }
-}
 
 // ── Cartes de paiement (MonCash + NatCash) ────────────────────────────────────
 
@@ -2076,37 +1974,6 @@ class _WhRegisterGroup extends StatelessWidget {
           ),
         ),
         ...group.registers.map((reg) {
-          // Caisses initiales : couvertes par le plan tenant — non sélectionnables
-          if (reg.isInitial) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 2),
-              child: Row(children: [
-                const SizedBox(width: 4),
-                Icon(Icons.point_of_sale_rounded,
-                    size: 14, color: AppColors.textSecondary.withValues(alpha: 0.5)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(reg.name,
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary.withValues(alpha: 0.7))),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text('Incluse dans le plan',
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: AppColors.success,
-                          fontWeight: FontWeight.w600)),
-                ),
-              ]),
-            );
-          }
-
           final isSelected = selected.contains(reg.id);
           final expiry = reg.effectiveExpiry;
           final daysLeft = reg.daysLeft;

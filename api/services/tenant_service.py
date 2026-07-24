@@ -116,7 +116,7 @@ def register_tenant(db: Session, business_name: str, owner_email: str,
     # Default warehouse + Caisse 1 slot included in every plan
     warehouse = Warehouse(
         tenant_id=tenant.id,
-        name="Dépôt principal",
+        name="Business Principale",
         is_active=True,
         is_default=True,
         is_claimed=True,

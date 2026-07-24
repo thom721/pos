@@ -60,46 +60,13 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
         Warehouse.is_active == True,  # noqa: E712
     ).count()
 
-    max_caisses = tenant.max_caisses
-    max_depots  = getattr(tenant, "max_depots", 1)
+    # Facturation uniquement par caisse — dépôts illimités sans surcharge.
+    xc_htg = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
+    xc_usd = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
 
-    base_htg = float(cfg.monthly_price_htg)             if cfg else 1500.0
-    base_usd = float(cfg.monthly_price_usd)             if cfg else 12.0
-    xc_htg   = float(cfg.price_per_extra_caisse_htg)    if cfg else 500.0
-    xc_usd   = float(cfg.price_per_extra_caisse_usd)    if cfg else 4.0
-    xd_htg   = float(getattr(cfg, "price_per_extra_depot_htg", 500.0)) if cfg else 500.0
-    xd_usd   = float(getattr(cfg, "price_per_extra_depot_usd", 4.0))   if cfg else 4.0
-
-    extra_caisses = max(0, caisse_count - max_caisses)
-    extra_depots  = max(0, depot_count  - max_depots)
-
-    # Cycle de facturation courant : commence à subscription_started_at (jour du mois)
-    now = datetime.now(timezone.utc)
-    sub_start = getattr(tenant, "subscription_started_at", None)
-    if sub_start:
-        if sub_start.tzinfo is None:
-            sub_start = sub_start.replace(tzinfo=timezone.utc)
-        # Trouver le début du cycle courant (même jour du mois que sub_start)
-        cycle_start = sub_start.replace(year=now.year, month=now.month)
-        if cycle_start > now:
-            # On est avant le jour de renouvellement ce mois — le cycle a commencé le mois passé
-            m = now.month - 1 or 12
-            y = now.year if now.month > 1 else now.year - 1
-            cycle_start = sub_start.replace(year=y, month=m)
-        cycle_end = cycle_start + timedelta(days=30)
-    else:
-        # Pas encore abonné : cycle = mois calendaire courant
-        cycle_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        cycle_end   = (cycle_start + timedelta(days=32)).replace(day=1)
-
-    # Prorata sur les extras
-    prorated = _billing.compute_prorated(
-        db, tenant.id, cycle_start, cycle_end,
-        xc_htg, xc_usd, xd_htg, xd_usd,
-    )
-
-    total_htg = base_htg + prorated["total_htg"]
-    total_usd = base_usd + prorated["total_usd"]
+    # Toutes les caisses actives sont facturables (y compris caisses initiales).
+    total_htg = xc_htg * caisse_count
+    total_usd = xc_usd * caisse_count
 
     # Détail par caisse avec warehouse pour affichage dans la page abonnement
     regs_q = (
@@ -113,48 +80,29 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
     )
     registers_detail = []
     for reg, wh in regs_q:
-        if reg.is_initial:
-            reg_status   = "included"
-            monthly_htg  = 0.0
-        elif reg.subscription_ends_at:
-            reg_status   = "active"
-            monthly_htg  = xc_htg
+        if reg.subscription_ends_at:
+            reg_status = "active"
         elif reg.trial_ends_at:
-            reg_status   = "trial"
-            monthly_htg  = xc_htg
+            reg_status = "trial"
         else:
-            reg_status   = "no_subscription"
-            monthly_htg  = xc_htg
+            reg_status = "no_subscription"
 
         registers_detail.append({
-            "id":                  reg.id,
-            "name":                reg.name,
-            "warehouse_name":      wh.name if wh else None,
-            "is_initial":          bool(reg.is_initial),
-            "trial_ends_at":       reg.trial_ends_at.isoformat() if reg.trial_ends_at else None,
+            "id":                   reg.id,
+            "name":                 reg.name,
+            "warehouse_name":       wh.name if wh else None,
+            "is_initial":           bool(reg.is_initial),
+            "trial_ends_at":        reg.trial_ends_at.isoformat() if reg.trial_ends_at else None,
             "subscription_ends_at": reg.subscription_ends_at.isoformat() if reg.subscription_ends_at else None,
-            "monthly_htg":         monthly_htg,
-            "status":              reg_status,
+            "monthly_htg":          xc_htg,
+            "status":               reg_status,
         })
 
     return {
-        "max_caisses":                max_caisses,
         "current_caisses":            caisse_count,
-        "extra_caisses":              extra_caisses,
-        "price_per_extra_caisse_htg": xc_htg,
-        "price_per_extra_caisse_usd": xc_usd,
-        "max_depots":                 max_depots,
         "current_depots":             depot_count,
-        "extra_depots":               extra_depots,
-        "price_per_extra_depot_htg":  xd_htg,
-        "price_per_extra_depot_usd":  xd_usd,
-        "base_price_htg":             base_htg,
-        "base_price_usd":             base_usd,
-        "prorated_extras_htg":        prorated["total_htg"],
-        "prorated_extras_usd":        prorated["total_usd"],
-        "prorated_breakdown":         prorated["extras"],
-        "cycle_start":                cycle_start.isoformat(),
-        "cycle_end":                  cycle_end.isoformat(),
+        "price_per_caisse_htg":       xc_htg,
+        "price_per_caisse_usd":       xc_usd,
         "total_monthly_htg":          total_htg,
         "total_monthly_usd":          total_usd,
         "registers":                  registers_detail,
