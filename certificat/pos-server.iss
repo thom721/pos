@@ -57,8 +57,10 @@ Name: "desktopicon"; Description: "Créer une icône sur le Bureau"; \
 Name: "{app}\logs"
 Name: "{app}\nginx\logs"
 Name: "{app}\nginx\temp"
-; Données MySQL séparées — survivent à une suppression de {app}
-Name: "{commonappdata}\POS_Connect_MySQL"
+; POS_Connect_MySQL n'est PAS créé ici : setup-windows.ps1 le crée avec
+; des permissions strictes (SYSTEM + Admins uniquement, héritage bloqué).
+; Si InnoSetup le créait, il hériterait les ACL de C:\ProgramData (Users lisible)
+; ce que MySQL 8 refuse comme datadir (errno 13 "world-writable").
 
 ; ── Fichiers à copier ─────────────────────────────────────────────────────────
 [Files]

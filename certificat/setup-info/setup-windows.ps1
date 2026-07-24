@@ -177,7 +177,27 @@ if (-not (Test-Path "$MySqlBinDir\mysqld.exe")) {
 
 # -- 3. Initialiser MySQL -------------------------------------------------------
 if (Test-Path "$MySqlBinDir\mysqld.exe") {
+    # Creer le datadir avec permissions strictes via API .NET.
+    # Fait TOUJOURS (fresh install ET reinstallation) car :
+    # - InnoSetup ne cree plus ce dossier (evite l'heritage des ACL de C:\ProgramData)
+    # - MySQL 8 refuse un datadir accessible a BUILTIN\Users (errno 13 world-writable)
+    # SetAccessRuleProtection($true, $false) = bloque l'heritage, n'en copie aucun.
     New-Item -ItemType Directory -Force -Path $MySqlData | Out-Null
+    try {
+        $acl = New-Object System.Security.AccessControl.DirectorySecurity
+        $acl.SetAccessRuleProtection($true, $false)
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+            "SYSTEM", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")))
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+            "Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")))
+        Set-Acl -Path $MySqlData -AclObject $acl
+        Write-Log "Permissions datadir MySQL : SYSTEM + Administrateurs (heritage bloque)"
+    } catch {
+        Write-Log "ACL .NET echoue : $_ -- fallback icacls" "WARN"
+        takeown /F "$MySqlData" /R /D Y 2>&1 | Out-Null
+        icacls "$MySqlData" /reset /T /C /Q 2>&1 | Out-Null
+        icacls "$MySqlData" /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" /grant:r "Administrators:(OI)(CI)F" /T /C /Q 2>&1 | Out-Null
+    }
 
     # -- Variables DB et mot de passe generes AVANT l'init ---------------------
     # Meme approche que MySQLInstaller (Main_run.py) : le mot de passe est connu
@@ -223,25 +243,6 @@ FLUSH PRIVILEGES;
 
     if (-not (Test-Path "$MySqlData\ibdata1")) {
         Write-Log "Initialisation du datadir MySQL ($MySqlData)..."
-
-        # Prise de propriete recursive + reset complet des ACL puis attribution
-        # stricte SYSTEM + Administrators uniquement.
-        # Notes :
-        #   /R sur takeown = recursif (fichiers d'une init partielle precedente)
-        #   /reset /T sur icacls = supprime toutes les ACL explicites recursivement
-        #   (evite les DENY herites de C:\ProgramData et les reliquats d'init ratee)
-        #   Pas de Users:(OI)(CI)F -- MySQL 8 refuse les datadirs accessibles a
-        #   BUILTIN\Users (consideres "world-writable", errno 13).
-        takeown /F "$MySqlData" /R /D Y 2>&1 | Out-Null
-        icacls "$MySqlData" /reset /T /C /Q 2>&1 | Out-Null
-        icacls "$MySqlData" /inheritance:r `
-                            /grant:r "SYSTEM:(OI)(CI)F" `
-                            /grant:r "Administrators:(OI)(CI)F" /T /C /Q 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Log "Permissions dossier MySQL accordees (SYSTEM + Administrateurs)"
-        } else {
-            Write-Log "icacls code $LASTEXITCODE -- tentative de continuer" "WARN"
-        }
 
         # my.ini dans le dossier d'installation (pas dans le datadir).
         # init-file : MySQL execute init.sql a CHAQUE demarrage normal.
