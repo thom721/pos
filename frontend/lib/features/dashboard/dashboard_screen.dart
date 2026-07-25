@@ -106,6 +106,8 @@ class DashboardScreen extends ConsumerWidget {
                   sales.data.fold(0.0, (s, e) => s + e.finalAmount);
               final totalPaid =
                   sales.data.fold(0.0, (s, e) => s + e.paidAmount);
+              final totalDiscount = sales.data.fold(
+                  0.0, (s, e) => s + e.discount + e.totalItemsDiscount);
               final countSales = sales.meta.total;
 
               return _ResponsiveGrid(
@@ -135,6 +137,13 @@ class DashboardScreen extends ConsumerWidget {
                     icon: Icons.warning_amber_rounded,
                     color: AppColors.warning,
                   ),
+                  if (totalDiscount > 0)
+                    StatCard(
+                      label: 'Remises accordées',
+                      value: _fmt.format(totalDiscount),
+                      icon: Icons.local_offer_rounded,
+                      color: AppColors.error,
+                    ),
                 ],
               );
             },

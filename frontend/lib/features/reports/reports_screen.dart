@@ -340,7 +340,8 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
 
     final totalRevenue = sales.fold(0.0, (s, e) => s + e.finalAmount);
     final totalPaid = sales.fold(0.0, (s, e) => s + e.paidAmount);
-    final totalDiscount = sales.fold(0.0, (s, e) => s + e.discount);
+    final totalDiscount = sales.fold(
+        0.0, (s, e) => s + e.discount + e.totalItemsDiscount);
     final totalBalance = totalRevenue - totalPaid;
     final paidCount = sales.where((s) => s.status == 'PAID').length;
     final unpaidCount = sales.where((s) => s.status == 'UNPAID').length;
@@ -1002,7 +1003,7 @@ Future<void> _generatePdf(
 
   final rev = sales.fold(0.0, (s, e) => s + e.finalAmount);
   final paid = sales.fold(0.0, (s, e) => s + e.paidAmount);
-  final disc = sales.fold(0.0, (s, e) => s + e.discount);
+  final disc = sales.fold(0.0, (s, e) => s + e.discount + e.totalItemsDiscount);
   final paidCnt = sales.where((s) => s.status == 'PAID').length;
   final partCnt = sales.where((s) => s.status == 'PARTIAL').length;
   final unpaidCnt = sales.where((s) => s.status == 'UNPAID').length;

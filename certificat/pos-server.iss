@@ -169,10 +169,23 @@ Filename: "powershell.exe"; Parameters: "-NonInteractive -ExecutionPolicy Bypass
 ; ── Code Pascal — wizard + désinstallation ───────────────────────────────────
 [Code]
 var
-  DbTypePage: TInputOptionWizardPage;
+  DbTypePage:    TInputOptionWizardPage;
+  IsUpgrade:     Boolean;
+  UpgradeDbType: String;
 
 procedure InitializeWizard;
+var
+  IniFile: String;
 begin
+  // Détection mise à jour : pos_server.ini déjà présent ?
+  IniFile   := ExpandConstant('{commonappdata}') + '\POS_Connect\pos_server.ini';
+  IsUpgrade := FileExists(IniFile);
+  if IsUpgrade then
+    UpgradeDbType := GetIniString('database', 'type', 'mysql', IniFile)
+  else
+    UpgradeDbType := 'mysql';
+  if UpgradeDbType = '' then UpgradeDbType := 'mysql';
+
   DbTypePage := CreateInputOptionPage(
     wpSelectTasks,
     'Base de données',
@@ -188,13 +201,25 @@ begin
   DbTypePage.Add(
     'SQLite  —  Mono-poste, simple, aucune configuration réseau' + #13#10 +
     '           Idéal pour un seul terminal de caisse.');
-  DbTypePage.Values[0] := True;
+  // Pré-sélectionner selon la config actuelle (ou MySQL par défaut)
+  DbTypePage.Values[0] := (UpgradeDbType <> 'sqlite');
+  DbTypePage.Values[1] := (UpgradeDbType = 'sqlite');
+end;
+
+// En mise à jour : sauter l'écran de choix de la base de données
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := IsUpgrade and (PageID = DbTypePage.ID);
 end;
 
 function GetDbType(Param: String): String;
 begin
-  if DbTypePage.Values[0] then Result := 'mysql'
-  else Result := 'sqlite';
+  if IsUpgrade then
+    Result := UpgradeDbType
+  else if DbTypePage.Values[0] then
+    Result := 'mysql'
+  else
+    Result := 'sqlite';
 end;
 
 // ── Arrêt des services avant copie des fichiers ───────────────────────────────

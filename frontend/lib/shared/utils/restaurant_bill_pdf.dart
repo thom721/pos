@@ -185,12 +185,11 @@ Future<Uint8List> buildRestaurantBillPdf(
           divider(),
 
           // ── Totaux ───────────────────────────────────────────────────
-          totalRow('Sous-total',
-              '$sym${numFmt.format(subtotal)}'),
+          totalRow('Sous-total', '$sym${numFmt.format(subtotal)}'),
           if (tip > 0)
             totalRow('Pourboire', '+$sym${numFmt.format(tip)}'),
           if (discount > 0)
-            totalRow('Remise', '-$sym${numFmt.format(discount)}'),
+            totalRow('Remise caisse', '-$sym${numFmt.format(discount)}'),
           totalRow('TOTAL',
               '$sym${numFmt.format(isPaid ? finalTotal : total)}',
               isBold: true),

@@ -135,10 +135,24 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
           divider(),
 
           // ── Totaux ─────────────────────────────────────────────────────
-          if (sale.discount > 0) ...[
-            totalRow('Sous-total', '$sym${numFmt.format(sale.totalAmount)}'),
-            totalRow('Remise', '-$sym${numFmt.format(sale.discount)}'),
-          ],
+          // Remises articles : écart original_price / unit_price
+          // Remise caisse    : rabais global saisi à la caisse
+          ...() {
+            final itemsDisc =
+                sale.items.fold(0.0, (s, i) => s + i.itemDiscount);
+            final hasDisc = itemsDisc > 0.001 || sale.discount > 0.001;
+            if (!hasDisc) return <pw.Widget>[];
+            return [
+              totalRow('Sous-total',
+                  '$sym${numFmt.format(sale.totalAmount + itemsDisc)}'),
+              if (itemsDisc > 0.001)
+                totalRow('Remises articles',
+                    '-$sym${numFmt.format(itemsDisc)}'),
+              if (sale.discount > 0.001)
+                totalRow('Remise caisse',
+                    '-$sym${numFmt.format(sale.discount)}'),
+            ];
+          }(),
           totalRow('TOTAL', '$sym${numFmt.format(sale.finalAmount)}',
               isBold: true),
           pw.SizedBox(height: 2),

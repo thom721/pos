@@ -120,6 +120,9 @@ class SaleModel {
 
   double get balance => finalAmount - paidAmount;
 
+  // Remises par article (original_price > unit_price)
+  double get totalItemsDiscount => items.fold(0.0, (s, i) => s + i.itemDiscount);
+
   factory SaleModel.fromJson(Map<String, dynamic> json) => SaleModel(
         id: json['id']?.toString() ?? '',
         reference: json['reference']?.toString() ?? '',
