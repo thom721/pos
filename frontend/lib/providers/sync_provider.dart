@@ -75,6 +75,35 @@ class SyncNotifier extends StateNotifier<SyncState> {
     }
   }
 
+  Future<bool> configureByCode({
+    required String cloudUrl,
+    required String code,
+    String deviceId = 'default',
+  }) async {
+    state = state.copyWith(isConfiguring: true, error: null);
+    try {
+      await dio.post('/api/sync/configure-by-code', data: {
+        'cloud_url': cloudUrl,
+        'code':      code.trim().toUpperCase(),
+        'device_id': deviceId,
+      });
+      _ref.invalidate(syncStatusProvider);
+      state = state.copyWith(
+        isConfiguring: false,
+        lastResult: 'Synchronisation configurée avec succès',
+      );
+      return true;
+    } on DioException catch (e) {
+      final msg = e.response?.data?['detail']?.toString() ??
+          'Code invalide ou serveur cloud inaccessible';
+      state = state.copyWith(isConfiguring: false, error: msg);
+      return false;
+    } catch (e) {
+      state = state.copyWith(isConfiguring: false, error: extractAnyError(e));
+      return false;
+    }
+  }
+
   Future<bool> runSync() async {
     state = state.copyWith(isRunning: true, error: null, lastResult: null);
     try {

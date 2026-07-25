@@ -148,6 +148,12 @@ class SyncConfigRequest(BaseModel):
     device_id:   str = "default"
 
 
+class SyncCodeRequest(BaseModel):
+    cloud_url: str
+    code:      str
+    device_id: str = "default"
+
+
 class PullBatchRequest(BaseModel):
     cursors: dict  # {entity_type: since_iso}
 
@@ -688,6 +694,59 @@ def sync_configure(
         "ok":            True,
         "tenant_slug":   data.get("tenant_slug"),
         "business_name": data.get("business_name"),
+        "message":       "Synchronisation configurée avec succès — premier cycle lancé en arrière-plan",
+    }
+
+
+@router.post("/configure-by-code")
+def sync_configure_by_code(
+    body: SyncCodeRequest,
+    background_tasks: BackgroundTasks,
+    _: object = Depends(require_permission(P.CONFIG_UPDATE)),
+):
+    """Exchange an installation code with cloud, save sync token to pos_server.ini."""
+    import httpx
+
+    cloud_url = body.cloud_url.rstrip("/")
+    try:
+        resp = httpx.post(
+            f"{cloud_url}/api/sync/redeem-code",
+            json={"code": body.code.strip().upper(), "device_id": body.device_id},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.json().get("detail", str(exc))
+        raise HTTPException(status_code=exc.response.status_code, detail=detail)
+    except Exception as exc:
+        raise HTTPException(status_code=503,
+                            detail=f"Impossible de joindre le serveur cloud: {exc}")
+
+    write_ini_config({
+        "cloud_sync_url":     cloud_url,
+        "cloud_sync_token":   data["sync_token"],
+        "cloud_sync_enabled": "true",
+        "cloud_owner_email":  data.get("owner_email", ""),
+        "billing_url":        cloud_url,
+    })
+    settings.CLOUD_SYNC_URL     = cloud_url
+    settings.CLOUD_SYNC_TOKEN   = data["sync_token"]
+    settings.CLOUD_SYNC_ENABLED = True
+    if not settings.BILLING_URL:
+        settings.BILLING_URL = cloud_url
+
+    background_tasks.add_task(_bg_run_sync)
+    try:
+        from api.main import restart_auto_sync
+        restart_auto_sync()
+    except Exception:
+        pass
+
+    return {
+        "ok":            True,
+        "business_name": data.get("business_name"),
+        "tenant_slug":   data.get("tenant_slug"),
         "message":       "Synchronisation configurée avec succès — premier cycle lancé en arrière-plan",
     }
 
