@@ -36,25 +36,37 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-# -- Port API (lu depuis pos_server.ini) ---------------------------------------
+# -- Lecture pos_server.ini (port + type de base) ------------------------------
 $ApiPort = 9003
+$DbTypeIni = "mysql"    # "mysql" | "sqlite"
 $IniPath = "$env:ProgramData\POS_Connect\pos_server.ini"
 if (Test-Path $IniPath) {
-    $inServer = $false
+    $inServer = $false; $inDb = $false
     foreach ($line in (Get-Content $IniPath -Encoding UTF8)) {
-        if ($line -match '^\[server\]')   { $inServer = $true;  continue }
-        if ($line -match '^\[')           { $inServer = $false; continue }
+        if ($line -match '^\[server\]')   { $inServer = $true;  $inDb = $false; continue }
+        if ($line -match '^\[database\]') { $inDb = $true; $inServer = $false; continue }
+        if ($line -match '^\[')           { $inServer = $false; $inDb = $false; continue }
         if ($inServer -and $line -match '^\s*port\s*=\s*(\d+)') {
-            $ApiPort = [int]$Matches[1]; break
+            $ApiPort = [int]$Matches[1]
+        }
+        if ($inDb -and $line -match '^\s*type\s*=\s*(\w+)') {
+            $DbTypeIni = $Matches[1].Trim().ToLower()
         }
     }
 }
 
-# -- Services (ordre de demarrage) ---------------------------------------------
-$SVCS = [ordered]@{
-    "POS_Connect_MySQL" = "MySQL        (base de donnees)"
-    "POS_Connect_API"   = "API POS      (serveur)"
-    "POS_Connect_Nginx" = "Nginx        (connexions HTTPS)"
+# -- Services (adaptes au type de base) ----------------------------------------
+if ($DbTypeIni -eq "sqlite") {
+    $SVCS = [ordered]@{
+        "POS_Connect_API"   = "API POS      (serveur)"
+        "POS_Connect_Nginx" = "Nginx        (connexions HTTPS)"
+    }
+} else {
+    $SVCS = [ordered]@{
+        "POS_Connect_MySQL" = "MySQL        (base de donnees)"
+        "POS_Connect_API"   = "API POS      (serveur)"
+        "POS_Connect_Nginx" = "Nginx        (connexions HTTPS)"
+    }
 }
 
 # -- Palette -------------------------------------------------------------------

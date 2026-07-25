@@ -21,6 +21,7 @@
 # ============================================================
 
 #Requires -RunAsAdministrator
+param([string]$DbType = "mysql")   # "mysql" | "sqlite"
 $ErrorActionPreference = "Stop"
 
 # ── Chemins ───────────────────────────────────────────────────────────────────
@@ -258,19 +259,58 @@ if (Test-Path $srcApi) {
     Write-Warn "Copie le build Nuitka (GitHub Actions > backend-windows) dans : $ApiDir"
 }
 
-# ── 7. Base de données MySQL ──────────────────────────────────────────────────
+# ── 7. Base de données ────────────────────────────────────────────────────────
 # .env est réservé à Docker. Sur Windows la config va dans pos_server.ini.
-# Si pos_server.ini existe avec une config DB valide → on ne touche pas.
 $IniPath = Join-Path $InstallRoot "pos_server.ini"
-$iniExists = (Test-Path $IniPath) -and
-             ((Get-Content $IniPath -Raw) -match 'type\s*=\s*mysql') -and
-             ((Get-Content $IniPath -Raw) -match 'password\s*=\s*\S')
 
-if ($iniExists) {
-    Write-Host "`n→ pos_server.ini déjà configuré — étape DB ignorée." -ForegroundColor DarkGray
+if ($DbType -eq "sqlite") {
+
+  # ── CAS SQLITE ── pas de service, juste écrire le .ini ─────────────────────
+  $iniSqliteOk = (Test-Path $IniPath) -and
+                 ((Get-Content $IniPath -Raw) -match 'type\s*=\s*sqlite')
+  if ($iniSqliteOk) {
+      Write-Host "`n-> pos_server.ini SQLite deja configure — etape DB ignoree." -ForegroundColor DarkGray
+  } else {
+      Write-Step "Base de donnees SQLite..."
+      $SecretKey  = New-HexKey 32
+      $SqlitePath = Join-Path $InstallRoot "pos_data.db"
+      Write-UTF8NoBOM $IniPath @"
+[database]
+type     = sqlite
+path     = $SqlitePath
+
+[server]
+host                 = 0.0.0.0
+port                 = 9003
+secret_key           = $SecretKey
+token_expire_minutes = 480
+admin_email          =
+admin_password_hash  =
+
+cloud_sync_url        =
+cloud_sync_token      =
+cloud_sync_enabled    = false
+identity_private_key  =
+billing_url           =
+cors_origins          = *
+web_dir               = web
+"@
+      Write-OK "pos_server.ini SQLite genere dans $IniPath"
+  }
+
 } else {
 
-  Write-Step "Base de données MySQL..."
+  # ── CAS MYSQL ── installation/configuration complète ───────────────────────
+  # Si pos_server.ini existe avec une config MySQL valide → on ne touche pas.
+  $iniExists = (Test-Path $IniPath) -and
+               ((Get-Content $IniPath -Raw) -match 'type\s*=\s*mysql') -and
+               ((Get-Content $IniPath -Raw) -match 'password\s*=\s*\S')
+
+  if ($iniExists) {
+      Write-Host "`n-> pos_server.ini deja configure — etape DB ignoree." -ForegroundColor DarkGray
+  } else {
+
+  Write-Step "Base de donnees MySQL..."
 
   $PosUser = "pos_user"
   $PosPass = New-RandPass 24
@@ -512,7 +552,8 @@ web_dir               = web
 "@
   Write-OK "pos_server.ini généré dans $IniPath"
 
-} # fin bloc DB
+  } # fin bloc MySQL ini
+} # fin $DbType -eq "sqlite" / mysql
 
 # ── 8. Télécharger NSSM si le dossier est absent ─────────────────────────────
 Write-Step "NSSM (gestionnaire de services Windows)..."
