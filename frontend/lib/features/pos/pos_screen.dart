@@ -858,6 +858,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   final _discountCtrl = TextEditingController(text: '0');
   final _paidCtrl = TextEditingController(text: '0');
   bool _discountUnlocked = false;
+  bool _autoPrinting = false;
 
   // ── Session caisse ────────────────────────────────────────────────────────
   Map<String, dynamic>? _session;   // null = pas encore chargé
@@ -1066,6 +1067,44 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     setState(() => _discountUnlocked = false);
   }
 
+  Future<void> _runAutoPrint(String saleId) async {
+    if (!mounted) return;
+    setState(() => _autoPrinting = true);
+    final settings = ref.read(settingsProvider);
+    bool ok = false;
+    String? errMsg;
+    try {
+      final sale = await SaleRepository().getSale(saleId);
+      if (!kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.android &&
+          settings.bluetoothPrinterMac.isNotEmpty) {
+        ok = await BluetoothPrintService.instance.printReceipt(sale, settings);
+        if (!ok) errMsg = 'Connexion imprimante échouée — vérifiez que l\'imprimante est allumée et appairée';
+      } else if (!kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.android &&
+          settings.bluetoothPrinterMac.isEmpty) {
+        errMsg = 'Aucune imprimante BT configurée — ouvrez les paramètres d\'impression';
+      } else {
+        await ThermalPrinterService.instance.printReceipt(
+          sale, settings,
+          printerUrl: settings.posPrinterName.isNotEmpty ? settings.posPrinterName : null,
+        );
+        ok = true;
+      }
+    } catch (e) {
+      errMsg = e.toString();
+    }
+    if (!mounted) return;
+    setState(() => _autoPrinting = false);
+    if (!ok && errMsg != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(errMsg),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 4),
+      ));
+    }
+  }
+
   Future<void> _requestDiscountAuth(BuildContext context, PosNotifier notifier) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -1197,6 +1236,29 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       List<DraftCart> drafts, bool isEdit, double paymentMaxH, bool canDiscount) {
     return Column(
       children: [
+        // ── Auto-print banner ─────────────────────────────────────────
+        if (_autoPrinting)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            color: AppColors.success.withValues(alpha: 0.12),
+            child: const Row(
+              children: [
+                SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: AppColors.success),
+                ),
+                SizedBox(width: 8),
+                Text('Impression en cours…',
+                    style: TextStyle(
+                        color: AppColors.success,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12)),
+              ],
+            ),
+          ),
+
         // ── Edit mode banner ──────────────────────────────────────────
         if (isEdit)
           Container(
@@ -1752,7 +1814,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           foregroundColor: Colors.white,
                         )
                       : null,
-                  onPressed: (pos.items.isEmpty || pos.isProcessing || (_sessionChecked && (_session == null || _noSessionPermission || _caisseDisabled)))
+                  onPressed: (pos.items.isEmpty || pos.isProcessing || _autoPrinting || (_sessionChecked && (_session == null || _noSessionPermission || _caisseDisabled)))
                       ? null
                       : () async {
                           if (isEdit) {
@@ -1819,14 +1881,21 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                               ),
                             );
                           }
-                          await showDialog(
-                            context: context,
-                            barrierDismissible: false,
-                            builder: (_) => _ReceiptDialog(saleId: result.saleId!),
-                          );
-                          if (!context.mounted) return;
-                          notifier.clearCart();
-                          _resetFields();
+                          final settings = ref.read(settingsProvider);
+                          if (settings.posAutoPrint) {
+                            notifier.clearCart();
+                            _resetFields();
+                            await _runAutoPrint(result.saleId!);
+                          } else {
+                            await showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (_) => _ReceiptDialog(saleId: result.saleId!),
+                            );
+                            if (!context.mounted) return;
+                            notifier.clearCart();
+                            _resetFields();
+                          }
                         },
                   icon: pos.isProcessing
                       ? const SizedBox(
