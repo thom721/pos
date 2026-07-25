@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart' show DioException;
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/models/pos_register_model.dart';
@@ -22,6 +23,8 @@ class WarehouseRepository {
         'force': force,
       });
       return WarehouseModel.fromJson(res.data);
+    } on DioException {
+      rethrow; // laisse handleLimitExceeded inspecter le 402
     } catch (e) {
       throw Exception(extractAnyError(e));
     }
@@ -81,6 +84,8 @@ class WarehouseRepository {
       final res = await dio.post('/api/warehouses/$warehouseId/registers',
           data: {'name': name, 'force': force});
       return PosRegisterModel.fromJson(res.data);
+    } on DioException {
+      rethrow; // laisse handleLimitExceeded inspecter le 402
     } catch (e) {
       throw Exception(extractAnyError(e));
     }
