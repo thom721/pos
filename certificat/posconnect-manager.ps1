@@ -19,6 +19,19 @@ if (-not (Test-Admin)) {
     exit
 }
 
+# -- Log d'erreur (visible meme quand la fenetre ne s'affiche pas) -------------
+$_LogFile = "$env:ProgramData\POS_Connect\manager-error.log"
+function Write-CrashLog($msg) {
+    try {
+        $stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        $dir   = Split-Path $_LogFile
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        Add-Content -Path $_LogFile -Value "[$stamp] $msg" -Encoding UTF8
+    } catch {}
+}
+
+try {
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -458,3 +471,19 @@ $btnRestart.Add_Click({
 # -- Statut initial + lancement ------------------------------------------------
 Update-Status
 [System.Windows.Forms.Application]::Run($form)
+
+} catch {
+    $errMsg = "CRASH: $($_.Exception.GetType().Name)`n$($_.Exception.Message)`n`nStack:`n$($_.ScriptStackTrace)"
+    Write-CrashLog $errMsg
+    try {
+        # Si WinForms est charge, afficher une boite de dialogue
+        [System.Windows.Forms.MessageBox]::Show(
+            $errMsg,
+            "POS Manager — Erreur fatale",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+    } catch {
+        # WinForms non disponible — erreur deja dans le log
+    }
+}
