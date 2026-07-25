@@ -204,17 +204,28 @@ def get_current_session(
     if not reg or not reg.is_active:
         return {"session": None, "has_register": False, "disabled": not reg.is_active if reg else False}
 
-    # If caller specifies a warehouse, the register must belong to that warehouse
-    if warehouse_id and reg.warehouse_id != warehouse_id:
-        return {"session": None, "has_register": False}
-
+    # Chercher la session ouverte de cet utilisateur sur ce registre.
+    # On ne filtre PAS sur warehouse_id ici : si la session est ouverte
+    # sur un dépôt différent du dépôt actif, on la retourne quand même
+    # pour éviter de demander l'ouverture d'une deuxième session fantôme.
     session = (
         db.query(CashierSession)
         .filter_by(register_id=reg.id, cashier_id=current_user.id, status="open")
         .first()
     )
+
+    # Fallback : session ouverte par une autre version du token (même device)
     if not session:
-        return {"session": None, "has_register": True}
+        session = (
+            db.query(CashierSession)
+            .filter_by(register_id=reg.id, status="open")
+            .first()
+        )
+
+    warehouse_match = (not warehouse_id) or (reg.warehouse_id == warehouse_id)
+
+    if not session:
+        return {"session": None, "has_register": warehouse_match}
 
     return {
         "session": {

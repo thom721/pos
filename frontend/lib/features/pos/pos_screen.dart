@@ -909,8 +909,10 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   Future<void> _initSession() async {
     _deviceId = await _getDeviceId();
 
-    // Android : afficher le cache immédiatement (réactivité), puis vérifier en arrière-plan
-    if (!kIsWeb && Platform.isAndroid) {
+    // Mobile & desktop : afficher le cache immédiatement (réactivité), puis
+    // vérifier en arrière-plan — évite un faux "pas de session" lors d'une
+    // navigation retour sur la caisse (ShellRoute reconstruit le widget).
+    if (!kIsWeb) {
       final cached = await _loadCachedSession();
       if (cached != null) {
         if (mounted) {
@@ -927,7 +929,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       }
     }
 
-    // Pas de cache → appel réseau normal (premier lancement ou non-Android)
+    // Pas de cache → appel réseau normal (premier lancement ou web)
     await _fetchSessionFromServer(promptIfMissing: true);
   }
 
