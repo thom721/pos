@@ -138,6 +138,10 @@ class SyncConfigRequest(BaseModel):
     device_id:   str = "default"
 
 
+class PullBatchRequest(BaseModel):
+    cursors: dict  # {entity_type: since_iso}
+
+
 class BillingConfigRequest(BaseModel):
     billing_url: str   # URL du serveur posconnect.ht — utilisé pour le proxy licence
 
@@ -376,6 +380,54 @@ def sync_pull(
         "has_more":    has_more,
         "next_since":  next_since,
     }
+
+
+# ── CLOUD: batch pull (toutes les entités en une seule requête) ───────────────
+
+@router.post("/pull-batch")
+def sync_pull_batch(
+    body:   PullBatchRequest,
+    claims: dict = Depends(require_sync_token),
+    db:     Session = Depends(get_db),
+):
+    """Pull multiple entity types in a single HTTP call.
+    Body: {cursors: {entity_type: since_iso}}.
+    Returns {results: {entity_type: {records, has_more, next_since}}}.
+    If has_more=True for any entity, the client paginates via GET /pull individually.
+    """
+    tenant_id   = claims["tenant_id"]
+    tenant_type = claims.get("tenant_type", "shared")
+
+    if tenant_type == "selfhosted":
+        raise HTTPException(
+            status_code=403,
+            detail="Tenant self-hosted : récupérez vos données depuis votre propre serveur.",
+        )
+
+    results: dict = {}
+    for entity_type, since_iso in body.cursors.items():
+        model = _MODEL_MAP.get(entity_type)
+        if not model:
+            continue
+        col_names = {c.key for c in sa_inspect(model).columns}
+        since_dt  = _parse_dt(since_iso)
+        query = db.query(model).order_by(model.updated_at.asc())
+        if "tenant_id" in col_names:
+            query = query.filter(model.tenant_id == tenant_id)
+        if since_dt:
+            query = query.filter(model.updated_at > since_dt)
+        rows      = query.limit(_PULL_PAGE_SIZE + 1).all()
+        has_more  = len(rows) > _PULL_PAGE_SIZE
+        rows      = rows[:_PULL_PAGE_SIZE]
+        records   = [_row_to_dict(r) for r in rows]
+        next_since = records[-1]["updated_at"] if records and has_more else None
+        results[entity_type] = {
+            "records":    records,
+            "has_more":   has_more,
+            "next_since": next_since,
+        }
+
+    return {"results": results}
 
 
 # ── CLOUD: tenant billing state ──────────────────────────────────────────────

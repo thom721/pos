@@ -80,7 +80,7 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "purchase_receipt",       "model": PurchaseReceipt,      "direction": "both"},
     {"type": "purchase_receipt_item",  "model": PurchaseReceiptItem,  "direction": "both"},
     # ── Stock & inventory ───────────────────────────────────────────────────
-    {"type": "stock_movement",         "model": StockMovement,        "direction": "push"},
+    {"type": "stock_movement",         "model": StockMovement,        "direction": "both"},
     {"type": "inventory_record",       "model": InventoryRecord,      "direction": "push"},
     # ── Invoicing & proformas ───────────────────────────────────────────────
     {"type": "invoice",                "model": Invoice,              "direction": "both"},
@@ -291,76 +291,111 @@ def _run_sync_inner(db: Session) -> dict:
                 state.last_error = msg
                 summary["errors"].append(msg)
 
-        # ── PULL (pull / both) ────────────────────────────────────────────
-        if direction in ("pull", "both"):
-            try:
-                since = state.last_pull_at.isoformat() if state.last_pull_at else "1970-01-01T00:00:00+00:00"
-                records: list = []
-                # Paginate until has_more is False (server returns 500 records max per page)
-                _page_cursor = since
-                for _safety in range(200):  # hard cap: 200 pages × 500 = 100k records
-                    resp = _http_get(
-                        f"{url}/api/sync/pull",
-                        params={"entity_type": etype, "since": _page_cursor},
-                        headers=_headers(token),
-                    )
-                    page = resp.json()
-                    records.extend(page.get("records", []))
-                    if not page.get("has_more"):
+    db.commit()
+
+    # ── PULL (batch — une requête HTTP au lieu de N) ───────────────────────────
+    # Collecte les entités à tirer et leurs curseurs
+    pull_entities = [
+        (e, _get_sync_state(db, e["type"]))
+        for e in SYNC_ENTITIES
+        if e["direction"] in ("pull", "both")
+    ]
+    cursors = {
+        e["type"]: (s.last_pull_at.isoformat() if s.last_pull_at else "1970-01-01T00:00:00+00:00")
+        for e, s in pull_entities
+    }
+
+    # Essaie le batch ; si le cloud ne supporte pas encore l'endpoint (404 / erreur
+    # réseau), revient au pull individuel par entité (rétrocompatible).
+    batch: dict = {}
+    try:
+        br = _http_post(
+            f"{url}/api/sync/pull-batch",
+            json={"cursors": cursors},
+            headers=_headers(token),
+        )
+        batch = br.json().get("results", {})
+    except Exception as exc:
+        _log.warning("pull-batch: %s — repli sur pull individuel", exc)
+
+    for entity, state in pull_entities:
+        etype  = entity["type"]
+        model  = entity["model"]
+        since  = cursors[etype]
+        try:
+            page    = batch.get(etype)
+            records: list = list(page["records"]) if page else []
+
+            if page is not None and page.get("has_more"):
+                # pagine le reste via le endpoint individuel existant
+                cur = page.get("next_since", since)
+                for _s in range(200):
+                    r2  = _http_get(f"{url}/api/sync/pull", params={"entity_type": etype, "since": cur}, headers=_headers(token))
+                    p2  = r2.json()
+                    records.extend(p2.get("records", []))
+                    if not p2.get("has_more"):
                         break
-                    _page_cursor = page.get("next_since", _page_cursor)
-                    if _page_cursor == since:
-                        break  # no progress — exit to avoid infinite loop
+                    nxt = p2.get("next_since", cur)
+                    if nxt == cur:
+                        break
+                    cur = nxt
+            elif page is None:
+                # batch indisponible — pull individuel classique
+                cur = since
+                for _s in range(200):
+                    r2  = _http_get(f"{url}/api/sync/pull", params={"entity_type": etype, "since": cur}, headers=_headers(token))
+                    p2  = r2.json()
+                    records.extend(p2.get("records", []))
+                    if not p2.get("has_more"):
+                        break
+                    nxt = p2.get("next_since", cur)
+                    if nxt == cur:
+                        break
+                    cur = nxt
 
-                col_names = {c.key for c in sa_inspect(model).columns}
-
-                applied = 0
-                skipped = 0
-                for rec in records:
-                    existing = db.get(model, rec["id"])
-
-                    # Secondary lookup for entities with a unique slug/username:
-                    # the local record may have been created with a different UUID
-                    # before sync was configured (e.g. the admin user 'my-store').
-                    if existing is None:
-                        for unique_col in ("username", "slug", "reference"):
-                            if unique_col in col_names and rec.get(unique_col):
-                                existing = db.query(model).filter(
-                                    getattr(model, unique_col) == rec[unique_col]
-                                ).first()
-                                if existing:
-                                    break
-
-                    if existing is None:
+            col_names = {c.key for c in sa_inspect(model).columns}
+            applied = skipped = 0
+            for rec in records:
+                existing = db.get(model, rec["id"])
+                if existing is None:
+                    for unique_col in ("username", "slug", "reference"):
+                        if unique_col in col_names and rec.get(unique_col):
+                            existing = db.query(model).filter(
+                                getattr(model, unique_col) == rec[unique_col]
+                            ).first()
+                            if existing:
+                                break
+                if existing is None:
+                    coerced = _coerce_for_db(model, rec)
+                    fields = {k: v for k, v in coerced.items() if k in col_names}
+                    try:
+                        with db.begin_nested():
+                            db.add(model(**fields))
+                        applied += 1
+                    except Exception as ins_exc:
+                        _log.warning("pull insert %s %s: %s", etype, rec.get("id"), ins_exc)
+                        skipped += 1
+                else:
+                    remote_ts = _parse_dt(rec.get("updated_at"))
+                    local_ts  = existing.updated_at
+                    if local_ts and local_ts.tzinfo is None:
+                        local_ts = local_ts.replace(tzinfo=timezone.utc)
+                    if remote_ts and (not local_ts or remote_ts > local_ts):
                         coerced = _coerce_for_db(model, rec)
-                        fields = {k: v for k, v in coerced.items() if k in col_names}
-                        try:
-                            with db.begin_nested():
-                                db.add(model(**fields))
-                            applied += 1
-                        except Exception as ins_exc:
-                            _log.warning("pull insert %s %s: %s", etype, rec.get("id"), ins_exc)
-                            skipped += 1
-                    else:
-                        remote_ts = _parse_dt(rec.get("updated_at"))
-                        local_ts  = existing.updated_at
-                        if local_ts and local_ts.tzinfo is None:
-                            local_ts = local_ts.replace(tzinfo=timezone.utc)
-                        if remote_ts and (not local_ts or remote_ts > local_ts):
-                            coerced = _coerce_for_db(model, rec)
-                            for k, v in coerced.items():
-                                if k in col_names and k != "id":
-                                    setattr(existing, k, v)
-                            applied += 1
+                        for k, v in coerced.items():
+                            if k in col_names and k != "id":
+                                setattr(existing, k, v)
+                        applied += 1
 
-                summary["pulled"][etype] = applied
-                state.records_pulled += applied
-                state.last_pull_at = datetime.now(timezone.utc)
-                state.last_error = None
-            except Exception as exc:
-                msg = f"pull {etype}: {exc}"
-                _log.warning(msg)
-                summary["errors"].append(msg)
+            summary["pulled"][etype] = applied
+            state.records_pulled += applied
+            state.last_pull_at = datetime.now(timezone.utc)
+            state.last_error = None
+        except Exception as exc:
+            msg = f"pull {etype}: {exc}"
+            _log.warning(msg)
+            state.last_error = msg
+            summary["errors"].append(msg)
 
     db.commit()
 
