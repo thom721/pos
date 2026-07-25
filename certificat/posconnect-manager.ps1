@@ -250,7 +250,7 @@ function Show-AuthDialog {
 
 # -- Formulaire principal ------------------------------------------------------
 $form                  = New-Object System.Windows.Forms.Form
-$form.Text             = "POS Serveur — Etat des services"
+$form.Text             = "POS Serveur -- Etat des services"
 $form.ClientSize       = New-Object System.Drawing.Size(420, 310)
 $form.StartPosition    = "CenterScreen"
 $form.FormBorderStyle  = "FixedDialog"
@@ -479,11 +479,11 @@ Update-Status
         # Si WinForms est charge, afficher une boite de dialogue
         [System.Windows.Forms.MessageBox]::Show(
             $errMsg,
-            "POS Manager — Erreur fatale",
+            "POS Manager -- Erreur fatale",
             [System.Windows.Forms.MessageBoxButtons]::OK,
             [System.Windows.Forms.MessageBoxIcon]::Error
         ) | Out-Null
     } catch {
-        # WinForms non disponible — erreur deja dans le log
+        # WinForms non disponible -- erreur deja dans le log
     }
 }
