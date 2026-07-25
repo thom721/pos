@@ -202,7 +202,7 @@ function Show-AuthDialog {
     $dlg.Controls.Add($btnOk)
     $dlg.AcceptButton = $btnOk
 
-    $authResult = $false
+    $script:authResult = $false
 
     $btnOk.Add_Click({
         $login = $tbLogin.Text.Trim()
@@ -232,7 +232,7 @@ function Show-AuthDialog {
     })
 
     $dlg.ShowDialog($form) | Out-Null
-    return $authResult
+    return $script:authResult
 }
 
 # -- Formulaire principal ------------------------------------------------------
@@ -330,6 +330,15 @@ $btnStart   = New-Btn "Demarrer"   $clrBtnGrn  112
 $btnRestart = New-Btn "Redemarrer" $clrBtnBlue 210
 $btnStop    = New-Btn "Arreter"    $clrBtnRed  308
 
+# Attente non-bloquante : garde la fenetre reactive pendant les sleeps
+function Start-UIWait([int]$Seconds) {
+    $end = (Get-Date).AddSeconds($Seconds)
+    while ((Get-Date) -lt $end) {
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 100
+    }
+}
+
 # -- Helpers etat UI -----------------------------------------------------------
 $allBtns = @($btnRefresh, $btnStart, $btnRestart, $btnStop)
 
@@ -366,15 +375,17 @@ $btnRefresh.Add_Click({
 $btnStart.Add_Click({
     # Demarrer ne necessite pas d'auth : les services sont arretes donc l'API
     # n'est pas accessible. Le droits admin Windows (UAC) suffisent.
-    Set-Busy "Demarrage en cours..."
+    Set-Busy "Demarrage MySQL..."
     Start-Service "POS_Connect_MySQL" -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 4
+    Start-UIWait 4
     Update-Status
+    Set-Busy "Demarrage API POS..."
     Start-Service "POS_Connect_API"   -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 3
+    Start-UIWait 3
     Update-Status
+    Set-Busy "Demarrage Nginx..."
     Start-Service "POS_Connect_Nginx" -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
+    Start-UIWait 2
     Update-Status
     Set-Free
 })
@@ -396,7 +407,7 @@ $btnStop.Add_Click({
 
     Set-Busy "Arret en cours..."
     Stop-Service "POS_Connect_Nginx","POS_Connect_API","POS_Connect_MySQL" -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 3
+    Start-UIWait 3
     Update-Status
     Set-Free
 })
@@ -418,17 +429,19 @@ $btnRestart.Add_Click({
 
     Set-Busy "Arret des services..."
     Stop-Service "POS_Connect_Nginx","POS_Connect_API","POS_Connect_MySQL" -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 4
+    Start-UIWait 4
     Update-Status
-    Set-Busy "Redemarrage en cours..."
+    Set-Busy "Demarrage MySQL..."
     Start-Service "POS_Connect_MySQL" -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 4
+    Start-UIWait 4
     Update-Status
+    Set-Busy "Demarrage API POS..."
     Start-Service "POS_Connect_API"   -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 3
+    Start-UIWait 3
     Update-Status
+    Set-Busy "Demarrage Nginx..."
     Start-Service "POS_Connect_Nginx" -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
+    Start-UIWait 2
     Update-Status
     Set-Free
 })
