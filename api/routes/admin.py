@@ -53,6 +53,7 @@ class TenantPatch(BaseModel):
     max_caisses: int | None = None
     max_depots:  int | None = None
     can_manage_tenants: bool | None = None
+    sell_cloud: bool | None = None
 
 
 class ManualActivatePayload(BaseModel):
@@ -337,6 +338,7 @@ def list_tenants(
             "max_caisses":            t.max_caisses,
             "max_depots":             getattr(t, "max_depots", 1),
             "can_manage_tenants":     t.can_manage_tenants,
+            "sell_cloud":             getattr(t, "sell_cloud", False),
             "days_left":              _days_left(t),
             "trial_ends_at":          t.trial_ends_at.isoformat() if t.trial_ends_at else None,
             "subscription_started_at": t.subscription_started_at.isoformat() if t.subscription_started_at else None,
@@ -468,6 +470,7 @@ def create_tenant(
         "self_hosted_url":     tenant.self_hosted_url,
         "max_caisses":         tenant.max_caisses,
         "can_manage_tenants":  tenant.can_manage_tenants,
+        "sell_cloud":          getattr(tenant, "sell_cloud", False),
         "trial_ends_at":       tenant.trial_ends_at.isoformat() if tenant.trial_ends_at else None,
         "default_warehouse_id": default_warehouse.id,
     }
@@ -503,6 +506,7 @@ def get_tenant(
         "self_hosted_url":        t.self_hosted_url,
         "max_caisses":            t.max_caisses,
         "can_manage_tenants":     t.can_manage_tenants,
+        "sell_cloud":             getattr(t, "sell_cloud", False),
         "days_left":              _days_left(t),
         "trial_ends_at":          t.trial_ends_at.isoformat() if t.trial_ends_at else None,
         "subscription_started_at": t.subscription_started_at.isoformat() if t.subscription_started_at else None,
@@ -561,6 +565,9 @@ def patch_tenant(
     if body.can_manage_tenants is not None:
         t.can_manage_tenants = body.can_manage_tenants
 
+    if body.sell_cloud is not None:
+        t.sell_cloud = body.sell_cloud
+
     db.commit()
     db.refresh(t)
     return {
@@ -571,6 +578,7 @@ def patch_tenant(
         "max_caisses":        t.max_caisses,
         "max_depots":         getattr(t, "max_depots", 1),
         "can_manage_tenants": t.can_manage_tenants,
+        "sell_cloud":         getattr(t, "sell_cloud", False),
         "trial_ends_at":      t.trial_ends_at.isoformat() if t.trial_ends_at else None,
         "days_left":          _days_left(t),
     }

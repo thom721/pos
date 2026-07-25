@@ -681,6 +681,7 @@ class _TenantCard extends ConsumerWidget {
         text: (tenant['max_depots'] as int? ?? 1).toString());
     final extraTrialCtrl = TextEditingController();
     bool canManage = tenant['can_manage_tenants'] as bool? ?? false;
+    bool sellCloud = tenant['sell_cloud'] as bool? ?? false;
     final formKey = GlobalKey<FormState>();
 
     await showDialog(
@@ -743,6 +744,16 @@ class _TenantCard extends ConsumerWidget {
                   value: canManage,
                   onChanged: (v) => setState(() => canManage = v),
                 ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Vente depuis le web',
+                      style: TextStyle(fontSize: 14)),
+                  subtitle: const Text(
+                      'Autorise la caisse POS sur navigateur',
+                      style: TextStyle(fontSize: 12)),
+                  value: sellCloud,
+                  onChanged: (v) => setState(() => sellCloud = v),
+                ),
               ],
             ),
           ),
@@ -764,6 +775,7 @@ class _TenantCard extends ConsumerWidget {
                       'max_caisses': int.parse(maxCaisseCtrl.text),
                       'max_depots':  int.parse(maxDepotCtrl.text),
                       'can_manage_tenants': canManage,
+                      'sell_cloud': sellCloud,
                       if (extraDays != null && extraDays > 0)
                         'extra_trial_days': extraDays,
                     },

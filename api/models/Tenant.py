@@ -38,5 +38,8 @@ class Tenant(UUIDBase):
     # Autorise ce tenant self-hosted à gérer ses propres sous-tenants
     can_manage_tenants = Column(Boolean, nullable=False, default=False)
 
+    # Autorise ce tenant à ouvrir la caisse POS depuis le web (désactivé par défaut)
+    sell_cloud = Column(Boolean, nullable=False, default=False)
+
     # Suivi des notifications d'expiration envoyées
     last_warning_sent_at = Column(DateTime(timezone=True), nullable=True)

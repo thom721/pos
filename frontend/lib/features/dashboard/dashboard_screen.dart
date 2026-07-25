@@ -27,6 +27,9 @@ class DashboardScreen extends ConsumerWidget {
     final debtsAsync = ref.watch(debtsProvider);
     final businessType = ref.watch(settingsProvider).businessType;
     final isOrderBased = businessType == 'restaurant' || businessType == 'hotel';
+    // Autorisation vente depuis le web (champ sell_cloud sur le tenant)
+    final sellCloud =
+        (ref.watch(tenantProvider).valueOrNull?['sell_cloud'] as bool?) ?? false;
 
     final pad = context.hPad;
     final isMobile = context.isMobile;
@@ -56,7 +59,7 @@ class DashboardScreen extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 12),
-            if (!kIsWeb)
+            if (!kIsWeb || sellCloud)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -84,7 +87,7 @@ class DashboardScreen extends ConsumerWidget {
                   ],
                 ),
                 const Spacer(),
-                if (!kIsWeb)
+                if (!kIsWeb || sellCloud)
                   ElevatedButton.icon(
                     onPressed: () => context.go(cashierRoute),
                     icon: Icon(cashierIcon, size: 18),
@@ -148,12 +151,13 @@ class DashboardScreen extends ConsumerWidget {
             spacing: 12,
             runSpacing: 12,
             children: [
-              _QuickAction(
-                icon: Icons.add_shopping_cart_rounded,
-                label: isOrderBased ? 'Nouvelle commande' : 'Nouvelle vente',
-                color: AppColors.primary,
-                onTap: () => context.go(cashierRoute),
-              ),
+              if (!kIsWeb || sellCloud)
+                _QuickAction(
+                  icon: Icons.add_shopping_cart_rounded,
+                  label: isOrderBased ? 'Nouvelle commande' : 'Nouvelle vente',
+                  color: AppColors.primary,
+                  onTap: () => context.go(cashierRoute),
+                ),
               _QuickAction(
                 icon: Icons.people_alt_rounded,
                 label: 'Clients',

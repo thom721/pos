@@ -18,6 +18,7 @@ class TenantRead(BaseModel):
     status: str
     trial_ends_at: Optional[datetime] = None
     created_at: datetime
+    sell_cloud: bool = False
 
     class Config:
         from_attributes = True

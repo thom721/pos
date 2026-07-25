@@ -169,8 +169,9 @@ const Map<String, String> _routePermission = {
   '/warehouses':  Perm.warehousesRead,
 };
 
-bool _canShowItem(_NavItem item, UserModel? user) {
-  if (kIsWeb && item.route == '/pos') return false; // Caisse non disponible sur web
+bool _canShowItem(_NavItem item, UserModel? user, {bool sellCloud = false}) {
+  // Masquer la Caisse sur web sauf si le tenant a l'autorisation sell_cloud
+  if (kIsWeb && !sellCloud && item.route == '/pos') return false;
   final perm = _routePermission[item.route];
   if (perm == null) return true;
   return user?.hasPermission(perm) ?? false;
@@ -250,6 +251,7 @@ class _DesktopShell extends ConsumerWidget {
     final location = GoRouterState.of(context).uri.toString();
     final tenant = ref.watch(tenantProvider).valueOrNull;
     final isCloudMode = tenant != null;
+    final sellCloud = tenant?['sell_cloud'] as bool? ?? false;
     final businessName = tenant?['business_name'] as String?;
     final displayName = businessName ?? user?.fullName ?? 'Utilisateur';
     final rawInitial = displayName.isNotEmpty ? displayName : 'U';
@@ -296,7 +298,7 @@ class _DesktopShell extends ConsumerWidget {
                     children: [
                       // Operations
                       ..._resolveMainNav(ref.watch(settingsProvider).businessType)
-                          .where((i) => _canShowItem(i, user))
+                          .where((i) => _canShowItem(i, user, sellCloud: sellCloud))
                           .map((item) => _SidebarItem(
                                 item: item,
                                 isActive: location.startsWith(item.route),
@@ -304,10 +306,10 @@ class _DesktopShell extends ConsumerWidget {
                               )),
 
                       // Analytics section
-                      if (_analyticsNavItems.any((i) => _canShowItem(i, user))) ...[
+                      if (_analyticsNavItems.any((i) => _canShowItem(i, user, sellCloud: sellCloud))) ...[
                         _SectionDivider(label: 'Analyse'),
                         ..._analyticsNavItems
-                            .where((i) => _canShowItem(i, user))
+                            .where((i) => _canShowItem(i, user, sellCloud: sellCloud))
                             .map((item) => _SidebarItem(
                                   item: item,
                                   isActive: location.startsWith(item.route),
@@ -316,10 +318,10 @@ class _DesktopShell extends ConsumerWidget {
                       ],
 
                       // HR & Payroll section
-                      if (_hrNavItems.any((i) => _canShowItem(i, user))) ...[
+                      if (_hrNavItems.any((i) => _canShowItem(i, user, sellCloud: sellCloud))) ...[
                         _SectionDivider(label: 'RH & Paie'),
                         ..._hrNavItems
-                            .where((i) => _canShowItem(i, user))
+                            .where((i) => _canShowItem(i, user, sellCloud: sellCloud))
                             .map((item) => _SidebarItem(
                                   item: item,
                                   isActive: location.startsWith(item.route),
@@ -360,7 +362,7 @@ class _DesktopShell extends ConsumerWidget {
                       horizontal: 8, vertical: 6),
                   child: Column(
                     children: _bottomNavItems
-                        .where((i) => _canShowItem(i, user))
+                        .where((i) => _canShowItem(i, user, sellCloud: sellCloud))
                         .map((item) => _SidebarItem(
                               item: item,
                               isActive: location.startsWith(item.route),
@@ -996,9 +998,11 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 children: _isAndroid
                     ? _buildAndroidDrawerItems(context, location, isAdmin, user,
-                        ref.watch(settingsProvider).businessType)
+                        ref.watch(settingsProvider).businessType,
+                        ref.watch(tenantProvider).valueOrNull?['sell_cloud'] as bool? ?? false)
                     : _buildFullDrawerItems(context, location, isAdmin, user,
-                        ref.watch(settingsProvider).businessType),
+                        ref.watch(settingsProvider).businessType,
+                        ref.watch(tenantProvider).valueOrNull?['sell_cloud'] as bool? ?? false),
               ),
             ),
             ListTile(
@@ -1019,6 +1023,7 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
     bool isAdmin,
     UserModel? user,
     String businessType,
+    bool sellCloud,
   ) {
     void go(String route) {
       Navigator.pop(context);
@@ -1054,7 +1059,7 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
       ],
       _SectionDivider(label: 'Compte'),
       ..._bottomNavItems
-          .where((i) => _canShowItem(i, user))
+          .where((i) => _canShowItem(i, user, sellCloud: sellCloud))
           .map((item) => _SidebarItem(
                 item: item,
                 isActive: location.startsWith(item.route),
@@ -1069,6 +1074,7 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
     bool isAdmin,
     UserModel? user,
     String businessType,
+    bool sellCloud,
   ) {
     void go(String route) {
       Navigator.pop(context);
@@ -1077,26 +1083,26 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
 
     return [
       ..._resolveMainNav(businessType)
-          .where((i) => _canShowItem(i, user))
+          .where((i) => _canShowItem(i, user, sellCloud: sellCloud))
           .map((item) => _SidebarItem(
                 item: item,
                 isActive: location.startsWith(item.route),
                 onTap: () => go(item.route),
               )),
-      if (_analyticsNavItems.any((i) => _canShowItem(i, user))) ...[
+      if (_analyticsNavItems.any((i) => _canShowItem(i, user, sellCloud: sellCloud))) ...[
         _SectionDivider(label: 'Analyse'),
         ..._analyticsNavItems
-            .where((i) => _canShowItem(i, user))
+            .where((i) => _canShowItem(i, user, sellCloud: sellCloud))
             .map((item) => _SidebarItem(
                   item: item,
                   isActive: location.startsWith(item.route),
                   onTap: () => go(item.route),
                 )),
       ],
-      if (_hrNavItems.any((i) => _canShowItem(i, user))) ...[
+      if (_hrNavItems.any((i) => _canShowItem(i, user, sellCloud: sellCloud))) ...[
         _SectionDivider(label: 'RH & Paie'),
         ..._hrNavItems
-            .where((i) => _canShowItem(i, user))
+            .where((i) => _canShowItem(i, user, sellCloud: sellCloud))
             .map((item) => _SidebarItem(
                   item: item,
                   isActive: location.startsWith(item.route),
@@ -1119,7 +1125,7 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
       ],
       _SectionDivider(label: 'Compte'),
       ..._bottomNavItems
-          .where((i) => _canShowItem(i, user))
+          .where((i) => _canShowItem(i, user, sellCloud: sellCloud))
           .map((item) => _SidebarItem(
                 item: item,
                 isActive: location.startsWith(item.route),
