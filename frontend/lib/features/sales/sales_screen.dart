@@ -461,6 +461,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Ligne 1 : nom article + sous-total
                     Row(
                       children: [
                         Container(
@@ -488,48 +489,50 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
                             ),
                           ),
                         ),
-                        // Prix unitaire : barré si rabais
-                        if (item.hasDiscount) ...[
-                          Text(
-                            '${item.quantity.toStringAsFixed(0)} × ${_fmt.format(item.originalPrice!)}',
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 11,
-                              decoration: TextDecoration.lineThrough,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '${item.quantity.toStringAsFixed(0)} × ${_fmt.format(item.unitPrice)}',
-                            style: const TextStyle(
-                                color: AppColors.warning,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ] else
-                          Text(
-                            '${item.quantity.toStringAsFixed(0)} × ${_fmt.format(item.unitPrice)}',
-                            style: const TextStyle(
-                                color: AppColors.textSecondary, fontSize: 12),
-                          ),
-                        const SizedBox(width: 12),
                         Text(_fmt.format(item.subtotal),
                             style: const TextStyle(
                                 fontWeight: FontWeight.w600, fontSize: 13)),
                       ],
                     ),
-                    // Ligne rabais article
-                    if (item.hasDiscount)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 14),
-                        child: Text(
-                          'Rabais: -${_fmt.format(item.itemDiscount)}',
-                          style: const TextStyle(
-                              color: AppColors.warning,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500),
-                        ),
+                    // Ligne 2 : détails prix (+ rabais si applicable)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 14, top: 2),
+                      child: Row(
+                        children: [
+                          if (item.hasDiscount) ...[
+                            Text(
+                              '${item.quantity.toStringAsFixed(0)} × ${_fmt.format(item.originalPrice!)}',
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${item.quantity.toStringAsFixed(0)} × ${_fmt.format(item.unitPrice)}',
+                              style: const TextStyle(
+                                  color: AppColors.warning,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Rabais: -${_fmt.format(item.itemDiscount)}',
+                              style: const TextStyle(
+                                  color: AppColors.warning,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500),
+                            ),
+                          ] else
+                            Text(
+                              '${item.quantity.toStringAsFixed(0)} × ${_fmt.format(item.unitPrice)}',
+                              style: const TextStyle(
+                                  color: AppColors.textSecondary, fontSize: 12),
+                            ),
+                        ],
                       ),
+                    ),
                     // Badge retour
                     if (item.returnedQty > 0)
                       Padding(

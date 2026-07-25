@@ -487,6 +487,7 @@ def create_tenant(
             warehouse_id=default_warehouse.id,
             name="Caisse 1",
             is_active=True,
+            is_initial=True,
         )
         db.add(default_register)
     db.commit()

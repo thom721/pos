@@ -219,6 +219,53 @@ def get_warehouse(
     return _get_or_404(db, warehouse_id, current_user.tenant_id)
 
 
+@router.get("/{warehouse_id}/install-code")
+def get_install_code(
+    warehouse_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.WAREHOUSES_READ)),
+):
+    """Return the installation code for an unclaimed warehouse (null if already claimed)."""
+    wh = _get_or_404(db, warehouse_id, current_user.tenant_id)
+    if wh.is_claimed:
+        return {"code": None, "is_claimed": True}
+    ic = db.query(InstallationCode).filter(
+        InstallationCode.warehouse_id == warehouse_id,
+    ).first()
+    if ic is None:
+        ic = InstallationCode(
+            code=generate_installation_code(),
+            tenant_id=current_user.tenant_id,
+            warehouse_id=warehouse_id,
+        )
+        db.add(ic)
+        db.commit()
+    return {"code": ic.code, "is_claimed": False}
+
+
+@router.post("/{warehouse_id}/install-code")
+def regenerate_install_code(
+    warehouse_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.WAREHOUSES_UPDATE)),
+):
+    """Regenerate the installation code for an unclaimed warehouse."""
+    wh = _get_or_404(db, warehouse_id, current_user.tenant_id)
+    if wh.is_claimed:
+        raise HTTPException(status_code=400, detail="Ce dépôt est déjà installé, impossible de régénérer le code.")
+    db.query(InstallationCode).filter(
+        InstallationCode.warehouse_id == warehouse_id,
+    ).delete()
+    ic = InstallationCode(
+        code=generate_installation_code(),
+        tenant_id=current_user.tenant_id,
+        warehouse_id=warehouse_id,
+    )
+    db.add(ic)
+    db.commit()
+    return {"code": ic.code}
+
+
 @router.put("/{warehouse_id}", response_model=WarehouseRead)
 def update_warehouse(
     warehouse_id: str,

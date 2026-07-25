@@ -81,6 +81,30 @@ function Write-UTF8NoBOM {
     [System.IO.File]::WriteAllText($Path, $Content, $enc)
 }
 
+# Lit une valeur depuis un INI existant (retourne "" si absente)
+function Get-IniValue {
+    param([string]$Path, [string]$Key)
+    if (-not (Test-Path $Path)) { return "" }
+    $raw = Get-Content $Path -Raw -ErrorAction SilentlyContinue
+    if ($raw -match "(?m)^$Key\s*=\s*(.+)$") { return $Matches[1].Trim() }
+    return ""
+}
+
+# Lit tous les champs à préserver d'un INI existant avant écrasement
+function Read-ExistingIniSync {
+    param([string]$Path)
+    return @{
+        cloud_sync_url       = Get-IniValue $Path "cloud_sync_url"
+        cloud_sync_token     = Get-IniValue $Path "cloud_sync_token"
+        cloud_sync_enabled   = Get-IniValue $Path "cloud_sync_enabled"
+        billing_url          = Get-IniValue $Path "billing_url"
+        identity_private_key = Get-IniValue $Path "identity_private_key"
+        secret_key           = Get-IniValue $Path "secret_key"
+        admin_email          = Get-IniValue $Path "admin_email"
+        admin_password_hash  = Get-IniValue $Path "admin_password_hash"
+    }
+}
+
 function New-RandPass([int]$n = 20) {
     $c = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
     -join ((1..$n) | ForEach-Object { $c[(Get-Random -Maximum $c.Length)] })
@@ -273,7 +297,8 @@ if ($DbType -eq "sqlite") {
       Write-Host "`n-> pos_server.ini SQLite deja configure — etape DB ignoree." -ForegroundColor DarkGray
   } else {
       Write-Step "Base de donnees SQLite..."
-      $SecretKey  = New-HexKey 32
+      $prev = Read-ExistingIniSync $IniPath
+      $SecretKey  = if ($prev.secret_key) { $prev.secret_key } else { New-HexKey 32 }
       $SqlitePath = Join-Path $InstallRoot "pos_data.db"
       Write-UTF8NoBOM $IniPath @"
 [database]
@@ -285,14 +310,14 @@ host                 = 0.0.0.0
 port                 = 9003
 secret_key           = $SecretKey
 token_expire_minutes = 480
-admin_email          =
-admin_password_hash  =
+admin_email          = $($prev.admin_email)
+admin_password_hash  = $($prev.admin_password_hash)
 
-cloud_sync_url        =
-cloud_sync_token      =
-cloud_sync_enabled    = false
-identity_private_key  =
-billing_url           =
+cloud_sync_url        = $($prev.cloud_sync_url)
+cloud_sync_token      = $($prev.cloud_sync_token)
+cloud_sync_enabled    = $(if ($prev.cloud_sync_enabled) { $prev.cloud_sync_enabled } else { 'false' })
+identity_private_key  = $($prev.identity_private_key)
+billing_url           = $($prev.billing_url)
 cors_origins          = *
 web_dir               = web
 "@
@@ -524,8 +549,9 @@ port = $DbPort
     Write-Host "  └──────────────────────────────────────────────────────────┘" -ForegroundColor Yellow
   }
 
-  # ── Écrire pos_server.ini (UTF-8 sans BOM) ───────────────────────────────
-  $SecretKey = New-HexKey 32
+  # ── Écrire pos_server.ini (UTF-8 sans BOM) — champs sync préservés ──────
+  $prev = Read-ExistingIniSync $IniPath
+  $SecretKey = if ($prev.secret_key) { $prev.secret_key } else { New-HexKey 32 }
   Write-UTF8NoBOM $IniPath @"
 [database]
 type     = mysql
@@ -540,14 +566,14 @@ host                 = 0.0.0.0
 port                 = 9003
 secret_key           = $SecretKey
 token_expire_minutes = 480
-admin_email          =
-admin_password_hash  =
+admin_email          = $($prev.admin_email)
+admin_password_hash  = $($prev.admin_password_hash)
 
-cloud_sync_url        =
-cloud_sync_token      =
-cloud_sync_enabled    = false
-identity_private_key  =
-billing_url           =
+cloud_sync_url        = $($prev.cloud_sync_url)
+cloud_sync_token      = $($prev.cloud_sync_token)
+cloud_sync_enabled    = $(if ($prev.cloud_sync_enabled) { $prev.cloud_sync_enabled } else { 'false' })
+identity_private_key  = $($prev.identity_private_key)
+billing_url           = $($prev.billing_url)
 cors_origins          = *
 web_dir               = web
 "@

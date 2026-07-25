@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -31,6 +32,16 @@ final _tenantSubscriptionProvider =
 final _warehousesProvider =
     FutureProvider.autoDispose<List<WarehouseModel>>((ref) async {
   return WarehouseRepository().listWarehouses();
+});
+
+final _installCodeProvider =
+    FutureProvider.autoDispose.family<String?, String>((ref, warehouseId) async {
+  try {
+    final res = await dio.get('/api/warehouses/$warehouseId/install-code');
+    return res.data['code'] as String?;
+  } catch (_) {
+    return null;
+  }
 });
 
 final _registersProvider = FutureProvider.autoDispose
@@ -203,6 +214,9 @@ class _WarehouseSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final registersAsync = ref.watch(_registersProvider(warehouse.id));
+    final installCodeAsync = !warehouse.isClaimed
+        ? ref.watch(_installCodeProvider(warehouse.id))
+        : const AsyncData<String?>(null);
 
     return Card(
       elevation: 0,
@@ -318,6 +332,17 @@ class _WarehouseSection extends ConsumerWidget {
                         const PopupMenuItem(
                             value: 'default',
                             child: Text('Définir par défaut')),
+                      if (canUpdate && !warehouse.isClaimed)
+                        const PopupMenuItem(
+                          value: 'regen_code',
+                          child: Row(
+                            children: [
+                              Icon(Icons.refresh, size: 16, color: AppColors.warning),
+                              SizedBox(width: 8),
+                              Text('Nouveau code d\'installation'),
+                            ],
+                          ),
+                        ),
                       if (canUpdate)
                         PopupMenuItem(
                           value: 'toggle',
@@ -332,11 +357,19 @@ class _WarehouseSection extends ConsumerWidget {
                               style: TextStyle(color: AppColors.error)),
                         ),
                     ],
-                    onSelected: (a) => _handleWarehouseAction(context, a),
+                    onSelected: (a) => _handleWarehouseAction(context, ref, a),
                   ),
               ],
             ),
           ),
+
+          // ── Code d'installation (dépôt non encore installé) ─────────────
+          if (!warehouse.isClaimed)
+            installCodeAsync.whenOrNull(
+              data: (code) => code != null
+                  ? _InstallCodeRow(code: code)
+                  : null,
+            ) ?? const SizedBox.shrink(),
 
           // ── Séparateur + liste caisses ───────────────────────────────────
           const Divider(height: 1, color: AppColors.divider),
@@ -369,7 +402,7 @@ class _WarehouseSection extends ConsumerWidget {
   }
 
   Future<void> _handleWarehouseAction(
-      BuildContext context, String action) async {
+      BuildContext context, WidgetRef ref, String action) async {
     final repo = WarehouseRepository();
     try {
       switch (action) {
@@ -388,6 +421,9 @@ class _WarehouseSection extends ConsumerWidget {
           await repo.updateWarehouse(warehouse.id,
               isActive: !warehouse.isActive);
           onRefresh();
+        case 'regen_code':
+          await dio.post('/api/warehouses/${warehouse.id}/install-code');
+          ref.invalidate(_installCodeProvider(warehouse.id));
         case 'delete':
           final confirm = await showDialog<bool>(
             context: context,
@@ -992,6 +1028,89 @@ class _Badge extends StatelessWidget {
       child: Text(label,
           style: TextStyle(
               fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+// ── Code d'installation ────────────────────────────────────────────────────────
+
+class _InstallCodeRow extends StatefulWidget {
+  final String code;
+  const _InstallCodeRow({required this.code});
+
+  @override
+  State<_InstallCodeRow> createState() => _InstallCodeRowState();
+}
+
+class _InstallCodeRowState extends State<_InstallCodeRow> {
+  bool _copied = false;
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.code));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.qr_code_2, size: 16, color: AppColors.warning),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Code d\'installation',
+                  style: TextStyle(fontSize: 11, color: AppColors.warning),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.code,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 2,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _copy,
+            icon: Icon(
+              _copied ? Icons.check : Icons.copy,
+              size: 16,
+              color: _copied ? AppColors.success : AppColors.warning,
+            ),
+            label: Text(
+              _copied ? 'Copié' : 'Copier',
+              style: TextStyle(
+                fontSize: 12,
+                color: _copied ? AppColors.success : AppColors.warning,
+              ),
+            ),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
