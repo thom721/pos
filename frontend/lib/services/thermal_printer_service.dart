@@ -390,7 +390,9 @@ class ThermalPrinterService {
         reference: reference, discount: discount,
         paidAmount: paidAmount, paymentMethod: paymentMethod);
 
-    if (!Platform.isMacOS && printerUrl != null && printerUrl.isNotEmpty) {
+    // Sur Windows, directPrintPdf + double.infinity → le driver GDI coupe le reçu.
+    // layoutPdf + usePrinterSettings utilise le format roll configuré dans le driver.
+    if (!Platform.isWindows && !Platform.isMacOS && printerUrl != null && printerUrl.isNotEmpty) {
       final printers = await Printing.listPrinters();
       final printer = printers.cast<Printer?>().firstWhere(
         (p) => p?.url == printerUrl,
@@ -405,8 +407,6 @@ class ThermalPrinterService {
         return;
       }
     }
-    // usePrinterSettings: true → Windows utilise le format roll de l'imprimante
-    // (plus de clip dû à double.infinity mal interprété par le driver GDI)
     await Printing.layoutPdf(
       onLayout: (_) => bytes,
       name: reference != null ? 'Recu_$reference' : 'Addition',
@@ -423,7 +423,9 @@ class ThermalPrinterService {
   }) async {
     final bytes = await buildReceiptPdf(sale, settings);
 
-    if (!Platform.isMacOS && printerUrl != null && printerUrl.isNotEmpty) {
+    // Sur Windows, directPrintPdf + double.infinity → le driver GDI coupe le reçu.
+    // layoutPdf + usePrinterSettings utilise le format roll configuré dans le driver.
+    if (!Platform.isWindows && !Platform.isMacOS && printerUrl != null && printerUrl.isNotEmpty) {
       final printers = await Printing.listPrinters();
       final printer = printers.cast<Printer?>().firstWhere(
         (p) => p?.url == printerUrl,
@@ -438,9 +440,6 @@ class ThermalPrinterService {
         return;
       }
     }
-
-    // usePrinterSettings: true → Windows utilise le format roll de l'imprimante
-    // (plus de clip dû à double.infinity mal interprété par le driver GDI)
     await Printing.layoutPdf(
       onLayout: (_) => bytes,
       name: 'Recu_${sale.reference}',

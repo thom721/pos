@@ -396,6 +396,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
 
     return Card(
       child: ExpansionTile(
+        initiallyExpanded: !isMobile,
         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         leading: Container(

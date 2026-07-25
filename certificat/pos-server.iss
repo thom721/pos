@@ -157,9 +157,10 @@ Filename: "powershell.exe"; \
   Flags: runhidden waituntilterminated
 
 ; Proposer d'ouvrir le gestionnaire après installation
+; shellexec → ShellExecute au lieu de CreateProcess → déclenche l'UAC si l'exe requiert l'élévation (code 740)
 Filename: "{app}\posconnect-manager.exe"; \
   Description: "Ouvrir le gestionnaire POS Serveur"; \
-  WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+  WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent shellexec
 
 ; ── Commandes à la désinstallation ────────────────────────────────────────────
 [UninstallRun]

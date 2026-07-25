@@ -300,6 +300,10 @@ def redeem_installation_code(payload: RedeemCodeRequest, db: Session = Depends(g
     if not tenant:
         raise HTTPException(status_code=404, detail="Compte tenant introuvable")
 
+    # Marquer le dépôt comme installé — code à usage unique
+    wh.is_claimed = True
+    db.commit()
+
     return {
         "sync_token":         _make_sync_token(tenant.id, payload.device_id, tenant.type),
         "tenant_id":          tenant.id,

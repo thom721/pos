@@ -125,6 +125,11 @@ SYNC_ENTITIES: list[dict] = [
 # Columns excluded when sending to cloud (cloud assigns its own tenant_id via sync token)
 _EXCLUDE_PUSH = {"tenant_id", "password", "password_hash", "offline_hash"}  # never push credentials/hashes to cloud
 _EXCLUDE_PULL: set[str] = set()
+
+# Per-entity fields that are device-specific — never overwrite local values from cloud pull
+_ENTITY_EXCLUDE_PULL: dict[str, set[str]] = {
+    "app_config": {"pos_printer_name", "doc_printer_name", "pos_auto_print", "doc_auto_print"},
+}
 _PUSH_CHUNK   = 500   # max records per HTTP push request
 
 # Prevents concurrent run_sync calls (auto-loop + manual button)
@@ -374,6 +379,7 @@ def _run_sync_inner(db: Session) -> dict:
                     cur = nxt
 
             col_names = {c.key for c in sa_inspect(model).columns}
+            entity_excl = _ENTITY_EXCLUDE_PULL.get(etype, set())
             applied = skipped = 0
             for rec in records:
                 existing = db.get(model, rec["id"])
@@ -387,7 +393,7 @@ def _run_sync_inner(db: Session) -> dict:
                                 break
                 if existing is None:
                     coerced = _coerce_for_db(model, rec)
-                    fields = {k: v for k, v in coerced.items() if k in col_names}
+                    fields = {k: v for k, v in coerced.items() if k in col_names and k not in entity_excl}
                     try:
                         with db.begin_nested():
                             db.add(model(**fields))
@@ -403,7 +409,7 @@ def _run_sync_inner(db: Session) -> dict:
                     if remote_ts and (not local_ts or remote_ts > local_ts):
                         coerced = _coerce_for_db(model, rec)
                         for k, v in coerced.items():
-                            if k in col_names and k != "id":
+                            if k in col_names and k != "id" and k not in entity_excl:
                                 setattr(existing, k, v)
                         applied += 1
 

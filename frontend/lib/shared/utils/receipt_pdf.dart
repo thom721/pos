@@ -52,7 +52,7 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
       final sym   = settings.currencySymbol;
 
       pw.Widget divider() =>
-          pw.Divider(thickness: 0.5, color: PdfColors.grey400);
+          pw.Divider(thickness: 0.5, color: PdfColors.black);
 
       pw.Widget totalRow(String label, String value, {bool isBold = false}) =>
           pw.Row(children: [
