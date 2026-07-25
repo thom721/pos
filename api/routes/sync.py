@@ -526,6 +526,37 @@ def sync_run(
     return result
 
 
+# ── LOCAL: reset push watermarks (force re-push) ─────────────────────────────
+
+class _ResetWatermarksRequest(BaseModel):
+    entity_types: list[str] | None = None  # None = toutes les entités push
+
+
+@router.post("/reset-watermarks")
+def reset_watermarks(
+    body: _ResetWatermarksRequest,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_permission(P.CONFIG_UPDATE)),
+):
+    """Reset last_push_at to NULL for the given entity types (or all if not specified).
+    Next sync cycle will re-push ALL records for those entities from scratch.
+    Use after fixing a serialization bug that caused pushes to silently fail.
+    """
+    from api.models.SyncState import SyncState
+    targets = body.entity_types or list(_MODEL_MAP.keys())
+    reset = []
+    for etype in targets:
+        if etype not in _MODEL_MAP:
+            continue
+        state = db.query(SyncState).filter(SyncState.entity_type == etype).first()
+        if state:
+            state.last_push_at = None
+            state.last_error   = None
+            reset.append(etype)
+    db.commit()
+    return {"ok": True, "reset": reset}
+
+
 # ── LOCAL: configure cloud connection ─────────────────────────────────────────
 
 def _bg_run_sync():

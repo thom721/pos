@@ -137,13 +137,16 @@ def _row_to_dict(row: Any, exclude: set[str] = frozenset()) -> dict:
 
 
 def _serialize(rows: list, exclude: set[str]) -> list[dict]:
+    import enum as _enum
     result = []
     for r in rows:
         d = _row_to_dict(r, exclude)
-        # Convert datetime → ISO string
         for k, v in d.items():
             if isinstance(v, datetime):
                 d[k] = v.isoformat()
+            elif isinstance(v, _enum.Enum):
+                # SaleStatus.paid → "PAID", StockType.in_ → "in", etc.
+                d[k] = v.value
             elif hasattr(v, '__float__'):
                 d[k] = float(v)
         result.append(d)

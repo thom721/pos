@@ -1068,6 +1068,46 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
     ));
   }
 
+  Future<void> _resetAndSync() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Forcer le re-push ?'),
+        content: const Text(
+          'Réinitialise les curseurs de synchronisation.\n'
+          'Toutes les données locales seront renvoyées au cloud '
+          'lors du prochain sync (ventes, achats, mouvements de stock…).\n\n'
+          'Utile si des données n\'arrivent pas sur le web.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.warning),
+            child: const Text('Réinitialiser et synchroniser'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await dio.post('/api/sync/reset-watermarks', data: {});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Curseurs réinitialisés — lancement du sync…'),
+        backgroundColor: AppColors.info,
+        duration: Duration(seconds: 2),
+      ));
+      await _runSync();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(extractAnyError(e)),
+        backgroundColor: AppColors.error,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final syncState    = ref.watch(syncProvider);
@@ -1155,13 +1195,12 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
               const SizedBox(height: 16),
 
               // ── Actions ──────────────────────────────────────────────────
-              Row(children: [
+              Wrap(spacing: 8, runSpacing: 8, children: [
                 OutlinedButton.icon(
                   onPressed: () => setState(() => _showForm = !_showForm),
                   icon: const Icon(Icons.settings_ethernet_rounded, size: 16),
                   label: Text(_showForm ? 'Fermer' : 'Configurer'),
                 ),
-                const SizedBox(width: 8),
                 ElevatedButton.icon(
                   onPressed: syncState.isRunning ? null : _runSync,
                   icon: syncState.isRunning
@@ -1170,6 +1209,12 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.sync_rounded, size: 16),
                   label: const Text('Synchroniser'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: syncState.isRunning ? null : _resetAndSync,
+                  style: OutlinedButton.styleFrom(foregroundColor: AppColors.warning),
+                  icon: const Icon(Icons.restart_alt_rounded, size: 16),
+                  label: const Text('Forcer re-push'),
                 ),
               ]),
 
