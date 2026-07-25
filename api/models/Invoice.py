@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, Text, ForeignKey, DateTime
+from sqlalchemy import Column, String, Numeric, Text, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
@@ -8,7 +8,7 @@ class Invoice(UUIDBase):
     tenant_id    = Column(String(36), ForeignKey('tenants.id'),    nullable=True, index=True)
     warehouse_id = Column(String(36), ForeignKey('warehouses.id'), nullable=True, index=True)
 
-    reference = Column(String(50), unique=True, nullable=False)
+    reference = Column(String(50), nullable=False)
     date = Column(DateTime(timezone=True), nullable=False)
     due_date = Column(DateTime(timezone=True), nullable=True)
     client_id = Column(String(36), ForeignKey("customers.id"), nullable=True)
@@ -24,6 +24,10 @@ class Invoice(UUIDBase):
     user = relationship("User", foreign_keys=[user_id])
     items = relationship("InvoiceItem", back_populates="invoice",
                          cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("reference", "tenant_id", name="uq_invoice_ref_tenant"),
+    )
 
 
 class InvoiceItem(UUIDBase):

@@ -289,6 +289,79 @@ def _ensure_schema_patches() -> None:
     pass
 
 
+def _migrate_per_tenant_unique(active_engine=None) -> None:
+    """
+    Convertit les contraintes UNIQUE globales en contraintes composées (col, tenant_id).
+    Ne s'exécute que sur MySQL (multi-tenant) ; SQLite est mono-tenant, pas besoin.
+    Idempotent : ignore silencieusement les contraintes déjà converties.
+    """
+    import api.database as _db_mod
+    from sqlalchemy import inspect as _inspect
+
+    _eng = active_engine or _db_mod.engine
+    if _eng.dialect.name != "mysql":
+        return
+
+    # (table, colonne, nom_nouvelle_contrainte)
+    _TARGETS = [
+        ("sales",           "reference", "uq_sale_ref_tenant"),
+        ("purchases",       "reference", "uq_purchase_ref_tenant"),
+        ("products",        "name",      "uq_product_name_tenant"),
+        ("products",        "barcode",   "uq_product_barcode_tenant"),
+        ("users",           "username",  "uq_user_username_tenant"),
+        ("users",           "email",     "uq_user_email_tenant"),
+        ("users",           "phone",     "uq_user_phone_tenant"),
+        ("invoices",        "reference", "uq_invoice_ref_tenant"),
+        ("proformas",       "reference", "uq_proforma_ref_tenant"),
+        ("employee_loans",  "reference", "uq_employee_loan_ref_tenant"),
+        ("payroll_periods", "reference", "uq_payroll_period_ref_tenant"),
+    ]
+
+    try:
+        inspector = _inspect(_eng)
+        existing_tables = set(inspector.get_table_names())
+    except Exception as exc:
+        _log.warning("per-tenant-unique migration: impossible d'inspecter: %s", exc)
+        return
+
+    with _eng.connect() as conn:
+        for table, col, new_name in _TARGETS:
+            if table not in existing_tables:
+                continue
+            try:
+                indexes = inspector.get_indexes(table)
+
+                # Déjà migré ?
+                if any(idx["name"] == new_name for idx in indexes):
+                    continue
+
+                # Supprimer les index UNIQUE mono-colonne sur cette colonne
+                for idx in indexes:
+                    if idx.get("unique") and idx.get("column_names") == [col]:
+                        old = idx["name"]
+                        try:
+                            conn.execute(text(f"ALTER TABLE `{table}` DROP INDEX `{old}`"))
+                            conn.commit()
+                            _log.info("per-tenant-unique: supprimé %s.%s (%s)", table, col, old)
+                        except Exception as drop_exc:
+                            conn.rollback()
+                            _log.warning("per-tenant-unique: DROP INDEX %s.%s: %s", table, old, drop_exc)
+
+                # Ajouter la contrainte composée
+                try:
+                    conn.execute(text(
+                        f"ALTER TABLE `{table}` "
+                        f"ADD UNIQUE KEY `{new_name}` (`{col}`, `tenant_id`)"
+                    ))
+                    conn.commit()
+                    _log.info("per-tenant-unique: + %s(%s, tenant_id) → %s", table, col, new_name)
+                except Exception as add_exc:
+                    conn.rollback()
+                    _log.warning("per-tenant-unique: ADD KEY %s.%s: %s", table, new_name, add_exc)
+            except Exception as exc:
+                _log.warning("per-tenant-unique: %s.%s: %s", table, col, exc)
+
+
 
 def _ensure_default_warehouse(db, tenant_id: str | None) -> None:
     """
@@ -573,6 +646,8 @@ def on_startup():
                 _log.warning("Alembic migration warning: %s", exc)
             # 2b. Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy
             _sync_schema_from_models(_active_engine)
+            # 2c. Convertit les unique globaux en unique par-tenant (MySQL uniquement)
+            _migrate_per_tenant_unique(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
 

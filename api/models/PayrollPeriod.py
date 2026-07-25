@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, Date, ForeignKey
+from sqlalchemy import Column, String, Numeric, Date, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
@@ -7,7 +7,7 @@ class PayrollPeriod(UUIDBase):
     __tablename__ = "payroll_periods"
     tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
-    reference         = Column(String(50),   unique=True, nullable=False, index=True)
+    reference         = Column(String(50),   nullable=False, index=True)
     label             = Column(String(100),  nullable=False)          # "Juin 2026"
     period_start      = Column(Date,         nullable=False)
     period_end        = Column(Date,         nullable=False)
@@ -22,3 +22,7 @@ class PayrollPeriod(UUIDBase):
 
     entries    = relationship("PayrollEntry",  back_populates="period", cascade="all, delete-orphan")
     creator    = relationship("User", foreign_keys=[created_by])
+
+    __table_args__ = (
+        UniqueConstraint("reference", "tenant_id", name="uq_payroll_period_ref_tenant"),
+    )

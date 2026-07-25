@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, Enum, ForeignKey, Index
+from sqlalchemy import Column, String, Numeric, Enum, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 import enum
@@ -20,7 +20,7 @@ class Sale(UUIDBase):
     customer_id  = Column(String(36), ForeignKey("customers.id"), nullable=True)
     user_id      = Column(String(36), ForeignKey("users.id"))
     warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=True, index=True)
-    reference    = Column(String(255), unique=True, nullable=False)
+    reference    = Column(String(255), nullable=False)
     total_amount = Column(Numeric(12, 2), nullable=False)
     discount     = Column(Numeric(12, 2), default=0)
     final_amount = Column(Numeric(12, 2), default=0)
@@ -59,6 +59,7 @@ class Sale(UUIDBase):
     )
 
     __table_args__ = (
+        UniqueConstraint("reference", "tenant_id", name="uq_sale_ref_tenant"),
         Index("idx_sale_customer_id", "customer_id"),
         Index("idx_sale_status",      "status"),
         Index("idx_sale_created_at",  "created_at"),

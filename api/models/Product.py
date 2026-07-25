@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, Boolean, Integer, ForeignKey
+from sqlalchemy import Column, String, Numeric, Boolean, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 from .base import UUIDBase
@@ -11,8 +11,8 @@ class Product(UUIDBase):
     category_id = Column(String(36), ForeignKey("categories.id"), nullable=False)
     supplier_id = Column(String(36), ForeignKey("suppliers.id"), nullable=True)
 
-    barcode = Column(String(255), unique=True, index=True, nullable=True)
-    name = Column(String(255), unique=True, index=True, nullable=False)
+    barcode = Column(String(255), index=True, nullable=True)
+    name = Column(String(255), index=True, nullable=False)
     purchase_price = Column(Numeric(12, 2))
     sale_price = Column(Numeric(12, 2), nullable=False)
     alert_stock = Column(Integer, default=0)
@@ -23,6 +23,11 @@ class Product(UUIDBase):
     category = relationship("Category", back_populates="products")
     supplier = relationship("Supplier")
     stock_movements = relationship("StockMovement", back_populates="product")
+
+    __table_args__ = (
+        UniqueConstraint("name",    "tenant_id", name="uq_product_name_tenant"),
+        UniqueConstraint("barcode", "tenant_id", name="uq_product_barcode_tenant"),
+    )
 
     @hybrid_property
     def stock(self):

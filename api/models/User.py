@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, JSON, Boolean, ForeignKey
+from sqlalchemy import Column, String, JSON, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
@@ -10,10 +10,10 @@ class User(UUIDBase):
 
     fname    = Column(String(255), nullable=False)
     lname    = Column(String(255), nullable=False)
-    username = Column(String(255), unique=True, index=True, nullable=False)
-    phone    = Column(String(255), unique=True, index=True, nullable=True)
+    username = Column(String(255), index=True, nullable=False)
+    phone    = Column(String(255), index=True, nullable=True)
     address  = Column(String(255))
-    email    = Column(String(255), unique=True, nullable=True)
+    email    = Column(String(255), nullable=True)
 
     roles       = Column(JSON, nullable=True)
     permissions = Column(JSON, nullable=True)
@@ -26,3 +26,9 @@ class User(UUIDBase):
     purchases        = relationship("Purchase",        back_populates="user")
     payments         = relationship("Payment",         back_populates="user")
     employee_profile = relationship("EmployeeProfile", back_populates="user", uselist=False)
+
+    __table_args__ = (
+        UniqueConstraint("username", "tenant_id", name="uq_user_username_tenant"),
+        UniqueConstraint("email",    "tenant_id", name="uq_user_email_tenant"),
+        UniqueConstraint("phone",    "tenant_id", name="uq_user_phone_tenant"),
+    )

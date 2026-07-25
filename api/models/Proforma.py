@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, Text, ForeignKey, DateTime
+from sqlalchemy import Column, String, Numeric, Text, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
@@ -8,7 +8,7 @@ class Proforma(UUIDBase):
     tenant_id    = Column(String(36), ForeignKey('tenants.id'),    nullable=True, index=True)
     warehouse_id = Column(String(36), ForeignKey('warehouses.id'), nullable=True, index=True)
 
-    reference = Column(String(50), unique=True, nullable=False)
+    reference = Column(String(50), nullable=False)
     date = Column(DateTime(timezone=True), nullable=False)
     client_id = Column(String(36), ForeignKey("customers.id"), nullable=True)
     client_name = Column(String(255), nullable=True)
@@ -22,6 +22,10 @@ class Proforma(UUIDBase):
     user = relationship("User", foreign_keys=[user_id])
     items = relationship("ProformaItem", back_populates="proforma",
                          cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("reference", "tenant_id", name="uq_proforma_ref_tenant"),
+    )
 
 
 class ProformaItem(UUIDBase):

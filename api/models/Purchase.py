@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, Enum, ForeignKey, DateTime, Index
+from sqlalchemy import Column, String, Numeric, Enum, ForeignKey, DateTime, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 import enum
 from .base import UUIDBase
@@ -18,7 +18,7 @@ class Purchase(UUIDBase):
     supplier_id  = Column(String(36), ForeignKey("suppliers.id"), nullable=True)
     user_id      = Column(String(36), ForeignKey("users.id"))
     warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=True, index=True)
-    reference    = Column(String(255), unique=True, nullable=False)
+    reference    = Column(String(255), nullable=False)
     total_amount = Column(Numeric(12, 2))
     paid_amount  = Column(Numeric(12, 2), default=0)
     status       = Column(Enum(PurchaseStatus), default=PurchaseStatus.pending)
@@ -58,6 +58,7 @@ class Purchase(UUIDBase):
     )
 
     __table_args__ = (
+        UniqueConstraint("reference", "tenant_id", name="uq_purchase_ref_tenant"),
         Index("idx_purchase_supplier_id", "supplier_id"),
         Index("idx_purchase_status",      "status"),
         Index("idx_purchase_created_at",  "created_at"),
