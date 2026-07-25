@@ -49,7 +49,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Créer une icône sur le Bureau"; \
-  GroupDescription: "Icônes supplémentaires"; Flags: unchecked
+  GroupDescription: "Icônes supplémentaires"
 
 ; ── Dossiers à créer ──────────────────────────────────────────────────────────
 [Dirs]
@@ -87,6 +87,7 @@ Source: "nginx-windows.conf";    DestDir: "{app}\certificat"; Flags: ignoreversi
 
 ; Gestionnaire de services (interface admin — lancee via l'icone bureau)
 Source: "posconnect-manager.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "posconnect-manager.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Icône de l'application
 Source: "setup-info\pos.ico"; DestDir: "{app}"; Flags: ignoreversion
