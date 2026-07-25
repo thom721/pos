@@ -2,7 +2,6 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
 
@@ -391,9 +390,6 @@ class ThermalPrinterService {
         reference: reference, discount: discount,
         paidAmount: paidAmount, paymentMethod: paymentMethod);
 
-    final double pW = settings.paperWidth == 58 ? 164.0 : 226.0;
-    final receiptFmt = PdfPageFormat(pW, double.infinity, marginAll: 0);
-
     if (!Platform.isMacOS && printerUrl != null && printerUrl.isNotEmpty) {
       final printers = await Printing.listPrinters();
       final printer = printers.cast<Printer?>().firstWhere(
@@ -409,11 +405,12 @@ class ThermalPrinterService {
         return;
       }
     }
+    // usePrinterSettings: true → Windows utilise le format roll de l'imprimante
+    // (plus de clip dû à double.infinity mal interprété par le driver GDI)
     await Printing.layoutPdf(
       onLayout: (_) => bytes,
       name: reference != null ? 'Recu_$reference' : 'Addition',
-      format: receiptFmt,
-      usePrinterSettings: false,
+      usePrinterSettings: true,
     );
   }
 
@@ -425,12 +422,7 @@ class ThermalPrinterService {
     String? printerUrl,
   }) async {
     final bytes = await buildReceiptPdf(sale, settings);
-    final double pW = settings.paperWidth == 58 ? 164.0 : 226.0;
-    final receiptFmt = PdfPageFormat(pW, double.infinity, marginAll: 0);
 
-    // Sur macOS, directPrintPdf envoie à la queue CUPS sans vérifier la
-    // connexion Bluetooth → job bloqué "Unable to locate printer" sans feedback.
-    // layoutPdf ouvre la boîte de dialogue système qui gère le BT activement.
     if (!Platform.isMacOS && printerUrl != null && printerUrl.isNotEmpty) {
       final printers = await Printing.listPrinters();
       final printer = printers.cast<Printer?>().firstWhere(
@@ -447,11 +439,12 @@ class ThermalPrinterService {
       }
     }
 
+    // usePrinterSettings: true → Windows utilise le format roll de l'imprimante
+    // (plus de clip dû à double.infinity mal interprété par le driver GDI)
     await Printing.layoutPdf(
       onLayout: (_) => bytes,
       name: 'Recu_${sale.reference}',
-      format: receiptFmt,
-      usePrinterSettings: false,
+      usePrinterSettings: true,
     );
   }
 }

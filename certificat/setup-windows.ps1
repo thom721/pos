@@ -14,21 +14,22 @@
 #        *.dll / *.pyd
 #      pos_server.ini        ← config BDD, secret_key, etc. (pas de .env sur Windows)
 #
-#  Ce script installe tout dans :
-#    C:\Program Files\POS_Connect\
+#  Ce script installe tout dans (passé via -InstallRoot par Inno Setup) :
+#    C:\ProgramData\POS_Connect\   (= {commonappdata}\POS_Connect)
 #
 #  Doit être lancé en tant qu'Administrateur.
 # ============================================================
 
 #Requires -RunAsAdministrator
-param([string]$DbType = "mysql")   # "mysql" | "sqlite"
+param(
+    [string]$DbType     = "mysql",                          # "mysql" | "sqlite"
+    [string]$InstallRoot = (Join-Path $env:ProgramData "POS_Connect")  # {commonappdata}\POS_Connect
+)
 $ErrorActionPreference = "Stop"
 
 # ── Chemins ───────────────────────────────────────────────────────────────────
 $ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PackageDir   = Split-Path -Parent $ScriptDir          # dossier parent du package
-
-$InstallRoot  = Join-Path $env:ProgramFiles "POS_Connect"
 $NginxDir     = Join-Path $InstallRoot "nginx"
 $NginxCerts   = Join-Path $NginxDir   "certs"
 $NginxConf    = Join-Path $NginxDir   "conf"

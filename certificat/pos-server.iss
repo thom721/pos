@@ -152,7 +152,7 @@ Name: "{autodesktop}\{#MyAppName}"; \
 ; setup-windows.ps1 reçoit -DbType mysql ou sqlite selon le choix de l'utilisateur.
 ; Il gère : téléchargement MySQL (si absent + MySQL choisi), extraction, init, services.
 Filename: "powershell.exe"; \
-  Parameters: "-NonInteractive -ExecutionPolicy Bypass -File ""{app}\setup-windows.ps1"" -DbType ""{code:GetDbType}"""; \
+  Parameters: "-NonInteractive -ExecutionPolicy Bypass -File ""{app}\setup-windows.ps1"" -DbType ""{code:GetDbType}"" -InstallRoot ""{app}"""; \
   StatusMsg: "Configuration de POS Connect (services, certificat, base de données)..."; \
   Flags: runhidden waituntilterminated
 

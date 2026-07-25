@@ -61,6 +61,7 @@ from api.models.MenuItem import MenuItem
 from api.models.ModifierGroup import ModifierGroup, ModifierOption
 from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
 from api.models.HousekeepingTask import HousekeepingTask
+from api.models.AppConfig import AppConfig
 
 router = APIRouter(prefix="/api/sync", tags=["Sync"])
 _log = logging.getLogger("pos.sync")
@@ -118,6 +119,8 @@ _MODEL_MAP: dict[str, Any] = {
     "restaurant_order":      RestaurantOrder,
     "restaurant_order_item": RestaurantOrderItem,
     "housekeeping_task":     HousekeepingTask,
+    # App settings
+    "app_config":            AppConfig,
 }
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────

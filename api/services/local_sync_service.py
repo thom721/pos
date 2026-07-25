@@ -38,6 +38,7 @@ from api.models.StockMovement import StockMovement
 from api.models.InventoryRecord import InventoryRecord
 from api.models.PurchaseReceipt import PurchaseReceipt
 from api.models.PurchaseReceiptItem import PurchaseReceiptItem
+from api.models.AppConfig import AppConfig
 from api.models.CashierSession import CashierSession
 from api.models.AuditLog import AuditLog
 from api.models.Warehouse import Warehouse
@@ -80,6 +81,10 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "purchase_item",          "model": PurchaseItem,         "direction": "both"},
     {"type": "purchase_receipt",       "model": PurchaseReceipt,      "direction": "both"},
     {"type": "purchase_receipt_item",  "model": PurchaseReceiptItem,  "direction": "both"},
+    # ── Settings (config d'entreprise partagée depuis le cloud) ────────────
+    # "pull" uniquement : le cloud admin peut modifier le nom, logo, devise…
+    # Les settings imprimante (pos_printer_name etc.) restent locaux.
+    {"type": "app_config",             "model": AppConfig,            "direction": "pull"},
     # ── Stock & inventory ───────────────────────────────────────────────────
     {"type": "stock_movement",         "model": StockMovement,        "direction": "both"},
     # "both" : les ajustements faits depuis le web/admin doivent redescendre sur bureau.
