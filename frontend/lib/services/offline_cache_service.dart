@@ -27,7 +27,7 @@ bool get _isDesktop =>
 ///  - au login (warm-up initial du cache)
 ///  - à chaque cycle de sync automatique (toutes les 5 min dans app.dart)
 ///
-/// [businessType] : 'commerce' | 'restaurant' | 'depot' | 'hotel'
+/// [businessType] : 'commerce' | 'restaurant' | 'business' | 'hotel'
 /// Sur desktop, tout est caché indépendamment du type.
 ///
 /// Ne lève jamais d'exception vers l'appelant.

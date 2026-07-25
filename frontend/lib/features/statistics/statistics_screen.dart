@@ -271,6 +271,13 @@ final _statCategoriesProvider = FutureProvider.autoDispose<List<Map<String, dyna
   return List<Map<String, dynamic>>.from(res.data as List);
 });
 
+// ── Écoulement mode (produit par période OU catégorie) ─────────────────────
+
+enum _EcoulementMode { produit, categorie }
+
+final _ecoulementModeProvider =
+    StateProvider<_EcoulementMode>((ref) => _EcoulementMode.produit);
+
 final _prodChartProvider = FutureProvider.family
     .autoDispose<_ProdResult, _ProdParams>((ref, params) async {
   final warehouseId = ref.watch(activeWarehouseProvider)?.id;
@@ -430,6 +437,108 @@ final _prodChartProvider = FutureProvider.family
 
   return _ProdResult(
       points: points, products: productList, bestIdx: bestIdx);
+});
+
+// ── Category écoulement provider ───────────────────────────────────────────
+
+class _CatParams {
+  final _RevPeriod period;
+  final DateTimeRange? customRange;
+  const _CatParams(this.period, [this.customRange]);
+
+  @override
+  bool operator ==(Object other) =>
+      other is _CatParams &&
+      other.period == period &&
+      other.customRange?.start == customRange?.start &&
+      other.customRange?.end == customRange?.end;
+
+  @override
+  int get hashCode =>
+      Object.hash(period, customRange?.start, customRange?.end);
+}
+
+final _catChartProvider = FutureProvider.family
+    .autoDispose<_ProdResult, _CatParams>((ref, params) async {
+  final warehouseId = ref.watch(activeWarehouseProvider)?.id;
+  final now = haitiNow();
+
+  final DateTime from;
+  final DateTime toDate;
+  switch (params.period) {
+    case _RevPeriod.week:
+      from   = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
+      toDate = now.add(const Duration(days: 1));
+    case _RevPeriod.month:
+      from   = DateTime(now.year, now.month, 1);
+      toDate = now.add(const Duration(days: 1));
+    case _RevPeriod.year:
+      from   = DateTime(now.year, 1, 1);
+      toDate = now.add(const Duration(days: 1));
+    case _RevPeriod.custom:
+      if (params.customRange == null) {
+        return const _ProdResult(points: [], products: [], bestIdx: -1);
+      }
+      from   = params.customRange!.start;
+      toDate = params.customRange!.end.add(const Duration(days: 1));
+  }
+
+  // Lancer les 3 requêtes en parallèle
+  final salesF    = _fetchAllSales(from, toDate, warehouseId: warehouseId);
+  final prodsF    = dio.get('/api/products/', queryParameters: {'per_page': 500});
+  final catsF     = dio.get('/api/categories/');
+
+  final sales    = await salesF;
+  final prodsRes = await prodsF;
+  final catsRes  = await catsF;
+
+  // Construire la map nom produit → categoryId
+  final nameToCategory = <String, String>{};
+  final productsRaw = (prodsRes.data['items'] ?? prodsRes.data) as List;
+  for (final p in productsRaw) {
+    final name  = p['name'] as String?;
+    final catId = p['category_id'] as String?;
+    if (name != null && catId != null) nameToCategory[name] = catId;
+  }
+
+  // Construire la map categoryId → nom catégorie
+  final catNames = <String, String>{};
+  for (final c in (catsRes.data as List)) {
+    final id   = c['id'] as String?;
+    final name = c['name'] as String?;
+    if (id != null && name != null) catNames[id] = name;
+  }
+
+  // Agréger les quantités vendues par catégorie
+  final catQty = <String, double>{};
+  for (final sale in sales) {
+    for (final item in sale.items) {
+      final catId = nameToCategory[item.productName ?? ''];
+      if (catId != null) {
+        catQty[catId] = (catQty[catId] ?? 0) + item.quantity;
+      }
+    }
+  }
+
+  final sorted = catQty.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+
+  final points = sorted.map((e) {
+    final name  = catNames[e.key] ?? e.key;
+    final short = name.length > 10 ? '${name.substring(0, 9)}…' : name;
+    return _ChartPoint(label: short, tooltipLabel: name, value: e.value);
+  }).toList();
+
+  var bestIdx = -1;
+  var bestVal = -1.0;
+  for (var i = 0; i < points.length; i++) {
+    if (points[i].value > bestVal) {
+      bestVal = points[i].value;
+      bestIdx = i;
+    }
+  }
+
+  return _ProdResult(points: points, products: const [], bestIdx: bestIdx);
 });
 
 // ── KPI data model ─────────────────────────────────────────────────────────
@@ -1138,13 +1247,71 @@ class _ProductEcoulementSectionState
 
   @override
   Widget build(BuildContext context) {
+    final mode        = ref.watch(_ecoulementModeProvider);
     final period      = ref.watch(_prodPeriodProvider);
     final customRange = ref.watch(_prodCustomRangeProvider);
     final product     = ref.watch(_prodFilterProvider);
     final categoryId  = ref.watch(_prodCategoryFilterProvider);
-    final params      = _ProdParams(period, customRange, product, categoryId);
-    final chartAsync  = ref.watch(_prodChartProvider(params));
     final catsAsync   = ref.watch(_statCategoriesProvider);
+
+    final chartAsync = mode == _EcoulementMode.produit
+        ? ref.watch(_prodChartProvider(
+            _ProdParams(period, customRange, product, categoryId)))
+        : ref.watch(_catChartProvider(_CatParams(period, customRange)));
+
+    // Segmented toggle Produits / Catégories
+    final modeToggle = Container(
+      height: 28,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [_EcoulementMode.produit, _EcoulementMode.categorie]
+            .map((m) {
+          final selected = mode == m;
+          final label =
+              m == _EcoulementMode.produit ? 'Produits' : 'Catégories';
+          return GestureDetector(
+            onTap: () {
+              ref.read(_ecoulementModeProvider.notifier).state = m;
+              ref.read(_prodFilterProvider.notifier).state = null;
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: selected ? AppColors.surface : Colors.transparent,
+                borderRadius: BorderRadius.circular(6),
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.08),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1))
+                      ]
+                    : null,
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight:
+                      selected ? FontWeight.w600 : FontWeight.w400,
+                  color: selected
+                      ? AppColors.textPrimary
+                      : AppColors.textSecondary,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1161,15 +1328,17 @@ class _ProductEcoulementSectionState
             const Icon(Icons.inventory_2_rounded,
                 size: 18, color: AppColors.success),
             const SizedBox(width: 8),
-            const Text('Écoulement des produits',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+            const Text('Écoulement',
+                style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 10),
+            modeToggle,
             const Spacer(),
             _PeriodTabs(
               period: period,
               customRange: customRange,
               onPeriodChanged: (p) {
                 ref.read(_prodPeriodProvider.notifier).state = p;
-                // reset product filter on period change
                 ref.read(_prodFilterProvider.notifier).state = null;
               },
               onCustomRange: (r) {
@@ -1183,81 +1352,96 @@ class _ProductEcoulementSectionState
 
           const SizedBox(height: 12),
 
-          // Category + product filter + best-period badge
+          // Filtres + badge meilleur
           chartAsync.when(
             data: (result) => Wrap(
               spacing: 8,
               runSpacing: 6,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-              // Category dropdown
-              catsAsync.maybeWhen(
-                data: (cats) => _FilterChip(
-                  child: DropdownButton<String?>(
-                    value: categoryId,
-                    isDense: true,
-                    underline: const SizedBox(),
-                    style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
-                    hint: const Text('Toutes catégories', style: TextStyle(fontSize: 12)),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('Toutes catégories')),
-                      ...cats.map((c) => DropdownMenuItem(
-                        value: c['id'] as String?,
-                        child: Text(c['name'] as String? ?? '', style: const TextStyle(fontSize: 12)),
-                      )),
-                    ],
-                    onChanged: (v) {
-                      ref.read(_prodCategoryFilterProvider.notifier).state = v;
-                      ref.read(_prodFilterProvider.notifier).state = null;
-                    },
+                if (mode == _EcoulementMode.produit) ...[
+                  // Filtre catégorie
+                  catsAsync.maybeWhen(
+                    data: (cats) => _FilterChip(
+                      child: DropdownButton<String?>(
+                        value: categoryId,
+                        isDense: true,
+                        underline: const SizedBox(),
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textPrimary),
+                        hint: const Text('Toutes catégories',
+                            style: TextStyle(fontSize: 12)),
+                        items: [
+                          const DropdownMenuItem(
+                              value: null,
+                              child: Text('Toutes catégories')),
+                          ...cats.map((c) => DropdownMenuItem(
+                                value: c['id'] as String?,
+                                child: Text(c['name'] as String? ?? '',
+                                    style:
+                                        const TextStyle(fontSize: 12)),
+                              )),
+                        ],
+                        onChanged: (v) {
+                          ref
+                              .read(_prodCategoryFilterProvider.notifier)
+                              .state = v;
+                          ref.read(_prodFilterProvider.notifier).state =
+                              null;
+                        },
+                      ),
+                    ),
+                    orElse: () => const SizedBox.shrink(),
                   ),
-                ),
-                orElse: () => const SizedBox.shrink(),
-              ),
-              // Product dropdown
-              _FilterChip(
-                child: DropdownButton<String?>(
-                    value: product,
-                    isDense: true,
-                    underline: const SizedBox(),
+                  // Filtre produit
+                  _FilterChip(
+                    child: DropdownButton<String?>(
+                      value: product,
+                      isDense: true,
+                      underline: const SizedBox(),
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textPrimary),
+                      hint: const Text('Tous les produits',
+                          style: TextStyle(fontSize: 12)),
+                      items: [
+                        const DropdownMenuItem(
+                            value: null,
+                            child: Text('Tous les produits')),
+                        ...result.products.map(
+                            (p) => DropdownMenuItem(
+                                value: p, child: Text(p))),
+                      ],
+                      onChanged: (v) =>
+                          ref.read(_prodFilterProvider.notifier).state =
+                              v,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                // Badge meilleur (les deux modes)
+                if (result.bestIdx >= 0 &&
+                    result.points[result.bestIdx].value > 0) ...[
+                  const Icon(Icons.emoji_events_rounded,
+                      size: 14, color: AppColors.warning),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Meilleur : ${result.points[result.bestIdx].tooltipLabel}'
+                    ' (${result.points[result.bestIdx].value.toStringAsFixed(result.points[result.bestIdx].value % 1 == 0 ? 0 : 1)} unités)',
                     style: const TextStyle(
-                        fontSize: 12, color: AppColors.textPrimary),
-                    hint: const Text('Tous les produits', style: TextStyle(fontSize: 12)),
-                    items: [
-                      const DropdownMenuItem(
-                          value: null,
-                          child: Text('Tous les produits')),
-                      ...result.products.map((p) =>
-                          DropdownMenuItem(value: p, child: Text(p))),
-                    ],
-                    onChanged: (v) =>
-                        ref.read(_prodFilterProvider.notifier).state = v,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.warning),
                   ),
-              ),
-              const SizedBox(width: 12),
-              // Best-period badge
-              if (result.bestIdx >= 0 &&
-                  result.points[result.bestIdx].value > 0) ...[
-                const Icon(Icons.emoji_events_rounded,
-                    size: 14, color: AppColors.warning),
-                const SizedBox(width: 4),
-                Text(
-                  'Meilleur : ${result.points[result.bestIdx].tooltipLabel}'
-                  ' (${result.points[result.bestIdx].value.toStringAsFixed(result.points[result.bestIdx].value % 1 == 0 ? 0 : 1)} unités)',
-                  style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.warning),
-                ),
+                ],
               ],
-            ]),
+            ),
             loading: () => const SizedBox(height: 32),
             error: (err, st) => const SizedBox(height: 32),
           ),
 
           const SizedBox(height: 16),
 
-          // Chart
+          // Graphique
           SizedBox(
             height: 220,
             child: chartAsync.when(
@@ -1271,11 +1455,12 @@ class _ProductEcoulementSectionState
                                 color: AppColors.textSecondary,
                                 fontSize: 13)));
               },
-              loading: () =>
-                  const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              loading: () => const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2)),
               error: (e, _) => Center(
                 child: Text('Erreur: $e',
-                    style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                    style: const TextStyle(
+                        color: AppColors.error, fontSize: 12)),
               ),
             ),
           ),

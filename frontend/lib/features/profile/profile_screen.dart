@@ -443,12 +443,12 @@ class _CompanyFormState extends ConsumerState<_CompanyForm> {
 
     final typeLabel = switch (settings.businessType) {
       'restaurant' => 'Restaurant / Snack',
-      'depot' => 'Dépôt / Grossiste',
+      'business' => 'Dépôt / Grossiste',
       _ => 'Commerce / Épicerie',
     };
     final typeIcon = switch (settings.businessType) {
       'restaurant' => Icons.restaurant_rounded,
-      'depot' => Icons.warehouse_rounded,
+      'business' => Icons.warehouse_rounded,
       _ => Icons.shopping_bag_rounded,
     };
 

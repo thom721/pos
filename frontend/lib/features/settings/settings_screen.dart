@@ -109,13 +109,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   const Divider(height: 1),
                   _SelectionTile(
-                    value: 'depot',
+                    value: 'business',
                     label: 'Dépôt / Grossiste',
                     description: 'Vente en gros et distribution',
                     icon: Icons.warehouse_rounded,
-                    selected: settings.businessType == 'depot',
+                    selected: settings.businessType == 'business',
                     onTap: () => notifier.save(
-                        settings.copyWith(businessType: 'depot')),
+                        settings.copyWith(businessType: 'business')),
                   ),
                   const Divider(height: 1),
                   _SelectionTile(
