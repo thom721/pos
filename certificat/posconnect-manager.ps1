@@ -251,7 +251,7 @@ function Show-AuthDialog {
 # -- Formulaire principal ------------------------------------------------------
 $form                  = New-Object System.Windows.Forms.Form
 $form.Text             = "POS Serveur -- Etat des services"
-$form.ClientSize       = New-Object System.Drawing.Size(420, 310)
+$form.ClientSize       = New-Object System.Drawing.Size(500, 350)
 $form.StartPosition    = "CenterScreen"
 $form.FormBorderStyle  = "FixedDialog"
 $form.MaximizeBox      = $false
@@ -276,22 +276,24 @@ $form.Controls.Add($lSub)
 # Panel statuts
 $panel             = New-Object System.Windows.Forms.Panel
 $panel.Location    = New-Object System.Drawing.Point(14, 68)
-$panel.Size        = New-Object System.Drawing.Size(392, 136)
+$panel.Size        = New-Object System.Drawing.Size(472, 156)
 $panel.BackColor   = $clrPanel
 $panel.BorderStyle = "None"
 $form.Controls.Add($panel)
 
 $dotLabels    = @{}
 $statusLabels = @{}
+$startSvcBtns = @{}
+$stopSvcBtns  = @{}
 $row = 0
 foreach ($svcName in $SVCS.Keys) {
-    $y = 14 + ($row * 38)
+    $y = 14 + ($row * 44)
 
     $dot           = New-Object System.Windows.Forms.Label
     $dot.Text      = [char]0x25CF
     $dot.Font      = New-Object System.Drawing.Font("Segoe UI", 11)
     $dot.ForeColor = $clrGray
-    $dot.Location  = New-Object System.Drawing.Point(12, $y)
+    $dot.Location  = New-Object System.Drawing.Point(10, ($y + 8))
     $dot.AutoSize  = $true
     $panel.Controls.Add($dot)
     $dotLabels[$svcName] = $dot
@@ -299,17 +301,41 @@ foreach ($svcName in $SVCS.Keys) {
     $lName           = New-Object System.Windows.Forms.Label
     $lName.Text      = $SVCS[$svcName]
     $lName.ForeColor = $clrText
-    $lName.Location  = New-Object System.Drawing.Point(36, ($y + 2))
-    $lName.Size      = New-Object System.Drawing.Size(240, 20)
+    $lName.Location  = New-Object System.Drawing.Point(34, ($y + 10))
+    $lName.Size      = New-Object System.Drawing.Size(140, 20)
     $panel.Controls.Add($lName)
 
     $lSt           = New-Object System.Windows.Forms.Label
     $lSt.Text      = "..."
     $lSt.ForeColor = $clrSub
-    $lSt.Location  = New-Object System.Drawing.Point(282, ($y + 2))
-    $lSt.Size      = New-Object System.Drawing.Size(100, 20)
+    $lSt.Location  = New-Object System.Drawing.Point(178, ($y + 10))
+    $lSt.Size      = New-Object System.Drawing.Size(86, 20)
     $panel.Controls.Add($lSt)
     $statusLabels[$svcName] = $lSt
+
+    $bOn           = New-Object System.Windows.Forms.Button
+    $bOn.Text      = "Demarrer"
+    $bOn.Size      = New-Object System.Drawing.Size(86, 26)
+    $bOn.Location  = New-Object System.Drawing.Point(268, ($y + 7))
+    $bOn.BackColor = $clrBtnGrn
+    $bOn.ForeColor = $clrText
+    $bOn.FlatStyle = "Flat"
+    $bOn.FlatAppearance.BorderSize = 0
+    $bOn.Font      = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+    $panel.Controls.Add($bOn)
+    $startSvcBtns[$svcName] = $bOn
+
+    $bOff          = New-Object System.Windows.Forms.Button
+    $bOff.Text     = "Arreter"
+    $bOff.Size     = New-Object System.Drawing.Size(86, 26)
+    $bOff.Location = New-Object System.Drawing.Point(360, ($y + 7))
+    $bOff.BackColor = $clrBtnRed
+    $bOff.ForeColor = $clrText
+    $bOff.FlatStyle = "Flat"
+    $bOff.FlatAppearance.BorderSize = 0
+    $bOff.Font     = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+    $panel.Controls.Add($bOff)
+    $stopSvcBtns[$svcName] = $bOff
 
     $row++
 }
@@ -318,8 +344,8 @@ foreach ($svcName in $SVCS.Keys) {
 $lWarn           = New-Object System.Windows.Forms.Label
 $lWarn.Text      = ""
 $lWarn.ForeColor = $clrOrange
-$lWarn.Location  = New-Object System.Drawing.Point(14, 210)
-$lWarn.Size      = New-Object System.Drawing.Size(392, 36)
+$lWarn.Location  = New-Object System.Drawing.Point(14, 234)
+$lWarn.Size      = New-Object System.Drawing.Size(472, 36)
 $lWarn.Font      = New-Object System.Drawing.Font("Segoe UI", 8)
 $form.Controls.Add($lWarn)
 
@@ -327,8 +353,8 @@ $form.Controls.Add($lWarn)
 function New-Btn($text, $bgColor, $x) {
     $b          = New-Object System.Windows.Forms.Button
     $b.Text     = $text
-    $b.Size     = New-Object System.Drawing.Size(92, 34)
-    $b.Location = New-Object System.Drawing.Point($x, 254)
+    $b.Size     = New-Object System.Drawing.Size(108, 34)
+    $b.Location = New-Object System.Drawing.Point($x, 290)
     $b.BackColor = $bgColor
     $b.ForeColor = $clrText
     $b.FlatStyle = "Flat"
@@ -338,10 +364,10 @@ function New-Btn($text, $bgColor, $x) {
     return $b
 }
 
-$btnRefresh = New-Btn "Actualiser" $clrBtnDark  14
-$btnStart   = New-Btn "Demarrer"   $clrBtnGrn  112
-$btnRestart = New-Btn "Redemarrer" $clrBtnBlue 210
-$btnStop    = New-Btn "Arreter"    $clrBtnRed  308
+$btnRefresh = New-Btn "Actualiser"    $clrBtnDark  14
+$btnStart   = New-Btn "Demarrer tout" $clrBtnGrn  128
+$btnRestart = New-Btn "Redemarrer"    $clrBtnBlue 242
+$btnStop    = New-Btn "Arreter tout"  $clrBtnRed  356
 
 # Attente non-bloquante : garde la fenetre reactive pendant les sleeps
 function Start-UIWait([int]$Seconds) {
@@ -353,7 +379,37 @@ function Start-UIWait([int]$Seconds) {
 }
 
 # -- Helpers etat UI -----------------------------------------------------------
-$allBtns = @($btnRefresh, $btnStart, $btnRestart, $btnStop)
+$allBtns = @($btnRefresh, $btnStart, $btnRestart, $btnStop) +
+           @($startSvcBtns.Values) + @($stopSvcBtns.Values)
+
+# -- Handlers par service (GetNewClosure capture la variable de boucle) --------
+foreach ($svcName in $SVCS.Keys) {
+    $startSvcBtns[$svcName].Add_Click({
+        param($s, $e)
+        $name = $s.Tag
+        if ((Get-SvcStatus $name) -eq "Running") { return }
+        Set-Busy "Demarrage $($SVCS[$name])..."
+        Start-Service $name -ErrorAction SilentlyContinue
+        Start-UIWait 3
+        Update-Status
+        Set-Free
+    }.GetNewClosure())
+    $startSvcBtns[$svcName].Tag = $svcName
+
+    $stopSvcBtns[$svcName].Add_Click({
+        param($s, $e)
+        $name = $s.Tag
+        if ((Get-SvcStatus $name) -eq "Stopped") { return }
+        $ok = Show-AuthDialog "Arreter $($SVCS[$name])"
+        if (-not $ok) { return }
+        Set-Busy "Arret $($SVCS[$name])..."
+        Stop-Service $name -Force -ErrorAction SilentlyContinue
+        Start-UIWait 2
+        Update-Status
+        Set-Free
+    }.GetNewClosure())
+    $stopSvcBtns[$svcName].Tag = $svcName
+}
 
 function Set-Busy($msg) {
     $allBtns | ForEach-Object { $_.Enabled = $false }

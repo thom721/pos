@@ -88,6 +88,7 @@ Source: "nginx-windows.conf";    DestDir: "{app}\certificat"; Flags: ignoreversi
 ; Gestionnaire de services (interface admin — lancee via l'icone bureau)
 Source: "posconnect-manager.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "posconnect-manager.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "posconnect-manager.vbs"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Icône de l'application
 Source: "setup-info\pos.ico"; DestDir: "{app}"; Flags: ignoreversion
@@ -142,12 +143,10 @@ Root: HKLM; \
 ; tourne deja comme service NSSM -- double-cliquer l'exe causerait un conflit de port).
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; \
-  Filename: "powershell.exe"; \
-  Parameters: "-WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -File ""{app}\posconnect-manager.ps1"""; \
+  Filename: "{app}\posconnect-manager.vbs"; \
   IconFilename: "{app}\pos.ico"; WorkingDir: "{app}"
 Name: "{autodesktop}\{#MyAppName}"; \
-  Filename: "powershell.exe"; \
-  Parameters: "-WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -File ""{app}\posconnect-manager.ps1"""; \
+  Filename: "{app}\posconnect-manager.vbs"; \
   IconFilename: "{app}\pos.ico"; WorkingDir: "{app}"; Tasks: desktopicon
 
 ; ── Commandes après installation ──────────────────────────────────────────────
