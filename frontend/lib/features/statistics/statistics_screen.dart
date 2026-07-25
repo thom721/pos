@@ -92,6 +92,25 @@ Future<List<SaleModel>> _fetchAllSales(DateTime from, DateTime to, {String? ware
   return all;
 }
 
+Future<List<Map<String, dynamic>>> _fetchAllProducts({String? categoryId}) async {
+  const perPage = 100;
+  final params = <String, dynamic>{'per_page': perPage, 'page': 1, if (categoryId != null) 'category_id': categoryId};
+  final first = await dio.get('/api/products/', queryParameters: params);
+  final meta  = first.data['meta'] as Map<String, dynamic>? ?? {};
+  final pages = (meta['pages'] as num?)?.toInt() ?? 1;
+  final all   = List<Map<String, dynamic>>.from(first.data['data'] as List? ?? []);
+  if (pages > 1) {
+    final futures = List.generate(
+      pages - 1,
+      (i) => dio.get('/api/products/', queryParameters: {...params, 'page': i + 2}),
+    );
+    for (final res in await Future.wait(futures)) {
+      all.addAll(List<Map<String, dynamic>>.from(res.data['data'] as List? ?? []));
+    }
+  }
+  return all;
+}
+
 // ── Providers ──────────────────────────────────────────────────────────────
 
 final _revPeriodProvider =
@@ -308,11 +327,7 @@ final _prodChartProvider = FutureProvider.family
   // If category filter active, resolve product names in that category
   Set<String>? categoryProductNames;
   if (params.categoryId != null) {
-    final res = await dio.get('/api/products/', queryParameters: {
-      'category_id': params.categoryId,
-      'per_page': 200,
-    });
-    final items = (res.data['items'] ?? res.data) as List;
+    final items = await _fetchAllProducts(categoryId: params.categoryId);
     categoryProductNames = {
       for (final p in items)
         if (p['name'] != null) p['name'] as String,
@@ -484,18 +499,17 @@ final _catChartProvider = FutureProvider.family
   }
 
   // Lancer les 3 requêtes en parallèle
-  final salesF    = _fetchAllSales(from, toDate, warehouseId: warehouseId);
-  final prodsF    = dio.get('/api/products/', queryParameters: {'per_page': 500});
-  final catsF     = dio.get('/api/categories/');
+  final salesF = _fetchAllSales(from, toDate, warehouseId: warehouseId);
+  final prodsF = _fetchAllProducts();
+  final catsF  = dio.get('/api/categories/');
 
   final sales    = await salesF;
-  final prodsRes = await prodsF;
+  final prodsRaw = await prodsF;
   final catsRes  = await catsF;
 
   // Construire la map nom produit → categoryId
   final nameToCategory = <String, String>{};
-  final productsRaw = (prodsRes.data['items'] ?? prodsRes.data) as List;
-  for (final p in productsRaw) {
+  for (final p in prodsRaw) {
     final name  = p['name'] as String?;
     final catId = p['category_id'] as String?;
     if (name != null && catId != null) nameToCategory[name] = catId;
