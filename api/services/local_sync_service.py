@@ -9,7 +9,7 @@ Flow:
   4. Update SyncState timestamps
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -70,8 +70,9 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "user",                   "model": User,                 "direction": "both"},
     {"type": "pos_register",           "model": PosRegister,         "direction": "both"},
     # ── Sales & payments ────────────────────────────────────────────────────
-    {"type": "sale",                   "model": Sale,                 "direction": "push"},
-    {"type": "sale_item",              "model": SaleItem,             "direction": "push"},
+    # "both" : le bureau doit voir les ventes faites depuis mobile ou web.
+    {"type": "sale",                   "model": Sale,                 "direction": "both"},
+    {"type": "sale_item",              "model": SaleItem,             "direction": "both"},
     {"type": "payment",                "model": Payment,              "direction": "both"},
     {"type": "return_record",          "model": ReturnRecord,         "direction": "both"},
     # ── Purchases ───────────────────────────────────────────────────────────
@@ -81,7 +82,8 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "purchase_receipt_item",  "model": PurchaseReceiptItem,  "direction": "both"},
     # ── Stock & inventory ───────────────────────────────────────────────────
     {"type": "stock_movement",         "model": StockMovement,        "direction": "both"},
-    {"type": "inventory_record",       "model": InventoryRecord,      "direction": "push"},
+    # "both" : les ajustements faits depuis le web/admin doivent redescendre sur bureau.
+    {"type": "inventory_record",       "model": InventoryRecord,      "direction": "both"},
     # ── Invoicing & proformas ───────────────────────────────────────────────
     {"type": "invoice",                "model": Invoice,              "direction": "both"},
     {"type": "invoice_item",           "model": InvoiceItem,          "direction": "both"},
@@ -303,6 +305,16 @@ def _run_sync_inner(db: Session) -> dict:
         for e in SYNC_ENTITIES
         if e["direction"] in ("pull", "both")
     ]
+
+    # Entités récemment passées de "push" à "both" : last_pull_at est None
+    # mais last_push_at existe (elles ont déjà été poussées).  Initialiser à
+    # 90 jours en arrière pour ne pas aspirer toute l'histoire depuis 1970.
+    _PULL_LOOKBACK = timedelta(days=90)
+    for e, s in pull_entities:
+        if s.last_pull_at is None and s.last_push_at is not None:
+            s.last_pull_at = cycle_start - _PULL_LOOKBACK
+    db.flush()
+
     cursors = {
         e["type"]: (s.last_pull_at.isoformat() if s.last_pull_at else "1970-01-01T00:00:00+00:00")
         for e, s in pull_entities
