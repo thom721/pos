@@ -21,6 +21,7 @@ from api.models.PlatformConfig import PlatformConfig
 from api.models.Tenant import Tenant
 from api.models.PosRegister import PosRegister
 from api.models.Warehouse import Warehouse
+from api.models.InstallationCode import InstallationCode, generate_installation_code
 
 router = APIRouter(prefix="/api/admin", tags=["SuperAdmin"])
 _log = logging.getLogger("pos.admin")
@@ -467,6 +468,12 @@ def create_tenant(
         )
         db.add(default_warehouse)
         db.flush()
+        # Code d'installation automatique pour le dépôt par défaut
+        db.add(InstallationCode(
+            code=generate_installation_code(),
+            tenant_id=tenant.id,
+            warehouse_id=default_warehouse.id,
+        ))
     else:
         default_warehouse = existing_wh
 
