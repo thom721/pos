@@ -376,6 +376,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               _HotelCheckinSection(settings: settings, notifier: notifier),
             ],
 
+            // ── Synchronisation cloud (local uniquement) ─────────────────
+            if (!kIsWeb) ...[
+              const SizedBox(height: 24),
+              const _SyncSection(),
+            ],
+
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
