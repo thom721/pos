@@ -39,5 +39,16 @@ class ConnectionManager:
     def connection_count(self, tenant_id: str) -> int:
         return len(self._connections.get(tenant_id, set()))
 
+    def notify_threadsafe(self, tenant_id: str) -> None:
+        """Fire-and-forget notify from a synchronous context (e.g. a threadpool endpoint)."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.call_soon_threadsafe(
+                    lambda: asyncio.ensure_future(self.notify(tenant_id))
+                )
+        except RuntimeError:
+            pass
+
 
 manager = ConnectionManager()

@@ -65,6 +65,8 @@ from api.models.HousekeepingTask import HousekeepingTask
 router = APIRouter(prefix="/api/sync", tags=["Sync"])
 _log = logging.getLogger("pos.sync")
 
+from api.ws_manager import manager as _ws_manager
+
 # ── Model registry ────────────────────────────────────────────────────────────
 
 _MODEL_MAP: dict[str, Any] = {
@@ -375,6 +377,8 @@ def sync_push(
                 skipped += 1
 
     db.commit()
+    if inserted + updated > 0:
+        _ws_manager.notify_threadsafe(tenant_id)
     return {
         "ok": True, "entity_type": body.entity_type,
         "inserted": inserted, "updated": updated, "skipped": skipped,
