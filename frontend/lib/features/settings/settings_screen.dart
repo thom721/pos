@@ -1210,159 +1210,193 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
         _Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Status ───────────────────────────────────────────────────
-              statusAsync.when(
-                loading: () => const LinearProgressIndicator(),
-                error: (e, _) => Text('Erreur: $e',
-                    style: const TextStyle(color: AppColors.error, fontSize: 12)),
-                data: (status) {
-                  final configured = status['configured'] as bool? ?? false;
-                  final cloudUrl   = status['cloud_url'] as String? ?? '';
-                  final entities   = (status['entities'] as List?) ?? [];
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Icon(
-                          configured ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
-                          size: 18,
-                          color: configured ? AppColors.success : AppColors.textSecondary,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            configured
-                                ? 'Connecté à $cloudUrl'
-                                : 'Non configuré — liez ce serveur à votre compte cloud',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: configured ? AppColors.success : AppColors.textSecondary,
-                            ),
+            child: statusAsync.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (e, _) => Text('Erreur: $e',
+                  style: const TextStyle(color: AppColors.error, fontSize: 12)),
+              data: (status) {
+                final configured = status['configured'] as bool? ?? false;
+                final cloudUrl   = status['cloud_url']         as String? ?? '';
+                final ownerEmail = status['cloud_owner_email'] as String? ?? '';
+                final entities   = (status['entities'] as List?) ?? [];
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Statut de connexion ──────────────────────────────────
+                    Row(children: [
+                      Icon(
+                        configured ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                        size: 18,
+                        color: configured ? AppColors.success : AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          configured
+                              ? 'Connecté à $cloudUrl'
+                              : 'Non configuré — liez ce serveur à votre compte cloud',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: configured ? AppColors.success : AppColors.textSecondary,
                           ),
                         ),
-                      ]),
-                      if (configured && entities.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        const Divider(height: 1),
-                        const SizedBox(height: 8),
-                        ...entities.map((e) => _EntityRow(entity: e as Map<String, dynamic>)),
-                      ],
-                    ],
-                  );
-                },
-              ),
-              // ── Offline pending badge ─────────────────────────────────────
-              if ((pendingAsync.value ?? 0) > 0) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.warning.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                        color: AppColors.warning.withValues(alpha: 0.4)),
-                  ),
-                  child: Row(children: [
-                    const Icon(Icons.cloud_off_rounded,
-                        size: 14, color: AppColors.warning),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        '${pendingAsync.value} opération${(pendingAsync.value ?? 0) > 1 ? 's' : ''} '
-                        'en attente (hors-ligne) — envoyées au retour du réseau',
-                        style: const TextStyle(
-                            fontSize: 11, color: AppColors.warning),
                       ),
-                    ),
-                  ]),
-                ),
-              ],
-              const SizedBox(height: 16),
+                    ]),
 
-              // ── Actions ──────────────────────────────────────────────────
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                OutlinedButton.icon(
-                  onPressed: () => setState(() => _showForm = !_showForm),
-                  icon: const Icon(Icons.settings_ethernet_rounded, size: 16),
-                  label: Text(_showForm ? 'Fermer' : 'Configurer'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: syncState.isRunning ? null : _runSync,
-                  icon: syncState.isRunning
-                      ? const SizedBox(
-                          width: 14, height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.sync_rounded, size: 16),
-                  label: const Text('Synchroniser'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: syncState.isRunning ? null : _resetAndSync,
-                  style: OutlinedButton.styleFrom(foregroundColor: AppColors.warning),
-                  icon: const Icon(Icons.restart_alt_rounded, size: 16),
-                  label: const Text('Forcer re-push'),
-                ),
-              ]),
+                    // ── Compte cloud (lecture seule quand configuré) ─────────
+                    if (configured && ownerEmail.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        const Icon(Icons.person_outline_rounded,
+                            size: 15, color: AppColors.textSecondary),
+                        const SizedBox(width: 6),
+                        Text(ownerEmail,
+                            style: const TextStyle(
+                                fontSize: 12, color: AppColors.textSecondary)),
+                      ]),
+                    ],
 
-              // ── Config form ───────────────────────────────────────────────
-              if (_showForm) ...[
-                const SizedBox(height: 16),
-                const Divider(height: 1),
-                const SizedBox(height: 16),
-                Text('Connexion au serveur cloud',
-                    style: Theme.of(context).textTheme.titleSmall),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _cloudUrlCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'URL du serveur cloud',
-                    hintText: 'https://api.posconnect.ht',
-                    prefixIcon: Icon(Icons.cloud_outlined),
-                    isDense: true,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email du compte cloud',
-                    prefixIcon: Icon(Icons.email_outlined),
-                    isDense: true,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _passwordCtrl,
-                  obscureText: _obscure,
-                  decoration: InputDecoration(
-                    labelText: 'Mot de passe',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    isDense: true,
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () => setState(() => _obscure = !_obscure),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: syncState.isConfiguring ? null : _configure,
-                    child: syncState.isConfiguring
-                        ? const SizedBox(
-                            height: 16, width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Lier ce serveur au cloud'),
-                  ),
-                ),
-              ],
-            ],
+                    // ── Détail par entité ───────────────────────────────────
+                    if (configured && entities.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const Divider(height: 1),
+                      const SizedBox(height: 8),
+                      ...entities.map((e) => _EntityRow(entity: e as Map<String, dynamic>)),
+                    ],
+
+                    // ── Opérations hors-ligne en attente ────────────────────
+                    if ((pendingAsync.value ?? 0) > 0) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+                        ),
+                        child: Row(children: [
+                          const Icon(Icons.cloud_off_rounded,
+                              size: 14, color: AppColors.warning),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '${pendingAsync.value} opération${(pendingAsync.value ?? 0) > 1 ? 's' : ''} '
+                              'en attente (hors-ligne)',
+                              style: const TextStyle(fontSize: 11, color: AppColors.warning),
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
+
+                    // ── Actions principales (toujours visibles) ──────────────
+                    if (configured)
+                      Wrap(spacing: 8, runSpacing: 8, children: [
+                        ElevatedButton.icon(
+                          onPressed: syncState.isRunning ? null : _runSync,
+                          icon: syncState.isRunning
+                              ? const SizedBox(width: 14, height: 14,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.sync_rounded, size: 16),
+                          label: const Text('Synchroniser'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: syncState.isRunning ? null : _resetAndSync,
+                          style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.warning),
+                          icon: const Icon(Icons.restart_alt_rounded, size: 16),
+                          label: const Text('Forcer re-push'),
+                        ),
+                        // Reconfiguration avancée (cas exceptionnel)
+                        OutlinedButton.icon(
+                          onPressed: () => setState(() => _showForm = !_showForm),
+                          icon: const Icon(Icons.settings_ethernet_rounded, size: 16),
+                          label: Text(_showForm ? 'Fermer' : 'Reconfigurer'),
+                          style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.textSecondary),
+                        ),
+                      ])
+                    else
+                      // Pas encore configuré → bouton principal visible
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => setState(() => _showForm = true),
+                          icon: const Icon(Icons.link_rounded, size: 16),
+                          label: const Text('Lier au compte cloud'),
+                        ),
+                      ),
+
+                    // ── Formulaire de (re)configuration ──────────────────────
+                    if (_showForm || !configured) ...[
+                      const SizedBox(height: 16),
+                      const Divider(height: 1),
+                      const SizedBox(height: 16),
+                      Text(
+                        configured ? 'Reconfigurer la connexion cloud' : 'Connexion au serveur cloud',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _cloudUrlCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'URL du serveur cloud',
+                          hintText: 'https://api.posconnect.ht',
+                          prefixIcon: Icon(Icons.cloud_outlined),
+                          isDense: true,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Email du compte cloud',
+                          prefixIcon: Icon(Icons.email_outlined),
+                          isDense: true,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _passwordCtrl,
+                        obscureText: _obscure,
+                        decoration: InputDecoration(
+                          labelText: 'Mot de passe',
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          isDense: true,
+                          suffixIcon: IconButton(
+                            icon: Icon(_obscure
+                                ? Icons.visibility
+                                : Icons.visibility_off),
+                            onPressed: () =>
+                                setState(() => _obscure = !_obscure),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: syncState.isConfiguring ? null : _configure,
+                          child: syncState.isConfiguring
+                              ? const SizedBox(height: 16, width: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : Text(configured
+                                  ? 'Mettre à jour la configuration'
+                                  : 'Lier ce serveur au cloud'),
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
           ),
-          ),  // Padding
         ),
         const SizedBox(height: 24),
       ],
