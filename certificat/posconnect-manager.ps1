@@ -374,19 +374,28 @@ $btnRefresh.Add_Click({
 
 $btnStart.Add_Click({
     # Demarrer ne necessite pas d'auth : les services sont arretes donc l'API
-    # n'est pas accessible. Le droits admin Windows (UAC) suffisent.
-    Set-Busy "Demarrage MySQL..."
-    Start-Service "POS_Connect_MySQL" -ErrorAction SilentlyContinue
-    Start-UIWait 4
+    # n'est pas accessible. Les droits admin Windows (UAC) suffisent.
+    Set-Busy "Verification..."
     Update-Status
-    Set-Busy "Demarrage API POS..."
-    Start-Service "POS_Connect_API"   -ErrorAction SilentlyContinue
-    Start-UIWait 3
-    Update-Status
-    Set-Busy "Demarrage Nginx..."
-    Start-Service "POS_Connect_Nginx" -ErrorAction SilentlyContinue
-    Start-UIWait 2
-    Update-Status
+
+    if ((Get-SvcStatus "POS_Connect_MySQL") -ne "Running") {
+        Set-Busy "Demarrage MySQL..."
+        Start-Service "POS_Connect_MySQL" -ErrorAction SilentlyContinue
+        Start-UIWait 4
+        Update-Status
+    }
+    if ((Get-SvcStatus "POS_Connect_API") -ne "Running") {
+        Set-Busy "Demarrage API POS..."
+        Start-Service "POS_Connect_API"   -ErrorAction SilentlyContinue
+        Start-UIWait 3
+        Update-Status
+    }
+    if ((Get-SvcStatus "POS_Connect_Nginx") -ne "Running") {
+        Set-Busy "Demarrage Nginx..."
+        Start-Service "POS_Connect_Nginx" -ErrorAction SilentlyContinue
+        Start-UIWait 2
+        Update-Status
+    }
     Set-Free
 })
 
