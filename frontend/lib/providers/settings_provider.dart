@@ -35,6 +35,8 @@ class AppSettings {
   final String bluetoothPrinterName;
   // Paper width in mm — device-specific, stored locally only
   final int paperWidth; // 80 | 58
+  // Receipt text darkness 1–5 — device-specific, stored locally only
+  final int receiptDarkness; // 1=pâle … 5=noir pur
   // Hotel mode — check-in fields config [{label, required, onReceipt}]
   final List<Map<String, dynamic>> hotelCheckinFields;
 
@@ -59,6 +61,7 @@ class AppSettings {
     this.bluetoothPrinterMac = '',
     this.bluetoothPrinterName = '',
     this.paperWidth = 80,
+    this.receiptDarkness = 4,
     this.hotelCheckinFields = const [],
   });
 
@@ -83,6 +86,7 @@ class AppSettings {
     String? bluetoothPrinterMac,
     String? bluetoothPrinterName,
     int? paperWidth,
+    int? receiptDarkness,
     List<Map<String, dynamic>>? hotelCheckinFields,
   }) =>
       AppSettings(
@@ -106,6 +110,7 @@ class AppSettings {
         bluetoothPrinterMac: bluetoothPrinterMac ?? this.bluetoothPrinterMac,
         bluetoothPrinterName: bluetoothPrinterName ?? this.bluetoothPrinterName,
         paperWidth: paperWidth ?? this.paperWidth,
+        receiptDarkness: receiptDarkness ?? this.receiptDarkness,
         hotelCheckinFields: hotelCheckinFields ?? this.hotelCheckinFields,
       );
 
@@ -199,6 +204,7 @@ class AppSettings {
         'bluetoothPrinterMac': bluetoothPrinterMac,
         'bluetoothPrinterName': bluetoothPrinterName,
         'paperWidth': paperWidth,
+        'receiptDarkness': receiptDarkness,
         'hotelCheckinFields': hotelCheckinFields,
       };
 
@@ -223,6 +229,7 @@ class AppSettings {
         bluetoothPrinterMac: j['bluetoothPrinterMac'] as String? ?? '',
         bluetoothPrinterName: j['bluetoothPrinterName'] as String? ?? '',
         paperWidth: (j['paperWidth'] as num?)?.toInt() ?? 80,
+        receiptDarkness: (j['receiptDarkness'] as num?)?.toInt() ?? 4,
         hotelCheckinFields: _parseCheckinFields(j['hotelCheckinFields']),
       );
 }
@@ -293,15 +300,17 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     // Paramètres device-only depuis la clé fixe (non-scopée par warehouse)
     // → lus UNE FOIS, jamais écrasés par la race condition du double _load().
     int? devicePaperWidth;
+    int? deviceReceiptDarkness;
     String? deviceBtMac;
     String? deviceBtName;
     bool? deviceAutoPrint;
     try {
       final prefs = await SharedPreferences.getInstance();
-      devicePaperWidth = prefs.getInt('device_paper_width');
-      deviceBtMac     = prefs.getString('device_bt_mac');
-      deviceBtName    = prefs.getString('device_bt_name');
-      deviceAutoPrint = prefs.getBool('device_pos_auto_print');
+      devicePaperWidth      = prefs.getInt('device_paper_width');
+      deviceReceiptDarkness = prefs.getInt('device_receipt_darkness');
+      deviceBtMac           = prefs.getString('device_bt_mac');
+      deviceBtName          = prefs.getString('device_bt_name');
+      deviceAutoPrint       = prefs.getBool('device_pos_auto_print');
     } catch (_) {}
 
     // Sync from API (authoritative for shared fields only)
@@ -319,22 +328,25 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
         final apiSettings = AppSettings.fromApiJson(res.data as Map<String, dynamic>);
         // Paramètres device-only : clé fixe > clé scopée > état courant
         state = apiSettings.copyWith(
-          bluetoothPrinterMac:  deviceBtMac    ?? local?.bluetoothPrinterMac  ?? state.bluetoothPrinterMac,
-          bluetoothPrinterName: deviceBtName   ?? local?.bluetoothPrinterName ?? state.bluetoothPrinterName,
-          paperWidth:           devicePaperWidth ?? local?.paperWidth          ?? state.paperWidth,
-          posAutoPrint:         deviceAutoPrint  ?? local?.posAutoPrint        ?? state.posAutoPrint,
+          bluetoothPrinterMac:  deviceBtMac           ?? local?.bluetoothPrinterMac  ?? state.bluetoothPrinterMac,
+          bluetoothPrinterName: deviceBtName           ?? local?.bluetoothPrinterName ?? state.bluetoothPrinterName,
+          paperWidth:           devicePaperWidth        ?? local?.paperWidth           ?? state.paperWidth,
+          receiptDarkness:      deviceReceiptDarkness   ?? local?.receiptDarkness      ?? state.receiptDarkness,
+          posAutoPrint:         deviceAutoPrint          ?? local?.posAutoPrint         ?? state.posAutoPrint,
         );
         await _storage.write(key: key, value: jsonEncode(state.toJson()));
       }
     } catch (_) {
       // Network unavailable — local cache already applied above
       // Appliquer quand même les valeurs device-only sur le cache local
-      if (devicePaperWidth != null || deviceBtMac != null || deviceBtName != null || deviceAutoPrint != null) {
+      if (devicePaperWidth != null || deviceReceiptDarkness != null ||
+          deviceBtMac != null || deviceBtName != null || deviceAutoPrint != null) {
         state = state.copyWith(
-          bluetoothPrinterMac:  deviceBtMac    ?? state.bluetoothPrinterMac,
-          bluetoothPrinterName: deviceBtName   ?? state.bluetoothPrinterName,
-          paperWidth:           devicePaperWidth ?? state.paperWidth,
-          posAutoPrint:         deviceAutoPrint  ?? state.posAutoPrint,
+          bluetoothPrinterMac:  deviceBtMac          ?? state.bluetoothPrinterMac,
+          bluetoothPrinterName: deviceBtName          ?? state.bluetoothPrinterName,
+          paperWidth:           devicePaperWidth       ?? state.paperWidth,
+          receiptDarkness:      deviceReceiptDarkness  ?? state.receiptDarkness,
+          posAutoPrint:         deviceAutoPrint         ?? state.posAutoPrint,
         );
       }
     }
@@ -376,6 +388,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('device_paper_width', settings.paperWidth);
+      await prefs.setInt('device_receipt_darkness', settings.receiptDarkness);
       await prefs.setString('device_bt_mac', settings.bluetoothPrinterMac);
       await prefs.setString('device_bt_name', settings.bluetoothPrinterName);
       await prefs.setBool('device_pos_auto_print', settings.posAutoPrint);

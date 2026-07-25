@@ -37,18 +37,23 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
 
   // 80 mm ≈ 226 pt  |  58 mm ≈ 164 pt
   final pageWidth = settings.paperWidth == 58 ? 164.0 : 226.0;
-  // Item table column widths scale with page
-  final qtyColW  = settings.paperWidth == 58 ? 16.0 : 22.0;
-  final priceColW = settings.paperWidth == 58 ? 36.0 : 54.0;
-  final totalColW = settings.paperWidth == 58 ? 36.0 : 54.0;
+  // 3 colonnes : ARTICLE (flex) | QTÉ (fixe) | TOTAL (fixe)
+  final qtyColW   = settings.paperWidth == 58 ? 18.0 : 24.0;
+  final totalColW = settings.paperWidth == 58 ? 46.0 : 62.0;
+
+  // Couleur du texte selon receiptDarkness (1=gris … 5=noir pur)
+  // niveau 1 → gris 40 %  |  niveau 5 → noir pur
+  final dLevel = settings.receiptDarkness.clamp(1, 5);
+  final inkGray = dLevel == 5 ? 0.0 : (5 - dLevel) * 0.08;
+  final inkColor = PdfColor(inkGray, inkGray, inkGray);
 
   doc.addPage(pw.Page(
     pageFormat: PdfPageFormat(pageWidth, double.infinity, marginAll: 8),
     build: (ctx) {
-      final base  = pw.TextStyle(font: font,     fontSize: 8);
-      final bold  = pw.TextStyle(font: fontBold,  fontSize: 8);
-      final small = pw.TextStyle(font: font,     fontSize: 7);
-      final title = pw.TextStyle(font: fontBold,  fontSize: 11);
+      final base  = pw.TextStyle(font: font,    fontSize: 8,  color: inkColor);
+      final bold  = pw.TextStyle(font: fontBold, fontSize: 8,  color: inkColor);
+      final small = pw.TextStyle(font: font,    fontSize: 7,  color: inkColor);
+      final title = pw.TextStyle(font: fontBold, fontSize: 11, color: inkColor);
       final sym   = settings.currencySymbol;
 
       pw.Widget divider() =>
@@ -60,12 +65,12 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
             pw.Text(value, style: isBold ? bold : base),
           ]);
 
+      // 3 colonnes : ARTICLE (flex) | QTÉ (fixe) | TOTAL (fixe)
       pw.Widget itemsTable() => pw.Table(
             columnWidths: {
               0: pw.FlexColumnWidth(),
               1: pw.FixedColumnWidth(qtyColW),
-              2: pw.FixedColumnWidth(priceColW),
-              3: pw.FixedColumnWidth(totalColW),
+              2: pw.FixedColumnWidth(totalColW),
             },
             children: [
               pw.TableRow(children: [
@@ -73,13 +78,9 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
                 pw.Center(child: pw.Text('QTÉ', style: bold)),
                 pw.Align(
                     alignment: pw.Alignment.centerRight,
-                    child: pw.Text('PRIX', style: bold)),
-                pw.Align(
-                    alignment: pw.Alignment.centerRight,
                     child: pw.Text('TOTAL', style: bold)),
               ]),
               pw.TableRow(children: [
-                pw.SizedBox(height: 3),
                 pw.SizedBox(height: 3),
                 pw.SizedBox(height: 3),
                 pw.SizedBox(height: 3),
@@ -93,13 +94,6 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
                       child: pw.Padding(
                         padding: const pw.EdgeInsets.symmetric(vertical: 1),
                         child: pw.Text('${item.quantity.toInt()}', style: base),
-                      ),
-                    ),
-                    pw.Align(
-                      alignment: pw.Alignment.centerRight,
-                      child: pw.Padding(
-                        padding: const pw.EdgeInsets.symmetric(vertical: 1),
-                        child: pw.Text(numFmt.format(item.unitPrice), style: base),
                       ),
                     ),
                     pw.Align(

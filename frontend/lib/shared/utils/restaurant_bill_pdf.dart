@@ -50,9 +50,12 @@ Future<Uint8List> buildRestaurantBillPdf(
   final isPaid = reference != null;
 
   final pageWidth = settings.paperWidth == 58 ? 164.0 : 226.0;
-  final qtyW = settings.paperWidth == 58 ? 16.0 : 22.0;
-  final priceW = settings.paperWidth == 58 ? 36.0 : 52.0;
-  final totalW = settings.paperWidth == 58 ? 36.0 : 52.0;
+  final qtyW   = settings.paperWidth == 58 ? 18.0 : 24.0;
+  final totalW = settings.paperWidth == 58 ? 46.0 : 62.0;
+
+  final dLevel  = settings.receiptDarkness.clamp(1, 5);
+  final inkGray = dLevel == 5 ? 0.0 : (5 - dLevel) * 0.08;
+  final inkColor = PdfColor(inkGray, inkGray, inkGray);
 
   final tip = order.tip;
   final subtotal = order.subtotal;
@@ -63,11 +66,11 @@ Future<Uint8List> buildRestaurantBillPdf(
   doc.addPage(pw.Page(
     pageFormat: PdfPageFormat(pageWidth, double.infinity, marginAll: 8),
     build: (ctx) {
-      final base  = pw.TextStyle(font: font,     fontSize: 8);
-      final bold  = pw.TextStyle(font: fontBold,  fontSize: 8);
-      final small = pw.TextStyle(font: font,     fontSize: 7);
-      final title = pw.TextStyle(font: fontBold,  fontSize: 11);
-      final head  = pw.TextStyle(font: fontBold,  fontSize: 10);
+      final base  = pw.TextStyle(font: font,    fontSize: 8,  color: inkColor);
+      final bold  = pw.TextStyle(font: fontBold, fontSize: 8,  color: inkColor);
+      final small = pw.TextStyle(font: font,    fontSize: 7,  color: inkColor);
+      final title = pw.TextStyle(font: fontBold, fontSize: 11, color: inkColor);
+      final head  = pw.TextStyle(font: fontBold, fontSize: 10, color: inkColor);
 
       pw.Widget divider() =>
           pw.Divider(thickness: 0.5, color: PdfColors.grey400);
@@ -75,18 +78,16 @@ Future<Uint8List> buildRestaurantBillPdf(
       pw.Widget totalRow(String label, String value,
               {bool isBold = false}) =>
           pw.Row(children: [
-            pw.Expanded(
-                child: pw.Text(label,
-                    style: isBold ? bold : base)),
+            pw.Expanded(child: pw.Text(label, style: isBold ? bold : base)),
             pw.Text(value, style: isBold ? bold : base),
           ]);
 
+      // 3 colonnes : ARTICLE (flex) | QTÉ (fixe) | TOTAL (fixe)
       pw.Widget itemsTable() => pw.Table(
             columnWidths: {
               0: pw.FlexColumnWidth(),
               1: pw.FixedColumnWidth(qtyW),
-              2: pw.FixedColumnWidth(priceW),
-              3: pw.FixedColumnWidth(totalW),
+              2: pw.FixedColumnWidth(totalW),
             },
             children: [
               pw.TableRow(children: [
@@ -94,14 +95,12 @@ Future<Uint8List> buildRestaurantBillPdf(
                 pw.Center(child: pw.Text('QTÉ', style: bold)),
                 pw.Align(
                     alignment: pw.Alignment.centerRight,
-                    child: pw.Text('PRIX', style: bold)),
-                pw.Align(
-                    alignment: pw.Alignment.centerRight,
                     child: pw.Text('TOTAL', style: bold)),
               ]),
               pw.TableRow(children: [
-                pw.SizedBox(height: 3), pw.SizedBox(height: 3),
-                pw.SizedBox(height: 3), pw.SizedBox(height: 3),
+                pw.SizedBox(height: 3),
+                pw.SizedBox(height: 3),
+                pw.SizedBox(height: 3),
               ]),
               ...order.items.map((item) {
                 final name = item.productName;
@@ -138,16 +137,7 @@ Future<Uint8List> buildRestaurantBillPdf(
                     alignment: pw.Alignment.centerRight,
                     child: pw.Padding(
                       padding: const pw.EdgeInsets.symmetric(vertical: 1),
-                      child: pw.Text(numFmt.format(item.unitPrice),
-                          style: base),
-                    ),
-                  ),
-                  pw.Align(
-                    alignment: pw.Alignment.centerRight,
-                    child: pw.Padding(
-                      padding: const pw.EdgeInsets.symmetric(vertical: 1),
-                      child: pw.Text(numFmt.format(item.subtotal),
-                          style: bold),
+                      child: pw.Text(numFmt.format(item.subtotal), style: bold),
                     ),
                   ),
                 ]);

@@ -1592,6 +1592,39 @@ class _BluetoothPrinterSectionState extends State<_BluetoothPrinterSection> {
               style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
             ),
 
+            const SizedBox(height: 16),
+
+            // ── Noirceur du texte ────────────────────────────────────────
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Noirceur du texte',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                Text(
+                  switch (widget.settings.receiptDarkness) {
+                    1 => 'Très pâle',
+                    2 => 'Pâle',
+                    3 => 'Normale',
+                    4 => 'Foncée',
+                    _ => 'Maximum',
+                  },
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+            Slider(
+              value: widget.settings.receiptDarkness.toDouble(),
+              min: 1,
+              max: 5,
+              divisions: 4,
+              onChanged: (v) => widget.notifier.save(
+                  widget.settings.copyWith(receiptDarkness: v.round())),
+            ),
+            const Text(
+              'Ajuste la couleur du texte dans le reçu PDF. Augmentez si l\'impression est pâle.',
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
+
             const SizedBox(height: 12),
 
             // Bouton scan
