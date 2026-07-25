@@ -294,6 +294,19 @@ def list_tenants(
          .all()
     }
 
+    inactive_register_counts = {
+        row.tenant_id: row.cnt
+        for row in db.query(
+            PosRegister.tenant_id,
+            func.count(PosRegister.id).label("cnt"),
+        ).filter(
+            PosRegister.tenant_id.in_(tenant_ids),
+            PosRegister.is_active == False,  # noqa: E712
+        )
+         .group_by(PosRegister.tenant_id)
+         .all()
+    }
+
     depot_counts = {
         row.tenant_id: row.cnt
         for row in db.query(
@@ -302,6 +315,19 @@ def list_tenants(
         ).filter(
             Warehouse.tenant_id.in_(tenant_ids),
             Warehouse.is_active == True,  # noqa: E712
+        )
+         .group_by(Warehouse.tenant_id)
+         .all()
+    }
+
+    inactive_depot_counts = {
+        row.tenant_id: row.cnt
+        for row in db.query(
+            Warehouse.tenant_id,
+            func.count(Warehouse.id).label("cnt"),
+        ).filter(
+            Warehouse.tenant_id.in_(tenant_ids),
+            Warehouse.is_active == False,  # noqa: E712
         )
          .group_by(Warehouse.tenant_id)
          .all()
@@ -346,8 +372,10 @@ def list_tenants(
             "payment_count":          payment_count,
             "last_payment_at":        last_payment_at,
             "has_stripe":             bool(t.stripe_customer_id or t.stripe_subscription_id),
-            "register_count":         register_counts.get(t.id, 0),
-            "depot_count":            depot_counts.get(t.id, 0),
+            "register_count":          register_counts.get(t.id, 0),
+            "inactive_register_count": inactive_register_counts.get(t.id, 0),
+            "depot_count":             depot_counts.get(t.id, 0),
+            "inactive_depot_count":    inactive_depot_counts.get(t.id, 0),
         })
 
     return result
@@ -751,6 +779,22 @@ def unclaim_warehouse(
     return {"id": wh.id, "is_claimed": False}
 
 
+@router.patch("/warehouses/{warehouse_id}/activate")
+def activate_warehouse(
+    warehouse_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """Réactiver un dépôt désactivé (is_active=False → True)."""
+    wh = db.query(Warehouse).filter(Warehouse.id == warehouse_id).first()
+    if not wh:
+        raise HTTPException(status_code=404, detail="Dépôt introuvable")
+    wh.is_active = True
+    db.commit()
+    _log.info("Warehouse réactivé: %s (tenant=%s)", warehouse_id, wh.tenant_id)
+    return {"id": wh.id, "is_active": True}
+
+
 @router.patch("/warehouses/{warehouse_id}/claim")
 def claim_warehouse(
     warehouse_id: str,
@@ -806,6 +850,23 @@ def toggle_tenant_register(
         reg.session_token = None
     db.commit()
     return {"id": reg.id, "is_active": reg.is_active}
+
+
+@router.delete("/tenants/{tenant_id}/registers/{register_id}")
+def delete_tenant_register(
+    tenant_id: str,
+    register_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """Suppression définitive d'une caisse (hard-delete)."""
+    reg = db.query(PosRegister).filter_by(id=register_id, tenant_id=tenant_id).first()
+    if not reg:
+        raise HTTPException(status_code=404, detail="Caisse introuvable")
+    db.delete(reg)
+    db.commit()
+    _log.info("Caisse supprimée définitivement: %s (tenant=%s)", register_id, tenant_id)
+    return {"deleted": 1}
 
 
 # ── Confirm pending payment ──────────────────────────────────────────────────

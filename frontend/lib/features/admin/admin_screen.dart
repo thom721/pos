@@ -286,9 +286,11 @@ class _TenantCard extends ConsumerWidget {
     final isActive = status == 'active';
     final maxCaisses       = tenant['max_caisses']    as int? ?? 1;
     final maxDepots        = tenant['max_depots']     as int? ?? 1;
-    final registerCount    = tenant['register_count'] as int? ?? 0;
-    final depotCount       = tenant['depot_count']    as int? ?? 0;
-    final canManageTenants = tenant['can_manage_tenants'] as bool? ?? false;
+    final registerCount         = tenant['register_count']          as int? ?? 0;
+    final depotCount            = tenant['depot_count']             as int? ?? 0;
+    final inactiveRegisterCount = tenant['inactive_register_count'] as int? ?? 0;
+    final inactiveDepotCount    = tenant['inactive_depot_count']    as int? ?? 0;
+    final canManageTenants      = tenant['can_manage_tenants']      as bool? ?? false;
 
     String? formattedDate;
     if (createdAt != null) {
@@ -373,6 +375,19 @@ class _TenantCard extends ConsumerWidget {
                             : AppColors.textSecondary,
                       ),
                 ),
+                if (inactiveRegisterCount > 0) ...[
+                  const SizedBox(width: 4),
+                  Icon(Icons.warning_amber_rounded,
+                      size: 13, color: AppColors.error),
+                  const SizedBox(width: 2),
+                  Text(
+                    '$inactiveRegisterCount désact.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppColors.error),
+                  ),
+                ],
                 const SizedBox(width: 12),
                 Icon(Icons.store_rounded,
                     size: 13, color: AppColors.textSecondary),
@@ -385,6 +400,19 @@ class _TenantCard extends ConsumerWidget {
                             : AppColors.textSecondary,
                       ),
                 ),
+                if (inactiveDepotCount > 0) ...[
+                  const SizedBox(width: 4),
+                  Icon(Icons.warning_amber_rounded,
+                      size: 13, color: AppColors.error),
+                  const SizedBox(width: 2),
+                  Text(
+                    '$inactiveDepotCount désact.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: AppColors.error),
+                  ),
+                ],
                 const SizedBox(width: 12),
                 if (canManageTenants) ...[
                   Icon(Icons.supervisor_account_rounded,
@@ -2055,6 +2083,35 @@ class _WarehousesDialogState extends ConsumerState<_WarehousesDialog> {
     }
   }
 
+  Future<void> _activate(String warehouseId, String warehouseName) async {
+    setState(() => _busy.add(warehouseId));
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      await d.patch('/api/admin/warehouses/$warehouseId/activate');
+      setState(() {
+        _warehouses = _warehouses!.map((w) {
+          if (w['id'] == warehouseId) return {...w, 'is_active': true};
+          return w;
+        }).toList();
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('"$warehouseName" réactivé'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : ${extractAnyError(e)}'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _busy.remove(warehouseId));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -2131,7 +2188,17 @@ class _WarehousesDialogState extends ConsumerState<_WarehousesDialog> {
                                 : Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      if (isClaimed)
+                                      if (!isActive)
+                                        IconButton(
+                                          icon: const Icon(
+                                              Icons.restore_rounded,
+                                              size: 18),
+                                          tooltip: 'Réactiver ce dépôt',
+                                          color: AppColors.success,
+                                          onPressed: () =>
+                                              _activate(id, name),
+                                        )
+                                      else if (isClaimed)
                                         IconButton(
                                           icon: const Icon(
                                               Icons.link_off_rounded,
@@ -2224,6 +2291,7 @@ class _RegistersDialogState extends ConsumerState<_RegistersDialog> {
   String? _error;
   bool _loading = true;
   final Set<String> _toggling = {};
+  final Set<String> _deleting = {};
 
   @override
   void initState() {
@@ -2268,6 +2336,50 @@ class _RegistersDialogState extends ConsumerState<_RegistersDialog> {
       }
     } finally {
       setState(() => _toggling.remove(registerId));
+    }
+  }
+
+  Future<void> _delete(String registerId, String registerName) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer la caisse'),
+        content: Text('Supprimer définitivement "$registerName" ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deleting.add(registerId));
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      await d.delete('/api/admin/tenants/${widget.tenantId}/registers/$registerId');
+      setState(() => _registers!.removeWhere((r) => r['id'] == registerId));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('"$registerName" supprimée'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : ${extractAnyError(e)}'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _deleting.remove(registerId));
     }
   }
 
@@ -2321,16 +2433,30 @@ class _RegistersDialogState extends ConsumerState<_RegistersDialog> {
                               '${hasSession ? '  •  Session ouverte' : ''}',
                               style: const TextStyle(fontSize: 11),
                             ),
-                            trailing: _toggling.contains(id)
+                            trailing: (_toggling.contains(id) || _deleting.contains(id))
                                 ? const SizedBox(
                                     width: 24,
                                     height: 24,
                                     child: CircularProgressIndicator(strokeWidth: 2),
                                   )
-                                : Switch(
-                                    value: isActive,
-                                    activeThumbColor: AppColors.success,
-                                    onChanged: (_) => _toggle(id),
+                                : Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Switch(
+                                        value: isActive,
+                                        activeThumbColor: AppColors.success,
+                                        onChanged: (_) => _toggle(id),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(
+                                            Icons.delete_outline_rounded,
+                                            size: 18),
+                                        tooltip: 'Supprimer cette caisse',
+                                        color: AppColors.error,
+                                        onPressed: () => _delete(
+                                            id, r['name'] as String? ?? id),
+                                      ),
+                                    ],
                                   ),
                           );
                         },
