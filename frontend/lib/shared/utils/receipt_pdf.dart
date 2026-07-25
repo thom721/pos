@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
@@ -15,10 +14,9 @@ import 'package:pos_connect/providers/settings_provider.dart';
 Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
   final doc = pw.Document();
 
-  final font = await PdfGoogleFonts.notoSansRegular()
-      .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helvetica());
-  final fontBold = await PdfGoogleFonts.notoSansBold()
-      .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helveticaBold());
+  // Polices intégrées — pas de réseau, pas de timeout, strokes épais
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
 
   // Fetch logo bytes (ignore errors — logo is optional)
   pw.MemoryImage? logoImage;
@@ -41,11 +39,8 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
   final qtyColW   = settings.paperWidth == 58 ? 18.0 : 24.0;
   final totalColW = settings.paperWidth == 58 ? 46.0 : 62.0;
 
-  // Couleur du texte selon receiptDarkness (1=gris … 5=noir pur)
-  // niveau 1 → gris 40 %  |  niveau 5 → noir pur
-  final dLevel = settings.receiptDarkness.clamp(1, 5);
-  final inkGray = dLevel == 5 ? 0.0 : (5 - dLevel) * 0.08;
-  final inkColor = PdfColor(inkGray, inkGray, inkGray);
+  // Noir pur pour impression bureau — receiptDarkness n'agit que sur Sunmi
+  const inkColor = PdfColors.black;
 
   doc.addPage(pw.Page(
     pageFormat: PdfPageFormat(pageWidth, double.infinity, marginAll: 8),

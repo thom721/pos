@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
@@ -24,12 +23,9 @@ Future<Uint8List> buildRestaurantBillPdf(
 }) async {
   final doc = pw.Document();
 
-  final font = await PdfGoogleFonts.notoSansRegular()
-      .timeout(const Duration(seconds: 4),
-          onTimeout: () => pw.Font.helvetica());
-  final fontBold = await PdfGoogleFonts.notoSansBold()
-      .timeout(const Duration(seconds: 4),
-          onTimeout: () => pw.Font.helveticaBold());
+  // Polices intégrées — pas de réseau, pas de timeout, strokes épais
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
 
   pw.MemoryImage? logoImage;
   if (settings.logoPath.isNotEmpty) {
@@ -53,9 +49,7 @@ Future<Uint8List> buildRestaurantBillPdf(
   final qtyW   = settings.paperWidth == 58 ? 18.0 : 24.0;
   final totalW = settings.paperWidth == 58 ? 46.0 : 62.0;
 
-  final dLevel  = settings.receiptDarkness.clamp(1, 5);
-  final inkGray = dLevel == 5 ? 0.0 : (5 - dLevel) * 0.08;
-  final inkColor = PdfColor(inkGray, inkGray, inkGray);
+  const inkColor = PdfColors.black;
 
   final tip = order.tip;
   final subtotal = order.subtotal;
