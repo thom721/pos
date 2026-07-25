@@ -396,6 +396,38 @@ def _run_sync_inner(db: Session) -> dict:
     except Exception as exc:
         _log.warning("sync tenant-billing: %s", exc)
 
+    # ── Sync public platform config (pricing, payment methods) ───────────────
+    # Never syncs credentials — only fields listed in _PUBLIC_CONFIG_FIELDS.
+    _PUBLIC_CONFIG_FIELDS = (
+        "moncash_number", "natcash_number",
+        "monthly_price_htg", "monthly_price_usd",
+        "trial_days", "trial_included_in_billing", "annual_discount_pct",
+        "support_email", "support_whatsapp", "support_address",
+        "moncash_mode", "natcash_mode",
+        "price_per_extra_caisse_htg", "price_per_extra_caisse_usd",
+        "price_per_extra_depot_htg", "price_per_extra_depot_usd",
+        "stat_businesses", "stat_transactions_day", "stat_uptime",
+        "pricing_plans_json", "logo_url",
+        "cash_enabled", "moncash_enabled", "natcash_enabled", "card_enabled",
+    )
+    try:
+        billing_url = (settings.BILLING_URL or url).rstrip("/")
+        pub_resp = _http_get(
+            f"{billing_url}/api/sync/public-platform-config",
+            params={},
+            headers=_headers(token),
+        )
+        pub = pub_resp.json()
+        from api.models.PlatformConfig import PlatformConfig as _PC
+        local_cfg = db.query(_PC).first()
+        if local_cfg and isinstance(pub, dict) and pub:
+            for field in _PUBLIC_CONFIG_FIELDS:
+                if field in pub:
+                    setattr(local_cfg, field, pub[field])
+            db.commit()
+    except Exception as exc:
+        _log.warning("sync public-platform-config: %s", exc)
+
     summary["ok"] = len(summary["errors"]) == 0
     return summary
 

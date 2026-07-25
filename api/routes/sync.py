@@ -400,6 +400,55 @@ def tenant_billing(
     }
 
 
+# ── CLOUD: public platform config (pricing, payment methods) ─────────────────
+
+@router.get("/public-platform-config")
+def public_platform_config(
+    claims: dict = Depends(require_sync_token),
+    db:     Session = Depends(get_db),
+):
+    """Return only public platform_config fields to local installations.
+    Never exposes credentials (admin_password_hash, smtp_*, stripe_price_id).
+    Called by the local sync service each cycle to keep pricing/methods current.
+    """
+    from api.models.PlatformConfig import PlatformConfig
+    from decimal import Decimal
+    cfg = db.query(PlatformConfig).first()
+    if not cfg:
+        return {}
+
+    def _f(v):
+        return float(v) if isinstance(v, Decimal) else v
+
+    return {
+        "moncash_number":             cfg.moncash_number,
+        "natcash_number":             cfg.natcash_number,
+        "monthly_price_htg":          _f(cfg.monthly_price_htg),
+        "monthly_price_usd":          _f(cfg.monthly_price_usd),
+        "trial_days":                 cfg.trial_days,
+        "trial_included_in_billing":  cfg.trial_included_in_billing,
+        "annual_discount_pct":        cfg.annual_discount_pct,
+        "support_email":              cfg.support_email,
+        "support_whatsapp":           cfg.support_whatsapp,
+        "support_address":            cfg.support_address,
+        "moncash_mode":               cfg.moncash_mode,
+        "natcash_mode":               cfg.natcash_mode,
+        "price_per_extra_caisse_htg": _f(cfg.price_per_extra_caisse_htg),
+        "price_per_extra_caisse_usd": _f(cfg.price_per_extra_caisse_usd),
+        "price_per_extra_depot_htg":  _f(cfg.price_per_extra_depot_htg),
+        "price_per_extra_depot_usd":  _f(cfg.price_per_extra_depot_usd),
+        "stat_businesses":            cfg.stat_businesses,
+        "stat_transactions_day":      cfg.stat_transactions_day,
+        "stat_uptime":                cfg.stat_uptime,
+        "pricing_plans_json":         cfg.pricing_plans_json,
+        "logo_url":                   cfg.logo_url,
+        "cash_enabled":               cfg.cash_enabled,
+        "moncash_enabled":            cfg.moncash_enabled,
+        "natcash_enabled":            cfg.natcash_enabled,
+        "card_enabled":               cfg.card_enabled,
+    }
+
+
 # ── LOCAL: status ─────────────────────────────────────────────────────────────
 
 @router.get("/status")
