@@ -263,7 +263,7 @@ function Show-AuthDialog {
 # -- Formulaire principal ------------------------------------------------------
 $form                  = New-Object System.Windows.Forms.Form
 $form.Text             = "POS Serveur -- Etat des services"
-$form.ClientSize       = New-Object System.Drawing.Size(500, 350)
+$form.ClientSize       = New-Object System.Drawing.Size(500, 410)
 $form.StartPosition    = "CenterScreen"
 $form.FormBorderStyle  = "FixedDialog"
 $form.MaximizeBox      = $false
@@ -381,6 +381,50 @@ $btnStart   = New-Btn "Demarrer tout" $clrBtnGrn  128
 $btnRestart = New-Btn "Redemarrer"    $clrBtnBlue 242
 $btnStop    = New-Btn "Arreter tout"  $clrBtnRed  356
 
+# -- Séparateur + bouton migration DB (Epic 3 / Epic 4) -----------------------
+$clrBtnPurple = [System.Drawing.Color]::FromArgb(142, 68, 173)
+$clrBtnSqlite = [System.Drawing.Color]::FromArgb(41, 128, 185)
+
+$sep           = New-Object System.Windows.Forms.Label
+$sep.Text      = ""
+$sep.BackColor = [System.Drawing.Color]::FromArgb(52, 73, 94)
+$sep.Location  = New-Object System.Drawing.Point(14, 338)
+$sep.Size      = New-Object System.Drawing.Size(472, 1)
+$form.Controls.Add($sep)
+
+$lDbType           = New-Object System.Windows.Forms.Label
+$lDbType.Text      = "Base de donnees : " + $DbTypeIni.ToUpper()
+$lDbType.ForeColor = $clrSub
+$lDbType.Location  = New-Object System.Drawing.Point(14, 348)
+$lDbType.AutoSize  = $true
+$form.Controls.Add($lDbType)
+
+# Bouton "Passer a MySQL" — visible seulement si mode SQLite (Epic 3)
+$btnToMySQL        = New-Object System.Windows.Forms.Button
+$btnToMySQL.Text   = "Passer a MySQL"
+$btnToMySQL.Size   = New-Object System.Drawing.Size(148, 34)
+$btnToMySQL.Location = New-Object System.Drawing.Point(222, 368)
+$btnToMySQL.BackColor = $clrBtnPurple
+$btnToMySQL.ForeColor = $clrText
+$btnToMySQL.FlatStyle = "Flat"
+$btnToMySQL.FlatAppearance.BorderSize = 0
+$btnToMySQL.Font   = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$btnToMySQL.Visible = ($DbTypeIni -eq "sqlite")
+$form.Controls.Add($btnToMySQL)
+
+# Bouton "Revenir a SQLite" — visible seulement si mode MySQL ET 1 seule caisse (Epic 4)
+$btnToSQLite        = New-Object System.Windows.Forms.Button
+$btnToSQLite.Text   = "Revenir a SQLite"
+$btnToSQLite.Size   = New-Object System.Drawing.Size(148, 34)
+$btnToSQLite.Location = New-Object System.Drawing.Point(338, 368)
+$btnToSQLite.BackColor = $clrBtnSqlite
+$btnToSQLite.ForeColor = $clrText
+$btnToSQLite.FlatStyle = "Flat"
+$btnToSQLite.FlatAppearance.BorderSize = 0
+$btnToSQLite.Font   = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$btnToSQLite.Visible = ($DbTypeIni -eq "mysql")
+$form.Controls.Add($btnToSQLite)
+
 # Attente non-bloquante : garde la fenetre reactive pendant les sleeps
 function Start-UIWait([int]$Seconds) {
     $end = (Get-Date).AddSeconds($Seconds)
@@ -391,7 +435,7 @@ function Start-UIWait([int]$Seconds) {
 }
 
 # -- Helpers etat UI -----------------------------------------------------------
-$allBtns = @($btnRefresh, $btnStart, $btnRestart, $btnStop) +
+$allBtns = @($btnRefresh, $btnStart, $btnRestart, $btnStop, $btnToMySQL, $btnToSQLite) +
            @($startSvcBtns.Values) + @($stopSvcBtns.Values)
 
 # -- Handlers par service (GetNewClosure capture la variable de boucle) --------
@@ -532,6 +576,173 @@ $btnRestart.Add_Click({
     Set-Busy "Demarrage Nginx..."
     Start-Service "POS_Connect_Nginx" -ErrorAction SilentlyContinue
     Start-UIWait 2
+    Update-Status
+    Set-Free
+})
+
+# -- Handler : Passer a MySQL (Epic 3) -----------------------------------------
+$btnToMySQL.Add_Click({
+    $r = [System.Windows.Forms.MessageBox]::Show(
+        "Cette operation va :" + [System.Environment]::NewLine +
+        "  1. Installer MySQL 8 si absent" + [System.Environment]::NewLine +
+        "  2. Migrer toutes vos donnees SQLite vers MySQL" + [System.Environment]::NewLine +
+        "  3. Redemarrer les services POS" + [System.Environment]::NewLine + [System.Environment]::NewLine +
+        "Un backup de votre fichier SQLite sera cree automatiquement." + [System.Environment]::NewLine +
+        "Duree estimee : 3 a 10 minutes selon la taille des donnees." + [System.Environment]::NewLine + [System.Environment]::NewLine +
+        "Continuer ?",
+        "Passer a MySQL",
+        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+        [System.Windows.Forms.MessageBoxIcon]::Warning
+    )
+    if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+    # Chemin du script d'upgrade
+    $upgradeScript = Join-Path $env:ProgramFiles "POS_Connect\setup-mysql-upgrade.ps1"
+    if (-not (Test-Path $upgradeScript)) {
+        [System.Windows.Forms.MessageBox]::Show(
+            "Script introuvable : $upgradeScript`nVerifiez votre installation POS Connect.",
+            "Erreur",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+        return
+    }
+
+    Set-Busy "Lancement de l'upgrade MySQL..."
+    $btnToMySQL.Visible = $false
+
+    # Lancer dans une nouvelle fenetre PowerShell admin (pour voir la progression)
+    Start-Process powershell.exe `
+        -ArgumentList "-ExecutionPolicy Bypass -File `"$upgradeScript`"" `
+        -Verb RunAs `
+        -Wait
+
+    # Relire le type de base apres l'upgrade
+    $newType = "mysql"
+    if (Test-Path $IniPath) {
+        foreach ($line in (Get-Content $IniPath -Encoding UTF8)) {
+            if ($line -match '^\s*type\s*=\s*(\w+)') { $newType = $Matches[1].Trim().ToLower() }
+        }
+    }
+    $script:DbTypeIni = $newType
+    $lDbType.Text = "Base de donnees : " + $newType.ToUpper()
+    $btnToMySQL.Visible  = ($newType -eq "sqlite")
+    $btnToSQLite.Visible = ($newType -eq "mysql")
+
+    # Recharger la liste des services (MySQL maintenant présent)
+    if ($newType -eq "mysql" -and -not $SVCS.Contains("POS_Connect_MySQL")) {
+        $SVCS = [ordered]@{
+            "POS_Connect_MySQL" = "MySQL        (base de donnees)"
+            "POS_Connect_API"   = "API POS      (serveur)"
+            "POS_Connect_Nginx" = "Nginx        (connexions HTTPS)"
+        }
+    }
+    Update-Status
+    Set-Free
+})
+
+# -- Handler : Revenir a SQLite (Epic 4) ---------------------------------------
+$btnToSQLite.Add_Click({
+    # Vérifier qu'il n'y a qu'une seule caisse active (condition pour rétrograder)
+    $ApiRunning = (Get-SvcStatus "POS_Connect_API") -eq "Running"
+    if ($ApiRunning) {
+        try {
+            $headers = @{ "Content-Type" = "application/json" }
+            $resp = Invoke-RestMethod -Uri "https://localhost:$ApiPort/api/warehouses/registers" `
+                        -Headers $headers -SkipCertificateCheck -TimeoutSec 5 -ErrorAction Stop
+            $activeCount = ($resp | Where-Object { $_.is_active -eq $true }).Count
+            if ($activeCount -gt 1) {
+                [System.Windows.Forms.MessageBox]::Show(
+                    "Impossible de revenir a SQLite : $activeCount caisses actives detectees." + [System.Environment]::NewLine +
+                    "SQLite est mono-caisse. Desactivez les caisses supplementaires avant de continuer.",
+                    "Retour SQLite impossible",
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Warning
+                ) | Out-Null
+                return
+            }
+        } catch {
+            # API non joignable — continuer avec avertissement
+        }
+    }
+
+    $r = [System.Windows.Forms.MessageBox]::Show(
+        "Cette operation va migrer toutes vos donnees MySQL vers SQLite," + [System.Environment]::NewLine +
+        "puis reconfigurer POS Connect en mode mono-poste." + [System.Environment]::NewLine + [System.Environment]::NewLine +
+        "Le service MySQL sera conserve mais inutilise." + [System.Environment]::NewLine +
+        "Vous pouvez le supprimer manuellement depuis les services Windows." + [System.Environment]::NewLine + [System.Environment]::NewLine +
+        "ATTENTION : operation irreversible sans backup." + [System.Environment]::NewLine +
+        "Un backup MySQL sera tente (mysqldump) si disponible." + [System.Environment]::NewLine + [System.Environment]::NewLine +
+        "Continuer ?",
+        "Revenir a SQLite",
+        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+        [System.Windows.Forms.MessageBoxIcon]::Warning
+    )
+    if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+    # Auth admin POS
+    $ok = Show-AuthDialog "Retour vers SQLite"
+    if (-not $ok) { return }
+
+    Set-Busy "Migration MySQL -> SQLite..."
+    $btnToSQLite.Enabled = $false
+
+    $InstallRoot    = Join-Path $env:ProgramFiles "POS_Connect"
+    $ApiDir         = Join-Path $InstallRoot "api"
+    $MigrateScript  = Join-Path $ApiDir "migrate_db.py"
+    $PythonExe      = Join-Path $ApiDir "python.exe"
+    if (-not (Test-Path $PythonExe)) {
+        $PythonExe = (Get-Command "python" -ErrorAction SilentlyContinue)?.Source
+    }
+
+    if (-not (Test-Path $MigrateScript) -or -not $PythonExe) {
+        Set-Free
+        [System.Windows.Forms.MessageBox]::Show(
+            "migrate_db.py ou python.exe introuvable dans $ApiDir.",
+            "Erreur", [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        $btnToSQLite.Enabled = $true
+        return
+    }
+
+    # Arrêter les services
+    Set-Busy "Arret des services..."
+    Stop-Service "POS_Connect_Nginx","POS_Connect_API" -Force -ErrorAction SilentlyContinue
+    Start-UIWait 3
+
+    # Lancer la migration
+    Set-Busy "Migration des donnees..."
+    $proc = Start-Process $PythonExe `
+        -ArgumentList "`"$MigrateScript`" mysql-to-sqlite --ini `"$IniPath`" --update-ini" `
+        -Wait -PassThru -NoNewWindow
+    if ($proc.ExitCode -ne 0) {
+        Start-Service "POS_Connect_API","POS_Connect_Nginx" -ErrorAction SilentlyContinue
+        Set-Free
+        $btnToSQLite.Enabled = $true
+        [System.Windows.Forms.MessageBox]::Show(
+            "La migration a echoue (code $($proc.ExitCode))." + [System.Environment]::NewLine +
+            "Les services ont ete redemarres en mode MySQL.",
+            "Erreur migration",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+        Update-Status
+        return
+    }
+
+    # Relire type
+    $newType = "sqlite"
+    foreach ($line in (Get-Content $IniPath -Encoding UTF8)) {
+        if ($line -match '^\s*type\s*=\s*(\w+)') { $newType = $Matches[1].Trim().ToLower() }
+    }
+    $lDbType.Text = "Base de donnees : " + $newType.ToUpper()
+    $btnToSQLite.Visible = ($newType -eq "mysql")
+    $btnToMySQL.Visible  = ($newType -eq "sqlite")
+
+    # Redémarrer
+    Set-Busy "Redemarrage..."
+    Start-Service "POS_Connect_API"   -ErrorAction SilentlyContinue ; Start-UIWait 4
+    Start-Service "POS_Connect_Nginx" -ErrorAction SilentlyContinue ; Start-UIWait 2
     Update-Status
     Set-Free
 })
