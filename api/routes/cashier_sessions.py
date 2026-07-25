@@ -248,6 +248,13 @@ def open_session(
     if existing:
         raise HTTPException(400, "Une session est déjà ouverte. Fermez la session existante avant d'en ouvrir une nouvelle.")
 
+    _is_manager = any(r in (current_user.roles or []) for r in ("admin", "manager"))
+    if body.force and not _is_manager:
+        raise HTTPException(
+            403,
+            "Aucune caisse disponible. Contactez votre administrateur pour en libérer ou en créer une."
+        )
+
     reg = _get_or_create_register(
         db, current_user.tenant_id, body.device_id, body.register_name,
         force=body.force, warehouse_id=body.warehouse_id,

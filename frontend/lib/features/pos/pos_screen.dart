@@ -1018,6 +1018,8 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         deviceId: _deviceId!,
         warehouseId: wh?.id,
         warehouseName: wh?.name,
+        isAdminOrManager: ref.read(isAdminProvider) ||
+            ref.read(hasRoleProvider('manager')),
         onOpened: (session) {
           if (mounted) {
             _cacheSession(session);

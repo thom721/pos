@@ -16,6 +16,7 @@ class OpenSessionDialog extends StatefulWidget {
   final String? warehouseName;
   final void Function(Map<String, dynamic> session) onOpened;
   final VoidCallback? onCancelled;
+  final bool isAdminOrManager;
 
   const OpenSessionDialog({
     super.key,
@@ -24,6 +25,7 @@ class OpenSessionDialog extends StatefulWidget {
     this.warehouseName,
     required this.onOpened,
     this.onCancelled,
+    this.isAdminOrManager = false,
   });
 
   @override
@@ -93,10 +95,24 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
         return;
       }
 
-      // 402 = toutes les caisses occupées → admin confirme
-      final confirmed = await handleLimitExceeded(context, e);
-      if (!mounted) return;
-      if (confirmed) { _open(force: true); return; }
+      // 402 = toutes les caisses occupées
+      if (e is DioException && e.response?.statusCode == 402 &&
+          e.response?.data?['detail'] == 'limit_exceeded') {
+        if (!widget.isAdminOrManager) {
+          // Le caissier ne peut pas créer de caisse — informer seulement
+          setState(() {
+            _loading = false;
+            _error = 'Aucune caisse disponible. Contactez votre administrateur pour en libérer ou en créer une.';
+          });
+          return;
+        }
+        // Admin/manager → proposer la création
+        final confirmed = await handleLimitExceeded(context, e);
+        if (!mounted) return;
+        if (confirmed) { _open(force: true); return; }
+        setState(() => _loading = false);
+        return;
+      }
 
       String msg;
       if (e is DioException) {

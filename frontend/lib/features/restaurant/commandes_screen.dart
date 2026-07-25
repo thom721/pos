@@ -13,6 +13,7 @@ import 'package:pos_connect/providers/restaurant_provider.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/shared/widgets/open_session_dialog.dart';
 
 class CommandesScreen extends ConsumerStatefulWidget {
@@ -82,6 +83,8 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
         deviceId: _deviceId!,
         warehouseId: wh?.id,
         warehouseName: wh?.name,
+        isAdminOrManager: ref.read(isAdminProvider) ||
+            ref.read(hasRoleProvider('manager')),
         onOpened: (_) {
           if (mounted) setState(() => _hasSession = true);
           if (widget.autoTableId != null) {
