@@ -18,6 +18,7 @@ from api.models.PlatformConfig import PlatformConfig
 from api.schemas.warehouse import WarehouseCreate, WarehouseUpdate, WarehouseRead
 from api.services import billing_extra_service as _billing
 from api.services import config_service as _config
+from api.models.InstallationCode import InstallationCode, generate_installation_code
 
 
 def _pricing(db: Session) -> PlatformConfig | None:
@@ -196,6 +197,13 @@ def create_warehouse(
         name="Caisse principale",
         is_active=True,
         is_initial=True,
+    ))
+
+    # Génère automatiquement un code d'installation unique pour ce dépôt
+    db.add(InstallationCode(
+        code=generate_installation_code(),
+        tenant_id=current_user.tenant_id,
+        warehouse_id=wh.id,
     ))
     db.commit()
 

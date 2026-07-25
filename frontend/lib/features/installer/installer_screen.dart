@@ -38,6 +38,10 @@ class InstallConfig {
   String cloudUrl;
   String tenantEmail;
   String tenantPassword;
+  // Pre-fetched sync token from installation-code path (skips cloud re-auth)
+  String syncTokenPrefetched;
+  String prefetchedTenantId;
+  String prefetchedOwnerEmail;
   // Depot sélectionné lors de l'installation
   String selectedWarehouseId;
   String selectedWarehouseName;
@@ -57,6 +61,9 @@ class InstallConfig {
     this.cloudUrl = '',
     this.tenantEmail = '',
     this.tenantPassword = '',
+    this.syncTokenPrefetched = '',
+    this.prefetchedTenantId = '',
+    this.prefetchedOwnerEmail = '',
     this.selectedWarehouseId = '',
     this.selectedWarehouseName = '',
   });
@@ -1401,12 +1408,14 @@ class _TenantConnectPage extends ConsumerStatefulWidget {
 }
 
 class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
-  late TextEditingController _customUrl, _email, _pwd;
+  late TextEditingController _customUrl, _email, _pwd, _codeCtrl;
   bool _usePosConnectCloud = true;
   bool _obscure = true;
   bool _testing = false;
+  bool _verifyingCode = false;
   bool _verified = false;
   String? _error;
+  String? _codeError;
   List<Map<String, dynamic>> _warehouses = [];
   String? _selectedWarehouseId;
 
@@ -1423,8 +1432,9 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
       // Pre-fill with the cloud URL so it's editable if the user needs to override it
       _customUrl = TextEditingController(text: AppConstants.cloudUrl);
     }
-    _email = TextEditingController(text: cfg.tenantEmail);
-    _pwd   = TextEditingController(text: cfg.tenantPassword);
+    _email    = TextEditingController(text: cfg.tenantEmail);
+    _pwd      = TextEditingController(text: cfg.tenantPassword);
+    _codeCtrl = TextEditingController();
   }
 
   @override
@@ -1432,6 +1442,7 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
     _customUrl.dispose();
     _email.dispose();
     _pwd.dispose();
+    _codeCtrl.dispose();
     super.dispose();
   }
 
@@ -1531,6 +1542,98 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
     }
   }
 
+  Future<void> _verifyWithCode() async {
+    final url  = _effectiveUrl;
+    final code = _codeCtrl.text.trim().toUpperCase();
+    if (url.isEmpty || code.isEmpty) return;
+
+    setState(() { _verifyingCode = true; _codeError = null; _verified = false; });
+
+    final cloudDio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+    ));
+
+    try {
+      // Verify server identity first (same as credential path)
+      final nonce = _randomNonce();
+      final idRes = await cloudDio.get(
+        '$url/api/public/identity',
+        queryParameters: {'nonce': nonce},
+      );
+      final sigB64 = idRes.data['signature'] as String?;
+      if (sigB64 == null || idRes.data['app'] != 'pos-connect-saas') {
+        setState(() => _codeError = 'Ce serveur n\'est pas un serveur POS Connect.');
+        return;
+      }
+      final valid = await _verifySignature(nonce, sigB64);
+      if (!valid) {
+        setState(() => _codeError =
+            'Signature invalide — ce serveur n\'est pas un serveur POS Connect authentique.');
+        return;
+      }
+
+      // Redeem the installation code
+      final redeemRes = await cloudDio.post(
+        '$url/api/sync/redeem-code',
+        data: {'code': code, 'device_id': 'installer'},
+      );
+      final body = redeemRes.data as Map<String, dynamic>;
+
+      final rawWarehouses = body['warehouses'] as List<dynamic>? ?? [];
+      final warehouses = rawWarehouses.cast<Map<String, dynamic>>().toList();
+
+      String? autoSelectedId;
+      String autoSelectedName = '';
+      if (warehouses.length == 1) {
+        autoSelectedId   = warehouses.first['id'] as String?;
+        autoSelectedName = warehouses.first['name'] as String? ?? '';
+      }
+
+      final syncToken   = body['sync_token'] as String? ?? '';
+      final tenantId    = body['tenant_id'] as String? ?? '';
+      final ownerEmail  = body['owner_email'] as String? ?? '';
+
+      final c = ref.read(_configProvider);
+      ref.read(_configProvider.notifier).state = c
+        ..cloudUrl                = url
+        ..tenantEmail             = ownerEmail
+        ..tenantPassword          = ''
+        ..syncTokenPrefetched     = syncToken
+        ..prefetchedTenantId      = tenantId
+        ..prefetchedOwnerEmail    = ownerEmail
+        ..selectedWarehouseId     = autoSelectedId ?? ''
+        ..selectedWarehouseName   = autoSelectedName;
+
+      setState(() {
+        _verified            = true;
+        _warehouses          = warehouses;
+        _selectedWarehouseId = autoSelectedId;
+      });
+
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      final detail = e.response?.data is Map
+          ? (e.response!.data as Map)['detail']?.toString()
+          : null;
+      final String msg;
+      if (code == 404) {
+        msg = 'Code invalide ou inconnu. Vérifiez et réessayez.';
+      } else if (code == 409) {
+        msg = detail ?? 'Ce code a déjà été utilisé — le dépôt est déjà installé.';
+      } else if (code != null) {
+        msg = detail ?? 'Erreur serveur (HTTP $code)';
+      } else {
+        msg = 'Impossible de joindre le serveur. Vérifiez votre connexion internet.';
+      }
+      setState(() => _codeError = msg);
+    } catch (e) {
+      setState(() => _codeError = e.toString());
+    } finally {
+      setState(() => _verifyingCode = false);
+    }
+  }
+
   void _switchMode(bool usePosConnect) {
     setState(() {
       _usePosConnectCloud = usePosConnect;
@@ -1541,6 +1644,7 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
       }
       _verified            = false;
       _error               = null;
+      _codeError           = null;
       _warehouses          = [];
       _selectedWarehouseId = null;
     });
@@ -1689,6 +1793,65 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
             ),
           ),
 
+          // ── Code d'installation ───────────────────────────────────────
+          const SizedBox(height: 28),
+          Row(children: [
+            const Expanded(child: Divider()),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text('OU',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary)),
+            ),
+            const Expanded(child: Divider()),
+          ]),
+          const SizedBox(height: 16),
+          const Text('Code d\'installation',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          const SizedBox(height: 4),
+          const Text(
+            'Si le tenant vous a communiqué un code, entrez-le ci-dessous '
+            '— aucun mot de passe requis.',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          _Field(
+            ctrl: _codeCtrl,
+            label: 'Code d\'installation',
+            hint: 'ABCD-EFGH-IJKL',
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _verifyingCode ? null : _verifyWithCode,
+              icon: _verifyingCode
+                  ? const SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.vpn_key_outlined, size: 16),
+              label: Text(_verifyingCode ? 'Vérification...' : 'Utiliser ce code'),
+            ),
+          ),
+          if (_codeError != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_codeError!,
+                    style: const TextStyle(color: AppColors.error, fontSize: 12))),
+              ]),
+            ),
+          ],
+
           // ── Feedback ──────────────────────────────────────────────────
           if (_error != null) ...[
             const SizedBox(height: 12),
@@ -1811,6 +1974,12 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
         if (cfg.selectedWarehouseId.isNotEmpty) {
           body['warehouse_id']   = cfg.selectedWarehouseId;
           body['warehouse_name'] = cfg.selectedWarehouseName;
+        }
+        // Installation-code path: pass pre-fetched token to skip cloud re-auth
+        if (cfg.syncTokenPrefetched.isNotEmpty) {
+          body['sync_token_prefetched']  = cfg.syncTokenPrefetched;
+          body['prefetched_tenant_id']   = cfg.prefetchedTenantId;
+          body['prefetched_owner_email'] = cfg.prefetchedOwnerEmail;
         }
         await dio.post('/api/setup/connect-tenant', data: body);
       });

@@ -66,8 +66,12 @@ class InitRequest(BaseModel):
 class ConnectTenantRequest(BaseModel):
     """Wizard step: link local installation to a cloud tenant account."""
     cloud_url: str
-    email: str
-    password: str
+    email: str = ""
+    password: str = ""
+    # Pre-fetched sync token (installation-code path — skips cloud auth step)
+    sync_token_prefetched: str | None = None
+    prefetched_tenant_id:  str | None = None
+    prefetched_owner_email: str | None = None
     # DB config — to build engine targeting the configured database
     db_type: str
     host: str = "localhost"
@@ -595,28 +599,41 @@ def connect_tenant(data: ConnectTenantRequest):
 
     cloud_url = data.cloud_url.rstrip("/")
 
-    # ── 1. Validate credentials against cloud ────────────────────────────────
-    try:
-        resp = httpx.post(
-            f"{cloud_url}/api/sync/token",
-            json={"owner_email": data.email, "password": data.password},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        body = resp.json()
-        sync_token   = body.get("sync_token") or body.get("token") or body.get("access_token")
-        tenant_type  = body.get("tenant_type", "shared")
-        self_hosted_url = body.get("self_hosted_url") or None
-    except httpx.HTTPStatusError as exc:
-        code = exc.response.status_code
-        if code in (401, 403):
-            raise HTTPException(403, "Identifiants incorrects ou compte inactif sur le cloud")
-        raise HTTPException(502, f"Erreur serveur cloud ({code})")
-    except Exception as exc:
-        raise HTTPException(502, f"Impossible de joindre le serveur cloud: {exc}")
+    # ── 1. Validate credentials against cloud (or accept pre-fetched token) ───
+    if data.sync_token_prefetched:
+        # Installation-code path: token already validated client-side
+        sync_token      = data.sync_token_prefetched
+        tenant_type     = "shared"
+        self_hosted_url = None
+        body            = {
+            "tenant_id":   data.prefetched_tenant_id or "",
+            "user_id":     "",
+            "owner_email": data.prefetched_owner_email or data.email,
+            "can_manage_tenants": False,
+            "tenant_type": "shared",
+        }
+    else:
+        try:
+            resp = httpx.post(
+                f"{cloud_url}/api/sync/token",
+                json={"owner_email": data.email, "password": data.password},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            body = resp.json()
+            sync_token      = body.get("sync_token") or body.get("token") or body.get("access_token")
+            tenant_type     = body.get("tenant_type", "shared")
+            self_hosted_url = body.get("self_hosted_url") or None
+        except httpx.HTTPStatusError as exc:
+            code = exc.response.status_code
+            if code in (401, 403):
+                raise HTTPException(403, "Identifiants incorrects ou compte inactif sur le cloud")
+            raise HTTPException(502, f"Erreur serveur cloud ({code})")
+        except Exception as exc:
+            raise HTTPException(502, f"Impossible de joindre le serveur cloud: {exc}")
 
-    if not sync_token:
-        raise HTTPException(502, "Réponse inattendue du serveur cloud (token manquant)")
+        if not sync_token:
+            raise HTTPException(502, "Réponse inattendue du serveur cloud (token manquant)")
 
     # ── 2. Write pos_server.ini (db + server + sync config) ──────────────────
     # Self-hosted: données business → self_hosted_url, billing → cloud_url
@@ -644,7 +661,7 @@ def connect_tenant(data: ConnectTenantRequest):
         "cloud_sync_enabled":      "true",
         "billing_url":             cloud_url,
         "cloud_tenant_id":         cloud_tenant_id,
-        "cloud_owner_email":       data.email,
+        "cloud_owner_email":       body.get("owner_email") or data.email,
         "installer_warehouse_id":  data.warehouse_id or "",
     })
 

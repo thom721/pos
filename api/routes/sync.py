@@ -126,6 +126,11 @@ class SyncTokenRequest(BaseModel):
     device_id:   str = "default"
 
 
+class RedeemCodeRequest(BaseModel):
+    code:      str
+    device_id: str = "installer"
+
+
 class PushRequest(BaseModel):
     entity_type: str
     records:     list[dict]
@@ -251,6 +256,55 @@ def issue_sync_token(payload: SyncTokenRequest, db: Session = Depends(get_db)):
         "expires_in_days":   365,
         "user_id":           user.id,
         "warehouses":        [{"id": w.id, "name": w.name, "is_default": w.is_default} for w in wh_rows],
+    }
+
+
+# ── CLOUD: redeem installation code ──────────────────────────────────────────
+
+@router.post("/redeem-code")
+def redeem_installation_code(payload: RedeemCodeRequest, db: Session = Depends(get_db)):
+    """
+    Exchange an installation code for a sync token — same response as /token.
+    The code is valid as long as the associated warehouse has not been claimed
+    (is_claimed == False). No time-based expiry.
+    """
+    from api.models.InstallationCode import InstallationCode
+
+    code = payload.code.strip().upper()
+    ic = db.query(InstallationCode).filter(InstallationCode.code == code).first()
+    if not ic:
+        raise HTTPException(status_code=404, detail="Code d'installation invalide")
+
+    wh = db.get(Warehouse, ic.warehouse_id)
+    if not wh:
+        raise HTTPException(status_code=404, detail="Dépôt associé introuvable")
+
+    if getattr(wh, "is_claimed", False):
+        raise HTTPException(
+            status_code=409,
+            detail="Ce code n'est plus valide — le dépôt a déjà été installé.",
+        )
+
+    tenant = db.get(Tenant, ic.tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Compte tenant introuvable")
+
+    return {
+        "sync_token":         _make_sync_token(tenant.id, payload.device_id, tenant.type),
+        "tenant_id":          tenant.id,
+        "tenant_slug":        tenant.slug,
+        "business_name":      tenant.business_name,
+        "owner_email":        tenant.owner_email,
+        "phone":              tenant.phone or "",
+        "tenant_status":      tenant.status,
+        "tenant_type":        tenant.type,
+        "self_hosted_url":    tenant.self_hosted_url or None,
+        "can_manage_tenants": tenant.can_manage_tenants,
+        "max_caisses":        tenant.max_caisses,
+        "max_depots":         getattr(tenant, "max_depots", 1),
+        "trial_ends_at":      tenant.trial_ends_at.isoformat() if getattr(tenant, "trial_ends_at", None) else None,
+        "expires_in_days":    365,
+        "warehouses":         [{"id": wh.id, "name": wh.name, "is_default": wh.is_default}],
     }
 
 

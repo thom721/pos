@@ -45,6 +45,7 @@ from api.models.Ingredient import Ingredient as _Ingredient  # noqa: F401 — en
 from api.models.ModifierGroup import ModifierGroup as _ModifierGroup, ModifierOption as _ModifierOption  # noqa: F401
 from api.models.MenuItem import MenuItem as _MenuItem  # noqa: F401
 from api.models.RoomAttribute import RoomAttribute as _RoomAttribute  # noqa: F401 — ensures table creation
+from api.models.InstallationCode import InstallationCode as _InstallationCode  # noqa: F401 — ensures table creation
 from fastapi.staticfiles import StaticFiles
 from fastapi.encoders import jsonable_encoder
 
