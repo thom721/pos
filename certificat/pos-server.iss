@@ -85,10 +85,8 @@ Source: "server.crt";            DestDir: "{app}\certificat"; Flags: ignoreversi
 Source: "server.key";            DestDir: "{app}\certificat"; Flags: ignoreversion
 Source: "nginx-windows.conf";    DestDir: "{app}\certificat"; Flags: ignoreversion
 
-; Gestionnaire de services (interface admin — lancee via l'icone bureau)
-Source: "posconnect-manager.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "posconnect-manager.bat"; DestDir: "{app}"; Flags: ignoreversion
-Source: "posconnect-manager.vbs"; DestDir: "{app}"; Flags: ignoreversion
+; Gestionnaire de services (interface admin — EXE compilé, pas de console PowerShell)
+Source: "posconnect-manager.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Icône de l'application
 Source: "setup-info\pos.ico"; DestDir: "{app}"; Flags: ignoreversion
@@ -139,15 +137,15 @@ Root: HKLM; \
   Flags: uninsdeletevalue
 
 ; ── Icônes ────────────────────────────────────────────────────────────────────
-; L'icone pointe vers le gestionnaire PS1 (pas vers posconnect-server.exe qui
-; tourne deja comme service NSSM -- double-cliquer l'exe causerait un conflit de port).
+; L'icone pointe vers posconnect-manager.exe (EXE compilé ps2exe, sans console PowerShell).
+; NB: ne pas pointer vers posconnect-server.exe — il tourne déjà comme service NSSM.
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; \
-  Filename: "{app}\posconnect-manager.vbs"; \
-  IconFilename: "{app}\pos.ico"; WorkingDir: "{app}"
+  Filename: "{app}\posconnect-manager.exe"; \
+  WorkingDir: "{app}"
 Name: "{autodesktop}\{#MyAppName}"; \
-  Filename: "{app}\posconnect-manager.vbs"; \
-  IconFilename: "{app}\pos.ico"; WorkingDir: "{app}"; Tasks: desktopicon
+  Filename: "{app}\posconnect-manager.exe"; \
+  WorkingDir: "{app}"; Tasks: desktopicon
 
 ; ── Commandes après installation ──────────────────────────────────────────────
 [Run]
@@ -159,8 +157,7 @@ Filename: "powershell.exe"; \
   Flags: runhidden waituntilterminated
 
 ; Proposer d'ouvrir le gestionnaire après installation
-Filename: "powershell.exe"; \
-  Parameters: "-WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -File ""{app}\posconnect-manager.ps1"""; \
+Filename: "{app}\posconnect-manager.exe"; \
   Description: "Ouvrir le gestionnaire POS Serveur"; \
   WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
 

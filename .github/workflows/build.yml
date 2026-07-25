@@ -399,6 +399,28 @@ jobs:
           }
           Write-Host "Certificats SSL présents ($(Get-Item 'certificat\server.crt' | Select-Object -ExpandProperty Length) octets)"
 
+      - name: Compiler posconnect-manager.exe (ps2exe, sans console PowerShell)
+        shell: pwsh
+        run: |
+          Install-Module -Name ps2exe -Force -Scope CurrentUser -Repository PSGallery
+          Import-Module ps2exe
+          $ico = "certificat\setup-info\pos.ico"
+          $params = @{
+            inputFile    = "certificat\posconnect-manager.ps1"
+            outputFile   = "certificat\posconnect-manager.exe"
+            noConsole    = $true
+            title        = "POS Connect Manager"
+            description  = "Gestionnaire de service POS Connect"
+            version      = "1.0.0.0"
+            requireAdmin = $true
+          }
+          if (Test-Path $ico) { $params['iconFile'] = $ico }
+          Invoke-ps2exe @params
+          if (-not (Test-Path "certificat\posconnect-manager.exe")) {
+            throw "posconnect-manager.exe non généré"
+          }
+          Write-Host "OK — posconnect-manager.exe compilé"
+
       - name: Déterminer la version
         id: version
         shell: bash
