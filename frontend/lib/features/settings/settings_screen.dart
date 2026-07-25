@@ -665,6 +665,88 @@ class _PrinterConfigSectionState extends State<_PrinterConfigSection> {
               ],
             ),
           ),
+
+          const Divider(height: 1),
+
+          // ── Largeur du papier ───────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Largeur du papier',
+                    style: TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(
+                        value: 58,
+                        label: Text('58 mm'),
+                        icon: Icon(Icons.receipt_long_outlined, size: 16)),
+                    ButtonSegment(
+                        value: 80,
+                        label: Text('80 mm'),
+                        icon: Icon(Icons.receipt_outlined, size: 16)),
+                  ],
+                  selected: {widget.settings.paperWidth},
+                  onSelectionChanged: (s) => widget.notifier.save(
+                      widget.settings.copyWith(paperWidth: s.first)),
+                  style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Détermine la mise en page du reçu PDF.',
+                  style: TextStyle(
+                      fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Noirceur du texte ───────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Noirceur du texte',
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600)),
+                    Text(
+                      switch (widget.settings.receiptDarkness) {
+                        1 => 'Très pâle',
+                        2 => 'Pâle',
+                        3 => 'Normale',
+                        4 => 'Foncée',
+                        _ => 'Maximum',
+                      },
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: widget.settings.receiptDarkness.toDouble(),
+                  min: 1,
+                  max: 5,
+                  divisions: 4,
+                  onChanged: (v) => widget.notifier.save(
+                      widget.settings.copyWith(
+                          receiptDarkness: v.round())),
+                ),
+                const Text(
+                  'Augmentez si le texte imprimé est pâle ou illisible.',
+                  style: TextStyle(
+                      fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
