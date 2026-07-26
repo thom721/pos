@@ -15,18 +15,6 @@ import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/shared/widgets/limit_exceeded_dialog.dart';
 
-// Provider partagé : expiry du tenant (pour les caisses initiales is_initial=true).
-final _tenantSubscriptionProvider =
-    FutureProvider.autoDispose<DateTime?>((ref) async {
-  try {
-    final res = await dio.get('/api/billing/status');
-    final raw = res.data['subscription_ends_at'] as String?;
-    return raw != null ? DateTime.tryParse(raw) : null;
-  } catch (_) {
-    return null;
-  }
-});
-
 // ── Providers ─────────────────────────────────────────────────────────────────
 
 final _warehousesProvider =
@@ -574,14 +562,7 @@ class _RegisterTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Pour les caisses initiales, la date d'expiration est celle du tenant.
-    final tenantExpiry = register.isInitial
-        ? ref.watch(_tenantSubscriptionProvider).valueOrNull
-        : null;
-
-    final effectiveExpiry = register.isInitial
-        ? tenantExpiry
-        : register.effectiveExpiry;
+    final effectiveExpiry = register.effectiveExpiry;
 
     final daysLeft =
         effectiveExpiry?.difference(DateTime.now()).inDays;
@@ -688,17 +669,16 @@ class _RegisterTile extends ConsumerWidget {
                 icon: const Icon(Icons.more_vert,
                     size: 18, color: AppColors.textSecondary),
                 itemBuilder: (_) => [
-                  if (!register.isInitial)
-                    const PopupMenuItem(
-                      value: 'pay',
-                      child: Row(children: [
-                        Icon(Icons.payment_rounded,
-                            size: 16, color: AppColors.primary),
-                        SizedBox(width: 8),
-                        Text('Payer',
-                            style: TextStyle(color: AppColors.primary)),
-                      ]),
-                    ),
+                  const PopupMenuItem(
+                    value: 'pay',
+                    child: Row(children: [
+                      Icon(Icons.payment_rounded,
+                          size: 16, color: AppColors.primary),
+                      SizedBox(width: 8),
+                      Text('Payer',
+                          style: TextStyle(color: AppColors.primary)),
+                    ]),
+                  ),
                   if (canUpdate)
                     const PopupMenuItem(
                         value: 'edit', child: Text('Renommer')),
