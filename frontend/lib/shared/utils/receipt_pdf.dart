@@ -33,11 +33,17 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
       NumberFormat.currency(locale: 'fr_HT', symbol: '', decimalDigits: 2);
   final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
 
-  // 80 mm ≈ 226 pt  |  58 mm ≈ 164 pt
-  final pageWidth = settings.paperWidth == 58 ? 164.0 : 226.0;
+  // 80 mm ≈ 226 pt  |  58 mm ≈ 164 pt  |  48 mm ≈ 136 pt
+  final pageWidth = settings.paperWidth == 58 ? 164.0
+                  : settings.paperWidth == 48 ? 136.0
+                  : 226.0;
   // 3 colonnes : ARTICLE (flex) | QTÉ (fixe) | TOTAL (fixe)
-  final qtyColW   = settings.paperWidth == 58 ? 18.0 : 24.0;
-  final totalColW = settings.paperWidth == 58 ? 46.0 : 62.0;
+  final qtyColW   = settings.paperWidth == 58 ? 18.0
+                  : settings.paperWidth == 48 ? 14.0
+                  : 24.0;
+  final totalColW = settings.paperWidth == 58 ? 46.0
+                  : settings.paperWidth == 48 ? 36.0
+                  : 62.0;
 
   // Noir pur pour impression bureau — receiptDarkness n'agit que sur Sunmi
   const inkColor = PdfColors.black;
@@ -45,10 +51,10 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
   doc.addPage(pw.Page(
     pageFormat: PdfPageFormat(pageWidth, double.infinity, marginAll: 8),
     build: (ctx) {
-      final base  = pw.TextStyle(font: font,    fontSize: 8,  color: inkColor);
-      final bold  = pw.TextStyle(font: fontBold, fontSize: 8,  color: inkColor);
-      final small = pw.TextStyle(font: font,    fontSize: 7,  color: inkColor);
-      final title = pw.TextStyle(font: fontBold, fontSize: 11, color: inkColor);
+      final base  = pw.TextStyle(font: font,    fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
+      final bold  = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
+      final small = pw.TextStyle(font: font,    fontSize: settings.paperWidth == 48 ? 6.0 : 7.0,  color: inkColor);
+      final title = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 9.0 : 11.0, color: inkColor);
       final sym   = settings.currencySymbol;
 
       pw.Widget divider() =>
@@ -109,7 +115,7 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
           if (logoImage != null) ...[
             pw.Center(
                 child: pw.Image(logoImage,
-                    height: settings.paperWidth == 58 ? 40 : 50,
+                    height: settings.paperWidth == 48 ? 30 : settings.paperWidth == 58 ? 40 : 50,
                     fit: pw.BoxFit.contain)),
             pw.SizedBox(height: 4),
           ],

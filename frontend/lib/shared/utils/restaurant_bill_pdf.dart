@@ -45,9 +45,16 @@ Future<Uint8List> buildRestaurantBillPdf(
   final sym = settings.currencySymbol;
   final isPaid = reference != null;
 
-  final pageWidth = settings.paperWidth == 58 ? 164.0 : 226.0;
-  final qtyW   = settings.paperWidth == 58 ? 18.0 : 24.0;
-  final totalW = settings.paperWidth == 58 ? 46.0 : 62.0;
+  // 80 mm ≈ 226 pt  |  58 mm ≈ 164 pt  |  48 mm ≈ 136 pt
+  final pageWidth = settings.paperWidth == 58 ? 164.0
+                  : settings.paperWidth == 48 ? 136.0
+                  : 226.0;
+  final qtyW   = settings.paperWidth == 58 ? 18.0
+               : settings.paperWidth == 48 ? 14.0
+               : 24.0;
+  final totalW = settings.paperWidth == 58 ? 46.0
+               : settings.paperWidth == 48 ? 36.0
+               : 62.0;
 
   const inkColor = PdfColors.black;
 
@@ -60,11 +67,11 @@ Future<Uint8List> buildRestaurantBillPdf(
   doc.addPage(pw.Page(
     pageFormat: PdfPageFormat(pageWidth, double.infinity, marginAll: 8),
     build: (ctx) {
-      final base  = pw.TextStyle(font: font,    fontSize: 8,  color: inkColor);
-      final bold  = pw.TextStyle(font: fontBold, fontSize: 8,  color: inkColor);
-      final small = pw.TextStyle(font: font,    fontSize: 7,  color: inkColor);
-      final title = pw.TextStyle(font: fontBold, fontSize: 11, color: inkColor);
-      final head  = pw.TextStyle(font: fontBold, fontSize: 10, color: inkColor);
+      final base  = pw.TextStyle(font: font,    fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
+      final bold  = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
+      final small = pw.TextStyle(font: font,    fontSize: settings.paperWidth == 48 ? 6.0 : 7.0,  color: inkColor);
+      final title = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 9.0 : 11.0, color: inkColor);
+      final head  = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 8.0 : 10.0, color: inkColor);
 
       pw.Widget divider() =>
           pw.Divider(thickness: 0.5, color: PdfColors.grey400);

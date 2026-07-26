@@ -681,6 +681,10 @@ class _PrinterConfigSectionState extends State<_PrinterConfigSection> {
                 SegmentedButton<int>(
                   segments: const [
                     ButtonSegment(
+                        value: 48,
+                        label: Text('48 mm'),
+                        icon: Icon(Icons.receipt_long_outlined, size: 16)),
+                    ButtonSegment(
                         value: 58,
                         label: Text('58 mm'),
                         icon: Icon(Icons.receipt_long_outlined, size: 16)),
@@ -1737,6 +1741,10 @@ class _BluetoothPrinterSectionState extends State<_BluetoothPrinterSection> {
             const SizedBox(height: 8),
             SegmentedButton<int>(
               segments: const [
+                ButtonSegment(
+                    value: 48,
+                    label: Text('48 mm'),
+                    icon: Icon(Icons.receipt_long_outlined, size: 16)),
                 ButtonSegment(
                     value: 58,
                     label: Text('58 mm'),

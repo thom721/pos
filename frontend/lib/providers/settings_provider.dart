@@ -34,7 +34,7 @@ class AppSettings {
   final String bluetoothPrinterMac;
   final String bluetoothPrinterName;
   // Paper width in mm — device-specific, stored locally only
-  final int paperWidth; // 80 | 58
+  final int paperWidth; // 80 | 58 | 48
   // Receipt text darkness 1–5 — device-specific, stored locally only
   final int receiptDarkness; // 1=pâle … 5=noir pur
   // Hotel mode — check-in fields config [{label, required, onReceipt}]
