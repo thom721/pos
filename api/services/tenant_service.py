@@ -138,7 +138,7 @@ def register_tenant(db: Session, business_name: str, owner_email: str,
         name="Caisse principale",
         is_active=True,
         is_initial=True,
-        trial_ends_at=trial_ends,   # sa propre ligne de facturation
+        trial_ends_at=datetime.now(timezone.utc) + timedelta(days=_get_trial_days(db)),
         # device_id intentionally NULL — claimed by first device to log in
     )
     db.add(register)
