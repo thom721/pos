@@ -289,14 +289,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
           TextFormField(
             controller: _emailCtrl,
-            keyboardType: _isAndroid
-                ? TextInputType.text
-                : TextInputType.emailAddress,
+            keyboardType: TextInputType.text,
             textInputAction: TextInputAction.next,
             autocorrect: false,
-            decoration: InputDecoration(
-              labelText: _isAndroid ? 'Email ou nom d\'utilisateur' : 'Adresse email',
-              prefixIcon: const Icon(Icons.person_outline_rounded),
+            decoration: const InputDecoration(
+              labelText: 'Email ou nom d\'utilisateur',
+              prefixIcon: Icon(Icons.person_outline_rounded),
             ),
             validator: (v) {
               if (v == null || v.trim().isEmpty) return 'Requis';

@@ -228,8 +228,7 @@ class _CustomerFormDialogState
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _addressCtrl,
-                  decoration: const InputDecoration(labelText: 'Adresse *'),
-                  validator: (v) => v!.isEmpty ? 'Requis' : null,
+                  decoration: const InputDecoration(labelText: 'Adresse'),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
