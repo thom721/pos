@@ -62,3 +62,11 @@ class PlatformConfig(UUIDBase):
     moncash_enabled = Column(Boolean, nullable=False, default=True)
     natcash_enabled = Column(Boolean, nullable=False, default=True)
     card_enabled    = Column(Boolean, nullable=False, default=True)
+
+    # ── Mises à jour applicatives ────────────────────────────────────────────
+    latest_version = Column(String(20),  nullable=False, default='0.9.0')
+    latest_build   = Column(Integer,     nullable=False, default=1)
+    min_version    = Column(String(20),  nullable=False, default='0.9.0')
+    update_notes   = Column(Text,        nullable=True,  default=None)
+    update_url     = Column(String(512), nullable=True,  default=None)
+    force_update   = Column(Boolean,     nullable=False, default=False)

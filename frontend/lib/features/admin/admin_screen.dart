@@ -1345,6 +1345,11 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   final _smtpPasswordCtrl      = TextEditingController();
   final _smtpFromCtrl          = TextEditingController();
   final _logoUrlCtrl           = TextEditingController();
+  final _latestVersionCtrl     = TextEditingController();
+  final _latestBuildCtrl       = TextEditingController();
+  final _minVersionCtrl        = TextEditingController();
+  final _updateNotesCtrl       = TextEditingController();
+  final _updateUrlCtrl         = TextEditingController();
 
   String _moncashMode = 'manual';
   String _natcashMode = 'manual';
@@ -1352,6 +1357,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   bool _moncashEnabled = true;
   bool _natcashEnabled = true;
   bool _cardEnabled    = true;
+  bool _forceUpdate    = false;
   bool _loaded = false;
 
   // Pricing plans
@@ -1388,6 +1394,12 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _moncashEnabled = cfg['moncash_enabled'] as bool? ?? true;
     _natcashEnabled = cfg['natcash_enabled'] as bool? ?? true;
     _cardEnabled    = cfg['card_enabled']    as bool? ?? true;
+    _latestVersionCtrl.text = cfg['latest_version']?.toString() ?? '0.9.0';
+    _latestBuildCtrl.text   = cfg['latest_build']?.toString()   ?? '1';
+    _minVersionCtrl.text    = cfg['min_version']?.toString()    ?? '0.9.0';
+    _updateNotesCtrl.text   = cfg['update_notes']?.toString()   ?? '';
+    _updateUrlCtrl.text     = cfg['update_url']?.toString()     ?? '';
+    _forceUpdate            = cfg['force_update'] as bool?      ?? false;
     _loaded = true;
 
     if (!_plansLoaded) {
@@ -1432,6 +1444,11 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _smtpPasswordCtrl.dispose();
     _smtpFromCtrl.dispose();
     _logoUrlCtrl.dispose();
+    _latestVersionCtrl.dispose();
+    _latestBuildCtrl.dispose();
+    _minVersionCtrl.dispose();
+    _updateNotesCtrl.dispose();
+    _updateUrlCtrl.dispose();
     for (final e in _planEditors) { e.dispose(); }
     super.dispose();
   }
@@ -1470,7 +1487,13 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
         'natcash_enabled':             _natcashEnabled,
         'card_enabled':                _cardEnabled,
         'pricing_plans_json': jsonEncode(_planEditors.map((e) => e.toMap()).toList()),
-        'logo_url': _logoUrlCtrl.text.trim().isEmpty ? null : _logoUrlCtrl.text.trim(),
+        'logo_url':       _logoUrlCtrl.text.trim().isEmpty ? null : _logoUrlCtrl.text.trim(),
+        'latest_version': _latestVersionCtrl.text.trim(),
+        'latest_build':   int.tryParse(_latestBuildCtrl.text.trim()) ?? 1,
+        'min_version':    _minVersionCtrl.text.trim(),
+        'update_notes':   _updateNotesCtrl.text.trim().isEmpty ? null : _updateNotesCtrl.text.trim(),
+        'update_url':     _updateUrlCtrl.text.trim().isEmpty ? null : _updateUrlCtrl.text.trim(),
+        'force_update':   _forceUpdate,
       });
       setState(() { _loaded = false; _plansLoaded = false; });
       ref.invalidate(_platformConfigProvider);
@@ -1936,6 +1959,77 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                       e.id = 'plan_${_planEditors.length + 1}';
                       _planEditors.add(e);
                     }),
+                  ),
+                  const SizedBox(height: 32),
+                  Text('Mises à jour applicatives',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Ces informations sont distribuées automatiquement à tous les clients. '
+                    'Un build inférieur au "Build minimum" déclenchera le blocage forcé si activé.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _latestVersionCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Dernière version',
+                            hintText: '2.0.0',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _latestBuildCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Numéro de build',
+                            hintText: '9',
+                          ),
+                          validator: (v) =>
+                              int.tryParse(v ?? '') == null ? 'Entier requis' : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _minVersionCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Version minimale requise',
+                      hintText: '0.9.0',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _updateNotesCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Notes de mise à jour (facultatif)',
+                      hintText: 'Nouvelles fonctionnalités, correctifs…',
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _updateUrlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Lien de téléchargement (facultatif)',
+                      hintText: 'https://…',
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SwitchListTile(
+                    title: const Text('Mise à jour obligatoire'),
+                    subtitle: const Text(
+                        'Bloque l\'application sur les versions obsolètes'),
+                    value: _forceUpdate,
+                    onChanged: (v) => setState(() => _forceUpdate = v),
+                    contentPadding: EdgeInsets.zero,
                   ),
                   const SizedBox(height: 32),
                   ElevatedButton(

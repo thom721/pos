@@ -339,6 +339,30 @@ def send_contact_message(body: ContactMessage, db: Session = Depends(get_db)):
         )
 
 
+@router.get("/version")
+def get_version(db: Session = Depends(get_db)):
+    """Returns the latest app version info — no auth required."""
+    from api.models.PlatformConfig import PlatformConfig
+    cfg = db.query(PlatformConfig).first()
+    if not cfg:
+        return {
+            "latest_version": "0.9.0",
+            "latest_build":   1,
+            "min_version":    "0.9.0",
+            "update_notes":   None,
+            "update_url":     None,
+            "force_update":   False,
+        }
+    return {
+        "latest_version": getattr(cfg, "latest_version", "0.9.0"),
+        "latest_build":   getattr(cfg, "latest_build",   1),
+        "min_version":    getattr(cfg, "min_version",    "0.9.0"),
+        "update_notes":   getattr(cfg, "update_notes",   None),
+        "update_url":     getattr(cfg, "update_url",     None),
+        "force_update":   bool(getattr(cfg, "force_update", False)),
+    }
+
+
 @router.get("/tenant/{tenant_id}", response_model=TenantRead)
 def get_tenant_info(tenant_id: str, db: Session = Depends(get_db)):
     """

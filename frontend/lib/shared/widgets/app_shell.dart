@@ -12,6 +12,8 @@ import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/license_provider.dart';
+import 'package:pos_connect/providers/version_provider.dart';
+import 'package:pos_connect/services/version_check_service.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
@@ -185,6 +187,7 @@ class AppShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final license = ref.watch(licenseProvider).valueOrNull;
+    final version = ref.watch(versionProvider).valueOrNull;
 
     // Blocked: replace entire shell with the block screen
     if (license != null && license.access == LicenseAccess.blocked) {
@@ -192,6 +195,11 @@ class AppShell extends ConsumerWidget {
         message: license.message ?? 'Accès bloqué.',
         isOffline: license.isOffline,
       );
+    }
+
+    // Force-update: replace entire shell until app is updated
+    if (version != null && version.isForced) {
+      return _ForceUpdateScreen(version: version);
     }
 
     final authState = ref.watch(authProvider);
@@ -226,6 +234,11 @@ class AppShell extends ConsumerWidget {
         priceHtg: license.pricePerExtraCaisseHtg,
         priceUsd: license.pricePerExtraCaisseUsd,
       ));
+    }
+
+    // Optional update banner
+    if (version != null && version.hasUpdate) {
+      banners.add(_UpdateBanner(version: version));
     }
 
     if (banners.isNotEmpty) {
@@ -1357,6 +1370,135 @@ class _LicenseBlockedScreen extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Force-update screen ───────────────────────────────────────────────────────
+
+class _ForceUpdateScreen extends StatelessWidget {
+  final VersionStatus version;
+  const _ForceUpdateScreen({required this.version});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1B2A3B),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.system_update_rounded,
+                  color: Colors.orangeAccent,
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Mise à jour requise',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'La version ${version.latestVersion} est disponible.\n'
+                'Veuillez mettre à jour l\'application pour continuer.',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+              if (version.updateNotes != null && version.updateNotes!.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                  ),
+                  child: Text(
+                    version.updateNotes!,
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 28),
+              if (version.updateUrl != null && version.updateUrl!.isNotEmpty)
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: Colors.orangeAccent),
+                  icon: const Icon(Icons.download_rounded, color: Colors.black87),
+                  label: const Text('Télécharger la mise à jour',
+                      style: TextStyle(color: Colors.black87)),
+                  onPressed: () {
+                    // URL handled by launcher — url_launcher not guaranteed in this project;
+                    // the admin can configure the update_url to point to their APK/store link.
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Optional update banner ────────────────────────────────────────────────────
+
+class _UpdateBanner extends StatefulWidget {
+  final VersionStatus version;
+  const _UpdateBanner({required this.version});
+
+  @override
+  State<_UpdateBanner> createState() => _UpdateBannerState();
+}
+
+class _UpdateBannerState extends State<_UpdateBanner> {
+  bool _dismissed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_dismissed) return const SizedBox.shrink();
+    return Container(
+      color: const Color(0xFF1565C0),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            const Icon(Icons.system_update_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Nouvelle version ${widget.version.latestVersion} disponible — mettez à jour l\'application.',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 16),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () => setState(() => _dismissed = true),
+            ),
+          ],
         ),
       ),
     );

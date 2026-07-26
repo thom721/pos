@@ -36,4 +36,8 @@ class AppConstants {
   static const planWarningKey = 'plan_warning';
 
   static const appName = 'POS Connect';
+
+  // ── App version — doit correspondre à pubspec.yaml ─────────────────────
+  static const appVersion     = '2.0.0';
+  static const appBuildNumber = 9;
 }
