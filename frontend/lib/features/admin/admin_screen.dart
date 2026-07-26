@@ -308,7 +308,7 @@ class _TenantsTabState extends ConsumerState<_TenantsTab> {
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
                           final t = tenants[i] as Map<String, dynamic>;
-                          return _TenantCard(tenant: t);
+                          return _TenantCard(tenant: t, index: i);
                         },
                       ),
                     ),
@@ -383,7 +383,8 @@ class _PaginationBar extends StatelessWidget {
 
 class _TenantCard extends ConsumerWidget {
   final Map<String, dynamic> tenant;
-  const _TenantCard({required this.tenant});
+  final int index;
+  const _TenantCard({required this.tenant, required this.index});
 
   Color _statusColor(String status) {
     switch (status) {
@@ -437,7 +438,16 @@ class _TenantCard extends ConsumerWidget {
       } catch (_) {}
     }
 
+    final cardColor = index.isEven
+        ? Colors.white
+        : const Color(0xFFF4F6FF);
+
     return Card(
+      color: cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200, width: 1),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -1616,6 +1626,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   bool _natcashEnabled = true;
   bool _cardEnabled    = true;
   bool _forceUpdate    = false;
+  bool _trialIncluded  = false;
   bool _loaded = false;
 
   // Pricing plans
@@ -1658,6 +1669,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _updateNotesCtrl.text   = cfg['update_notes']?.toString()   ?? '';
     _updateUrlCtrl.text     = cfg['update_url']?.toString()     ?? '';
     _forceUpdate            = cfg['force_update'] as bool?      ?? false;
+    _trialIncluded          = cfg['trial_included_in_billing'] as bool? ?? false;
     _loaded = true;
 
     if (!_plansLoaded) {
@@ -1746,6 +1758,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
         'price_per_extra_depot_usd':   double.tryParse(_extraDepotUsdCtrl.text)  ?? 4,
         'stripe_price_id':             _stripePriceCtrl.text.trim(),
         'trial_days':                  int.tryParse(_trialDaysCtrl.text) ?? 30,
+        'trial_included_in_billing':   _trialIncluded,
         'support_email':               _supportEmailCtrl.text.trim(),
         'support_whatsapp':            _supportWaCtrl.text.trim(),
         'support_address':             _supportAddressCtrl.text.trim(),
@@ -1957,6 +1970,38 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                       decoration: const InputDecoration(labelText: "Durée d'essai (jours)"),
                       validator: (v) =>
                           int.tryParse(v ?? '') == null ? 'Invalide' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    Text('Calcul de la date de fin d\'abonnement',
+                        style: Theme.of(context).textTheme.labelLarge),
+                    const SizedBox(height: 4),
+                    RadioGroup<bool>(
+                      groupValue: _trialIncluded,
+                      onChanged: (v) => setState(() => _trialIncluded = v!),
+                      child: Column(
+                        children: [
+                          RadioListTile<bool>(
+                            value: false,
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Démarre à la date de paiement'),
+                            subtitle: const Text(
+                              'Ex : paiement le 26 juillet → abonnement du 26/07 au 26/08',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                          RadioListTile<bool>(
+                            value: true,
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Démarre à la fin de l\'essai (essai inclus)'),
+                            subtitle: const Text(
+                              'Ex : essai fin le 2 août, paiement le 26 juillet → abonnement du 2/08 au 2/09',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ]),
                   _configSection(context, 'Support', [
