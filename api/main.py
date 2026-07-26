@@ -185,6 +185,13 @@ def _run_alembic_migrations() -> None:
                 _log.info("Déploiement existant — alembic upgrade heads")
                 try:
                     alembic_command.upgrade(alembic_cfg, "heads")
+                except KeyError as rev_err:
+                    # Graphe de révisions cassé (fichier manquant/ID inconnu) —
+                    # NE PAS effacer alembic_version, juste ignorer.
+                    _log.error(
+                        "Graphe alembic corrompu (%s) — migrations ignorées, schéma géré par _sync_schema_from_models",
+                        rev_err,
+                    )
                 except Exception as rev_err:
                     # La révision courante dans alembic_version appartient à une
                     # ancienne chaîne de migrations (ex: top-level alembic/).
