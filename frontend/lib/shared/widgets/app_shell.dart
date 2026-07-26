@@ -1499,6 +1499,10 @@ class _PrintSettingsSheetState extends ConsumerState<_PrintSettingsSheet> {
             SegmentedButton<int>(
               segments: const [
                 ButtonSegment(
+                    value: 48,
+                    icon: Icon(Icons.receipt_outlined, size: 16),
+                    label: Text('48 mm')),
+                ButtonSegment(
                     value: 58,
                     icon: Icon(Icons.receipt_outlined, size: 16),
                     label: Text('58 mm')),
@@ -1815,6 +1819,9 @@ class _DesktopPrintDialogState extends ConsumerState<_DesktopPrintDialog> {
               const SizedBox(height: 8),
               SegmentedButton<int>(
                 segments: const [
+                  ButtonSegment(value: 48,
+                      icon: Icon(Icons.receipt_outlined, size: 16),
+                      label: Text('48 mm')),
                   ButtonSegment(value: 58,
                       icon: Icon(Icons.receipt_outlined, size: 16),
                       label: Text('58 mm')),
