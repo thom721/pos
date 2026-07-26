@@ -1440,19 +1440,27 @@ class _ForceUpdateScreen extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 28),
-              if (!kIsWeb && version.updateUrl != null && version.updateUrl!.isNotEmpty)
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: Colors.orangeAccent),
-                  icon: const Icon(Icons.download_rounded, color: Colors.black87),
-                  label: const Text('Télécharger la mise à jour',
-                      style: TextStyle(color: Colors.black87)),
-                  onPressed: () async {
-                    final uri = Uri.tryParse(version.updateUrl!);
-                    if (uri != null) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    }
-                  },
-                )
+              if (!kIsWeb) ...() {
+                final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+                final url = isAndroid
+                    ? (version.updateUrlAndroid ?? version.updateUrl)
+                    : version.updateUrl;
+                if (url == null || url.isEmpty) return const [];
+                return [
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: Colors.orangeAccent),
+                    icon: const Icon(Icons.download_rounded, color: Colors.black87),
+                    label: const Text('Télécharger la mise à jour',
+                        style: TextStyle(color: Colors.black87)),
+                    onPressed: () async {
+                      final uri = Uri.tryParse(url);
+                      if (uri != null) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      }
+                    },
+                  ),
+                ];
+              }()
               else if (kIsWeb)
                 Text(
                   'Rechargez la page pour obtenir la dernière version.',
@@ -1501,27 +1509,32 @@ class _UpdateBannerState extends State<_UpdateBanner> {
                 ),
               ),
             ),
-            if (!kIsWeb &&
-                widget.version.updateUrl != null &&
-                widget.version.updateUrl!.isNotEmpty) ...[
-              const SizedBox(width: 8),
-              TextButton(
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  side: const BorderSide(color: Colors.white54),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            if (!kIsWeb) ...() {
+              final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+              final url = isAndroid
+                  ? (widget.version.updateUrlAndroid ?? widget.version.updateUrl)
+                  : widget.version.updateUrl;
+              if (url == null || url.isEmpty) return const [];
+              return [
+                const SizedBox(width: 8),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    side: const BorderSide(color: Colors.white54),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () async {
+                    final uri = Uri.tryParse(url);
+                    if (uri != null) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  child: const Text('Télécharger', style: TextStyle(fontSize: 12)),
                 ),
-                onPressed: () async {
-                  final uri = Uri.tryParse(widget.version.updateUrl!);
-                  if (uri != null) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  }
-                },
-                child: const Text('Télécharger', style: TextStyle(fontSize: 12)),
-              ),
-            ],
+              ];
+            }(),
             const SizedBox(width: 4),
             IconButton(
               icon: const Icon(Icons.close, color: Colors.white, size: 16),

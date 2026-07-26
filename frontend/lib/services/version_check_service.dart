@@ -9,6 +9,7 @@ class VersionStatus {
   final int latestBuild;
   final String? updateNotes;
   final String? updateUrl;
+  final String? updateUrlAndroid;
 
   const VersionStatus({
     required this.updateType,
@@ -16,6 +17,7 @@ class VersionStatus {
     required this.latestBuild,
     this.updateNotes,
     this.updateUrl,
+    this.updateUrlAndroid,
   });
 
   bool get hasUpdate => updateType != VersionUpdateType.none;
@@ -36,8 +38,9 @@ class VersionCheckService {
       final latestBuild   = (data['latest_build']   as num?)?.toInt() ?? 1;
       final latestVersion = data['latest_version']  as String? ?? '0.9.0';
       final updateNotes   = data['update_notes']    as String?;
-      final updateUrl     = data['update_url']      as String?;
-      final forceUpdate   = data['force_update']    as bool? ?? false;
+      final updateUrl        = data['update_url']         as String?;
+      final updateUrlAndroid = data['update_url_android']  as String?;
+      final forceUpdate      = data['force_update']        as bool? ?? false;
 
       final hasUpdate = AppConstants.appBuildNumber < latestBuild;
 
@@ -50,7 +53,8 @@ class VersionCheckService {
         latestVersion: latestVersion,
         latestBuild:   latestBuild,
         updateNotes:   updateNotes,
-        updateUrl:     updateUrl,
+        updateUrl:        updateUrl,
+        updateUrlAndroid: updateUrlAndroid,
       );
     } catch (_) {
       return const VersionStatus(

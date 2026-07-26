@@ -107,8 +107,9 @@ class PlatformConfigUpdate(BaseModel):
     latest_build:   int  | None = None
     min_version:    str  | None = None
     update_notes:   str  | None = None
-    update_url:     str  | None = None
-    force_update:   bool | None = None
+    update_url:         str  | None = None
+    update_url_android: str  | None = None
+    force_update:       bool | None = None
     trial_included_in_billing: bool | None = None
 
 
@@ -1100,9 +1101,10 @@ def get_platform_config(
         "latest_version": getattr(cfg, "latest_version", "0.9.0"),
         "latest_build":   getattr(cfg, "latest_build",   1),
         "min_version":    getattr(cfg, "min_version",    "0.9.0"),
-        "update_notes":   getattr(cfg, "update_notes",   None),
-        "update_url":     getattr(cfg, "update_url",     None),
-        "force_update":   bool(getattr(cfg, "force_update", False)),
+        "update_notes":        getattr(cfg, "update_notes",        None),
+        "update_url":          getattr(cfg, "update_url",          None),
+        "update_url_android":  getattr(cfg, "update_url_android",  None),
+        "force_update":        bool(getattr(cfg, "force_update", False)),
         "trial_included_in_billing": bool(getattr(cfg, "trial_included_in_billing", False)),
         "created_at":        cfg.created_at.isoformat() if cfg.created_at else None,
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
@@ -1160,9 +1162,10 @@ def update_platform_config(
     if body.latest_version  is not None: cfg.latest_version  = body.latest_version
     if body.latest_build    is not None: cfg.latest_build    = body.latest_build
     if body.min_version     is not None: cfg.min_version     = body.min_version
-    if body.update_notes    is not None: cfg.update_notes    = body.update_notes
-    if body.update_url      is not None: cfg.update_url      = body.update_url
-    if body.force_update    is not None: cfg.force_update    = body.force_update
+    if body.update_notes        is not None: cfg.update_notes        = body.update_notes
+    if body.update_url          is not None: cfg.update_url          = body.update_url
+    if body.update_url_android  is not None: cfg.update_url_android  = body.update_url_android
+    if body.force_update        is not None: cfg.force_update        = body.force_update
     if body.trial_included_in_billing is not None:
         cfg.trial_included_in_billing = body.trial_included_in_billing
 
@@ -1199,8 +1202,9 @@ def update_platform_config(
         "latest_version": getattr(cfg, "latest_version", "0.9.0"),
         "latest_build":   getattr(cfg, "latest_build",   1),
         "min_version":    getattr(cfg, "min_version",    "0.9.0"),
-        "update_notes":   getattr(cfg, "update_notes",   None),
-        "update_url":     getattr(cfg, "update_url",     None),
-        "force_update":   bool(getattr(cfg, "force_update", False)),
+        "update_notes":        getattr(cfg, "update_notes",        None),
+        "update_url":          getattr(cfg, "update_url",          None),
+        "update_url_android":  getattr(cfg, "update_url_android",  None),
+        "force_update":        bool(getattr(cfg, "force_update", False)),
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }

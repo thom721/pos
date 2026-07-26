@@ -1616,8 +1616,9 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   final _latestVersionCtrl     = TextEditingController();
   final _latestBuildCtrl       = TextEditingController();
   final _minVersionCtrl        = TextEditingController();
-  final _updateNotesCtrl       = TextEditingController();
-  final _updateUrlCtrl         = TextEditingController();
+  final _updateNotesCtrl          = TextEditingController();
+  final _updateUrlCtrl            = TextEditingController();
+  final _updateUrlAndroidCtrl     = TextEditingController();
 
   String _moncashMode = 'manual';
   String _natcashMode = 'manual';
@@ -1667,8 +1668,9 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _latestBuildCtrl.text   = cfg['latest_build']?.toString()   ?? '1';
     _minVersionCtrl.text    = cfg['min_version']?.toString()    ?? '0.9.0';
     _updateNotesCtrl.text   = cfg['update_notes']?.toString()   ?? '';
-    _updateUrlCtrl.text     = cfg['update_url']?.toString()     ?? '';
-    _forceUpdate            = cfg['force_update'] as bool?      ?? false;
+    _updateUrlCtrl.text        = cfg['update_url']?.toString()         ?? '';
+    _updateUrlAndroidCtrl.text = cfg['update_url_android']?.toString() ?? '';
+    _forceUpdate               = cfg['force_update'] as bool?          ?? false;
     _trialIncluded          = cfg['trial_included_in_billing'] as bool? ?? false;
     _loaded = true;
 
@@ -1719,6 +1721,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _minVersionCtrl.dispose();
     _updateNotesCtrl.dispose();
     _updateUrlCtrl.dispose();
+    _updateUrlAndroidCtrl.dispose();
     for (final e in _planEditors) { e.dispose(); }
     super.dispose();
   }
@@ -1782,8 +1785,9 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
         'latest_build':   int.tryParse(_latestBuildCtrl.text.trim()) ?? 1,
         'min_version':    _minVersionCtrl.text.trim(),
         'update_notes':   _updateNotesCtrl.text.trim().isEmpty ? null : _updateNotesCtrl.text.trim(),
-        'update_url':     _updateUrlCtrl.text.trim().isEmpty ? null : _updateUrlCtrl.text.trim(),
-        'force_update':   _forceUpdate,
+        'update_url':         _updateUrlCtrl.text.trim().isEmpty ? null : _updateUrlCtrl.text.trim(),
+        'update_url_android': _updateUrlAndroidCtrl.text.trim().isEmpty ? null : _updateUrlAndroidCtrl.text.trim(),
+        'force_update':       _forceUpdate,
       });
       setState(() { _loaded = false; _plansLoaded = false; });
       ref.invalidate(_platformConfigProvider);
@@ -2305,8 +2309,16 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                     TextFormField(
                       controller: _updateUrlCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Lien de téléchargement (facultatif)',
-                        hintText: 'https://…',
+                        labelText: 'Lien Windows / Desktop (facultatif)',
+                        hintText: 'https://github.com/…/setup.exe',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _updateUrlAndroidCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Lien Android — Google Play (facultatif)',
+                        hintText: 'https://play.google.com/store/apps/details?id=…',
                       ),
                     ),
                     const SizedBox(height: 4),
