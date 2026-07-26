@@ -4,11 +4,9 @@ import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, Tar
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
-import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -29,25 +27,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     FlutterNativeSplash.remove();
 
     if (kIsWeb) {
-      // Web fast-path: lire le token directement depuis FlutterSecureStorage
-      // (localStorage sur web — quasi-instantané, évite d'attendre authProvider._init()).
-      // authProvider continue son init en arrière-plan ; le router guard prendra
-      // le relais si le token s'avère invalide côté serveur.
-      const storage = FlutterSecureStorage(
-        aOptions: AndroidOptions(encryptedSharedPreferences: true),
-      );
-      final token = await storage.read(key: AppConstants.tokenKey);
-      if (!mounted) return;
-      if (token != null && !AuthNotifier.isTokenExpired(token)) {
-        context.go('/dashboard');
-        return;
-      }
-      context.go('/home');
+      // Sur web, ne pas appeler context.go() ici.
+      // Le router redirect gère toute la navigation via pendingDeepLink :
+      // appeler context.go('/dashboard') pendant isLoading=true écraserait
+      // le deep link sauvegardé et l'utilisateur perdrait sa destination.
       _checkSetupInBackground();
       return;
     }
 
-    // Non-web (mobile / desktop) : navigation directe, pas d'animation.
+    // Non-web (mobile / desktop)
     final prefs = await SharedPreferences.getInstance();
     final isMobile = defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS;
@@ -72,9 +60,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         return;
       }
     }
-
-    if (!mounted) return;
-    context.go('/dashboard');
+    // Ne pas appeler context.go('/dashboard') — le router redirect le fait
+    // une fois isLoading=false, en respectant pendingDeepLink si défini.
   }
 
   // Lit le crash log du serveur Windows. Retourne le contenu si non vide, null sinon.
