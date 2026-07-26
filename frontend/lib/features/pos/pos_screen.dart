@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:pos_connect/core/register_date_crypto.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
@@ -938,14 +939,34 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     await _fetchSessionFromServer(promptIfMissing: true);
   }
 
-  Future<void> _saveRegisterFlag(bool hasRegister) async {
+  Future<void> _saveRegisterFlag(bool hasRegister, {
+    String? trialEndsAt,
+    String? subEndsAt,
+  }) async {
     final wh = ref.read(activeWarehouseProvider);
     final prefs = await SharedPreferences.getInstance();
     final key = '$_registerPrefPrefix${wh?.id ?? 'default'}';
     if (hasRegister) {
       await prefs.setBool(key, true);
+      // Signer les dates avec device_id (HMAC-SHA256) avant de les cacher.
+      // Un token altéré dans SharedPreferences sera rejeté à la vérification.
+      final did = _deviceId ?? '';
+      final signedTrial = await signDate(trialEndsAt, did);
+      final signedSub   = await signDate(subEndsAt,   did);
+      if (signedTrial != null) {
+        await prefs.setString('${key}_trial', signedTrial);
+      } else {
+        await prefs.remove('${key}_trial');
+      }
+      if (signedSub != null) {
+        await prefs.setString('${key}_sub', signedSub);
+      } else {
+        await prefs.remove('${key}_sub');
+      }
     } else {
       await prefs.remove(key);
+      await prefs.remove('${key}_trial');
+      await prefs.remove('${key}_sub');
     }
   }
 
@@ -966,7 +987,11 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       final disabled = res.data['disabled'] == true;
       final hasRegister = res.data['has_register'] == true || session != null;
       if (session != null) await _cacheSession(session as Map<String, dynamic>);
-      await _saveRegisterFlag(hasRegister);
+      await _saveRegisterFlag(
+        hasRegister,
+        trialEndsAt: res.data['register_trial_ends_at'] as String?,
+        subEndsAt:   res.data['register_sub_ends_at']   as String?,
+      );
       if (!mounted) return;
       setState(() {
         _session = session as Map<String, dynamic>?;
@@ -990,7 +1015,11 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       final disabled = res.data['disabled'] == true;
       final hasRegister = res.data['has_register'] == true || session != null;
       if (session != null) await _cacheSession(session as Map<String, dynamic>);
-      await _saveRegisterFlag(hasRegister);
+      await _saveRegisterFlag(
+        hasRegister,
+        trialEndsAt: res.data['register_trial_ends_at'] as String?,
+        subEndsAt:   res.data['register_sub_ends_at']   as String?,
+      );
       if (!mounted) return;
       setState(() {
         _session = session as Map<String, dynamic>?;

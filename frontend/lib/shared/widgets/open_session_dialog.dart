@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart' show DioException, DioExceptionType;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:pos_connect/core/register_date_crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -83,6 +84,30 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
           });
           return;
         }
+
+        // Vérifier l'abonnement depuis le cache.
+        // Les dates sont signées HMAC-SHA256(device_id) — si le token est
+        // altéré dans SharedPreferences, verifyDate() retourne null → bloqué.
+        final trialRaw = prefs.getString('${regKey}_trial');
+        final subRaw   = prefs.getString('${regKey}_sub');
+        final trialIso = await verifyDate(trialRaw, widget.deviceId);
+        final subIso   = await verifyDate(subRaw,   widget.deviceId);
+        final now      = DateTime.now().toUtc();
+        final trialEnd = trialIso != null ? DateTime.tryParse(trialIso)?.toUtc() : null;
+        final subEnd   = subIso   != null ? DateTime.tryParse(subIso)?.toUtc()   : null;
+        final hasTrial = trialEnd != null && trialEnd.isAfter(now);
+        final hasSub   = subEnd   != null && subEnd.isAfter(now);
+
+        if (!hasTrial && !hasSub) {
+          if (!mounted) return;
+          setState(() {
+            _loading = false;
+            _error = 'Abonnement de cette caisse expiré. '
+                'Reconnectez-vous au réseau pour renouveler.';
+          });
+          return;
+        }
+
         final localSession = <String, dynamic>{
           'id': const Uuid().v4(),
           'device_id': widget.deviceId,

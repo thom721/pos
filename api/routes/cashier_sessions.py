@@ -224,8 +224,17 @@ def get_current_session(
 
     warehouse_match = (not warehouse_id) or (reg.warehouse_id == warehouse_id)
 
+    # Dates d'abonnement de la caisse — nécessaires pour la vérification offline côté mobile.
+    reg_trial_ends_at = reg.trial_ends_at.isoformat() if reg.trial_ends_at else None
+    reg_sub_ends_at   = reg.subscription_ends_at.isoformat() if reg.subscription_ends_at else None
+
     if not session:
-        return {"session": None, "has_register": warehouse_match}
+        return {
+            "session":              None,
+            "has_register":         warehouse_match,
+            "register_trial_ends_at": reg_trial_ends_at,
+            "register_sub_ends_at":   reg_sub_ends_at,
+        }
 
     return {
         "session": {
@@ -236,7 +245,9 @@ def get_current_session(
             "opened_at":       session.opened_at,
             "status":          session.status,
         },
-        "has_register": True,
+        "has_register":           True,
+        "register_trial_ends_at": reg_trial_ends_at,
+        "register_sub_ends_at":   reg_sub_ends_at,
     }
 
 

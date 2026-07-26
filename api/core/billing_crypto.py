@@ -50,3 +50,36 @@ def try_decrypt_date(token: str | None, tenant_id: str) -> datetime | None:
     if not token:
         return None
     return decrypt_date(token, tenant_id)
+
+
+# ── Per-register date encryption (keyed by register_id) ──────────────────────
+
+def _derive_register_fernet(register_id: str) -> Fernet:
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=register_id.encode("utf-8"),
+        info=b"register-billing",
+    )
+    key_bytes = hkdf.derive(settings.SECRET_KEY.encode("utf-8"))
+    return Fernet(base64.urlsafe_b64encode(key_bytes))
+
+
+def encrypt_register_date(dt: datetime, register_id: str) -> str:
+    """Encrypt a register billing date with its own ID as salt."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    token = _derive_register_fernet(register_id).encrypt(dt.isoformat().encode("utf-8"))
+    return token.decode("utf-8")
+
+
+def try_decrypt_register_date(token: str | None, register_id: str) -> datetime | None:
+    """Decrypt a register date token; return None if missing or tampered."""
+    if not token:
+        return None
+    try:
+        iso = _derive_register_fernet(register_id).decrypt(token.encode("utf-8")).decode("utf-8")
+        dt = datetime.fromisoformat(iso)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None  # token altéré → traité comme absent
