@@ -13,6 +13,7 @@ from api.models.PosRegister import PosRegister
 from api.models.Warehouse import Warehouse
 from api.models.PlatformConfig import PlatformConfig
 from api.models.Role import Role
+from api.models.InstallationCode import InstallationCode, generate_installation_code
 from api.services.auth import Auth
 from api.core.security import create_access_token
 
@@ -119,10 +120,17 @@ def register_tenant(db: Session, business_name: str, owner_email: str,
         name="Business Principale",
         is_active=True,
         is_default=True,
-        is_claimed=True,
+        is_claimed=False,   # non réclamé — le premier appareil le configure via code d'installation
     )
     db.add(warehouse)
     db.flush()  # get warehouse.id
+
+    # Code d'installation pour le dépôt principal
+    db.add(InstallationCode(
+        code=generate_installation_code(),
+        tenant_id=tenant.id,
+        warehouse_id=warehouse.id,
+    ))
 
     register = PosRegister(
         tenant_id=tenant.id,
