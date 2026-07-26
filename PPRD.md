@@ -1,8 +1,8 @@
 # PPRD — Product & Project Requirements Document
 # POS Connect — Système de Caisse Multi-Plateforme
 
-**Date :** 2026-07-21
-**Version :** 0.9 (en développement actif)
+**Date :** 2026-07-26
+**Version :** 0.9 (en développement actif) — app 2.0.0+12
 **Stack backend :** Python 3.11 · FastAPI · SQLAlchemy · MySQL / SQLite · JWT
 **Stack frontend :** Flutter 3.x · Riverpod · go_router · Dio · SharedPreferences
 
@@ -241,6 +241,9 @@ Implémenté via `_resolveMainNav(businessType)` et `_resolveAndroidBottom(busin
 - [x] `POST /api/admin/tenants` — créer un tenant avec type (`shared`/`selfhosted`), `max_caisses`, `can_manage_tenants`
 - [x] `PATCH /api/admin/tenants/{id}` — modifier statut, type, self_hosted_url, max_caisses
 - [x] Config plateforme (`PlatformConfig`) : numéros MonCash/NatCash, prix plans, durée essai, prix par caisse supplémentaire, mode paiement (`manual`/`api_auto`)
+- [x] `PlatformConfig.update_url` — lien téléchargement Windows/Desktop (GitHub Releases)
+- [x] `PlatformConfig.update_url_android` — lien Google Play (facultatif, indépendant)
+- [x] Bouton "Télécharger" dans le bandeau de mise à jour et l'écran force-update : ouvre l'URL via `url_launcher` (Android → Google Play, Desktop → GitHub, Web → texte "Rechargez la page")
 
 ### 3.13 Facturation et abonnements
 
@@ -251,6 +254,17 @@ Implémenté via `_resolveMainNav(businessType)` et `_resolveAndroidBottom(busin
 - [x] Cycle de vie : **trial** → **expired** (grâce 10j) → **suspended** → **active**
 - [x] Bannière orange "période de grâce" dans l'écran facturation Flutter
 - [x] Menu "Abonnement" visible pour admins sur web et desktop (via `kIsWeb` + rôle)
+
+#### Trial par caisse (`PosRegister`)
+
+- [x] Chaque `PosRegister` possède son propre `trial_ends_at` — indépendant du tenant et du dépôt
+- [x] Les trois colonnes de dates (`trial_ends_at`, `subscription_started_at`, `subscription_ends_at`) sont chiffrées en Fernet (HKDF par caisse) et stockées en `TEXT(600)` dans MySQL
+- [x] La propriété Python `trial_ends_at` est un `@property` avec getter/setter — chiffrement transparent
+- [x] **Règle absolue** : `trial_ends_at = datetime.now(timezone.utc) + timedelta(days=trial_days)` dans tous les chemins de création :
+  - `register_tenant()` dans `tenant_service.py` — inscription web
+  - `create_warehouse()` dans `warehouse.py` — caisse initiale à la création d'un dépôt
+  - `create_register()` dans `warehouse.py` — ajout manuel d'une caisse
+- [x] Migration `f8bf3dfe3543` : correctif idempotent `MODIFY COLUMN TEXT(600)` pour les déploiements où `s5t6u7v8w9x0` a été estampillé sans avoir tourné
 
 ### 3.14 Synchronisation local ↔ cloud
 
@@ -279,9 +293,12 @@ Implémenté via `_resolveMainNav(businessType)` et `_resolveAndroidBottom(busin
 
 ### 3.17 Gestion des erreurs côté Flutter
 
-- [x] `extractErrorMessage(DioException)` : 403 → message permission, 401 → session expirée, 503 → service indisponible, sinon `data['message']` ou `data['detail']`
-- [x] `extractAnyError(Object)` : wrapper acceptant n'importe quelle exception
-- [x] Appliqué sur : écran retours, écran admin, paramètres, changement mot de passe, restaurant
+- [x] `extractErrorMessage(DioException)` — priorité :
+  1. Message spécifique du serveur (`data['detail']` ou `data['message']`) — si non vide et non générique (ex: "Internal Server Error" ignoré)
+  2. Fallback par code HTTP en français : 400 → données invalides, 401 → session expirée, 403 → permission, 404 → introuvable, 409 → existe déjà, 422 → données invalides, 500 → erreur interne, 503 → indisponible
+  3. Erreur réseau : timeout / connexion perdue
+- [x] `extractAnyError(Object)` : wrapper acceptant `DioException` ou `Exception` générique (strip préfixe `"Exception: "` automatique)
+- [x] Appliqué sur : tous les catch blocks flutter — `warehouses_screen`, `products_screen`, `returns_screen`, `inventory_screen`, `return_provider`, `pos_screen`, `sales_screen`, `open_session_dialog`, `installer_screen`
 
 ### 3.18 Cache local SQLite avec invalidation automatique
 
@@ -413,6 +430,8 @@ room_attributes   ← attributs clé/valeur des chambres hôtel (FK restaurant_t
 | B9 | Résolu | MySQL "gone away" sur sessions longues → `pool_pre_ping + pool_recycle` |
 | B10 | Résolu | Bug timezone sync : `datetime.now()` → `datetime.now(timezone.utc)` |
 | B11 | Résolu | `list_tables` excluait les caissiers (check `_is_manager`) → corrigé : `'serveur' in roles` |
+| B12 | Résolu | MySQL 1292 sur `POST /api/warehouses/{id}/registers` — colonnes `trial_ends_at` / `subscription_*_at` restées `DATETIME` alors que les valeurs Fernet sont du TEXT → migration `s5t6u7v8w9x0` estampillée sans avoir tourné → correction directe SQL + migration idempotente `f8bf3dfe3543` |
+| B13 | Résolu | Alembic multiple heads — révision `a1b2c3d4e5f6` dupliquée → renommée `f3930ab198e9` + merge `00d25d56df77` |
 
 ### 5.2 Frontend
 
@@ -441,6 +460,9 @@ room_attributes   ← attributs clé/valeur des chambres hôtel (FK restaurant_t
 | F21 | Résolu | `warehouse_id` produit absent de SQLite → perte silencieuse (sqflite ignore les clés inconnues) → v13 : schema + upsert + reader mis à jour |
 | F22 | Résolu | Factures/Devis inaccessibles aux caissiers → permission `reportsReadAll` → `invoicesRead`, nav ajoutée à tous les menus |
 | F23 | Résolu | Dialog Proforma sans impression → `_buildProformaPdf` A4 ajouté + `_ProformaPreviewDialog` converti en `StatefulWidget` |
+| F24 | Résolu | Bouton "Télécharger" dans `_ForceUpdateScreen` vide (`onPressed: () {}`) → branché sur `launchUrl` |
+| F25 | Résolu | Bandeau `_UpdateBanner` sans bouton téléchargement → ajouté avec sélection Android/Desktop |
+| F26 | Résolu | `e.toString()` affiché brut dans `warehouses_screen`, `products_screen`, `returns_screen`, `inventory_screen`, `return_provider` → `extractAnyError(e)` |
 
 ---
 
@@ -477,6 +499,9 @@ Migrations récentes :
 - `g7h8i9j0k1l2` — `warehouse_id` sur `invoices`, `invoice_items`, `proformas`, `proforma_items` (avec backfill)
 - `h8i9j0k1l2m3` — `warehouse_id` sur `products`
 - `i9j0k1l2m3n4` — `stat_businesses`, `stat_transactions_day`, `stat_uptime` sur `platform_config`
+- `f3930ab198e9` — `update_url_android` sur `platform_config` (lien Google Play)
+- `00d25d56df77` — merge de toutes les têtes Alembic divergentes (11 heads → 1)
+- `f8bf3dfe3543` — correctif idempotent `pos_registers.*_at` DATETIME → TEXT(600) (Fernet)
 
 ### 6.3 Client (autre machine)
 
