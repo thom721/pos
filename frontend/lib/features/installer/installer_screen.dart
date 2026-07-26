@@ -388,7 +388,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
       }
     } catch (e) {
       dio.options.baseUrl = previousUrl; // restaure sans toucher SharedPreferences
-      final msg = e is DioException ? extractErrorMessage(e) : e.toString();
+      final msg = extractAnyError(e);
       setState(() => _error = 'Impossible de joindre le serveur: $msg');
     } finally {
       setState(() => _testing = false);
@@ -833,7 +833,7 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
         setState(() => _error = stderr.isNotEmpty ? stderr : 'Échec — vérifiez votre mot de passe sudo.');
       }
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = extractAnyError(e));
     } finally {
       setState(() => _fixingSocket = false);
     }
@@ -861,7 +861,7 @@ class _MysqlSetupPageState extends ConsumerState<_MysqlSetupPage> {
         ..dbPassword = _pass.text;
       setState(() { _tested = true; });
     } catch (e) {
-      final msg = e is DioException ? extractErrorMessage(e) : e.toString();
+      final msg = extractAnyError(e);
       final accessDenied = msg.contains('1045') || msg.toLowerCase().contains('access denied');
       final unknownDb = msg.contains('1049') || msg.toLowerCase().contains('unknown database');
       final display = unknownDb
@@ -1288,7 +1288,7 @@ class _LocalLoginPageState extends ConsumerState<_LocalLoginPage> {
           : e.response?.data?['detail']?.toString() ?? 'Erreur de connexion';
       setState(() => _error = msg);
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = extractAnyError(e));
     } finally {
       setState(() => _loading = false);
     }
@@ -1536,7 +1536,7 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
       }
       setState(() => _error = msg);
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = extractAnyError(e));
     } finally {
       setState(() => _testing = false);
     }
@@ -1628,7 +1628,7 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
       }
       setState(() => _codeError = msg);
     } catch (e) {
-      setState(() => _codeError = e.toString());
+      setState(() => _codeError = extractAnyError(e));
     } finally {
       setState(() => _verifyingCode = false);
     }
@@ -2018,7 +2018,7 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
       setState(() {
         step.failed = true;
         _failed = true;
-        _failMsg = e.toString();
+        _failMsg = extractAnyError(e);
         _running = false;
       });
     }

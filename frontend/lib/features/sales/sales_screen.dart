@@ -1166,7 +1166,7 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
         ));
       }
     } catch (e) {
-      if (mounted) setState(() { _printing = false; _error = e.toString(); });
+      if (mounted) setState(() { _printing = false; _error = extractAnyError(e); });
     }
   }
 
@@ -1237,7 +1237,7 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
         name: 'Recu_${widget.sale.reference}',
       );
     } catch (e) {
-      if (mounted) setState(() { _printing = false; _error = e.toString(); });
+      if (mounted) setState(() { _printing = false; _error = extractAnyError(e); });
     }
   }
 

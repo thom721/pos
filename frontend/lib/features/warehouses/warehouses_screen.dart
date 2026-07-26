@@ -103,7 +103,7 @@ class WarehousesScreen extends ConsumerWidget {
                     const Icon(Icons.error_outline,
                         size: 48, color: AppColors.error),
                     const SizedBox(height: 12),
-                    Text('Erreur : $e',
+                    Text('Erreur : ${extractAnyError(e)}',
                         style: const TextStyle(fontSize: 14)),
                     const SizedBox(height: 12),
                     TextButton(
@@ -441,7 +441,7 @@ class _WarehouseSection extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Erreur : $e'),
+          content: Text('Erreur : ${extractAnyError(e)}'),
           backgroundColor: AppColors.error,
         ));
       }
@@ -779,7 +779,7 @@ class _RegisterTile extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Erreur : $e'),
+          content: Text('Erreur : ${extractAnyError(e)}'),
           backgroundColor: AppColors.error,
         ));
       }
@@ -842,7 +842,7 @@ class _WarehouseDialogState extends State<_WarehouseDialog> {
       if (!mounted) return;
       if (confirmed) { _save(force: true); return; }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Erreur : $e'),
+        content: Text('Erreur : ${extractAnyError(e)}'),
         backgroundColor: AppColors.error,
       ));
     } finally {
@@ -953,7 +953,7 @@ class _RegisterDialogState extends State<_RegisterDialog> {
       if (!mounted) return;
       if (confirmed) { _save(force: true); return; }
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Erreur : $e'),
+        content: Text('Erreur : ${extractAnyError(e)}'),
         backgroundColor: AppColors.error,
       ));
     } finally {
@@ -1072,7 +1072,7 @@ class _DedicatedUserDialogState extends State<_DedicatedUserDialog> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Erreur : $e'),
+        content: Text('Erreur : ${extractAnyError(e)}'),
         backgroundColor: AppColors.error,
       ));
     } finally {

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:pos_connect/data/models/return_model.dart';
 import 'package:pos_connect/data/repositories/return_repository.dart';
 
@@ -50,7 +51,7 @@ class ReturnsNotifier extends StateNotifier<ReturnsState> {
         purchaseReturns: all.where((r) => r.returnType == 'purchase').toList(),
       );
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(loading: false, error: extractAnyError(e));
     }
   }
 
@@ -72,7 +73,7 @@ class ReturnsNotifier extends StateNotifier<ReturnsState> {
       await fetch();
       return true;
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      state = state.copyWith(error: extractAnyError(e));
       return false;
     }
   }
@@ -93,7 +94,7 @@ class ReturnsNotifier extends StateNotifier<ReturnsState> {
       await fetch();
       return true;
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      state = state.copyWith(error: extractAnyError(e));
       return false;
     }
   }

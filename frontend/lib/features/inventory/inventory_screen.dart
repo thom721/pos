@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/inventory_model.dart';
@@ -179,7 +180,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       if (mounted) {
         setState(() {
           _submitting = false;
-          _submitError = e.toString();
+          _submitError = extractAnyError(e);
         });
       }
     }

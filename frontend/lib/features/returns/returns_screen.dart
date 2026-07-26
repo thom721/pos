@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
@@ -324,7 +325,7 @@ class _ReturnCardState extends ConsumerState<_ReturnCard> {
         }
       }
     } catch (e) {
-      errMsg = e.toString();
+      errMsg = extractAnyError(e);
     } finally {
       if (mounted) setState(() => _printing = false);
     }
@@ -672,7 +673,7 @@ class _NewSaleReturnDialogState extends ConsumerState<_NewSaleReturnDialog> {
         }
       }
     } catch (e) {
-      errMsg = e.toString();
+      errMsg = extractAnyError(e);
     } finally {
       if (mounted) setState(() => _printing = false);
     }

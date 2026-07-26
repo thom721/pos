@@ -79,7 +79,7 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
         }
       }
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted) setState(() { _error = extractAnyError(e); _loading = false; });
     }
   }
 
@@ -110,7 +110,7 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
         ok = true;
       }
     } catch (e) {
-      errMsg = e.toString();
+      errMsg = extractAnyError(e);
     } finally {
       if (mounted) setState(() => _printing = false);
     }
@@ -1144,7 +1144,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         ok = true;
       }
     } catch (e) {
-      errMsg = e.toString();
+      errMsg = extractAnyError(e);
     }
     if (!mounted) return;
     setState(() => _autoPrinting = false);

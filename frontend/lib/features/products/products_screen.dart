@@ -295,7 +295,7 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Erreur : $e'),
+          content: Text('Erreur : ${extractAnyError(e)}'),
           backgroundColor: AppColors.error,
         ));
       }
@@ -841,7 +841,7 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
                   } catch (e) {
                     if (mounted) {
                       messenger.showSnackBar(SnackBar(
-                        content: Text('Erreur : $e'),
+                        content: Text('Erreur : ${extractAnyError(e)}'),
                         backgroundColor: AppColors.error,
                       ));
                     }
@@ -878,7 +878,7 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
               } catch (e) {
                 if (mounted) {
                   messenger.showSnackBar(SnackBar(
-                    content: Text('Erreur : $e'),
+                    content: Text('Erreur : ${extractAnyError(e)}'),
                     backgroundColor: AppColors.error,
                   ));
                 }
@@ -2051,7 +2051,7 @@ class _CategoryManagerDialogState extends State<_CategoryManagerDialog> {
               } catch (e) {
                 if (mounted) {
                   messenger.showSnackBar(SnackBar(
-                    content: Text('Erreur : $e'),
+                    content: Text('Erreur : ${extractAnyError(e)}'),
                     backgroundColor: AppColors.error,
                   ));
                 }
@@ -2090,7 +2090,7 @@ class _CategoryManagerDialogState extends State<_CategoryManagerDialog> {
               } catch (e) {
                 if (mounted) {
                   messenger.showSnackBar(SnackBar(
-                    content: Text('Erreur : $e'),
+                    content: Text('Erreur : ${extractAnyError(e)}'),
                     backgroundColor: AppColors.error,
                   ));
                 }
@@ -2529,7 +2529,7 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
                 } catch (e) {
                   if (mounted) {
                     messenger.showSnackBar(SnackBar(
-                      content: Text('Erreur : $e'),
+                      content: Text('Erreur : ${extractAnyError(e)}'),
                       backgroundColor: AppColors.error,
                     ));
                   }
@@ -2591,7 +2591,7 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
               } catch (e) {
                 if (mounted) {
                   messenger.showSnackBar(SnackBar(
-                    content: Text('Erreur : $e'),
+                    content: Text('Erreur : ${extractAnyError(e)}'),
                     backgroundColor: AppColors.error,
                   ));
                 }
@@ -2611,7 +2611,7 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Erreur : $e'),
+          content: Text('Erreur : ${extractAnyError(e)}'),
           backgroundColor: AppColors.error,
         ));
       }
@@ -2641,7 +2641,7 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
               } catch (e) {
                 if (mounted) {
                   messenger.showSnackBar(SnackBar(
-                    content: Text('Erreur : $e'),
+                    content: Text('Erreur : ${extractAnyError(e)}'),
                     backgroundColor: AppColors.error,
                   ));
                 }

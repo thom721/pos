@@ -171,7 +171,7 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
           msg = message ?? detail ?? 'Erreur réseau';
         }
       } else {
-        msg = e.toString();
+        msg = extractAnyError(e);
       }
       setState(() { _loading = false; _error = msg; });
     }

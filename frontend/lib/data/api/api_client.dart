@@ -223,5 +223,11 @@ String extractErrorMessage(DioException e) {
 /// Traduit n'importe quelle exception (DioException ou autre) en message lisible.
 String extractAnyError(Object e) {
   if (e is DioException) return extractErrorMessage(e);
+  if (e is Exception) {
+    final raw = e.toString();
+    // Strip "Exception: " prefix Flutter/Dart adds automatically
+    final msg = raw.startsWith('Exception: ') ? raw.substring(11) : raw;
+    if (msg.isNotEmpty) return msg;
+  }
   return 'Une erreur inattendue s\'est produite.';
 }
