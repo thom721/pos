@@ -13,6 +13,7 @@ import 'package:pos_connect/providers/restaurant_provider.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/shared/widgets/open_session_dialog.dart';
 
@@ -81,6 +82,7 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
       barrierDismissible: false,
       builder: (_) => OpenSessionDialog(
         deviceId: _deviceId!,
+        userId: ref.read(authProvider).user?.id ?? '',
         warehouseId: wh?.id,
         warehouseName: wh?.name,
         isAdminOrManager: ref.read(isAdminProvider) ||
