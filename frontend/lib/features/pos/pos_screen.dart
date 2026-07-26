@@ -31,6 +31,7 @@ import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/bluetooth_print_service.dart';
 import 'package:pos_connect/services/thermal_printer_service.dart';
+import 'package:pos_connect/shared/widgets/customer_picker_field.dart';
 
 final _fmt =
     NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
@@ -2141,29 +2142,17 @@ class _CustomerDropdown extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final customersAsync = ref.watch(customersProvider);
     final selectedId = ref.watch(posProvider).customerId;
+    final selectedName = customersAsync.asData?.value.data
+        .cast<dynamic>()
+        .firstWhere((c) => c.id == selectedId, orElse: () => null)
+        ?.name as String?;
 
-    return customersAsync.when(
-      data: (customers) => DropdownButtonFormField<String>(
-        key: ValueKey(selectedId),
-        initialValue: selectedId,
-        decoration: const InputDecoration(
-          labelText: 'Client (optionnel)',
-          prefixIcon: Icon(Icons.person_outline, size: 20),
-          isDense: true,
-        ),
-        items: [
-          const DropdownMenuItem(
-              value: null, child: Text('Client comptoir')),
-          ...customers.data.map((c) => DropdownMenuItem(
-                value: c.id,
-                child:
-                    Text(c.name, overflow: TextOverflow.ellipsis),
-              )),
-        ],
-        onChanged: (v) => ref.read(posProvider.notifier).setCustomer(v),
-      ),
-      loading: () => const LinearProgressIndicator(),
-      error: (e, s) => const SizedBox.shrink(),
+    return CustomerPickerField(
+      selectedId: selectedId,
+      selectedName: selectedName,
+      label: 'Client (optionnel)',
+      emptyLabel: 'Client comptoir',
+      onChanged: (id, _) => ref.read(posProvider.notifier).setCustomer(id),
     );
   }
 }

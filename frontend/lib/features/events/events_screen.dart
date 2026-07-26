@@ -14,8 +14,8 @@ import 'package:pos_connect/data/models/proforma_model.dart';
 import 'package:pos_connect/data/models/invoice_model.dart';
 import 'package:pos_connect/data/repositories/events_repository.dart';
 import 'package:pos_connect/core/permissions.dart';
-import 'package:pos_connect/providers/customer_provider.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
+import 'package:pos_connect/shared/widgets/customer_picker_field.dart';
 import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -1205,7 +1205,6 @@ class _NewProformaDialogState
   @override
   Widget build(BuildContext context) {
     final productsAsync = ref.watch(posProductsProvider);
-    final customersAsync = ref.watch(customersProvider);
     final fmt = _fmtFor(_currency);
 
     return _DocumentDialog(
@@ -1217,9 +1216,8 @@ class _NewProformaDialogState
       fmtHTG: _fmtFor('HTG'),
       onAddProduct: _addProduct,
       onCustomEntry: _showCustomEntry,
-      customersAsync: customersAsync,
       selectedClientId: _selectedClientId,
-      clientCtrl: _clientCtrl,
+      selectedClientName: _clientCtrl.text.isNotEmpty ? _clientCtrl.text : null,
       onClientChanged: (v, name) {
         setState(() {
           _selectedClientId = v;
@@ -1337,7 +1335,6 @@ class _NewInvoiceDialogState extends ConsumerState<_NewInvoiceDialog> {
   @override
   Widget build(BuildContext context) {
     final productsAsync = ref.watch(posProductsProvider);
-    final customersAsync = ref.watch(customersProvider);
     final fmt = _fmtFor(_currency);
 
     return _DocumentDialog(
@@ -1349,9 +1346,8 @@ class _NewInvoiceDialogState extends ConsumerState<_NewInvoiceDialog> {
       fmtHTG: _fmtFor('HTG'),
       onAddProduct: _addProduct,
       onCustomEntry: _showCustomEntry,
-      customersAsync: customersAsync,
       selectedClientId: _selectedClientId,
-      clientCtrl: _clientCtrl,
+      selectedClientName: _clientCtrl.text.isNotEmpty ? _clientCtrl.text : null,
       onClientChanged: (v, name) {
         setState(() {
           _selectedClientId = v;
@@ -1412,9 +1408,8 @@ class _DocumentDialog extends ConsumerStatefulWidget {
   final NumberFormat fmtHTG;
   final void Function(ProductModel) onAddProduct;
   final VoidCallback onCustomEntry;
-  final AsyncValue customersAsync;
   final String? selectedClientId;
-  final TextEditingController clientCtrl;
+  final String? selectedClientName;
   final void Function(String? id, String? name) onClientChanged;
   final List<ProformaItem> items;
   final NumberFormat fmt;
@@ -1437,9 +1432,8 @@ class _DocumentDialog extends ConsumerStatefulWidget {
     required this.fmtHTG,
     required this.onAddProduct,
     required this.onCustomEntry,
-    required this.customersAsync,
     required this.selectedClientId,
-    required this.clientCtrl,
+    required this.selectedClientName,
     required this.onClientChanged,
     required this.items,
     required this.fmt,
@@ -1529,49 +1523,10 @@ class _DocumentDialogState extends ConsumerState<_DocumentDialog> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                widget.customersAsync.when(
-                  data: (customers) => InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: 'Client',
-                      prefixIcon: Icon(Icons.person_outline, size: 20),
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                    ),
-                    child: DropdownButton<String?>(
-                      value: widget.selectedClientId,
-                      isExpanded: true,
-                      underline: const SizedBox.shrink(),
-                      isDense: true,
-                      items: [
-                        const DropdownMenuItem<String?>(
-                            value: null,
-                            child: Text('Sans client',
-                                style: TextStyle(fontSize: 14))),
-                        ...customers.data.map(
-                          (c) => DropdownMenuItem<String?>(
-                            value: c.id,
-                            child: Text(c.name,
-                                style: const TextStyle(fontSize: 14)),
-                          ),
-                        ),
-                      ],
-                      onChanged: (v) {
-                        final name = v != null
-                            ? customers.data
-                                .firstWhere((c) => c.id == v)
-                                .name
-                            : null;
-                        widget.onClientChanged(v, name);
-                      },
-                    ),
-                  ),
-                  loading: () => const LinearProgressIndicator(),
-                  error: (e, s) => TextField(
-                    controller: widget.clientCtrl,
-                    decoration: const InputDecoration(
-                        labelText: 'Nom du client', isDense: true),
-                  ),
+                CustomerPickerField(
+                  selectedId: widget.selectedClientId,
+                  selectedName: widget.selectedClientName,
+                  onChanged: widget.onClientChanged,
                 ),
                 const SizedBox(height: 12),
                 const Text('Articles',
