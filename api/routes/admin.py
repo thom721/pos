@@ -8,7 +8,7 @@ from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from api.core.billing_crypto import try_decrypt_date, encrypt_date
@@ -269,13 +269,29 @@ def platform_stats(
 
 @router.get("/tenants")
 def list_tenants(
+    search: str = "",
+    page: int = 1,
+    per_page: int = 20,
     db: Session = Depends(get_db),
     _: dict = Depends(require_superadmin),
 ):
+    query = db.query(Tenant).filter(Tenant.is_local == False)  # noqa: E712
+    if search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Tenant.business_name.ilike(pattern),
+                Tenant.owner_email.ilike(pattern),
+            )
+        )
+
+    total = query.count()
+    page = max(1, page)
     tenants = (
-        db.query(Tenant)
-        .filter(Tenant.is_local == False)  # noqa: E712
+        query
         .order_by(Tenant.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
         .all()
     )
 
@@ -379,7 +395,7 @@ def list_tenants(
             "inactive_depot_count":    inactive_depot_counts.get(t.id, 0),
         })
 
-    return result
+    return {"data": result, "total": total, "page": page, "per_page": per_page}
 
 
 # ── Create tenant ───────────────────────────────────────────────────────────

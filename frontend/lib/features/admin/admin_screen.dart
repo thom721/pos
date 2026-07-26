@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -16,11 +17,20 @@ final _statsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) as
   return res.data as Map<String, dynamic>;
 });
 
+final _tenantSearchProvider = StateProvider.autoDispose<String>((ref) => '');
+final _tenantPageProvider = StateProvider.autoDispose<int>((ref) => 1);
+
 final _tenantsProvider =
-    FutureProvider.autoDispose<List<dynamic>>((ref) async {
+    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final search = ref.watch(_tenantSearchProvider);
+  final page = ref.watch(_tenantPageProvider);
   final d = await ref.watch(adminDioProvider.future);
-  final res = await d.get('/api/admin/tenants');
-  return res.data as List<dynamic>;
+  final res = await d.get('/api/admin/tenants', queryParameters: <String, dynamic>{
+    if (search.isNotEmpty) 'search': search,
+    'page': page,
+    'per_page': 20,
+  });
+  return res.data as Map<String, dynamic>;
 });
 
 final _paymentsProvider =
@@ -212,32 +222,160 @@ class _AdminDashboard extends ConsumerWidget {
 
 // ── Tab 1 — Boutiques ────────────────────────────────────────────────────────
 
-class _TenantsTab extends ConsumerWidget {
+class _TenantsTab extends ConsumerStatefulWidget {
   const _TenantsTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tenantsAsync = ref.watch(_tenantsProvider);
+  ConsumerState<_TenantsTab> createState() => _TenantsTabState();
+}
 
-    return tenantsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => _ErrorView(
-        message: extractAnyError(e),
-        onRetry: () => ref.invalidate(_tenantsProvider),
+class _TenantsTabState extends ConsumerState<_TenantsTab> {
+  final _searchCtrl = TextEditingController();
+  Timer? _debounce;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String val) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      ref.read(_tenantSearchProvider.notifier).state = val.trim();
+      ref.read(_tenantPageProvider.notifier).state = 1;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tenantsAsync = ref.watch(_tenantsProvider);
+    final page = ref.watch(_tenantPageProvider);
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: TextField(
+            controller: _searchCtrl,
+            decoration: InputDecoration(
+              hintText: 'Rechercher par nom ou email...',
+              prefixIcon: const Icon(Icons.search_rounded, size: 20),
+              isDense: true,
+              suffixIcon: _searchCtrl.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        ref.read(_tenantSearchProvider.notifier).state = '';
+                        ref.read(_tenantPageProvider.notifier).state = 1;
+                      },
+                    )
+                  : null,
+            ),
+            onChanged: (v) {
+              setState(() {}); // rebuild to show/hide clear button
+              _onSearchChanged(v);
+            },
+          ),
+        ),
+        Expanded(
+          child: tenantsAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => _ErrorView(
+              message: extractAnyError(e),
+              onRetry: () => ref.invalidate(_tenantsProvider),
+            ),
+            data: (result) {
+              final tenants = result['data'] as List<dynamic>? ?? [];
+              final total = result['total'] as int? ?? 0;
+              final perPage = result['per_page'] as int? ?? 20;
+              final totalPages = perPage > 0 ? ((total + perPage - 1) ~/ perPage) : 1;
+
+              if (tenants.isEmpty) {
+                return const Center(child: Text('Aucune boutique trouvée'));
+              }
+
+              return RefreshIndicator(
+                onRefresh: () async => ref.invalidate(_tenantsProvider),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                        itemCount: tenants.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, i) {
+                          final t = tenants[i] as Map<String, dynamic>;
+                          return _TenantCard(tenant: t);
+                        },
+                      ),
+                    ),
+                    if (totalPages > 1)
+                      _PaginationBar(
+                        page: page,
+                        totalPages: totalPages,
+                        total: total,
+                        onPrev: page > 1
+                            ? () => ref.read(_tenantPageProvider.notifier).state = page - 1
+                            : null,
+                        onNext: page < totalPages
+                            ? () => ref.read(_tenantPageProvider.notifier).state = page + 1
+                            : null,
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PaginationBar extends StatelessWidget {
+  final int page;
+  final int totalPages;
+  final int total;
+  final VoidCallback? onPrev;
+  final VoidCallback? onNext;
+
+  const _PaginationBar({
+    required this.page,
+    required this.totalPages,
+    required this.total,
+    this.onPrev,
+    this.onNext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
       ),
-      data: (tenants) => RefreshIndicator(
-        onRefresh: () async => ref.invalidate(_tenantsProvider),
-        child: tenants.isEmpty
-            ? const Center(child: Text('Aucune boutique trouvée'))
-            : ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: tenants.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, i) {
-                  final t = tenants[i] as Map<String, dynamic>;
-                  return _TenantCard(tenant: t);
-                },
-              ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            onPressed: onPrev,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Page $page / $totalPages  •  $total boutiques',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            onPressed: onNext,
+          ),
+        ],
       ),
     );
   }
