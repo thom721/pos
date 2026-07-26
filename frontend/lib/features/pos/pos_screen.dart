@@ -20,6 +20,7 @@ import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
 import 'package:pos_connect/shared/widgets/open_session_dialog.dart';
+import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/providers/customer_provider.dart';
 import 'package:pos_connect/providers/draft_provider.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
@@ -1848,6 +1849,41 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                               ),
                             );
                             return;
+                          }
+
+                          // Crédit → compte client doit avoir NIF/CIN et Adresse
+                          if ((pos.total - pos.paidAmount) > 0.005 &&
+                              pos.customerId != null) {
+                            CustomerModel? customer;
+                            ref.read(customersProvider).whenData((c) {
+                              customer = c.data.firstWhere(
+                                (x) => x.id == pos.customerId,
+                                orElse: () => c.data.first,
+                              );
+                              if (c.data.every((x) => x.id != pos.customerId)) {
+                                customer = null;
+                              }
+                            });
+                            final missing = <String>[
+                              if (customer?.nif == null || (customer?.nif ?? '').isEmpty)
+                                'NIF / CIN',
+                              if ((customer?.address ?? '').isEmpty)
+                                'Adresse',
+                            ];
+                            if (missing.isNotEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Compte client incomplet — vente à crédit impossible.\n'
+                                    'Champ(s) manquant(s) : ${missing.join(", ")}.\n'
+                                    'Complétez le profil du client avant de continuer.',
+                                  ),
+                                  backgroundColor: AppColors.error,
+                                  duration: const Duration(seconds: 5),
+                                ),
+                              );
+                              return;
+                            }
                           }
 
                           // New sale — CARD requires approval code
