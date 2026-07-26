@@ -21,6 +21,7 @@ import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
 import 'package:pos_connect/shared/widgets/open_session_dialog.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
+import 'package:pos_connect/features/customers/customers_screen.dart' show CustomerFormDialog;
 import 'package:pos_connect/providers/customer_provider.dart';
 import 'package:pos_connect/providers/draft_provider.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
@@ -1874,12 +1875,24 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                    'Compte client incomplet — vente à crédit impossible.\n'
-                                    'Champ(s) manquant(s) : ${missing.join(", ")}.\n'
-                                    'Complétez le profil du client avant de continuer.',
+                                    'Compte client incomplet : ${missing.join(", ")} manquant(s).',
                                   ),
                                   backgroundColor: AppColors.error,
-                                  duration: const Duration(seconds: 5),
+                                  duration: const Duration(seconds: 8),
+                                  action: SnackBarAction(
+                                    label: 'Modifier',
+                                    textColor: Colors.white,
+                                    onPressed: () async {
+                                      await showDialog(
+                                        context: context,
+                                        builder: (_) => UncontrolledProviderScope(
+                                          container: ProviderScope.containerOf(context),
+                                          child: CustomerFormDialog(customer: customer),
+                                        ),
+                                      );
+                                      ref.invalidate(customersProvider);
+                                    },
+                                  ),
                                 ),
                               );
                               return;

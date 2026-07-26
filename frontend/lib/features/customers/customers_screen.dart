@@ -77,7 +77,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   void _showForm(BuildContext context, [CustomerModel? customer]) {
     showDialog(
       context: context,
-      builder: (_) => _CustomerFormDialog(customer: customer),
+      builder: (_) => CustomerFormDialog(customer: customer),
     );
   }
 }
@@ -131,7 +131,7 @@ class _CustomerCard extends ConsumerWidget {
         onTap: () {
           showDialog(
             context: context,
-            builder: (_) => _CustomerFormDialog(customer: customer),
+            builder: (_) => CustomerFormDialog(customer: customer),
           );
         },
       ),
@@ -139,18 +139,18 @@ class _CustomerCard extends ConsumerWidget {
   }
 }
 
-class _CustomerFormDialog extends ConsumerStatefulWidget {
+class CustomerFormDialog extends ConsumerStatefulWidget {
   final CustomerModel? customer;
 
-  const _CustomerFormDialog({this.customer});
+  const CustomerFormDialog({super.key, this.customer});
 
   @override
-  ConsumerState<_CustomerFormDialog> createState() =>
-      _CustomerFormDialogState();
+  ConsumerState<CustomerFormDialog> createState() =>
+      CustomerFormDialogState();
 }
 
-class _CustomerFormDialogState
-    extends ConsumerState<_CustomerFormDialog> {
+class CustomerFormDialogState
+    extends ConsumerState<CustomerFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameCtrl;
   late final TextEditingController _nifCtrl;
