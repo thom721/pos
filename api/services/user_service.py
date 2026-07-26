@@ -30,9 +30,9 @@ class UserService(TenantService):
                 username=data.username,
                 phone=data.phone,
                 address=data.address,
-                email=data.email,
+                email=data.email or None,
                 password=get_password_hash(data.password),
-                offline_hash=compute_offline_hash(data.email, data.password),
+                offline_hash=compute_offline_hash(data.email, data.password) if data.email else None,
                 roles=data.roles or [],
                 permissions=data.permissions or [],
                 must_change_password=True,
@@ -74,9 +74,12 @@ class UserService(TenantService):
             return None
         new_password = None
         for field, value in data.dict(exclude_unset=True).items():
-            if field == 'password' and value:
-                setattr(user, field, get_password_hash(value))
-                new_password = value
+            if field == 'password':
+                if value:
+                    user.password = get_password_hash(value)
+                    user.must_change_password = True
+                    new_password = value
+                # si password est None/vide → ne rien changer
             else:
                 setattr(user, field, value)
         if new_password and user.email:

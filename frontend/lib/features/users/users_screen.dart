@@ -1359,20 +1359,24 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      final body = {
+      final body = <String, dynamic>{
         'fname':        _fnameCtrl.text.trim(),
         'lname':        _lnameCtrl.text.trim(),
         'username':     _usernameCtrl.text.trim(),
-        'email':        _emailCtrl.text.trim(),
+        'email':        _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
         'phone':        _phoneCtrl.text.trim(),
         'address':      _addressCtrl.text.trim(),
-        'password':     _pwdCtrl.text.isNotEmpty ? _pwdCtrl.text : 'ChangeMe123!',
         'is_active':    _isActive,
         'roles':        [_selectedRole],
         'permissions':  _selectedRole == 'admin' ? ['all'] : [_selectedRole],
         // null = accès à tous les dépôts ; liste vide envoyée comme null aussi
         'warehouse_id': _selectedWarehouseIds.isEmpty ? null : _selectedWarehouseIds,
       };
+      // En mode édition : n'inclure le mot de passe que s'il est renseigné.
+      // Le backend active must_change_password=true quand le password est mis à jour.
+      if (!_isEdit || _pwdCtrl.text.isNotEmpty) {
+        body['password'] = _pwdCtrl.text.isNotEmpty ? _pwdCtrl.text : 'ChangeMe123!';
+      }
       if (_isEdit) {
         await dio.put('/api/users/${widget.existing!['id']}',
             data: {'id': widget.existing!['id'], ...body});
@@ -1447,9 +1451,8 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
-                      labelText: 'Email',
+                      labelText: 'Email (optionnel)',
                       prefixIcon: Icon(Icons.email_outlined)),
-                  validator: (v) => (v?.isEmpty ?? true) ? 'Requis' : null,
                 ),
                 const SizedBox(height: 12),
                 Row(children: [

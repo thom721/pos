@@ -1,4 +1,4 @@
-from pydantic import BaseModel,EmailStr
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from uuid import UUID
 from api.database import Base
@@ -11,7 +11,7 @@ class UserCreate(BaseModel):
     phone: str
     address: Optional[str] = None
     password: str
-    email: EmailStr
+    email: Optional[str] = None
     is_active: bool = True
     roles: Optional[List[str]] = []
     permissions: Optional[List[str]] = []
@@ -25,8 +25,8 @@ class UserUpdate(BaseModel):
     username: str
     phone: str
     address: Optional[str] = None
-    password: str
-    email: EmailStr
+    password: Optional[str] = None   # omis = mot de passe inchangé
+    email: Optional[str] = None
     is_active: bool = True
     roles: Optional[List[str]] = None
     permissions: Optional[List[str]] = None
@@ -46,7 +46,7 @@ class UserRead(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     password: str
-    email: EmailStr
+    email: Optional[str] = None
     is_active: bool = True
     roles: List[str] = []
     permissions: List[str] = []
@@ -65,7 +65,7 @@ class UserPublicRead(BaseModel):
     username: str
     phone: Optional[str] = None
     address: Optional[str] = None
-    email: EmailStr
+    email: Optional[str] = None
     is_active: bool = True
     roles: List[str] = []
     permissions: List[str] = []
@@ -82,7 +82,7 @@ class UserSyncRead(BaseModel):
     fname: str
     lname: str
     username: str
-    email: EmailStr
+    email: Optional[str] = None
     is_active: bool = True
     roles: List[str] = []
     permissions: List[str] = []
