@@ -105,6 +105,7 @@ class ThermalPrinterService {
       );
     }
     await SunmiPrinter.line();
+    await SunmiPrinter.lineWrap(1);
 
     // Infos vente
     await SunmiPrinter.printText(
@@ -127,7 +128,9 @@ class ThermalPrinterService {
         style: SunmiTextStyle(fontSize: 24, align: SunmiPrintAlign.LEFT),
       );
     }
+    await SunmiPrinter.lineWrap(1);
     await SunmiPrinter.line();
+    await SunmiPrinter.lineWrap(1);
 
     // En-tête tableau articles (col widths: 18 + 4 + 10 = 32)
     await SunmiPrinter.printRow(cols: [
@@ -157,19 +160,31 @@ class ThermalPrinterService {
     await SunmiPrinter.line();
 
     // Totaux (col widths: 20 + 12 = 32)
-    if (sale.discount > 0) {
+    final itemsDisc = sale.totalItemsDiscount;
+    final hasDisc = itemsDisc > 0.001 || sale.discount > 0.001;
+    if (hasDisc) {
       await SunmiPrinter.printRow(cols: [
         SunmiColumn(text: 'Sous-total', width: 20,
             style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-        SunmiColumn(text: '$sym${fmt.format(sale.totalAmount)}', width: 12,
+        SunmiColumn(text: '$sym${fmt.format(sale.totalAmount + itemsDisc)}', width: 12,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
-      await SunmiPrinter.printRow(cols: [
-        SunmiColumn(text: 'Remise', width: 20,
-            style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-        SunmiColumn(text: '-$sym${fmt.format(sale.discount)}', width: 12,
-            style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
-      ]);
+      if (itemsDisc > 0.001) {
+        await SunmiPrinter.printRow(cols: [
+          SunmiColumn(text: 'Remises articles', width: 20,
+              style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
+          SunmiColumn(text: '-$sym${fmt.format(itemsDisc)}', width: 12,
+              style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
+        ]);
+      }
+      if (sale.discount > 0.001) {
+        await SunmiPrinter.printRow(cols: [
+          SunmiColumn(text: 'Remise caisse', width: 20,
+              style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
+          SunmiColumn(text: '-$sym${fmt.format(sale.discount)}', width: 12,
+              style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
+        ]);
+      }
     }
     await SunmiPrinter.printRow(cols: [
       SunmiColumn(text: 'TOTAL', width: 20,
