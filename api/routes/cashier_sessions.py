@@ -328,6 +328,19 @@ def open_session(
     _has_sub   = _sub_end   is not None and _sub_end   > _now
     _has_trial = _trial_end is not None and _trial_end > _now
 
+    if not _has_sub and not _has_trial and reg.is_initial:
+        # Caisse initiale sans trial/sub → réparer depuis le trial du tenant
+        # (cas VPS où trial_ends_at était NULL car ancienne colonne DATETIME)
+        _tenant = db.get(Tenant, current_user.tenant_id)
+        if _tenant and _tenant.trial_ends_at:
+            _t = _tenant.trial_ends_at
+            if _t.tzinfo is None:
+                _t = _t.replace(tzinfo=timezone.utc)
+            if _t > _now:
+                reg.trial_ends_at = _t
+                db.flush()
+                _has_trial = True
+
     if not _has_sub and not _has_trial:
         return JSONResponse(status_code=402, content={
             "detail":  "register_no_subscription",
