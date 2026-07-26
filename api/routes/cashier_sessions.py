@@ -275,23 +275,32 @@ def open_session(
     if isinstance(reg, JSONResponse):
         return reg
 
-    # Block session if non-initial register has no active subscription or trial
+    # Block session if non-initial register has no active subscription or trial.
+    # Fallback: if the tenant has NO initial caisses (données antérieures à la colonne
+    # is_initial — server_default=0), toutes les caisses sont couvertes par le plan tenant.
     if not reg.is_initial:
-        _now = datetime.now(timezone.utc)
-        sub_end   = reg.subscription_ends_at
-        trial_end = reg.trial_ends_at
-        if sub_end and sub_end.tzinfo is None:
-            sub_end = sub_end.replace(tzinfo=timezone.utc)
-        if trial_end and trial_end.tzinfo is None:
-            trial_end = trial_end.replace(tzinfo=timezone.utc)
-        has_sub   = sub_end   is not None and sub_end   > _now
-        has_trial = trial_end is not None and trial_end > _now
-        if not has_sub and not has_trial:
-            return JSONResponse(status_code=402, content={
-                "detail":  "register_no_subscription",
-                "message": "Cette caisse n'a pas d'abonnement actif. "
-                           "Payez l'abonnement depuis la page Abonnement pour l'utiliser.",
-            })
+        _tenant_has_initial = db.query(PosRegister).filter(
+            PosRegister.tenant_id == reg.tenant_id,
+            PosRegister.is_initial == True,  # noqa: E712
+            PosRegister.is_active  == True,  # noqa: E712
+        ).count() > 0
+        if _tenant_has_initial:
+            # Caisse véritablement supplémentaire — vérifier son abonnement individuel
+            _now = datetime.now(timezone.utc)
+            sub_end   = reg.subscription_ends_at
+            trial_end = reg.trial_ends_at
+            if sub_end and sub_end.tzinfo is None:
+                sub_end = sub_end.replace(tzinfo=timezone.utc)
+            if trial_end and trial_end.tzinfo is None:
+                trial_end = trial_end.replace(tzinfo=timezone.utc)
+            has_sub   = sub_end   is not None and sub_end   > _now
+            has_trial = trial_end is not None and trial_end > _now
+            if not has_sub and not has_trial:
+                return JSONResponse(status_code=402, content={
+                    "detail":  "register_no_subscription",
+                    "message": "Cette caisse n'a pas d'abonnement actif. "
+                               "Payez l'abonnement depuis la page Abonnement pour l'utiliser.",
+                })
 
     # Block if the linked warehouse is disabled
     if reg.warehouse_id:

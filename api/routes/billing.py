@@ -68,7 +68,12 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
         PosRegister.is_initial == True,  # noqa: E712
     ).count()
 
-    extra_caisse_count = caisse_count - initial_count
+    # Fallback: si aucune caisse n'est marquée is_initial (données antérieures à la colonne),
+    # on considère que 1 caisse est incluse dans le plan — évite faux surcoût.
+    if initial_count == 0 and caisse_count > 0:
+        initial_count = 1
+
+    extra_caisse_count = max(0, caisse_count - initial_count)
 
     # Dépôts = warehouses actifs (illimités, sans surcharge)
     depot_count = db.query(Warehouse).filter(
