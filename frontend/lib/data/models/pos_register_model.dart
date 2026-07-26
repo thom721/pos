@@ -1,3 +1,5 @@
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
+
 class PosRegisterModel {
   final String id;
   final String name;
@@ -53,7 +55,7 @@ class PosRegisterModel {
   int? get daysLeft {
     final exp = effectiveExpiry;
     if (exp == null) return null;
-    return exp.difference(DateTime.now()).inDays;
+    return exp.toUtc().difference(haitiNow().toUtc()).inDays;
   }
 
   bool get isTrial => subscriptionEndsAt == null && trialEndsAt != null;

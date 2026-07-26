@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:pos_connect/core/date_utils.dart' show toHaitiTime;
+import 'package:pos_connect/core/date_utils.dart' show haitiNow, toHaitiTime;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -926,7 +926,7 @@ class _RegisterUsageGroup extends StatelessWidget {
           final subStartedAt = _parseDate(r['subscription_started_at'] as String?);
           final expiry = _parseDate(r['subscription_ends_at'] as String?)
               ?? _parseDate(r['trial_ends_at'] as String?);
-          final daysLeft = expiry?.difference(DateTime.now()).inDays;
+          final daysLeft = expiry?.toUtc().difference(haitiNow().toUtc()).inDays;
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),

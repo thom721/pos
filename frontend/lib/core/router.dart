@@ -50,6 +50,10 @@ class _AuthRefreshNotifier extends ChangeNotifier {
   }
 }
 
+/// Navigator key for the root GoRouter — lets non-widget code (e.g. app.dart
+/// stream listeners) show dialogs via appNavigatorKey.currentContext.
+final appNavigatorKey = GlobalKey<NavigatorState>();
+
 // Routes qui ne nécessitent pas d'authentification.
 const _kPublicRoutes = {
   '/splash', '/login', '/home', '/contact', '/terms',
@@ -62,6 +66,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   String? pendingDeepLink;
 
   return GoRouter(
+    navigatorKey: appNavigatorKey,
     initialLocation: '/splash',
     refreshListenable: notifier,
     redirect: (context, state) {

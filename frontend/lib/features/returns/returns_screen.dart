@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:printing/printing.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/return_model.dart';
@@ -600,7 +601,7 @@ class _NewSaleReturnDialogState extends ConsumerState<_NewSaleReturnDialog> {
       totalReturned: _computedRefund,
       refundAmount: refund,
       reason: _reasonCtrl.text.trim().isEmpty ? null : _reasonCtrl.text.trim(),
-      createdAt: DateTime.now(),
+      createdAt: haitiNow(),
       items: items,
     );
   }

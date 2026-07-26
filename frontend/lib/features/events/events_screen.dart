@@ -1190,7 +1190,7 @@ class _NewProformaDialogState
     widget.onCreated(Proforma(
       id: const Uuid().v4(),
       reference: 'PRF-$ref',
-      date: DateTime.now(),
+      date: haitiNow(),
       clientName:
           _clientCtrl.text.isNotEmpty ? _clientCtrl.text : null,
       clientId: _selectedClientId,
@@ -1319,7 +1319,7 @@ class _NewInvoiceDialogState extends ConsumerState<_NewInvoiceDialog> {
     widget.onCreated(Invoice(
       id: const Uuid().v4(),
       reference: 'FAC-$uuid',
-      date: DateTime.now(),
+      date: haitiNow(),
       dueDate: _dueDate,
       clientName:
           _clientCtrl.text.isNotEmpty ? _clientCtrl.text : null,

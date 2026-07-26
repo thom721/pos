@@ -9,8 +9,8 @@ import 'package:pos_connect/services/offline_queue_service.dart';
 
 const _localBaseUrl = 'https://infini-post.local';
 
-final _unauthorizedCtrl = StreamController<void>.broadcast();
-Stream<void> get onUnauthorized => _unauthorizedCtrl.stream;
+final _unauthorizedCtrl = StreamController<String?>.broadcast();
+Stream<String?> get onUnauthorized => _unauthorizedCtrl.stream;
 
 const _tokenStorage = FlutterSecureStorage(
   aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -146,11 +146,22 @@ class AuthInterceptor extends Interceptor {
       final skipLogout = err.requestOptions.extra['skipAutoLogout'] == true;
       if (!skipLogout) {
         await _deleteToken();
-        _unauthorizedCtrl.add(null);
+        final detail = _extractDetail(err);
+        _unauthorizedCtrl.add(detail);
       }
     }
     handler.next(err);
   }
+}
+
+String? _extractDetail(DioException err) {
+  try {
+    final data = err.response?.data;
+    if (data is Map) {
+      return data['detail']?.toString() ?? data['message']?.toString();
+    }
+  } catch (_) {}
+  return null;
 }
 
 // ── Offline interceptor ───────────────────────────────────────────────────────

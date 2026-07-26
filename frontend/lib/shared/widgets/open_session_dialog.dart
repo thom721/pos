@@ -126,7 +126,7 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
           'id': const Uuid().v4(),
           'device_id': widget.deviceId,
           'opening_balance': openingBalance,
-          'opened_at': DateTime.now().toIso8601String(),
+          'opened_at': DateTime.now().toUtc().toIso8601String(),
           'offline': true,
         };
         widget.onOpened(localSession);

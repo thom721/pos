@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/core/constants.dart';
-import 'package:pos_connect/core/router.dart';
+import 'package:pos_connect/core/router.dart' show routerProvider, appNavigatorKey;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
@@ -32,7 +32,7 @@ class PosApp extends ConsumerStatefulWidget {
 }
 
 class _PosAppState extends ConsumerState<PosApp> {
-  late final StreamSubscription<void> _authSub;
+  late final StreamSubscription<String?> _authSub;
   late final StreamSubscription<OfflineQueueItem> _droppedSub;
   Timer? _syncTimer;
   Timer? _heartbeatTimer;
@@ -41,10 +41,35 @@ class _PosAppState extends ConsumerState<PosApp> {
   @override
   void initState() {
     super.initState();
-    _authSub = onUnauthorized.listen((_) {
-      // Preserve cached user so offline recovery can restore the session
-      ref.read(authProvider.notifier).logoutDueToExpiry();
+    _authSub = onUnauthorized.listen((message) async {
       _stopAutoSync();
+      // Show a blocking dialog when the server returns a specific reason
+      // (e.g. force-close by admin). Generic credential errors skip the dialog.
+      const kGeneric = 'Could not validate credentials';
+      final showReason = message != null && message != kGeneric;
+      if (showReason) {
+        final ctx = appNavigatorKey.currentContext;
+        if (ctx != null) {
+          // ctx is the root GoRouter navigator context — it outlives any route
+          // change, so the async-gap lint is a false positive here.
+          await showDialog<void>(
+            // ignore: use_build_context_synchronously
+            context: ctx,
+            barrierDismissible: false,
+            builder: (dialogCtx) => AlertDialog(
+              title: const Text('Session terminée'),
+              content: Text(message),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogCtx).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+      ref.read(authProvider.notifier).logoutDueToExpiry();
     });
     _droppedSub = OfflineQueueService.dropped.listen((item) {
       _messengerKey.currentState?.showSnackBar(SnackBar(

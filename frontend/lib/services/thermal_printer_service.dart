@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:printing/printing.dart';
 import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
 
@@ -269,7 +270,7 @@ class ThermalPrinterService {
       await SunmiPrinter.printText('Réf: $reference\n',
           style: SunmiTextStyle(fontSize: 24, align: SunmiPrintAlign.LEFT));
     }
-    await SunmiPrinter.printText('Date: ${dateFmt.format(DateTime.now())}\n',
+    await SunmiPrinter.printText('Date: ${dateFmt.format(haitiNow())}\n',
         style: SunmiTextStyle(fontSize: 24, align: SunmiPrintAlign.LEFT));
     if (order.tableName != null) {
       await SunmiPrinter.printText('Table: ${order.tableName}\n',

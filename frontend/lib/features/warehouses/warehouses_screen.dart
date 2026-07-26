@@ -12,6 +12,7 @@ import 'package:pos_connect/features/billing/billing_screen.dart'
     show preSelectedRegisterIdsProvider;
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/shared/widgets/limit_exceeded_dialog.dart';
 
@@ -565,7 +566,7 @@ class _RegisterTile extends ConsumerWidget {
     final effectiveExpiry = register.effectiveExpiry;
 
     final daysLeft =
-        effectiveExpiry?.difference(DateTime.now()).inDays;
+        effectiveExpiry?.toUtc().difference(haitiNow().toUtc()).inDays;
 
     final expiryColor = daysLeft == null
         ? AppColors.textSecondary

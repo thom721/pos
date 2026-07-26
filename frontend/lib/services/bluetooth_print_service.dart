@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
@@ -491,7 +492,7 @@ class BluetoothPrintService {
 
     // Order info
     if (reference != null) { text('Ref: $reference'); nl(); }
-    text('Date: ${dateFmt.format(DateTime.now())}'); nl();
+    text('Date: ${dateFmt.format(haitiNow())}'); nl();
     if (order.tableName != null) { text('Table: ${order.tableName}'); nl(); }
     if (order.waiterName != null) { text('Serveur: ${order.waiterName}'); nl(); }
     text('Couverts: ${order.covers}'); nl();

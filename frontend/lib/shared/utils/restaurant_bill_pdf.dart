@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -178,7 +179,7 @@ Future<Uint8List> buildRestaurantBillPdf(
           // ── Infos commande ────────────────────────────────────────────
           if (reference != null)
             pw.Text('Réf: $reference', style: base),
-          pw.Text('Date: ${dateFmt.format(DateTime.now())}', style: base),
+          pw.Text('Date: ${dateFmt.format(haitiNow())}', style: base),
           if (order.tableName != null)
             pw.Text('Table: ${order.tableName}', style: base),
           if (order.waiterName != null)
