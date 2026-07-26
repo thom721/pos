@@ -224,16 +224,18 @@ def get_current_session(
 
     warehouse_match = (not warehouse_id) or (reg.warehouse_id == warehouse_id)
 
-    # Dates d'abonnement de la caisse — nécessaires pour la vérification offline côté mobile.
-    reg_trial_ends_at = reg.trial_ends_at.isoformat() if reg.trial_ends_at else None
-    reg_sub_ends_at   = reg.subscription_ends_at.isoformat() if reg.subscription_ends_at else None
+    # Dates d'abonnement + caissier dédié — nécessaires pour la vérification offline.
+    reg_trial_ends_at   = reg.trial_ends_at.isoformat() if reg.trial_ends_at else None
+    reg_sub_ends_at     = reg.subscription_ends_at.isoformat() if reg.subscription_ends_at else None
+    reg_dedicated_user  = reg.dedicated_user_id  # peut être None
 
     if not session:
         return {
-            "session":              None,
-            "has_register":         warehouse_match,
-            "register_trial_ends_at": reg_trial_ends_at,
-            "register_sub_ends_at":   reg_sub_ends_at,
+            "session":                  None,
+            "has_register":             warehouse_match,
+            "register_trial_ends_at":   reg_trial_ends_at,
+            "register_sub_ends_at":     reg_sub_ends_at,
+            "register_dedicated_user":  reg_dedicated_user,
         }
 
     return {
@@ -245,9 +247,10 @@ def get_current_session(
             "opened_at":       session.opened_at,
             "status":          session.status,
         },
-        "has_register":           True,
-        "register_trial_ends_at": reg_trial_ends_at,
-        "register_sub_ends_at":   reg_sub_ends_at,
+        "has_register":                 True,
+        "register_trial_ends_at":       reg_trial_ends_at,
+        "register_sub_ends_at":         reg_sub_ends_at,
+        "register_dedicated_user":      reg_dedicated_user,
     }
 
 
@@ -285,6 +288,13 @@ def open_session(
     # Propagate 402 limit_exceeded, 403 caisse_disabled, or 409 no_registers
     if isinstance(reg, JSONResponse):
         return reg
+
+    # Caisse dédiée : seul l'utilisateur assigné peut ouvrir une session.
+    if reg.dedicated_user_id and reg.dedicated_user_id != current_user.id:
+        return JSONResponse(status_code=403, content={
+            "detail":  "register_dedicated",
+            "message": "Cette caisse est réservée à un autre caissier.",
+        })
 
     # Vérifier l'abonnement de la caisse — chaque caisse (initiale ou non)
     # a sa propre ligne de facturation (trial_ends_at / subscription_ends_at).

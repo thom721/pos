@@ -56,6 +56,8 @@ class RegisterRead(BaseModel):
     trial_ends_at: Optional[datetime] = None
     subscription_started_at: Optional[datetime] = None
     subscription_ends_at: Optional[datetime] = None
+    dedicated_user_id: Optional[str] = None
+    dedicated_user_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -70,6 +72,7 @@ class RegisterCreate(BaseModel):
 class RegisterUpdate(BaseModel):
     name: Optional[str] = None
     is_active: Optional[bool] = None
+    dedicated_user_id: Optional[str] = None  # None = garder, "" = retirer le caissier dédié
 
 router = APIRouter(prefix="/api/warehouses", tags=["Warehouses"])
 
@@ -345,7 +348,7 @@ def list_registers(
     current_user: User = Depends(require_permission(P.WAREHOUSES_READ)),
 ):
     _get_or_404(db, warehouse_id, current_user.tenant_id)
-    return (
+    regs = (
         db.query(PosRegister)
         .filter(
             PosRegister.warehouse_id == warehouse_id,
@@ -355,6 +358,14 @@ def list_registers(
         .order_by(PosRegister.name)
         .all()
     )
+    result = []
+    for r in regs:
+        d = RegisterRead.model_validate(r)
+        if r.dedicated_user_id and r.dedicated_user:
+            u = r.dedicated_user
+            d.dedicated_user_name = f"{u.fname} {u.lname}".strip() or u.username
+        result.append(d)
+    return result
 
 
 @router.post("/{warehouse_id}/registers", status_code=201)
@@ -405,6 +416,7 @@ def update_register(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.WAREHOUSES_UPDATE)),
 ):
+    from api.models.User import User as UserModel
     reg = _get_register_or_404(db, warehouse_id, register_id, current_user.tenant_id)
     if data.name is not None:
         reg.name = data.name
@@ -412,9 +424,25 @@ def update_register(
         if reg.is_active and not data.is_active:
             _billing.close_extra(db, reg.id)
         reg.is_active = data.is_active
+    if data.dedicated_user_id is not None:
+        if data.dedicated_user_id == "":
+            reg.dedicated_user_id = None
+        else:
+            # Vérifier que l'utilisateur appartient au même tenant
+            target = db.query(UserModel).filter_by(
+                id=data.dedicated_user_id,
+                tenant_id=current_user.tenant_id,
+            ).first()
+            if not target:
+                raise HTTPException(404, "Utilisateur introuvable")
+            reg.dedicated_user_id = data.dedicated_user_id
     db.commit()
     db.refresh(reg)
-    return reg
+    d = RegisterRead.model_validate(reg)
+    if reg.dedicated_user_id and reg.dedicated_user:
+        u = reg.dedicated_user
+        d.dedicated_user_name = f"{u.fname} {u.lname}".strip() or u.username
+    return d
 
 
 @router.delete("/{warehouse_id}/registers/{register_id}", response_model=dict)

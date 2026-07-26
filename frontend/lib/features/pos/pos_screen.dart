@@ -25,6 +25,7 @@ import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/features/customers/customers_screen.dart' show CustomerFormDialog;
 import 'package:pos_connect/providers/customer_provider.dart';
 import 'package:pos_connect/providers/draft_provider.dart';
+import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/pos_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
@@ -942,17 +943,19 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   Future<void> _saveRegisterFlag(bool hasRegister, {
     String? trialEndsAt,
     String? subEndsAt,
+    String? dedicatedUserId,
   }) async {
     final wh = ref.read(activeWarehouseProvider);
     final prefs = await SharedPreferences.getInstance();
     final key = '$_registerPrefPrefix${wh?.id ?? 'default'}';
     if (hasRegister) {
       await prefs.setBool(key, true);
-      // Signer les dates avec device_id (HMAC-SHA256) avant de les cacher.
+      // Signer les dates et le caissier dédié avec device_id (HMAC-SHA256).
       // Un token altéré dans SharedPreferences sera rejeté à la vérification.
       final did = _deviceId ?? '';
       final signedTrial = await signDate(trialEndsAt, did);
       final signedSub   = await signDate(subEndsAt,   did);
+      final signedDedicated = await signDate(dedicatedUserId, did);
       if (signedTrial != null) {
         await prefs.setString('${key}_trial', signedTrial);
       } else {
@@ -963,10 +966,16 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       } else {
         await prefs.remove('${key}_sub');
       }
+      if (signedDedicated != null) {
+        await prefs.setString('${key}_dedicated', signedDedicated);
+      } else {
+        await prefs.remove('${key}_dedicated');
+      }
     } else {
       await prefs.remove(key);
       await prefs.remove('${key}_trial');
       await prefs.remove('${key}_sub');
+      await prefs.remove('${key}_dedicated');
     }
   }
 
@@ -991,6 +1000,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         hasRegister,
         trialEndsAt: res.data['register_trial_ends_at'] as String?,
         subEndsAt:   res.data['register_sub_ends_at']   as String?,
+        dedicatedUserId: res.data['register_dedicated_user'] as String?,
       );
       if (!mounted) return;
       setState(() {
@@ -1019,6 +1029,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         hasRegister,
         trialEndsAt: res.data['register_trial_ends_at'] as String?,
         subEndsAt:   res.data['register_sub_ends_at']   as String?,
+        dedicatedUserId: res.data['register_dedicated_user'] as String?,
       );
       if (!mounted) return;
       setState(() {
@@ -1052,6 +1063,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       barrierDismissible: false,
       builder: (_) => OpenSessionDialog(
         deviceId: _deviceId!,
+        userId: ref.read(authProvider).user?.id ?? '',
         warehouseId: wh?.id,
         warehouseName: wh?.name,
         isAdminOrManager: ref.read(isAdminProvider) ||

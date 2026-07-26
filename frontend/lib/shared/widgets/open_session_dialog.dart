@@ -13,6 +13,7 @@ import 'package:pos_connect/shared/widgets/limit_exceeded_dialog.dart';
 
 class OpenSessionDialog extends StatefulWidget {
   final String deviceId;
+  final String userId;
   final String? warehouseId;
   final String? warehouseName;
   final void Function(Map<String, dynamic> session) onOpened;
@@ -22,6 +23,7 @@ class OpenSessionDialog extends StatefulWidget {
   const OpenSessionDialog({
     super.key,
     required this.deviceId,
+    required this.userId,
     this.warehouseId,
     this.warehouseName,
     required this.onOpened,
@@ -81,6 +83,18 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
             _loading = false;
             _error = 'Appareil non enregistré comme caisse. '
                 'Connectez-vous au réseau une première fois pour activer cet appareil.';
+          });
+          return;
+        }
+
+        // Vérifier le caissier dédié depuis le cache signé.
+        final dedicatedRaw = prefs.getString('${regKey}_dedicated');
+        final dedicatedIso = await verifyDate(dedicatedRaw, widget.deviceId);
+        if (dedicatedIso != null && dedicatedIso.isNotEmpty && dedicatedIso != widget.userId) {
+          if (!mounted) return;
+          setState(() {
+            _loading = false;
+            _error = 'Cette caisse est réservée à un autre caissier.';
           });
           return;
         }
@@ -145,6 +159,8 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
         final message = e.response?.data?['message'] as String?;
         if (detail == 'caisse_disabled') {
           msg = 'Cette caisse a été désactivée. Contactez votre administrateur.';
+        } else if (detail == 'register_dedicated') {
+          msg = message ?? 'Cette caisse est réservée à un autre caissier.';
         } else if (detail == 'register_no_subscription') {
           msg = message ?? 'Cette caisse n\'a pas d\'abonnement actif. Payez l\'abonnement depuis la page Abonnement.';
         } else if (detail == 'no_registers') {

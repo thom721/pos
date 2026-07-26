@@ -673,6 +673,16 @@ class _RegisterTile extends ConsumerWidget {
           children: [
             if (!register.isActive)
               _Badge(label: 'Inactif', color: AppColors.textSecondary),
+            if (register.dedicatedUserId != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: _Badge(
+                  label: register.dedicatedUserName != null
+                      ? '🔒 ${register.dedicatedUserName}'
+                      : '🔒 Dédié',
+                  color: AppColors.info,
+                ),
+              ),
             if (canUpdate || canDelete)
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert,
@@ -692,6 +702,15 @@ class _RegisterTile extends ConsumerWidget {
                   if (canUpdate)
                     const PopupMenuItem(
                         value: 'edit', child: Text('Renommer')),
+                  if (canUpdate)
+                    const PopupMenuItem(
+                      value: 'dedicated',
+                      child: Row(children: [
+                        Icon(Icons.person_pin_rounded, size: 16),
+                        SizedBox(width: 8),
+                        Text('Caissier dédié'),
+                      ]),
+                    ),
                   if (canUpdate)
                     PopupMenuItem(
                       value: 'toggle',
@@ -733,6 +752,15 @@ class _RegisterTile extends ConsumerWidget {
           await showDialog<void>(
             context: context,
             builder: (_) => _RegisterDialog(
+              warehouseId: warehouseId,
+              register: register,
+              onSaved: onRefresh,
+            ),
+          );
+        case 'dedicated':
+          await showDialog<void>(
+            context: context,
+            builder: (_) => _DedicatedUserDialog(
               warehouseId: warehouseId,
               register: register,
               onSaved: onRefresh,
@@ -1002,6 +1030,156 @@ class _RegisterDialogState extends State<_RegisterDialog> {
                   child: CircularProgressIndicator(
                       strokeWidth: 2, color: Colors.white))
               : Text(isEdit ? 'Enregistrer' : 'Ajouter'),
+        ),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  Caissier dédié — dialog de sélection
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _DedicatedUserDialog extends StatefulWidget {
+  final String warehouseId;
+  final PosRegisterModel register;
+  final VoidCallback onSaved;
+
+  const _DedicatedUserDialog({
+    required this.warehouseId,
+    required this.register,
+    required this.onSaved,
+  });
+
+  @override
+  State<_DedicatedUserDialog> createState() => _DedicatedUserDialogState();
+}
+
+class _DedicatedUserDialogState extends State<_DedicatedUserDialog> {
+  List<Map<String, dynamic>> _users = [];
+  String? _selectedId;
+  bool _loading = true;
+  bool _saving  = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedId = widget.register.dedicatedUserId;
+    _loadUsers();
+  }
+
+  Future<void> _loadUsers() async {
+    try {
+      final res = await dio.get('/api/users/');
+      final list = (res.data as List).cast<Map<String, dynamic>>();
+      if (mounted) setState(() { _users = list; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await WarehouseRepository().updateRegister(
+        widget.warehouseId,
+        widget.register.id,
+        dedicatedUserId: _selectedId ?? '',
+      );
+      widget.onSaved();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Erreur : $e'),
+        backgroundColor: AppColors.error,
+      ));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Caissier dédié'),
+          Text(
+            widget.register.name,
+            style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.normal,
+                color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 340,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Seul ce caissier pourra ouvrir une session sur cette caisse '
+                    '(en ligne et hors ligne). Laisser vide pour autoriser tout le monde.',
+                    style: TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 16),
+                  RadioGroup<String?>(
+                    groupValue: _selectedId,
+                    onChanged: (v) => setState(() => _selectedId = v),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        RadioListTile<String?>(
+                          dense: true,
+                          title: const Text('Aucun — accès libre',
+                              style: TextStyle(fontSize: 13)),
+                          value: null,
+                        ),
+                        const Divider(height: 8),
+                        ..._users.map((u) {
+                          final id   = u['id']?.toString() ?? '';
+                          final name = '${u['fname'] ?? ''} ${u['lname'] ?? ''}'.trim();
+                          final role = u['roles'] is List
+                              ? (u['roles'] as List).join(', ')
+                              : '';
+                          return RadioListTile<String?>(
+                            dense: true,
+                            title: Text(name.isNotEmpty ? name : id,
+                                style: const TextStyle(fontSize: 13)),
+                            subtitle: role.isNotEmpty
+                                ? Text(role,
+                                    style: const TextStyle(fontSize: 11))
+                                : null,
+                            value: id,
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: _saving ? null : () => Navigator.pop(context),
+            child: const Text('Annuler')),
+        FilledButton(
+          onPressed: _saving || _loading ? null : _save,
+          child: _saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : const Text('Enregistrer'),
         ),
       ],
     );

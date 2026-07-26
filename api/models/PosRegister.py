@@ -25,7 +25,11 @@ class PosRegister(UUIDBase):
     _subscription_started_at = Column('subscription_started_at', Text(600), nullable=True)
     _subscription_ends_at    = Column('subscription_ends_at',    Text(600), nullable=True)
 
-    warehouse = relationship("Warehouse", back_populates="pos_registers")
+    # Caissier dédié : seul cet utilisateur peut ouvrir une session sur cette caisse.
+    dedicated_user_id = Column(String(36), ForeignKey('users.id'), nullable=True, index=True)
+
+    warehouse       = relationship("Warehouse", back_populates="pos_registers")
+    dedicated_user  = relationship("User", foreign_keys=[dedicated_user_id], lazy="joined")
 
     __table_args__ = (
         UniqueConstraint('tenant_id', 'device_id', name='uq_register_tenant_device'),

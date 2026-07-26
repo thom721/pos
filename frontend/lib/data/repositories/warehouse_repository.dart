@@ -96,6 +96,7 @@ class WarehouseRepository {
     String registerId, {
     String? name,
     bool? isActive,
+    String? dedicatedUserId, // "" pour retirer, null pour ne pas toucher
   }) async {
     try {
       final res = await dio.put(
@@ -103,6 +104,7 @@ class WarehouseRepository {
           data: {
             if (name != null) 'name': name,
             if (isActive != null) 'is_active': isActive,
+            if (dedicatedUserId != null) 'dedicated_user_id': dedicatedUserId,
           });
       return PosRegisterModel.fromJson(res.data);
     } catch (e) {
