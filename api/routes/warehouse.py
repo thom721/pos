@@ -193,8 +193,11 @@ def create_warehouse(
     _config.create_for_warehouse(db, current_user.tenant_id, wh.id)
 
     # Caisse initiale du dépôt — slot vide, réclamé par le 1er appareil à se connecter.
-    # Reçoit le trial restant du tenant comme point de départ de sa propre facturation.
-    _t_trial = getattr(tenant, "trial_ends_at", None)
+    # Hérite le trial du tenant si disponible, sinon démarre un trial neuf.
+    _cfg = db.query(PlatformConfig).first()
+    _trial_days = int(_cfg.trial_days) if _cfg and _cfg.trial_days else 30
+    _now = datetime.now(timezone.utc)
+    _t_trial = getattr(tenant, "trial_ends_at", None) or (_now + timedelta(days=_trial_days))
     db.add(PosRegister(
         tenant_id=current_user.tenant_id,
         warehouse_id=wh.id,
