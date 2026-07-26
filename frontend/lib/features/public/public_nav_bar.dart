@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:pos_connect/shared/widgets/pos_logo.dart';
 
 const _pubNavy  = Color(0xFF1B2A3B);
@@ -45,7 +44,7 @@ class PublicNavBar extends StatelessWidget {
                     ),
                     onPressed: () { Navigator.pop(ctx); context.go('/login'); },
                     child: Text('Se connecter',
-                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -57,7 +56,7 @@ class PublicNavBar extends StatelessWidget {
                     ),
                     onPressed: () { Navigator.pop(ctx); context.go('/register'); },
                     child: Text('S\'inscrire',
-                        style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                   ),
                 ),
               ]),
@@ -108,7 +107,7 @@ class PublicNavBar extends StatelessWidget {
                 ),
                 onPressed: () => context.go('/login'),
                 child: Text('Se connecter',
-                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
               ),
               const SizedBox(width: 8),
               FilledButton(
@@ -118,7 +117,7 @@ class PublicNavBar extends StatelessWidget {
                 ),
                 onPressed: () => context.go('/register'),
                 child: Text('Créer un compte',
-                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
               ),
             ],
             // Écrans étroits : CTA compact + hamburger
@@ -131,7 +130,7 @@ class PublicNavBar extends StatelessWidget {
                   ),
                   onPressed: () => context.go('/register'),
                   child: Text('S\'inscrire',
-                      style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
                 ),
                 const SizedBox(width: 4),
               ],
@@ -160,7 +159,7 @@ class _MobileNavTile extends StatelessWidget {
     return ListTile(
       leading: Icon(icon, color: _pubNavy, size: 20),
       title: Text(label,
-          style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w500, color: _pubNavy)),
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: _pubNavy)),
       onTap: () {
         Navigator.pop(context);
         parentCtx.go(route);
@@ -182,7 +181,7 @@ class _PubNavLink extends StatelessWidget {
       onPressed: () => context.go(route),
       child: Text(
         label,
-        style: GoogleFonts.inter(
+        style: TextStyle(
           fontSize: 14,
           color: isActive ? _pubBlue : _pubNavy,
           fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,

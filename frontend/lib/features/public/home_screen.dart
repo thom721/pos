@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:pos_connect/providers/contact_info_provider.dart' show ContactInfo, contactInfoProvider;
 import 'package:pos_connect/providers/pricing_provider.dart'
     show PricingInfo, PricingPlan, pricingProvider;
@@ -107,13 +106,13 @@ class _HeroText extends ConsumerWidget {
           Container(width: 7, height: 7, decoration: const BoxDecoration(color: _green, shape: BoxShape.circle)),
           const SizedBox(width: 8),
           Text('Solution POS #1 en Haïti',
-              style: GoogleFonts.inter(fontSize: 13, color: _white, fontWeight: FontWeight.w500)),
+              style: TextStyle(fontSize: 13, color: _white, fontWeight: FontWeight.w500)),
         ]),
       ),
       const SizedBox(height: 24),
       Text(
         'Gérez votre Business.\nPartout. Toujours.',
-        style: GoogleFonts.inter(
+        style: TextStyle(
           fontSize: titleSize, fontWeight: FontWeight.w800,
           color: _white, height: 1.15, letterSpacing: -0.5,
         ),
@@ -130,7 +129,7 @@ class _HeroText extends ConsumerWidget {
       const SizedBox(height: 20),
       Text(
         'La caisse tout-en-un adaptée à votre secteur — inventaire, ventes, crédits clients, gestion RH & paie, statistiques avancées et synchronisation cloud.',
-        style: GoogleFonts.inter(fontSize: bodySize, color: const Color(0xFFB0C4D8), height: 1.6),
+        style: TextStyle(fontSize: bodySize, color: const Color(0xFFB0C4D8), height: 1.6),
       ),
       const SizedBox(height: 32),
       Wrap(spacing: 14, runSpacing: 12, children: [
@@ -138,7 +137,7 @@ class _HeroText extends ConsumerWidget {
           style: FilledButton.styleFrom(
             backgroundColor: _blue,
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-            textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
+            textStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
           icon: const Icon(Icons.rocket_launch_rounded, size: 18),
           label: const Text('Commencer gratuitement'),
@@ -149,7 +148,7 @@ class _HeroText extends ConsumerWidget {
             foregroundColor: _white,
             side: BorderSide(color: _white.withValues(alpha: 0.4)),
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-            textStyle: GoogleFonts.inter(fontSize: 15),
+            textStyle: TextStyle(fontSize: 15),
           ),
           icon: const Icon(Icons.contact_support_outlined, size: 18),
           label: const Text('Parler à un expert'),
@@ -159,7 +158,7 @@ class _HeroText extends ConsumerWidget {
       const SizedBox(height: 28),
       // Platform availability
       Text('Disponible sur',
-          style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF90A4BE), letterSpacing: 0.8)),
+          style: TextStyle(fontSize: 11, color: const Color(0xFF90A4BE), letterSpacing: 0.8)),
       const SizedBox(height: 10),
       Wrap(spacing: 10, runSpacing: 8, children: [
         _PlatformPill(Icons.android_rounded,    'Android', available: true),
@@ -202,7 +201,7 @@ class _SectorChip extends StatelessWidget {
       Icon(icon, size: 13, color: _white.withValues(alpha: 0.65)),
       const SizedBox(width: 6),
       Text(label,
-          style: GoogleFonts.inter(fontSize: 12, color: _white.withValues(alpha: 0.75))),
+          style: TextStyle(fontSize: 12, color: _white.withValues(alpha: 0.75))),
     ]),
   );
 }
@@ -235,7 +234,7 @@ class _PlatformPill extends StatelessWidget {
         Icon(icon, size: 14, color: fg),
         const SizedBox(width: 6),
         Text(label,
-            style: GoogleFonts.inter(
+            style: TextStyle(
                 fontSize: 12, color: fg, fontWeight: FontWeight.w500)),
         if (soon) ...[
           const SizedBox(width: 6),
@@ -246,7 +245,7 @@ class _PlatformPill extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text('bientôt',
-                style: GoogleFonts.inter(
+                style: TextStyle(
                     fontSize: 9,
                     color: Colors.amber,
                     fontWeight: FontWeight.w600)),
@@ -263,8 +262,8 @@ class _Stat extends StatelessWidget {
   const _Stat(this.value, this.label);
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Text(value, style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800, color: _white)),
-    Text(label, style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF90A4BE))),
+    Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: _white)),
+    Text(label, style: TextStyle(fontSize: 12, color: const Color(0xFF90A4BE))),
   ]);
 }
 
@@ -302,7 +301,7 @@ class _HeroImage extends StatelessWidget {
             const Icon(Icons.check_circle_rounded, color: _white, size: 16),
             const SizedBox(width: 6),
             Text('Sync en temps réel',
-                style: GoogleFonts.inter(color: _white, fontSize: 13, fontWeight: FontWeight.w600)),
+                style: TextStyle(color: _white, fontSize: 13, fontWeight: FontWeight.w600)),
           ]),
         )),
       ]),
@@ -449,7 +448,7 @@ class _Features extends StatelessWidget {
         Text(
           'Tout ce dont vous avez besoin pour gérer votre business',
           textAlign: TextAlign.center,
-          style: GoogleFonts.inter(fontSize: isWide ? 32 : 22, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
+          style: TextStyle(fontSize: isWide ? 32 : 22, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
         ),
         const SizedBox(height: 48),
         if (isWide) ...[
@@ -543,9 +542,9 @@ class _FeatureCard extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+            Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
             const SizedBox(height: 6),
-            Text(desc, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.55)),
+            Text(desc, style: TextStyle(fontSize: 13, color: const Color(0xFF718096), height: 1.55)),
           ]),
         ),
       ]),
@@ -600,7 +599,7 @@ class _RestaurantImage extends StatelessWidget {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.restaurant_rounded, color: _white, size: 14),
             const SizedBox(width: 6),
-            Text('Mode Restaurant', style: GoogleFonts.inter(color: _white, fontSize: 12, fontWeight: FontWeight.w600)),
+            Text('Mode Restaurant', style: TextStyle(color: _white, fontSize: 12, fontWeight: FontWeight.w600)),
           ]),
         )),
       ]),
@@ -625,12 +624,12 @@ class _RestaurantText extends StatelessWidget {
       const SizedBox(height: 12),
       Text(
         'Un POS pensé pour la restauration et l\'hôtellerie',
-        style: GoogleFonts.inter(fontSize: 30, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
+        style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
       ),
       const SizedBox(height: 16),
       Text(
         'Gérez vos tables ou chambres, prenez les commandes en salle, envoyez les bons en cuisine. Parfait pour les restaurants, snacks, clubs, bars et hôtels / motels — même logique, même simplicité.',
-        style: GoogleFonts.inter(fontSize: 15, color: const Color(0xFF718096), height: 1.6),
+        style: TextStyle(fontSize: 15, color: const Color(0xFF718096), height: 1.6),
       ),
       const SizedBox(height: 28),
       ..._points.map((e) => Padding(
@@ -646,8 +645,8 @@ class _RestaurantText extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(e.$1, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
-            Text(e.$2, style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096))),
+            Text(e.$1, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+            Text(e.$2, style: TextStyle(fontSize: 12, color: const Color(0xFF718096))),
           ])),
         ]),
       )),
@@ -681,7 +680,7 @@ class _CapabilitiesBand extends StatelessWidget {
         Text(
           'Tout ce dont votre business a besoin',
           textAlign: TextAlign.center,
-          style: GoogleFonts.inter(
+          style: TextStyle(
             fontSize: isWide ? 30 : 22,
             fontWeight: FontWeight.w800, color: _navy, height: 1.2,
           ),
@@ -690,7 +689,7 @@ class _CapabilitiesBand extends StatelessWidget {
         Text(
           'Caisse, stocks, RH, crédits clients, statistiques — un seul outil pour tout piloter.',
           textAlign: TextAlign.center,
-          style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF718096)),
+          style: TextStyle(fontSize: 14, color: const Color(0xFF718096)),
         ),
         const SizedBox(height: 40),
         isWide
@@ -750,10 +749,10 @@ class _CapCard extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         Text(title,
-            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
         const SizedBox(height: 6),
         Text(desc,
-            style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096), height: 1.4)),
+            style: TextStyle(fontSize: 12, color: const Color(0xFF718096), height: 1.4)),
       ]),
     );
   }
@@ -794,13 +793,13 @@ class _Pricing extends ConsumerWidget {
         Text(
           'Des tarifs adaptés à chaque business',
           textAlign: TextAlign.center,
-          style: GoogleFonts.inter(fontSize: isWide ? 32 : 22, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
+          style: TextStyle(fontSize: isWide ? 32 : 22, fontWeight: FontWeight.w800, color: _navy, height: 1.2),
         ),
         const SizedBox(height: 8),
         Text(
           '${trialLabel}Paiement en HTG ou USD  •  Support inclus',
           textAlign: TextAlign.center,
-          style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF718096)),
+          style: TextStyle(fontSize: 14, color: const Color(0xFF718096)),
         ),
         const SizedBox(height: 48),
         if (isWide)
@@ -825,7 +824,7 @@ class _Pricing extends ConsumerWidget {
         const SizedBox(height: 20),
         pricing.isLoading
             ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-            : Text(extraLabel, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096))),
+            : Text(extraLabel, style: TextStyle(fontSize: 13, color: const Color(0xFF718096))),
       ]),
     );
   }
@@ -871,15 +870,15 @@ class _PriceCard extends StatelessWidget {
                   gradient: const LinearGradient(colors: [_blue, _green]),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text('Recommandé', style: GoogleFonts.inter(color: _white, fontSize: 12, fontWeight: FontWeight.w600)),
+                child: Text('Recommandé', style: TextStyle(color: _white, fontSize: 12, fontWeight: FontWeight.w600)),
               ),
-            Text(plan.name, style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: textMain)),
+            Text(plan.name, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: textMain)),
             const SizedBox(height: 4),
-            Text(plan.subtitle, style: GoogleFonts.inter(fontSize: 13, color: textDim)),
+            Text(plan.subtitle, style: TextStyle(fontSize: 13, color: textDim)),
             const SizedBox(height: 20),
-            Text(plan.priceHtg, style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w800, color: textMain)),
-            if (plan.priceUsd.isNotEmpty) Text(plan.priceUsd, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: _blue)),
-            if (plan.period.isNotEmpty) Text(plan.period, style: GoogleFonts.inter(fontSize: 13, color: textDim)),
+            Text(plan.priceHtg, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: textMain)),
+            if (plan.priceUsd.isNotEmpty) Text(plan.priceUsd, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: _blue)),
+            if (plan.period.isNotEmpty) Text(plan.period, style: TextStyle(fontSize: 13, color: textDim)),
             const SizedBox(height: 24),
             Divider(color: highlighted ? _white.withValues(alpha: 0.1) : const Color(0xFFE2E8F0)),
             const SizedBox(height: 16),
@@ -888,7 +887,7 @@ class _PriceCard extends StatelessWidget {
               child: Row(children: [
                 Icon(Icons.check_circle_rounded, size: 18, color: highlighted ? _green : _blue),
                 const SizedBox(width: 10),
-                Expanded(child: Text(f, style: GoogleFonts.inter(fontSize: 13, color: textMain.withValues(alpha: 0.9)))),
+                Expanded(child: Text(f, style: TextStyle(fontSize: 13, color: textMain.withValues(alpha: 0.9)))),
               ]),
             )),
             const SizedBox(height: 20),
@@ -937,13 +936,13 @@ class _CtaBand extends StatelessWidget {
         Text(
           'Prêt à transformer votre business ?',
           textAlign: TextAlign.center,
-          style: GoogleFonts.inter(fontSize: 32, fontWeight: FontWeight.w800, color: _white, height: 1.2),
+          style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: _white, height: 1.2),
         ),
         const SizedBox(height: 16),
         Text(
           'Rejoignez des centaines de businesses qui font confiance à POS Connect.',
           textAlign: TextAlign.center,
-          style: GoogleFonts.inter(fontSize: 16, color: _white.withValues(alpha: 0.8), height: 1.5),
+          style: TextStyle(fontSize: 16, color: _white.withValues(alpha: 0.8), height: 1.5),
         ),
         const SizedBox(height: 32),
         Wrap(spacing: 16, runSpacing: 12, alignment: WrapAlignment.center, children: [
@@ -951,7 +950,7 @@ class _CtaBand extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: _white, foregroundColor: _blue,
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700),
+              textStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
             onPressed: () => context.go('/register'),
             child: const Text('Créer mon compte gratuit'),
@@ -961,7 +960,7 @@ class _CtaBand extends StatelessWidget {
               foregroundColor: _white,
               side: BorderSide(color: _white.withValues(alpha: 0.5)),
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              textStyle: GoogleFonts.inter(fontSize: 15),
+              textStyle: TextStyle(fontSize: 15),
             ),
             onPressed: () => context.go('/contact'),
             child: const Text('Parler à un expert'),
@@ -999,7 +998,7 @@ class _Footer extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               'La solution POS moderne pour businesses et restaurants.',
-              style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.5),
+              style: TextStyle(fontSize: 13, color: const Color(0xFF718096), height: 1.5),
             ),
             const SizedBox(height: 16),
             Row(
@@ -1034,7 +1033,7 @@ class _Footer extends StatelessWidget {
             Expanded(child: Consumer(builder: (ctx, ref, _) {
               final c = ref.watch(contactInfoProvider).valueOrNull ?? ContactInfo.fallback;
               return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Contact', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _white)),
+                Text('Contact', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: _white)),
                 const SizedBox(height: 12),
                 _info(Icons.email_outlined, c.email.isNotEmpty ? c.email : 'support@pos-connect.ht'),
                 if (c.whatsapp.isNotEmpty) _info(Icons.chat_rounded, c.whatsapp),
@@ -1048,10 +1047,10 @@ class _Footer extends StatelessWidget {
         const SizedBox(height: 20),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text('© ${DateTime.now().year} POS Connect. Tous droits réservés.',
-              style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096))),
+              style: TextStyle(fontSize: 12, color: const Color(0xFF718096))),
           if (isWide)
             Text('Fait avec ♥ en Haïti 🇭🇹',
-                style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096))),
+                style: TextStyle(fontSize: 12, color: const Color(0xFF718096))),
         ]),
       ]),
     );
@@ -1062,7 +1061,7 @@ class _Footer extends StatelessWidget {
     child: Row(children: [
       Icon(icon, size: 14, color: const Color(0xFF718096)),
       const SizedBox(width: 8),
-      Text(text, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE))),
+      Text(text, style: TextStyle(fontSize: 13, color: const Color(0xFF90A4BE))),
     ]),
   );
 }
@@ -1073,13 +1072,13 @@ class _FooterCol extends StatelessWidget {
   const _FooterCol(this.title, this.links);
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Text(title, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: _white)),
+    Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: _white)),
     const SizedBox(height: 12),
     ...links.map((l) => Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GestureDetector(
         onTap: () => context.go(l.$2),
-        child: Text(l.$1, style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE))),
+        child: Text(l.$1, style: TextStyle(fontSize: 13, color: const Color(0xFF90A4BE))),
       ),
     )),
   ]);
@@ -1120,7 +1119,7 @@ class _StoreBadge extends StatelessWidget {
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
             sublabel,
-            style: GoogleFonts.inter(
+            style: TextStyle(
               fontSize: 9,
               color: disabled ? const Color(0xFF5A7A9A) : const Color(0xFFAAAAAA),
               letterSpacing: 0.2,
@@ -1128,7 +1127,7 @@ class _StoreBadge extends StatelessWidget {
           ),
           Text(
             label,
-            style: GoogleFonts.inter(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: disabled ? const Color(0xFF5A7A9A) : Colors.white,
@@ -1199,6 +1198,6 @@ class _SectionLabel extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       border: Border.all(color: _blue.withValues(alpha: 0.2)),
     ),
-    child: Text(text, style: GoogleFonts.inter(fontSize: 13, color: _blue, fontWeight: FontWeight.w600)),
+    child: Text(text, style: TextStyle(fontSize: 13, color: _blue, fontWeight: FontWeight.w600)),
   );
 }

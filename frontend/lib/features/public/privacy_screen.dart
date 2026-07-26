@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:pos_connect/providers/contact_info_provider.dart';
 import 'package:pos_connect/features/public/public_nav_bar.dart';
 
@@ -69,17 +68,17 @@ class _Header extends StatelessWidget {
           border: Border.all(color: _blue.withValues(alpha: 0.4)),
         ),
         child: Text('Mise à jour : 20 juillet 2026',
-            style: GoogleFonts.inter(fontSize: 13, color: _white, fontWeight: FontWeight.w500)),
+            style: TextStyle(fontSize: 13, color: _white, fontWeight: FontWeight.w500)),
       ),
       const SizedBox(height: 20),
       Text('Politique de Confidentialité',
         textAlign: TextAlign.center,
-        style: GoogleFonts.inter(fontSize: 34, fontWeight: FontWeight.w800, color: _white, height: 1.2)),
+        style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: _white, height: 1.2)),
       const SizedBox(height: 12),
       Text(
         'Infini Software s\'engage à ne collecter que les données strictement nécessaires au fonctionnement du service.',
         textAlign: TextAlign.center,
-        style: GoogleFonts.inter(fontSize: 15, color: const Color(0xFFB0C4D8), height: 1.6),
+        style: TextStyle(fontSize: 15, color: const Color(0xFFB0C4D8), height: 1.6),
       ),
     ]),
   );
@@ -112,7 +111,7 @@ class _TableOfContents extends StatelessWidget {
       Row(children: [
         const Icon(Icons.list_rounded, color: _blue, size: 18),
         const SizedBox(width: 8),
-        Text('Sommaire', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+        Text('Sommaire', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
       ]),
       const SizedBox(height: 12),
       Divider(color: _blue.withValues(alpha: 0.1), thickness: 1),
@@ -120,9 +119,9 @@ class _TableOfContents extends StatelessWidget {
       ..._anchors.asMap().entries.map((e) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${e.key + 1}.', style: GoogleFonts.inter(fontSize: 12, color: _blue, fontWeight: FontWeight.w600)),
+          Text('${e.key + 1}.', style: TextStyle(fontSize: 12, color: _blue, fontWeight: FontWeight.w600)),
           const SizedBox(width: 8),
-          Expanded(child: Text(e.value, style: GoogleFonts.inter(fontSize: 12, color: _navy, height: 1.4))),
+          Expanded(child: Text(e.value, style: TextStyle(fontSize: 12, color: _navy, height: 1.4))),
         ]),
       )),
     ]),
@@ -187,7 +186,7 @@ class _Body extends StatelessWidget {
                   'sur vos propres appareils et serveurs, et sont utilisées uniquement pour assurer la '
                   'synchronisation entre vos terminaux (avec ou sans connexion). '
                   'Infini Software n\'y a aucun accès et ne les analyse jamais.',
-                  style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF2A5A25), height: 1.5),
+                  style: TextStyle(fontSize: 13, color: const Color(0xFF2A5A25), height: 1.5),
                 )),
               ]),
             ),
@@ -333,12 +332,12 @@ class _Section extends StatelessWidget {
       Container(
         width: 32, height: 32,
         decoration: const BoxDecoration(color: _blue, shape: BoxShape.circle),
-        child: Center(child: Text(number, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: _white))),
+        child: Center(child: Text(number, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _white))),
       ),
       const SizedBox(width: 12),
       Icon(icon, color: _blue, size: 20),
       const SizedBox(width: 8),
-      Expanded(child: Text(title, style: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700, color: _navy))),
+      Expanded(child: Text(title, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: _navy))),
     ]),
     const SizedBox(height: 16),
     Padding(padding: const EdgeInsets.only(left: 44), child: child),
@@ -355,7 +354,7 @@ class _Para extends StatelessWidget {
   const _Para(this.text);
   @override
   Widget build(BuildContext context) => Text(text,
-      style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF4A5568), height: 1.7));
+      style: TextStyle(fontSize: 14, color: const Color(0xFF4A5568), height: 1.7));
 }
 
 class _Bullet extends StatelessWidget {
@@ -369,7 +368,7 @@ class _Bullet extends StatelessWidget {
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(width: 6, height: 6, margin: const EdgeInsets.only(top: 7, right: 10),
             decoration: const BoxDecoration(color: _blue, shape: BoxShape.circle)),
-        Expanded(child: Text(item, style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF4A5568), height: 1.6))),
+        Expanded(child: Text(item, style: TextStyle(fontSize: 14, color: const Color(0xFF4A5568), height: 1.6))),
       ]),
     )).toList(),
   );
@@ -389,7 +388,7 @@ class _NoBullet extends StatelessWidget {
           decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), shape: BoxShape.circle),
           child: const Icon(Icons.close_rounded, size: 14, color: Colors.red),
         ),
-        Expanded(child: Text(item, style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF4A5568), height: 1.6))),
+        Expanded(child: Text(item, style: TextStyle(fontSize: 14, color: const Color(0xFF4A5568), height: 1.6))),
       ]),
     )).toList(),
   );
@@ -412,8 +411,8 @@ class _InfoRow extends StatelessWidget {
         child: Icon(icon, color: color, size: 18),
       ),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: _navy)),
-        Text(desc,  style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF718096), height: 1.4)),
+        Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _navy)),
+        Text(desc,  style: TextStyle(fontSize: 13, color: const Color(0xFF718096), height: 1.4)),
       ])),
     ]),
   );
@@ -437,8 +436,8 @@ class _ContactChip extends StatelessWidget {
       Icon(icon, color: _blue, size: 18),
       const SizedBox(width: 10),
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF718096))),
-        Text(value,  style: GoogleFonts.inter(fontSize: 14, color: _navy, fontWeight: FontWeight.w600)),
+        Text(label, style: TextStyle(fontSize: 11, color: const Color(0xFF718096))),
+        Text(value,  style: TextStyle(fontSize: 14, color: _navy, fontWeight: FontWeight.w600)),
       ]),
     ]),
   );
@@ -453,11 +452,11 @@ class _Footer extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
     child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
       Text('© ${DateTime.now().year} POS Connect — Infini Software. Tous droits réservés.',
-          style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096))),
+          style: TextStyle(fontSize: 12, color: const Color(0xFF718096))),
       Row(children: [
-        TextButton(onPressed: () => context.go('/home'),    child: Text('Accueil',  style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
-        TextButton(onPressed: () => context.go('/contact'), child: Text('Contact',  style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
-        TextButton(onPressed: () => context.go('/terms'),   child: Text('CGU',      style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
+        TextButton(onPressed: () => context.go('/home'),    child: Text('Accueil',  style: TextStyle(fontSize: 13, color: const Color(0xFF90A4BE)))),
+        TextButton(onPressed: () => context.go('/contact'), child: Text('Contact',  style: TextStyle(fontSize: 13, color: const Color(0xFF90A4BE)))),
+        TextButton(onPressed: () => context.go('/terms'),   child: Text('CGU',      style: TextStyle(fontSize: 13, color: const Color(0xFF90A4BE)))),
       ]),
     ]),
   );

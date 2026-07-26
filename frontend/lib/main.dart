@@ -15,9 +15,9 @@ void main() async {
   final binding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: binding);
 
-  // Sur mobile : pas de fetching réseau (fonts.gstatic.com → 647 frames sautées)
-  // Sur web : fetching autorisé (pages publiques utilisent Inter via CDN)
-  if (!kIsWeb) GoogleFonts.config.allowRuntimeFetching = false;
+  // Désactiver le fetching réseau Google Fonts partout — toutes les pages
+  // utilisent désormais TextStyle (police système) au lieu de GoogleFonts.inter()
+  GoogleFonts.config.allowRuntimeFetching = false;
 
   await initializeDateFormatting('fr');
   await initServerUrl();

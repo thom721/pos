@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:pos_connect/providers/contact_info_provider.dart';
 import 'package:pos_connect/features/public/public_nav_bar.dart';
 
@@ -84,18 +83,18 @@ class _Header extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: _blue.withValues(alpha: 0.4)),
           ),
-          child: Text('Mis à jour le 20 juillet 2026', style: GoogleFonts.inter(fontSize: 13, color: _white, fontWeight: FontWeight.w500)),
+          child: Text('Mis à jour le 20 juillet 2026', style: TextStyle(fontSize: 13, color: _white, fontWeight: FontWeight.w500)),
         ),
         const SizedBox(height: 20),
         Text('Conditions Générales d\'Utilisation',
           textAlign: TextAlign.center,
-          style: GoogleFonts.inter(fontSize: 34, fontWeight: FontWeight.w800, color: _white, height: 1.2),
+          style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: _white, height: 1.2),
         ),
         const SizedBox(height: 12),
         Text(
           'En utilisant POS Connect, vous acceptez les présentes conditions. Veuillez les lire attentivement.',
           textAlign: TextAlign.center,
-          style: GoogleFonts.inter(fontSize: 15, color: const Color(0xFFB0C4D8), height: 1.6),
+          style: TextStyle(fontSize: 15, color: const Color(0xFFB0C4D8), height: 1.6),
         ),
       ]),
     );
@@ -135,7 +134,7 @@ class _Sidebar extends StatelessWidget {
               Icon(sections[i].$2, size: 18, color: isActive ? _blue : const Color(0xFF718096)),
               const SizedBox(width: 10),
               Expanded(child: Text(sections[i].$1,
-                style: GoogleFonts.inter(fontSize: 13, fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                style: TextStyle(fontSize: 13, fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
                     color: isActive ? _blue : _navy))),
             ]),
           ),
@@ -167,7 +166,7 @@ class _MobileTabs extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(sections[i].$1,
-                style: GoogleFonts.inter(fontSize: 12, color: isActive ? _white : _navy)),
+                style: TextStyle(fontSize: 12, color: isActive ? _white : _navy)),
           ),
         );
       })),
@@ -200,7 +199,7 @@ class _Content extends StatelessWidget {
             child: Icon(section.$2, color: _blue, size: 22),
           ),
           const SizedBox(width: 14),
-          Text(section.$1, style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800, color: _navy)),
+          Text(section.$1, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: _navy)),
         ]),
         const SizedBox(height: 8),
         Divider(color: _blue.withValues(alpha: 0.1), thickness: 1),
@@ -358,7 +357,7 @@ class _Para extends StatelessWidget {
   const _Para(this.text);
   @override
   Widget build(BuildContext context) => Text(text,
-      style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF4A5568), height: 1.7));
+      style: TextStyle(fontSize: 14, color: const Color(0xFF4A5568), height: 1.7));
 }
 
 class _Title extends StatelessWidget {
@@ -367,7 +366,7 @@ class _Title extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(top: 8),
-    child: Text(text, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
+    child: Text(text, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _navy)),
   );
 }
 
@@ -381,10 +380,10 @@ class _Def extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
       margin: const EdgeInsets.only(top: 2, right: 10),
       decoration: BoxDecoration(color: _blue.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6)),
-      child: Text(term, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: _blue)),
+      child: Text(term, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _blue)),
     ),
     Expanded(child: Text(definition,
-        style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF4A5568), height: 1.6))),
+        style: TextStyle(fontSize: 14, color: const Color(0xFF4A5568), height: 1.6))),
   ]);
 }
 
@@ -399,7 +398,7 @@ class _Bullet extends StatelessWidget {
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(width: 6, height: 6, margin: const EdgeInsets.only(top: 7, right: 10),
             decoration: const BoxDecoration(color: _blue, shape: BoxShape.circle)),
-        Expanded(child: Text(item, style: GoogleFonts.inter(fontSize: 14, color: const Color(0xFF4A5568), height: 1.6))),
+        Expanded(child: Text(item, style: TextStyle(fontSize: 14, color: const Color(0xFF4A5568), height: 1.6))),
       ]),
     )).toList(),
   );
@@ -415,11 +414,11 @@ class _Footer extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
     child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
       Text('© ${DateTime.now().year} POS Connect. Tous droits réservés.',
-          style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF718096))),
+          style: TextStyle(fontSize: 12, color: const Color(0xFF718096))),
       Row(children: [
-        TextButton(onPressed: () => context.go('/home'),    child: Text('Accueil',        style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
-        TextButton(onPressed: () => context.go('/contact'), child: Text('Contact',        style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
-        TextButton(onPressed: () => context.go('/privacy'), child: Text('Confidentialité',style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF90A4BE)))),
+        TextButton(onPressed: () => context.go('/home'),    child: Text('Accueil',        style: TextStyle(fontSize: 13, color: const Color(0xFF90A4BE)))),
+        TextButton(onPressed: () => context.go('/contact'), child: Text('Contact',        style: TextStyle(fontSize: 13, color: const Color(0xFF90A4BE)))),
+        TextButton(onPressed: () => context.go('/privacy'), child: Text('Confidentialité',style: TextStyle(fontSize: 13, color: const Color(0xFF90A4BE)))),
       ]),
     ]),
   );
