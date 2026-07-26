@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/permissions.dart';
@@ -1439,16 +1440,24 @@ class _ForceUpdateScreen extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 28),
-              if (version.updateUrl != null && version.updateUrl!.isNotEmpty)
+              if (!kIsWeb && version.updateUrl != null && version.updateUrl!.isNotEmpty)
                 FilledButton.icon(
                   style: FilledButton.styleFrom(backgroundColor: Colors.orangeAccent),
                   icon: const Icon(Icons.download_rounded, color: Colors.black87),
                   label: const Text('Télécharger la mise à jour',
                       style: TextStyle(color: Colors.black87)),
-                  onPressed: () {
-                    // URL handled by launcher — url_launcher not guaranteed in this project;
-                    // the admin can configure the update_url to point to their APK/store link.
+                  onPressed: () async {
+                    final uri = Uri.tryParse(version.updateUrl!);
+                    if (uri != null) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
                   },
+                )
+              else if (kIsWeb)
+                Text(
+                  'Rechargez la page pour obtenir la dernière version.',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 13),
+                  textAlign: TextAlign.center,
                 ),
             ],
           ),
@@ -1492,6 +1501,28 @@ class _UpdateBannerState extends State<_UpdateBanner> {
                 ),
               ),
             ),
+            if (!kIsWeb &&
+                widget.version.updateUrl != null &&
+                widget.version.updateUrl!.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              TextButton(
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  side: const BorderSide(color: Colors.white54),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: () async {
+                  final uri = Uri.tryParse(widget.version.updateUrl!);
+                  if (uri != null) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+                child: const Text('Télécharger', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+            const SizedBox(width: 4),
             IconButton(
               icon: const Icon(Icons.close, color: Colors.white, size: 16),
               padding: EdgeInsets.zero,
