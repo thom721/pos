@@ -12,6 +12,7 @@ import 'package:pos_connect/providers/return_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/bluetooth_print_service.dart';
+import 'package:pos_connect/services/thermal_printer_service.dart';
 import 'package:pos_connect/shared/utils/return_pdf.dart';
 
 final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
@@ -284,20 +285,19 @@ class _ReturnCardState extends ConsumerState<_ReturnCard> {
     bool ok = false;
     String? errMsg;
     try {
-      if (!kIsWeb &&
-          defaultTargetPlatform == TargetPlatform.android &&
-          settings.bluetoothPrinterMac.isNotEmpty) {
+      final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+      final isSunmi = isAndroid && await ThermalPrinterService.instance.isSunmiAvailable;
+      if (isAndroid && !isSunmi && settings.bluetoothPrinterMac.isNotEmpty) {
         ok = await BluetoothPrintService.instance
             .printReturn(widget.ret, settings);
         if (!ok) {
           errMsg =
               'Connexion imprimante échouée — vérifiez que l\'imprimante est allumée et appairée';
         }
-      } else if (!kIsWeb &&
-          defaultTargetPlatform == TargetPlatform.android &&
-          settings.bluetoothPrinterMac.isEmpty) {
+      } else if (isAndroid && !isSunmi && settings.bluetoothPrinterMac.isEmpty) {
         errMsg = 'Aucune imprimante BT configurée — ouvrez les paramètres d\'impression';
       } else {
+        // Non-Android ou Sunmi : PDF (Sunmi peut afficher et imprimer via son viewer)
         final bytes = await buildReturnPdf(widget.ret, settings);
         if (settings.docPrinterName.isNotEmpty) {
           final printers = await Printing.listPrinters();
@@ -635,17 +635,15 @@ class _NewSaleReturnDialogState extends ConsumerState<_NewSaleReturnDialog> {
     bool ok = false;
     String? errMsg;
     try {
-      if (!kIsWeb &&
-          defaultTargetPlatform == TargetPlatform.android &&
-          settings.bluetoothPrinterMac.isNotEmpty) {
+      final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+      final isSunmi = isAndroid && await ThermalPrinterService.instance.isSunmiAvailable;
+      if (isAndroid && !isSunmi && settings.bluetoothPrinterMac.isNotEmpty) {
         ok = await BluetoothPrintService.instance.printReturn(ret, settings);
         if (!ok) {
           errMsg =
               'Connexion imprimante échouée — vérifiez que l\'imprimante est allumée et appairée';
         }
-      } else if (!kIsWeb &&
-          defaultTargetPlatform == TargetPlatform.android &&
-          settings.bluetoothPrinterMac.isEmpty) {
+      } else if (isAndroid && !isSunmi && settings.bluetoothPrinterMac.isEmpty) {
         errMsg = 'Aucune imprimante BT configurée — ouvrez les paramètres d\'impression';
       } else {
         final bytes = await buildReturnPdf(ret, settings);

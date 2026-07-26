@@ -88,15 +88,17 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
     bool ok = false;
     String? errMsg;
     try {
-      if (!kIsWeb &&
-          defaultTargetPlatform == TargetPlatform.android &&
-          settings.bluetoothPrinterMac.isNotEmpty) {
-        ok = await BluetoothPrintService.instance.printReceipt(_sale!, settings);
-        if (!ok) errMsg = 'Connexion imprimante échouée — vérifiez que l\'imprimante est allumée et appairée';
-      } else if (!kIsWeb &&
-          defaultTargetPlatform == TargetPlatform.android &&
-          settings.bluetoothPrinterMac.isEmpty) {
-        errMsg = 'Aucune imprimante BT configurée — ouvrez les paramètres d\'impression';
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        final isSunmi = await ThermalPrinterService.instance.isSunmiAvailable;
+        if (isSunmi) {
+          await ThermalPrinterService.instance.printReceipt(_sale!, settings);
+          ok = true;
+        } else if (settings.bluetoothPrinterMac.isNotEmpty) {
+          ok = await BluetoothPrintService.instance.printReceipt(_sale!, settings);
+          if (!ok) errMsg = 'Connexion imprimante échouée — vérifiez que l\'imprimante est allumée et appairée';
+        } else {
+          errMsg = 'Aucune imprimante BT configurée — ouvrez les paramètres d\'impression';
+        }
       } else {
         await ThermalPrinterService.instance.printReceipt(
           _sale!,
@@ -1082,15 +1084,17 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     String? errMsg;
     try {
       final sale = await SaleRepository().getSale(saleId);
-      if (!kIsWeb &&
-          defaultTargetPlatform == TargetPlatform.android &&
-          settings.bluetoothPrinterMac.isNotEmpty) {
-        ok = await BluetoothPrintService.instance.printReceipt(sale, settings);
-        if (!ok) errMsg = 'Connexion imprimante échouée — vérifiez que l\'imprimante est allumée et appairée';
-      } else if (!kIsWeb &&
-          defaultTargetPlatform == TargetPlatform.android &&
-          settings.bluetoothPrinterMac.isEmpty) {
-        errMsg = 'Aucune imprimante BT configurée — ouvrez les paramètres d\'impression';
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        final isSunmi = await ThermalPrinterService.instance.isSunmiAvailable;
+        if (isSunmi) {
+          await ThermalPrinterService.instance.printReceipt(sale, settings);
+          ok = true;
+        } else if (settings.bluetoothPrinterMac.isNotEmpty) {
+          ok = await BluetoothPrintService.instance.printReceipt(sale, settings);
+          if (!ok) errMsg = 'Connexion imprimante échouée — vérifiez que l\'imprimante est allumée et appairée';
+        } else {
+          errMsg = 'Aucune imprimante BT configurée — ouvrez les paramètres d\'impression';
+        }
       } else {
         await ThermalPrinterService.instance.printReceipt(
           sale, settings,
