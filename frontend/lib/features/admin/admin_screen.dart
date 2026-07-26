@@ -1055,6 +1055,7 @@ class _TenantBoutiquesSectionState
     final whName    = wh['name'] as String? ?? '—';
     final isDefault = wh['is_default'] as bool? ?? false;
     final isActive  = wh['is_active']  as bool? ?? true;
+    final isClaimed = wh['is_claimed'] as bool? ?? false;
     final whRegs =
         allRegisters.where((r) => r['warehouse_id'] == whId).toList();
 
@@ -1091,6 +1092,10 @@ class _TenantBoutiquesSectionState
               ),
               if (isDefault)
                 _SmallBadge(label: 'Principal', color: AppColors.primary),
+              if (!isClaimed) ...[
+                const SizedBox(width: 4),
+                _SmallBadge(label: 'Non installé', color: Colors.orange),
+              ],
               if (!isActive) ...[
                 const SizedBox(width: 4),
                 _SmallBadge(label: 'Inactif', color: AppColors.error),
