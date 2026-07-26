@@ -1,7 +1,7 @@
 """billing: annual plan, register trial, trial_included_in_billing, is_initial
 
 Revision ID: a1b2c3d4e5f6
-Revises: z0a1b2c3d4e5
+Revises: e1f2a3b4c5d6
 Create Date: 2026-07-24
 
 Nouveaux champs :
@@ -14,7 +14,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = 'a1b2c3d4e5f6'
-down_revision = 'z0a1b2c3d4e5'
+down_revision = 'e1f2a3b4c5d6'
 branch_labels = None
 depends_on = None
 

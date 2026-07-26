@@ -1,15 +1,15 @@
 """restaurant_order_items: ajout label pour articles libres (hôtel)
 
-Revision ID: a1b2c3d4e5f6
-Revises: z0a1b2c3d4e5
+Revision ID: a3d4e5f6g7h8
+Revises: a2c3d4e5f6g7
 Create Date: 2026-07-21
 """
 from typing import Union
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = 'a1b2c3d4e5f6'
-down_revision: Union[str, None] = 'z0a1b2c3d4e5'
+revision: str = 'a3d4e5f6g7h8'
+down_revision: Union[str, None] = 'a2c3d4e5f6g7'
 branch_labels = None
 depends_on = None
 

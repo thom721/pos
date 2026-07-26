@@ -19,6 +19,7 @@ class AuthState {
   final UserModel? user;
   final String? error;
   final Map<String, dynamic>? planWarning;
+  final String? loadingMessage;
 
   const AuthState({
     this.isAuthenticated = false,
@@ -26,6 +27,7 @@ class AuthState {
     this.user,
     this.error,
     this.planWarning,
+    this.loadingMessage,
   });
 
   AuthState copyWith({
@@ -35,6 +37,8 @@ class AuthState {
     String? error,
     Map<String, dynamic>? planWarning,
     bool clearPlanWarning = false,
+    String? loadingMessage,
+    bool clearLoadingMessage = false,
   }) =>
       AuthState(
         isAuthenticated: isAuthenticated ?? this.isAuthenticated,
@@ -42,6 +46,7 @@ class AuthState {
         user: user ?? this.user,
         error: error,
         planWarning: clearPlanWarning ? null : (planWarning ?? this.planWarning),
+        loadingMessage: clearLoadingMessage ? null : (loadingMessage ?? this.loadingMessage),
       );
 }
 
@@ -100,10 +105,41 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return {...warning, 'days_left': daysLeft};
   }
 
+  /// Retourne le tenant_id stocké en SharedPreferences (null si aucun).
+  String? _storedTenantId(SharedPreferences prefs) {
+    final raw = prefs.getString(AppConstants.tenantKey);
+    if (raw == null) return null;
+    try {
+      return (jsonDecode(raw) as Map<String, dynamic>)['id'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Si [newTenantId] diffère du tenant stocké, vide toutes les données
+  /// tenant-spécifiques (SharedPreferences + SQLite) et informe l'utilisateur.
+  Future<void> _clearIfTenantChanged(
+      SharedPreferences prefs, String? newTenantId) async {
+    final prev = _storedTenantId(prefs);
+    if (prev == null || newTenantId == null || prev == newTenantId) return;
+
+    state = state.copyWith(
+      isLoading: true,
+      loadingMessage: 'Nettoyage des données du précédent business...',
+    );
+    await AuthRepository.clearTenantData(prefs);
+    await LocalDbService.instance.clearAllCachedData();
+    state = state.copyWith(clearLoadingMessage: true);
+  }
+
   Future<bool> login(String username, String password) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
+      final prefs = await SharedPreferences.getInstance();
       final token = await _repo.login(username, password);
+
+      await _clearIfTenantChanged(prefs, token.user?['tenant_id'] as String?);
+
       await _repo.saveToken(token.accessToken);
       if (token.user != null) await _repo.saveUser(token.user!);
       await _repo.savePlanWarning(token.planWarning);
@@ -148,6 +184,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     // ── 2. Essai API cloud — toujours, pour obtenir un token JWT frais ────────
     try {
+      final prefs = await SharedPreferences.getInstance();
       final token = await _repo.cloudLogin(email.trim(), password);
       final user = token.user != null ? UserModel.fromJson(token.user!) : null;
 
@@ -160,6 +197,8 @@ class AuthNotifier extends StateNotifier<AuthState> {
         );
         return false;
       }
+
+      await _clearIfTenantChanged(prefs, token.user?['tenant_id'] as String?);
 
       await _repo.saveToken(token.accessToken);
       if (token.user != null) {

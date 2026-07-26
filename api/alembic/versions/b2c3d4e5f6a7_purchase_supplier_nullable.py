@@ -1,6 +1,6 @@
 """purchase_supplier_nullable — rend supplier_id optionnel dans purchases
 
-Revision ID: b2c3d4e5f6a7
+Revision ID: b3c4d5e6f7a8
 Revises: f1a2b3c4d5e6
 Create Date: 2026-07-18 00:00:00.000000
 """
@@ -8,7 +8,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = 'b2c3d4e5f6a7'
+revision: str = 'b3c4d5e6f7a8'
 down_revision: Union[str, None] = 'f1a2b3c4d5e6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

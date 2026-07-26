@@ -336,6 +336,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
 
+          if (authState.loadingMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(authState.loadingMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          ],
+
           if (!_isAndroid) ...[
             const SizedBox(height: 20),
             Row(
@@ -480,6 +487,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       style: TextStyle(fontSize: 15)),
             ),
           ),
+
+          if (authState.loadingMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(authState.loadingMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          ],
         ],
       ),
     );

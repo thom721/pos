@@ -1,8 +1,8 @@
 """add housekeeping_tasks table
 
-Revision ID: c3d4e5f6g7h8
-Revises: a1b2c3d4e5f6
-Down_revision: a1b2c3d4e5f6
+Revision ID: c4d5e6f7g8h9
+Revises: c3d4e5f6g7h8
+Down_revision: c3d4e5f6g7h8
 Branch_labels: None
 Depends_on: None
 """
@@ -10,13 +10,24 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = 'c3d4e5f6g7h8'
-down_revision = 'a1b2c3d4e5f6'
+revision = 'c4d5e6f7g8h9'
+down_revision = 'c3d4e5f6g7h8'
 branch_labels = None
 depends_on = None
 
 
+def _table_exists(name: str) -> bool:
+    bind = op.get_bind()
+    result = bind.execute(sa.text(
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :n"
+    ), {"n": name})
+    return result.scalar() > 0
+
+
 def upgrade():
+    if _table_exists('housekeeping_tasks'):
+        return
     op.create_table(
         'housekeeping_tasks',
         sa.Column('id', sa.String(36), nullable=False),

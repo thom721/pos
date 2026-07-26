@@ -161,7 +161,32 @@ class AuthRepository {
       await prefs.remove(AppConstants.userKey);
       await prefs.remove(AppConstants.tenantKey);
       await prefs.remove(AppConstants.planWarningKey);
+      await prefs.remove('pos_caisse_session');
     }
     await prefs.remove(AppConstants.connectionModeKey);
+  }
+
+  /// Supprime toutes les clés SharedPreferences liées à un tenant.
+  /// Conserve uniquement les données d'appareil/plateforme.
+  /// Appelé au login quand un tenant différent du précédent est détecté.
+  static const _platformKeys = {
+    AppConstants.deviceIdKey,
+    AppConstants.serverUrlKey,
+    AppConstants.serverIpKey,
+    AppConstants.clientSetupDoneKey,
+    'device_paper_width',
+    'device_receipt_darkness',
+    'device_bt_mac',
+    'device_bt_name',
+    'device_pos_auto_print',
+  };
+
+  static Future<void> clearTenantData(SharedPreferences prefs) async {
+    final toRemove = prefs.getKeys()
+        .where((k) => !_platformKeys.contains(k))
+        .toList();
+    for (final key in toRemove) {
+      await prefs.remove(key);
+    }
   }
 }
