@@ -390,9 +390,10 @@ class ThermalPrinterService {
         reference: reference, discount: discount,
         paidAmount: paidAmount, paymentMethod: paymentMethod);
 
-    // Sur Windows, directPrintPdf + double.infinity → le driver GDI coupe le reçu.
-    // layoutPdf + usePrinterSettings utilise le format roll configuré dans le driver.
-    if (!Platform.isWindows && !Platform.isMacOS && printerUrl != null && printerUrl.isNotEmpty) {
+    // Sur Windows/macOS : directPrintPdf sans usePrinterSettings scale le PDF sur
+    // le format par défaut du driver (ex: A4) → coupe le reçu et le rend pâle.
+    // usePrinterSettings: true force le driver à utiliser son format roll configuré.
+    if (printerUrl != null && printerUrl.isNotEmpty) {
       final printers = await Printing.listPrinters();
       final printer = printers.cast<Printer?>().firstWhere(
         (p) => p?.url == printerUrl,
@@ -403,6 +404,7 @@ class ThermalPrinterService {
           printer: printer,
           onLayout: (_) => bytes,
           name: reference != null ? 'Recu_$reference' : 'Addition',
+          usePrinterSettings: Platform.isWindows || Platform.isMacOS,
         );
         return;
       }
@@ -423,9 +425,10 @@ class ThermalPrinterService {
   }) async {
     final bytes = await buildReceiptPdf(sale, settings);
 
-    // Sur Windows, directPrintPdf + double.infinity → le driver GDI coupe le reçu.
-    // layoutPdf + usePrinterSettings utilise le format roll configuré dans le driver.
-    if (!Platform.isWindows && !Platform.isMacOS && printerUrl != null && printerUrl.isNotEmpty) {
+    // Sur Windows/macOS : directPrintPdf sans usePrinterSettings scale le PDF sur
+    // le format par défaut du driver (ex: A4) → coupe le reçu et le rend pâle.
+    // usePrinterSettings: true force le driver à utiliser son format roll configuré.
+    if (printerUrl != null && printerUrl.isNotEmpty) {
       final printers = await Printing.listPrinters();
       final printer = printers.cast<Printer?>().firstWhere(
         (p) => p?.url == printerUrl,
@@ -436,6 +439,7 @@ class ThermalPrinterService {
           printer: printer,
           onLayout: (_) => bytes,
           name: 'Recu_${sale.reference}',
+          usePrinterSettings: Platform.isWindows || Platform.isMacOS,
         );
         return;
       }

@@ -448,6 +448,19 @@ FLUSH PRIVILEGES;
     # -- pos_server.ini MySQL (seulement si MySQL tourne) -------------------------
     if ($MySqlReady) {
         Write-Log "Base '$DbName' et utilisateur '$DbUser' configures via init.sql"
+
+        # Preserver les cles [server] cloud de l'ini existant (ne pas effacer le token sync)
+        $_cloudExtra = ""
+        if (Test-Path $IniTarget) {
+            $_sect = ""
+            foreach ($_line in (Get-Content $IniTarget -Encoding UTF8)) {
+                if ($_line -match '^\[(.+)\]') { $_sect = $Matches[1].ToLower() }
+                elseif ($_sect -eq "server" -and $_line -match '^\s*(cloud_sync_token|cloud_sync_url|cloud_sync_enabled|cloud_tenant_id|cloud_owner_email|identity_private_key|billing_url|secret_key|admin_secret|admin_email|admin_password_hash|installer_warehouse_id)\s*=\s*(.*)$') {
+                    $_cloudExtra += "`n$($_line.Trim())"
+                }
+            }
+        }
+
         Write-UTF8NoBOM $IniTarget @"
 [database]
 type     = mysql
@@ -461,6 +474,12 @@ password = $DbPass
 host = 0.0.0.0
 port = 9003
 "@
+        # Re-ajouter les cles cloud preservees
+        if ($_cloudExtra) {
+            $enc = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::AppendAllText($IniTarget, $_cloudExtra + "`n", $enc)
+            Write-Log "Cles cloud preservees dans pos_server.ini (token sync conserve)"
+        }
         Write-Log "pos_server.ini ecrit (MySQL 127.0.0.1:$MySqlPort, db=$DbName, user=$DbUser)"
         icacls $IniTarget /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" 2>&1 | Out-Null
         Write-Log "Permissions pos_server.ini restreintes (SYSTEM + Administrateurs)"
@@ -479,6 +498,19 @@ port = 9003
 } else {
     # -- SQLite -------------------------------------------------------------------
     Write-Log "Configuration SQLite..."
+
+    # Preserver les cles [server] cloud de l'ini existant
+    $_cloudExtra = ""
+    if (Test-Path $IniTarget) {
+        $_sect = ""
+        foreach ($_line in (Get-Content $IniTarget -Encoding UTF8)) {
+            if ($_line -match '^\[(.+)\]') { $_sect = $Matches[1].ToLower() }
+            elseif ($_sect -eq "server" -and $_line -match '^\s*(cloud_sync_token|cloud_sync_url|cloud_sync_enabled|cloud_tenant_id|cloud_owner_email|identity_private_key|billing_url|secret_key|admin_secret|admin_email|admin_password_hash|installer_warehouse_id)\s*=\s*(.*)$') {
+                $_cloudExtra += "`n$($_line.Trim())"
+            }
+        }
+    }
+
     Write-UTF8NoBOM $IniTarget @"
 [database]
 type = sqlite
@@ -488,6 +520,12 @@ path = $DataDir\pos_connect.db
 host = 0.0.0.0
 port = 9003
 "@
+    # Re-ajouter les cles cloud preservees
+    if ($_cloudExtra) {
+        $enc = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::AppendAllText($IniTarget, $_cloudExtra + "`n", $enc)
+        Write-Log "Cles cloud preservees dans pos_server.ini (token sync conserve)"
+    }
     Write-Log "pos_server.ini ecrit (SQLite : $DataDir\pos_connect.db)"
     icacls $IniTarget /inheritance:r /grant "SYSTEM:(F)" /grant "Administrators:(F)" 2>&1 | Out-Null
     Write-Log "Permissions pos_server.ini restreintes (SYSTEM + Administrateurs)"
