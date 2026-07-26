@@ -287,7 +287,7 @@ final _prodCategoryFilterProvider = StateProvider<String?>((ref) => null);
 
 final _statCategoriesProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final res = await dio.get('/api/categories/');
-  return List<Map<String, dynamic>>.from(res.data as List);
+  return List<Map<String, dynamic>>.from(res.data['data'] as List? ?? []);
 });
 
 // ── Écoulement mode (produit par période OU catégorie) ─────────────────────
@@ -517,7 +517,7 @@ final _catChartProvider = FutureProvider.family
 
   // Construire la map categoryId → nom catégorie
   final catNames = <String, String>{};
-  for (final c in (catsRes.data as List)) {
+  for (final c in (catsRes.data['data'] as List? ?? [])) {
     final id   = c['id'] as String?;
     final name = c['name'] as String?;
     if (id != null && name != null) catNames[id] = name;

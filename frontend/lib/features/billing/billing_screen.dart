@@ -480,8 +480,6 @@ class _BillingContent extends ConsumerWidget {
               'Choisissez votre méthode de paiement pour continuer à utiliser POS Connect.',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
           const SizedBox(height: 16),
-          _StripeCard(ref: ref),
-          const SizedBox(height: 12),
           // Combine plan-usage (real total) + config (payment modes)
           Builder(builder: (ctx) {
             final cfgAsync   = ref.watch(_billingConfigProvider);
