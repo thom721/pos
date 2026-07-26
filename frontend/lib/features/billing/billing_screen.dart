@@ -925,6 +925,7 @@ class _RegisterUsageGroup extends StatelessWidget {
             _                 => (status, AppColors.textSecondary),
           };
 
+          final subStartedAt = _parseDate(r['subscription_started_at'] as String?);
           final expiry = _parseDate(r['subscription_ends_at'] as String?)
               ?? _parseDate(r['trial_ends_at'] as String?);
           final daysLeft = expiry?.difference(DateTime.now()).inDays;
@@ -961,6 +962,15 @@ class _RegisterUsageGroup extends StatelessWidget {
                                   color: statusColor,
                                   fontWeight: FontWeight.w600)),
                         ),
+                        if (subStartedAt != null) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            'depuis ${DateFormat('dd/MM/yy').format(subStartedAt.toLocal())}',
+                            style: const TextStyle(
+                                fontSize: 10,
+                                color: AppColors.textSecondary),
+                          ),
+                        ],
                         if (expiry != null) ...[
                           const SizedBox(width: 6),
                           Text(

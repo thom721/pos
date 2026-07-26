@@ -16,14 +16,14 @@ class PosRegister(UUIDBase):
     last_seen     = Column(DateTime(timezone=True), nullable=True)  # updated by heartbeat every 2 min
 
     # ── Abonnement par caisse ────────────────────────────────────────────────────
-    # is_initial=True  : caisse créée automatiquement avec le tenant ou le warehouse.
-    #                    Couverte par le trial du tenant — pas de trial individuel.
-    #                    Identifiée dans la facturation par le nom du warehouse.
-    # is_initial=False : caisse supplémentaire créée manuellement par le tenant.
-    #                    Reçoit son propre trial_ends_at et subscription_ends_at.
-    is_initial           = Column(Boolean, nullable=False, default=False)
-    trial_ends_at        = Column(DateTime(timezone=True), nullable=True)
-    subscription_ends_at = Column(DateTime(timezone=True), nullable=True)
+    # Toutes les caisses (initiales ou supplémentaires) ont leur propre ligne de
+    # facturation : trial_ends_at, subscription_started_at, subscription_ends_at.
+    # is_initial=True  : caisse créée automatiquement avec le tenant / warehouse.
+    # is_initial=False : caisse supplémentaire créée manuellement.
+    is_initial             = Column(Boolean, nullable=False, default=False)
+    trial_ends_at          = Column(DateTime(timezone=True), nullable=True)
+    subscription_started_at = Column(DateTime(timezone=True), nullable=True)
+    subscription_ends_at   = Column(DateTime(timezone=True), nullable=True)
 
     warehouse = relationship("Warehouse", back_populates="pos_registers")
 

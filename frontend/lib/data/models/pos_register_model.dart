@@ -6,6 +6,7 @@ class PosRegisterModel {
   final bool isInitial;
   final String? warehouseId;
   final DateTime? trialEndsAt;
+  final DateTime? subscriptionStartedAt;
   final DateTime? subscriptionEndsAt;
 
   const PosRegisterModel({
@@ -16,6 +17,7 @@ class PosRegisterModel {
     this.isInitial = false,
     this.warehouseId,
     this.trialEndsAt,
+    this.subscriptionStartedAt,
     this.subscriptionEndsAt,
   });
 
@@ -29,6 +31,9 @@ class PosRegisterModel {
         warehouseId: json['warehouse_id']?.toString(),
         trialEndsAt: json['trial_ends_at'] != null
             ? DateTime.tryParse(json['trial_ends_at'] as String)
+            : null,
+        subscriptionStartedAt: json['subscription_started_at'] != null
+            ? DateTime.tryParse(json['subscription_started_at'] as String)
             : null,
         subscriptionEndsAt: json['subscription_ends_at'] != null
             ? DateTime.tryParse(json['subscription_ends_at'] as String)

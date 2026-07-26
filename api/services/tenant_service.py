@@ -137,7 +137,8 @@ def register_tenant(db: Session, business_name: str, owner_email: str,
         warehouse_id=warehouse.id,
         name="Caisse principale",
         is_active=True,
-        is_initial=True,       # couverte par le trial tenant, pas de trial individuel
+        is_initial=True,
+        trial_ends_at=trial_ends,   # sa propre ligne de facturation
         # device_id intentionally NULL — claimed by first device to log in
     )
     db.add(register)

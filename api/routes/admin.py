@@ -511,6 +511,7 @@ def create_tenant(
             name="Caisse 1",
             is_active=True,
             is_initial=True,
+            trial_ends_at=tenant.trial_ends_at,
         )
         db.add(default_register)
     db.commit()
@@ -959,12 +960,14 @@ def confirm_payment(
                 remaining = max(0, (current_end - now).days)
             else:
                 remaining = 0
-            reg.subscription_ends_at = now + timedelta(days=days + remaining)
+            reg.subscription_started_at = now
+            reg.subscription_ends_at    = now + timedelta(days=days + remaining)
             register_results.append({
-                "register_id":            reg.id,
-                "name":                   reg.name,
-                "remaining_days_carried": remaining,
-                "subscription_ends_at":   reg.subscription_ends_at.isoformat(),
+                "register_id":              reg.id,
+                "name":                     reg.name,
+                "remaining_days_carried":   remaining,
+                "subscription_started_at":  reg.subscription_started_at.isoformat(),
+                "subscription_ends_at":     reg.subscription_ends_at.isoformat(),
             })
         db.commit()
         return {

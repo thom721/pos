@@ -1234,6 +1234,22 @@ class _ProductTable extends ConsumerWidget {
               const DataColumn(label: Text('Catégorie')),
               const DataColumn(label: Text('Prix achat'), numeric: true),
               const DataColumn(label: Text('Prix vente'), numeric: true),
+              DataColumn(
+                numeric: true,
+                label: Tooltip(
+                  message: 'Marge = (Prix vente − Prix achat) / Prix achat × 100\n'
+                      'Indique le bénéfice réalisé par rapport au coût d\'achat.',
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Marge'),
+                      SizedBox(width: 4),
+                      Icon(Icons.info_outline_rounded,
+                          size: 13, color: AppColors.textSecondary),
+                    ],
+                  ),
+                ),
+              ),
               const DataColumn(label: Text('Stock')),
               const DataColumn(label: Text('Seuil alerte'), numeric: true),
               if (canEdit || canAdjustStock) const DataColumn(label: Text(''), numeric: true),
@@ -1263,6 +1279,8 @@ class _ProductTable extends ConsumerWidget {
                         color: AppColors.primary,
                         fontWeight: FontWeight.w600,
                         fontSize: 13))),
+                DataCell(_MarginChip(
+                    purchasePrice: p.purchasePrice, salePrice: p.salePrice)),
                 DataCell(_StockChip(product: p)),
                 DataCell(Text('${p.alertStock}',
                     style: const TextStyle(fontSize: 13))),
@@ -1320,6 +1338,29 @@ class _StockChip extends StatelessWidget {
       child: Text('${product.stock}',
           style: TextStyle(
               color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+class _MarginChip extends StatelessWidget {
+  final double purchasePrice;
+  final double salePrice;
+  const _MarginChip({required this.purchasePrice, required this.salePrice});
+
+  @override
+  Widget build(BuildContext context) {
+    if (purchasePrice <= 0) {
+      return const Text('—', style: TextStyle(fontSize: 13, color: AppColors.textSecondary));
+    }
+    final margin = (salePrice - purchasePrice) / purchasePrice * 100;
+    final color = margin >= 30
+        ? AppColors.accent
+        : margin >= 10
+            ? Colors.orange
+            : AppColors.error;
+    return Text(
+      '${margin.toStringAsFixed(1)}%',
+      style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13),
     );
   }
 }

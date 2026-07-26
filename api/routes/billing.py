@@ -87,24 +87,8 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
     total_htg = xc_htg * caisse_count
     total_usd = xc_usd * caisse_count
 
-    # Statut et dates d'expiration du tenant (pour les caisses initiales).
-    tenant_sub_end   = getattr(tenant, "subscription_ends_at", None)
-    tenant_trial_end = tenant.trial_ends_at
-    if tenant_sub_end and tenant_sub_end.tzinfo is None:
-        tenant_sub_end = tenant_sub_end.replace(tzinfo=timezone.utc)
-    if tenant_trial_end and tenant_trial_end.tzinfo is None:
-        tenant_trial_end = tenant_trial_end.replace(tzinfo=timezone.utc)
-
-    if tenant_sub_end and tenant_sub_end > now:
-        tenant_reg_status = "active"
-    elif tenant_trial_end and tenant_trial_end > now:
-        tenant_reg_status = "trial"
-    elif tenant.status == "active":
-        tenant_reg_status = "active"
-    else:
-        tenant_reg_status = "expired" if (tenant_sub_end or tenant_trial_end) else "no_subscription"
-
-    # Détail par caisse avec warehouse pour affichage dans la page abonnement
+    # Détail par caisse avec warehouse pour affichage dans la page abonnement.
+    # Chaque caisse (initiale ou non) a ses propres dates de facturation.
     regs_q = (
         db.query(PosRegister, Warehouse)
         .outerjoin(Warehouse, PosRegister.warehouse_id == Warehouse.id)
@@ -117,36 +101,31 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
 
     registers_detail = []
     for reg, wh in regs_q:
-        if reg.is_initial:
-            # Couverte par le plan du tenant — statut et dates dérivés du tenant.
-            reg_status        = tenant_reg_status
-            reg_trial_end_iso = tenant_trial_end.isoformat() if tenant_trial_end else None
-            reg_sub_end_iso   = tenant_sub_end.isoformat()   if tenant_sub_end   else None
-        else:
-            sub_end   = reg.subscription_ends_at
-            trial_end = reg.trial_ends_at
-            if sub_end:
-                if sub_end.tzinfo is None:
-                    sub_end = sub_end.replace(tzinfo=timezone.utc)
-                reg_status = "active" if sub_end > now else "expired"
-            elif trial_end:
-                if trial_end.tzinfo is None:
-                    trial_end = trial_end.replace(tzinfo=timezone.utc)
-                reg_status = "trial" if trial_end > now else "expired"
-            else:
-                reg_status = "no_subscription"
-            reg_trial_end_iso = reg.trial_ends_at.isoformat()        if reg.trial_ends_at        else None
-            reg_sub_end_iso   = reg.subscription_ends_at.isoformat() if reg.subscription_ends_at else None
+        sub_end   = reg.subscription_ends_at
+        trial_end = reg.trial_ends_at
+        if sub_end   and sub_end.tzinfo   is None: sub_end   = sub_end.replace(tzinfo=timezone.utc)
+        if trial_end and trial_end.tzinfo is None: trial_end = trial_end.replace(tzinfo=timezone.utc)
 
+        if sub_end and sub_end > now:
+            reg_status = "active"
+        elif trial_end and trial_end > now:
+            reg_status = "trial"
+        elif sub_end or trial_end:
+            reg_status = "expired"
+        else:
+            reg_status = "no_subscription"
+
+        sub_started = getattr(reg, "subscription_started_at", None)
         registers_detail.append({
-            "id":                   reg.id,
-            "name":                 reg.name,
-            "warehouse_name":       wh.name if wh else None,
-            "is_initial":           bool(reg.is_initial),
-            "trial_ends_at":        reg_trial_end_iso,
-            "subscription_ends_at": reg_sub_end_iso,
-            "monthly_htg":          xc_htg,
-            "status":               reg_status,
+            "id":                      reg.id,
+            "name":                    reg.name,
+            "warehouse_name":          wh.name if wh else None,
+            "is_initial":              bool(reg.is_initial),
+            "trial_ends_at":           reg.trial_ends_at.isoformat()           if reg.trial_ends_at           else None,
+            "subscription_started_at": sub_started.isoformat()                 if sub_started                 else None,
+            "subscription_ends_at":    reg.subscription_ends_at.isoformat()    if reg.subscription_ends_at    else None,
+            "monthly_htg":             xc_htg,
+            "status":                  reg_status,
         })
 
     return {

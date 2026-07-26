@@ -156,9 +156,10 @@ async def require_active_plan(
     db: Session = Depends(get_db),
 ) -> None:
     """
-    Dépendance à injecter sur les routes d'écriture (ventes, etc.).
+    Dépendance à injecter sur les routes d'écriture (ventes, commandes, etc.).
     - No-op pour les utilisateurs locaux (pas de tenant_id dans le JWT).
-    - Bloque avec 402 si le plan est expiré (même en période de grâce).
+    - Vérifie l'abonnement de la caisse de l'utilisateur connecté (via device_id du JWT).
+    - Bloque avec 402 si la caisse n'a pas de trial ou d'abonnement actif.
     """
     if not token:
         return  # local mode
@@ -168,8 +169,30 @@ async def require_active_plan(
     if not tenant_id:
         return  # local mode
 
-    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-    if not tenant:
-        return
+    device_id: str | None = payload.get("device_id")
+    if not device_id:
+        return  # admin web sans caisse liée → pas de vérification
 
-    _check_tenant_access(tenant, db, hard_block=True)
+    from api.models.PosRegister import PosRegister
+    reg = db.query(PosRegister).filter(
+        PosRegister.tenant_id == tenant_id,
+        PosRegister.device_id == device_id,
+        PosRegister.is_active == True,  # noqa: E712
+    ).first()
+    if not reg:
+        return  # pas de caisse trouvée pour ce device → no-op
+
+    now = datetime.now(timezone.utc)
+    sub_end   = reg.subscription_ends_at
+    trial_end = reg.trial_ends_at
+    if sub_end   and sub_end.tzinfo   is None: sub_end   = sub_end.replace(tzinfo=timezone.utc)
+    if trial_end and trial_end.tzinfo is None: trial_end = trial_end.replace(tzinfo=timezone.utc)
+
+    has_sub   = sub_end   is not None and sub_end   > now
+    has_trial = trial_end is not None and trial_end > now
+
+    if not has_sub and not has_trial:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="register_no_subscription",
+        )

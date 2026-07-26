@@ -54,6 +54,7 @@ class RegisterRead(BaseModel):
     is_initial: bool = False
     warehouse_id: Optional[str] = None
     trial_ends_at: Optional[datetime] = None
+    subscription_started_at: Optional[datetime] = None
     subscription_ends_at: Optional[datetime] = None
 
     class Config:
@@ -188,15 +189,16 @@ def create_warehouse(
     # Créer automatiquement la config du nouveau dépôt
     _config.create_for_warehouse(db, current_user.tenant_id, wh.id)
 
-    # Caisse initiale du dépôt — nommée d'après le warehouse pour identification
-    # en facturation. is_initial=True → couverte par le trial du tenant (pas de
-    # trial individuel). Slot vide, réclamé par le 1er appareil à se connecter.
+    # Caisse initiale du dépôt — slot vide, réclamé par le 1er appareil à se connecter.
+    # Reçoit le trial restant du tenant comme point de départ de sa propre facturation.
+    _t_trial = getattr(tenant, "trial_ends_at", None)
     db.add(PosRegister(
         tenant_id=current_user.tenant_id,
         warehouse_id=wh.id,
         name="Caisse principale",
         is_active=True,
         is_initial=True,
+        trial_ends_at=_t_trial,
     ))
 
     # Génère automatiquement un code d'installation unique pour ce dépôt
