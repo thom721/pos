@@ -84,15 +84,12 @@ _SLOT_IDLE_MINUTES = 5   # slot considered free after 5 min without heartbeat
 def _get_or_create_register(
     db: Session, tenant_id: str, device_id: str, name: str,
     force: bool = False, warehouse_id: str | None = None,
-    is_admin: bool = False,
+    is_admin: bool = False, user_id: str | None = None,
 ) -> PosRegister | JSONResponse:
     from api.models.AppConfig import AppConfig
 
     tenant = db.get(Tenant, tenant_id)
 
-    # Restaurant/hotel require devices to be explicitly registered in Business → Caisses.
-    # Auto-claiming unclaimed slots is only allowed for commerce-type warehouses.
-    # Admins bypass this restriction so they can always open a session on any device.
     requires_explicit = False
     if warehouse_id and not is_admin:
         wh_cfg = db.query(AppConfig).filter_by(
@@ -101,26 +98,46 @@ def _get_or_create_register(
         if wh_cfg and wh_cfg.business_type in ("restaurant", "hotel"):
             requires_explicit = True
 
-    # 1. Cet appareil possède déjà une caisse → réutiliser si elle appartient au bon dépôt
+    # 0. Caisse dédiée à cet utilisateur → route directe, peu importe l'appareil.
+    #    On met à jour device_id si nécessaire pour que le heartbeat fonctionne.
+    if user_id:
+        ded_q = db.query(PosRegister).filter(
+            PosRegister.tenant_id == tenant_id,
+            PosRegister.dedicated_user_id == user_id,
+            PosRegister.is_active == True,  # noqa: E712
+        )
+        if warehouse_id:
+            ded_q = ded_q.filter(PosRegister.warehouse_id == warehouse_id)
+        dedicated = ded_q.first()
+        if dedicated:
+            if dedicated.device_id != device_id:
+                dedicated.device_id = device_id
+                db.flush()
+            return dedicated
+
+    # 1. Cet appareil possède déjà une caisse.
     reg = db.query(PosRegister).filter_by(tenant_id=tenant_id, device_id=device_id).first()
     if reg:
         if not reg.is_active:
             return JSONResponse(status_code=403, content={"detail": "caisse_disabled"})
-        if not warehouse_id or reg.warehouse_id == warehouse_id:
+        # La caisse de cet appareil est réservée à quelqu'un d'autre → ignorer, chercher ailleurs.
+        if reg.dedicated_user_id and reg.dedicated_user_id != user_id:
+            reg = None
+        elif not warehouse_id or reg.warehouse_id == warehouse_id:
             return reg
-        # La caisse existante appartient à un autre dépôt → chercher un slot dans le bon dépôt
+        # else: appareil dans un autre dépôt → chercher un slot dans le bon dépôt
 
-    # 2. Chercher une caisse libre dans le dépôt demandé (sans session active)
+    # 2. Chercher une caisse libre NON dédiée dans le dépôt demandé.
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=_SLOT_IDLE_MINUTES)
     slot_q = db.query(PosRegister).filter(
         PosRegister.tenant_id == tenant_id,
         PosRegister.is_active == True,  # noqa: E712
+        PosRegister.dedicated_user_id.is_(None),          # exclure les caisses dédiées
         or_(PosRegister.last_seen.is_(None), PosRegister.last_seen < cutoff),
     )
     if warehouse_id:
         slot_q = slot_q.filter(PosRegister.warehouse_id == warehouse_id)
     if requires_explicit:
-        # Only re-claim previously registered devices; don't auto-assign unclaimed slots
         slot_q = slot_q.filter(PosRegister.device_id.isnot(None))
 
     free_slot = slot_q.order_by(
@@ -133,16 +150,18 @@ def _get_or_create_register(
         db.flush()
         return free_slot
 
-    # 3. Aucun slot libre dans ce dépôt — vérifier la limite
-    count_q = db.query(PosRegister).filter(
+    # 3. Aucun slot libre non dédié — diagnostiquer
+    all_q = db.query(PosRegister).filter(
         PosRegister.tenant_id == tenant_id,
         PosRegister.is_active == True,  # noqa: E712
     )
     if warehouse_id:
-        count_q = count_q.filter(PosRegister.warehouse_id == warehouse_id)
-    active_count = count_q.count()
+        all_q = all_q.filter(PosRegister.warehouse_id == warehouse_id)
+    all_count = all_q.count()
 
-    if active_count == 0:
+    non_ded_count = all_q.filter(PosRegister.dedicated_user_id.is_(None)).count()
+
+    if all_count == 0:
         msg = (
             "Aucune caisse configurée pour ce dépôt. Contactez l'administrateur."
             if warehouse_id
@@ -153,9 +172,18 @@ def _get_or_create_register(
             "message": msg,
         })
 
-    # Restaurant/hotel: registers exist but none have been claimed by a device yet
+    if non_ded_count == 0:
+        # Toutes les caisses sont dédiées à d'autres utilisateurs
+        return JSONResponse(status_code=403, content={
+            "detail":  "register_dedicated",
+            "message": "Toutes les caisses disponibles sont réservées à d'autres caissiers.",
+        })
+
     if requires_explicit:
-        claimed = count_q.filter(PosRegister.device_id.isnot(None)).count()
+        claimed = all_q.filter(
+            PosRegister.dedicated_user_id.is_(None),
+            PosRegister.device_id.isnot(None),
+        ).count()
         if claimed == 0:
             return JSONResponse(status_code=409, content={
                 "detail":  "no_registered_devices",
@@ -172,14 +200,14 @@ def _get_or_create_register(
             content={
                 "detail":    "limit_exceeded",
                 "resource":  "caisse",
-                "current":   active_count,
-                "max":       tenant.max_caisses if tenant else active_count,
+                "current":   all_count,
+                "max":       tenant.max_caisses if tenant else all_count,
                 "price_htg": price_htg,
                 "price_usd": price_usd,
             },
         )
 
-    # 4. force=True : admin a confirmé → créer une caisse supplémentaire
+    # 4. force=True : admin a confirmé → créer une caisse supplémentaire non dédiée
     reg = PosRegister(
         tenant_id=tenant_id, device_id=device_id, name=name,
         warehouse_id=warehouse_id,
@@ -284,17 +312,11 @@ def open_session(
         db, current_user.tenant_id, body.device_id, body.register_name,
         force=body.force, warehouse_id=body.warehouse_id,
         is_admin='admin' in (current_user.roles or []),
+        user_id=current_user.id,
     )
     # Propagate 402 limit_exceeded, 403 caisse_disabled, or 409 no_registers
     if isinstance(reg, JSONResponse):
         return reg
-
-    # Caisse dédiée : seul l'utilisateur assigné peut ouvrir une session.
-    if reg.dedicated_user_id and reg.dedicated_user_id != current_user.id:
-        return JSONResponse(status_code=403, content={
-            "detail":  "register_dedicated",
-            "message": "Cette caisse est réservée à un autre caissier.",
-        })
 
     # Vérifier l'abonnement de la caisse — chaque caisse (initiale ou non)
     # a sa propre ligne de facturation (trial_ends_at / subscription_ends_at).
