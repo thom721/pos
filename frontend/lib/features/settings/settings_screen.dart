@@ -1098,10 +1098,8 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
   final _cloudUrlCtrl = TextEditingController();
   final _emailCtrl    = TextEditingController();
   final _passwordCtrl = TextEditingController();
-  final _codeCtrl     = TextEditingController();
   bool _obscure   = true;
   bool _showForm  = false;
-  bool _useCode   = false;   // true = code d'installation, false = email+password
   Timer? _refreshTimer;
 
   @override
@@ -1133,7 +1131,6 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
     _cloudUrlCtrl.dispose();
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
-    _codeCtrl.dispose();
     super.dispose();
   }
 
@@ -1142,20 +1139,6 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
       cloudUrl: _cloudUrlCtrl.text.trim(),
       email:    _emailCtrl.text.trim(),
       password: _passwordCtrl.text,
-    );
-    if (!mounted) return;
-    final s = ref.read(syncProvider);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(ok ? (s.lastResult ?? 'OK') : (s.error ?? 'Erreur')),
-      backgroundColor: ok ? AppColors.success : AppColors.error,
-    ));
-    if (ok) setState(() => _showForm = false);
-  }
-
-  Future<void> _configureByCode() async {
-    final ok = await ref.read(syncProvider.notifier).configureByCode(
-      cloudUrl: _cloudUrlCtrl.text.trim(),
-      code:     _codeCtrl.text.trim(),
     );
     if (!mounted) return;
     final s = ref.read(syncProvider);
@@ -1373,68 +1356,39 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      // Toggle mode
-                      Row(
-                        children: [
-                          Switch(
-                            value: _useCode,
-                            onChanged: (v) => setState(() => _useCode = v),
-                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          const SizedBox(width: 8),
-                          const Text('Utiliser un code d\'installation',
-                              style: TextStyle(fontSize: 13)),
-                        ],
+                      TextField(
+                        controller: _emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Email du compte cloud',
+                          prefixIcon: Icon(Icons.email_outlined),
+                          isDense: true,
+                        ),
                       ),
                       const SizedBox(height: 10),
-                      if (_useCode) ...[
-                        // ── Mode code d'installation ──
-                        TextField(
-                          controller: _codeCtrl,
-                          textCapitalization: TextCapitalization.characters,
-                          decoration: const InputDecoration(
-                            labelText: 'Code d\'installation',
-                            hintText: 'XXXX-XXXX-XXXX',
-                            prefixIcon: Icon(Icons.vpn_key_outlined),
-                            isDense: true,
+                      TextField(
+                        controller: _passwordCtrl,
+                        obscureText: _obscure,
+                        decoration: InputDecoration(
+                          labelText: 'Mot de passe',
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          isDense: true,
+                          suffixIcon: IconButton(
+                            icon: Icon(_obscure
+                                ? Icons.visibility
+                                : Icons.visibility_off),
+                            onPressed: () =>
+                                setState(() => _obscure = !_obscure),
                           ),
                         ),
-                      ] else ...[
-                        // ── Mode email + mot de passe ──
-                        TextField(
-                          controller: _emailCtrl,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: const InputDecoration(
-                            labelText: 'Email du compte cloud',
-                            prefixIcon: Icon(Icons.email_outlined),
-                            isDense: true,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: _passwordCtrl,
-                          obscureText: _obscure,
-                          decoration: InputDecoration(
-                            labelText: 'Mot de passe',
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            isDense: true,
-                            suffixIcon: IconButton(
-                              icon: Icon(_obscure
-                                  ? Icons.visibility
-                                  : Icons.visibility_off),
-                              onPressed: () =>
-                                  setState(() => _obscure = !_obscure),
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                       const SizedBox(height: 14),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: syncState.isConfiguring
                               ? null
-                              : (_useCode ? _configureByCode : _configure),
+                              : _configure,
                           child: syncState.isConfiguring
                               ? const SizedBox(height: 16, width: 16,
                                   child: CircularProgressIndicator(
