@@ -625,6 +625,7 @@ class _TenantCard extends ConsumerWidget {
                   ),
               ],
             ),
+            _TenantBoutiquesSection(tenantId: tenant['id'] as String),
           ],
         ),
       ),
@@ -973,6 +974,189 @@ class _TenantCard extends ConsumerWidget {
       }),
     );
     extraTrialCtrl.dispose();
+  }
+}
+
+// ── Boutiques & caisses inline per tenant ────────────────────────────────────
+
+class _TenantBoutiquesSection extends ConsumerStatefulWidget {
+  final String tenantId;
+  const _TenantBoutiquesSection({required this.tenantId});
+
+  @override
+  ConsumerState<_TenantBoutiquesSection> createState() =>
+      _TenantBoutiquesSectionState();
+}
+
+class _TenantBoutiquesSectionState
+    extends ConsumerState<_TenantBoutiquesSection> {
+  List<Map<String, dynamic>>? _warehouses;
+  List<Map<String, dynamic>>? _registers;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      final results = await Future.wait([
+        d.get('/api/admin/tenants/${widget.tenantId}/warehouses'),
+        d.get('/api/admin/tenants/${widget.tenantId}/registers'),
+      ]);
+      if (mounted) {
+        setState(() {
+          _warehouses =
+              List<Map<String, dynamic>>.from(results[0].data as List);
+          _registers =
+              List<Map<String, dynamic>>.from(results[1].data as List);
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() { _warehouses = []; _registers = []; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final warehouses = _warehouses;
+    if (warehouses == null) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 10),
+        child: Center(
+          child: SizedBox(
+            height: 14,
+            width: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    if (warehouses.isEmpty) return const SizedBox.shrink();
+    final registers = _registers ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 20),
+        for (int i = 0; i < warehouses.length; i++) ...[
+          _buildWarehouseRow(context, warehouses[i], registers),
+          if (i < warehouses.length - 1) const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildWarehouseRow(BuildContext context, Map<String, dynamic> wh,
+      List<Map<String, dynamic>> allRegisters) {
+    final whId      = wh['id'] as String;
+    final whName    = wh['name'] as String? ?? '—';
+    final isDefault = wh['is_default'] as bool? ?? false;
+    final isActive  = wh['is_active']  as bool? ?? true;
+    final whRegs =
+        allRegisters.where((r) => r['warehouse_id'] == whId).toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+            color: Theme.of(context).dividerColor.withValues(alpha: 0.6)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.store_rounded,
+                  size: 15,
+                  color: isActive
+                      ? AppColors.primary
+                      : AppColors.textSecondary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  whName,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (isDefault)
+                _SmallBadge(label: 'Principal', color: AppColors.primary),
+              if (!isActive) ...[
+                const SizedBox(width: 4),
+                _SmallBadge(label: 'Inactif', color: AppColors.error),
+              ],
+            ],
+          ),
+          if (whRegs.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            for (final reg in whRegs) _buildRegisterRow(context, reg),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegisterRow(BuildContext context, Map<String, dynamic> reg) {
+    final name       = reg['name']        as String? ?? '—';
+    final deviceId   = reg['device_id']   as String?;
+    final isActive   = reg['is_active']   as bool?   ?? false;
+    final hasSession = reg['has_session'] as bool?   ?? false;
+    final isInitial  = reg['is_initial']  as bool?   ?? false;
+    final shortId    = (deviceId != null && deviceId.length > 10)
+        ? '${deviceId.substring(0, 10)}…'
+        : (deviceId ?? '—');
+
+    final dotColor = hasSession
+        ? AppColors.success
+        : (isActive ? Colors.amber : AppColors.error);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 5, left: 6),
+      child: Row(
+        children: [
+          Icon(Icons.point_of_sale_rounded,
+              size: 13,
+              color: isActive ? AppColors.textSecondary : AppColors.error),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              isInitial ? '$name ★' : name,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(fontWeight: FontWeight.w500),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Text(
+            shortId,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
+                  fontSize: 10,
+                ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: dotColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1453,6 +1637,25 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     super.dispose();
   }
 
+  Widget _configSection(
+      BuildContext context, String title, List<Widget> children) {
+    return Card(
+      color: Colors.white,
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
@@ -1543,387 +1746,368 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Paiements mobile money',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _moncashCtrl,
-                    decoration:
-                        const InputDecoration(labelText: 'Numéro MonCash'),
-                  ),
-                  const SizedBox(height: 8),
-                  _ModeSelector(
-                    label: 'Mode MonCash',
-                    value: _moncashMode,
-                    onChanged: (v) => setState(() => _moncashMode = v),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _natcashCtrl,
-                    decoration:
-                        const InputDecoration(labelText: 'Numéro NatCash'),
-                  ),
-                  const SizedBox(height: 8),
-                  _ModeSelector(
-                    label: 'Mode NatCash',
-                    value: _natcashMode,
-                    onChanged: (v) => setState(() => _natcashMode = v),
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Méthodes de paiement activées',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  SwitchListTile(
-                    title: const Text('Espèces (Cash)'),
-                    subtitle: const Text('Paiement en espèces remis à l\'administrateur'),
-                    value: _cashEnabled,
-                    onChanged: (v) => setState(() => _cashEnabled = v),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  SwitchListTile(
-                    title: const Text('MonCash'),
-                    subtitle: const Text('Paiement mobile MonCash (Digicel)'),
-                    value: _moncashEnabled,
-                    onChanged: (v) => setState(() => _moncashEnabled = v),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  SwitchListTile(
-                    title: const Text('NatCash'),
-                    subtitle: const Text('Paiement mobile NatCash (Natcom)'),
-                    value: _natcashEnabled,
-                    onChanged: (v) => setState(() => _natcashEnabled = v),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  SwitchListTile(
-                    title: const Text('Carte bancaire (Stripe)'),
-                    subtitle: const Text('Visa, Mastercard, American Express'),
-                    value: _cardEnabled,
-                    onChanged: (v) => setState(() => _cardEnabled = v),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Tarification',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _priceHtgCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Prix mensuel (HTG)'),
-                          validator: (v) =>
-                              double.tryParse(v ?? '') == null
-                                  ? 'Invalide'
-                                  : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _priceUsdCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Prix mensuel (USD)'),
-                          validator: (v) =>
-                              double.tryParse(v ?? '') == null
-                                  ? 'Invalide'
-                                  : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _extraCaisseHtgCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Prix / caisse supp. (HTG)'),
-                          validator: (v) =>
-                              double.tryParse(v ?? '') == null ? 'Invalide' : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _extraCaisseUsdCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Prix / caisse supp. (USD)'),
-                          validator: (v) =>
-                              double.tryParse(v ?? '') == null ? 'Invalide' : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _extraDepotHtgCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Prix / dépôt supp. (HTG)'),
-                          validator: (v) =>
-                              double.tryParse(v ?? '') == null ? 'Invalide' : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _extraDepotUsdCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Prix / dépôt supp. (USD)'),
-                          validator: (v) =>
-                              double.tryParse(v ?? '') == null ? 'Invalide' : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _stripePriceCtrl,
-                    decoration:
-                        const InputDecoration(labelText: 'Stripe Price ID'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _trialDaysCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: "Durée d'essai (jours)"),
-                    validator: (v) =>
-                        int.tryParse(v ?? '') == null ? 'Invalide' : null,
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Support',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _supportEmailCtrl,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration:
-                        const InputDecoration(labelText: 'Email support'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _supportWaCtrl,
-                    decoration:
-                        const InputDecoration(labelText: 'WhatsApp support'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _supportAddressCtrl,
-                    decoration:
-                        const InputDecoration(labelText: 'Adresse physique'),
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Stats page d\'accueil',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _statBusinessesCtrl,
-                        decoration: const InputDecoration(labelText: 'Boutiques (ex: 500+)'),
-                      ),
+                  _configSection(context, 'Paiements mobile money', [
+                    TextFormField(
+                      controller: _moncashCtrl,
+                      decoration: const InputDecoration(labelText: 'Numéro MonCash'),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _statTransactionsCtrl,
-                        decoration: const InputDecoration(labelText: 'Transactions/jour (ex: 10k+)'),
-                      ),
+                    const SizedBox(height: 8),
+                    _ModeSelector(
+                      label: 'Mode MonCash',
+                      value: _moncashMode,
+                      onChanged: (v) => setState(() => _moncashMode = v),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _statUptimeCtrl,
-                        decoration: const InputDecoration(labelText: 'Disponibilité (ex: 99.9%)'),
-                      ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _natcashCtrl,
+                      decoration: const InputDecoration(labelText: 'Numéro NatCash'),
+                    ),
+                    const SizedBox(height: 8),
+                    _ModeSelector(
+                      label: 'Mode NatCash',
+                      value: _natcashMode,
+                      onChanged: (v) => setState(() => _natcashMode = v),
                     ),
                   ]),
-                  const SizedBox(height: 24),
-                  Text('Configuration email (SMTP)',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(
-                      flex: 3,
-                      child: TextFormField(
-                        controller: _smtpHostCtrl,
-                        decoration: const InputDecoration(labelText: 'Serveur SMTP'),
-                      ),
+                  _configSection(context, 'Méthodes de paiement activées', [
+                    SwitchListTile(
+                      title: const Text('Espèces (Cash)'),
+                      subtitle: const Text('Paiement en espèces remis à l\'administrateur'),
+                      value: _cashEnabled,
+                      onChanged: (v) => setState(() => _cashEnabled = v),
+                      contentPadding: EdgeInsets.zero,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _smtpPortCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Port'),
-                      ),
+                    SwitchListTile(
+                      title: const Text('MonCash'),
+                      subtitle: const Text('Paiement mobile MonCash (Digicel)'),
+                      value: _moncashEnabled,
+                      onChanged: (v) => setState(() => _moncashEnabled = v),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    SwitchListTile(
+                      title: const Text('NatCash'),
+                      subtitle: const Text('Paiement mobile NatCash (Natcom)'),
+                      value: _natcashEnabled,
+                      onChanged: (v) => setState(() => _natcashEnabled = v),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    SwitchListTile(
+                      title: const Text('Carte bancaire (Stripe)'),
+                      subtitle: const Text('Visa, Mastercard, American Express'),
+                      value: _cardEnabled,
+                      onChanged: (v) => setState(() => _cardEnabled = v),
+                      contentPadding: EdgeInsets.zero,
                     ),
                   ]),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _smtpUserCtrl,
-                    decoration: const InputDecoration(labelText: 'Utilisateur SMTP'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _smtpPasswordCtrl,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Mot de passe SMTP',
-                      helperText: 'Laissez vide pour conserver le mot de passe actuel',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _smtpFromCtrl,
-                    decoration: const InputDecoration(
-                        labelText: 'Expéditeur (ex: noreply@mondomaine.com)'),
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Logo de la plateforme',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Text(
-                    'URL de votre logo (PNG/SVG). Laissez vide pour utiliser le logo POS Connect par défaut.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _logoUrlCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'URL du logo',
-                      hintText: 'https://exemple.com/logo.png',
-                      prefixIcon: Icon(Icons.image_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Cards de tarification',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Laissez Prix HTG/USD vide pour utiliser les prix du plan Pro ci-dessus.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 12),
-                  ..._planEditors.asMap().entries.map((entry) {
-                    final i = entry.key;
-                    final e = entry.value;
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Row(children: [
-                            Expanded(
-                              child: Text(e.nameCtrl.text.isEmpty ? 'Card ${i + 1}' : e.nameCtrl.text,
-                                  style: Theme.of(context).textTheme.titleMedium),
-                            ),
-                            const Text('Visible', style: TextStyle(fontSize: 12)),
-                            Switch(
-                              value: e.visible,
-                              onChanged: (v) => setState(() => e.visible = v),
-                            ),
-                            const SizedBox(width: 8),
-                            const Text('Mis en avant', style: TextStyle(fontSize: 12)),
-                            Switch(
-                              value: e.highlighted,
-                              onChanged: (v) => setState(() => e.highlighted = v),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, color: AppColors.error),
-                              tooltip: 'Supprimer cette card',
-                              onPressed: () => setState(() {
-                                e.dispose();
-                                _planEditors.removeAt(i);
-                              }),
-                            ),
-                          ]),
-                          const SizedBox(height: 8),
-                          Row(children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: e.nameCtrl,
-                                decoration: const InputDecoration(labelText: 'Nom'),
-                                onChanged: (_) => setState(() {}),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: TextFormField(
-                                controller: e.subtitleCtrl,
-                                decoration: const InputDecoration(labelText: 'Sous-titre'),
-                              ),
-                            ),
-                          ]),
-                          const SizedBox(height: 8),
-                          Row(children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: e.priceHtgCtrl,
-                                decoration: const InputDecoration(
-                                  labelText: 'Prix HTG',
-                                  hintText: 'Vide = auto',
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: TextFormField(
-                                controller: e.priceUsdCtrl,
-                                decoration: const InputDecoration(
-                                  labelText: 'Prix USD',
-                                  hintText: 'Vide = auto',
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: TextFormField(
-                                controller: e.periodCtrl,
-                                decoration: const InputDecoration(
-                                  labelText: 'Période',
-                                  hintText: 'ex: par mois',
-                                ),
-                              ),
-                            ),
-                          ]),
-                          const SizedBox(height: 12),
-                          Text('Fonctionnalités',
-                              style: Theme.of(context).textTheme.bodySmall),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: e.features.asMap().entries.map((fe) => Chip(
-                              label: Text(fe.value, style: const TextStyle(fontSize: 12)),
-                              deleteIcon: const Icon(Icons.close, size: 14),
-                              onDeleted: () => setState(() => e.features.removeAt(fe.key)),
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
-                            )).toList(),
+                  _configSection(context, 'Tarification', [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _priceHtgCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Prix mensuel (HTG)'),
+                            validator: (v) =>
+                                double.tryParse(v ?? '') == null ? 'Invalide' : null,
                           ),
-                          const SizedBox(height: 8),
-                          Row(children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: e.featureAddCtrl,
-                                decoration: const InputDecoration(
-                                  labelText: 'Ajouter une fonctionnalité',
-                                  isDense: true,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _priceUsdCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Prix mensuel (USD)'),
+                            validator: (v) =>
+                                double.tryParse(v ?? '') == null ? 'Invalide' : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _extraCaisseHtgCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Prix / caisse supp. (HTG)'),
+                            validator: (v) =>
+                                double.tryParse(v ?? '') == null ? 'Invalide' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _extraCaisseUsdCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Prix / caisse supp. (USD)'),
+                            validator: (v) =>
+                                double.tryParse(v ?? '') == null ? 'Invalide' : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _extraDepotHtgCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Prix / dépôt supp. (HTG)'),
+                            validator: (v) =>
+                                double.tryParse(v ?? '') == null ? 'Invalide' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _extraDepotUsdCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Prix / dépôt supp. (USD)'),
+                            validator: (v) =>
+                                double.tryParse(v ?? '') == null ? 'Invalide' : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _stripePriceCtrl,
+                      decoration: const InputDecoration(labelText: 'Stripe Price ID'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _trialDaysCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: "Durée d'essai (jours)"),
+                      validator: (v) =>
+                          int.tryParse(v ?? '') == null ? 'Invalide' : null,
+                    ),
+                  ]),
+                  _configSection(context, 'Support', [
+                    TextFormField(
+                      controller: _supportEmailCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(labelText: 'Email support'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _supportWaCtrl,
+                      decoration: const InputDecoration(labelText: 'WhatsApp support'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _supportAddressCtrl,
+                      decoration: const InputDecoration(labelText: 'Adresse physique'),
+                    ),
+                  ]),
+                  _configSection(context, "Stats page d'accueil", [
+                    Row(children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _statBusinessesCtrl,
+                          decoration: const InputDecoration(labelText: 'Boutiques (ex: 500+)'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _statTransactionsCtrl,
+                          decoration: const InputDecoration(labelText: 'Transactions/jour (ex: 10k+)'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _statUptimeCtrl,
+                          decoration: const InputDecoration(labelText: 'Disponibilité (ex: 99.9%)'),
+                        ),
+                      ),
+                    ]),
+                  ]),
+                  _configSection(context, 'Configuration email (SMTP)', [
+                    Row(children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextFormField(
+                          controller: _smtpHostCtrl,
+                          decoration: const InputDecoration(labelText: 'Serveur SMTP'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _smtpPortCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'Port'),
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _smtpUserCtrl,
+                      decoration: const InputDecoration(labelText: 'Utilisateur SMTP'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _smtpPasswordCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Mot de passe SMTP',
+                        helperText: 'Laissez vide pour conserver le mot de passe actuel',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _smtpFromCtrl,
+                      decoration: const InputDecoration(
+                          labelText: 'Expéditeur (ex: noreply@mondomaine.com)'),
+                    ),
+                  ]),
+                  _configSection(context, 'Logo de la plateforme', [
+                    Text(
+                      'URL de votre logo (PNG/SVG). Laissez vide pour utiliser le logo POS Connect par défaut.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _logoUrlCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'URL du logo',
+                        hintText: 'https://exemple.com/logo.png',
+                        prefixIcon: Icon(Icons.image_outlined),
+                      ),
+                    ),
+                  ]),
+                  _configSection(context, 'Cards de tarification', [
+                    Text(
+                      'Laissez Prix HTG/USD vide pour utiliser les prix du plan Pro ci-dessus.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 12),
+                    ..._planEditors.asMap().entries.map((entry) {
+                      final i = entry.key;
+                      final e = entry.value;
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Row(children: [
+                              Expanded(
+                                child: Text(e.nameCtrl.text.isEmpty ? 'Card ${i + 1}' : e.nameCtrl.text,
+                                    style: Theme.of(context).textTheme.titleMedium),
+                              ),
+                              const Text('Visible', style: TextStyle(fontSize: 12)),
+                              Switch(
+                                value: e.visible,
+                                onChanged: (v) => setState(() => e.visible = v),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text('Mis en avant', style: TextStyle(fontSize: 12)),
+                              Switch(
+                                value: e.highlighted,
+                                onChanged: (v) => setState(() => e.highlighted = v),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: AppColors.error),
+                                tooltip: 'Supprimer cette card',
+                                onPressed: () => setState(() {
+                                  e.dispose();
+                                  _planEditors.removeAt(i);
+                                }),
+                              ),
+                            ]),
+                            const SizedBox(height: 8),
+                            Row(children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: e.nameCtrl,
+                                  decoration: const InputDecoration(labelText: 'Nom'),
+                                  onChanged: (_) => setState(() {}),
                                 ),
-                                onFieldSubmitted: (v) {
-                                  final txt = v.trim();
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: e.subtitleCtrl,
+                                  decoration: const InputDecoration(labelText: 'Sous-titre'),
+                                ),
+                              ),
+                            ]),
+                            const SizedBox(height: 8),
+                            Row(children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: e.priceHtgCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Prix HTG',
+                                    hintText: 'Vide = auto',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: e.priceUsdCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Prix USD',
+                                    hintText: 'Vide = auto',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: e.periodCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Période',
+                                    hintText: 'ex: par mois',
+                                  ),
+                                ),
+                              ),
+                            ]),
+                            const SizedBox(height: 12),
+                            Text('Fonctionnalités',
+                                style: Theme.of(context).textTheme.bodySmall),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: e.features.asMap().entries.map((fe) => Chip(
+                                label: Text(fe.value, style: const TextStyle(fontSize: 12)),
+                                deleteIcon: const Icon(Icons.close, size: 14),
+                                onDeleted: () => setState(() => e.features.removeAt(fe.key)),
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                              )).toList(),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: e.featureAddCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Ajouter une fonctionnalité',
+                                    isDense: true,
+                                  ),
+                                  onFieldSubmitted: (v) {
+                                    final txt = v.trim();
+                                    if (txt.isNotEmpty) {
+                                      setState(() {
+                                        e.features.add(txt);
+                                        e.featureAddCtrl.clear();
+                                      });
+                                    }
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.add_circle_outline),
+                                onPressed: () {
+                                  final txt = e.featureAddCtrl.text.trim();
                                   if (txt.isNotEmpty) {
                                     setState(() {
                                       e.features.add(txt);
@@ -1932,106 +2116,91 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                                   }
                                 },
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: const Icon(Icons.add_circle_outline),
-                              onPressed: () {
-                                final txt = e.featureAddCtrl.text.trim();
-                                if (txt.isNotEmpty) {
-                                  setState(() {
-                                    e.features.add(txt);
-                                    e.featureAddCtrl.clear();
-                                  });
-                                }
-                              },
-                            ),
+                            ]),
                           ]),
-                        ]),
-                      ),
-                    );
-                  }),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.add),
-                    label: const Text('Ajouter une card'),
-                    onPressed: () => setState(() {
-                      final e = _PlanEditors();
-                      e.id = 'plan_${_planEditors.length + 1}';
-                      _planEditors.add(e);
+                        ),
+                      );
                     }),
-                  ),
-                  const SizedBox(height: 32),
-                  Text('Mises à jour applicatives',
-                      style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Ces informations sont distribuées automatiquement à tous les clients. '
-                    'Un build inférieur au "Build minimum" déclenchera le blocage forcé si activé.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _latestVersionCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Dernière version',
-                            hintText: '2.0.0',
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.add),
+                      label: const Text('Ajouter une card'),
+                      onPressed: () => setState(() {
+                        final e = _PlanEditors();
+                        e.id = 'plan_${_planEditors.length + 1}';
+                        _planEditors.add(e);
+                      }),
+                    ),
+                  ]),
+                  _configSection(context, 'Mises à jour applicatives', [
+                    Text(
+                      'Ces informations sont distribuées automatiquement à tous les clients. '
+                      'Un build inférieur au "Build minimum" déclenchera le blocage forcé si activé.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _latestVersionCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Dernière version',
+                              hintText: '2.0.0',
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _latestBuildCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Numéro de build',
-                            hintText: '9',
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _latestBuildCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Numéro de build',
+                              hintText: '9',
+                            ),
+                            validator: (v) =>
+                                int.tryParse(v ?? '') == null ? 'Entier requis' : null,
                           ),
-                          validator: (v) =>
-                              int.tryParse(v ?? '') == null ? 'Entier requis' : null,
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _minVersionCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Version minimale requise',
+                        hintText: '0.9.0',
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _minVersionCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Version minimale requise',
-                      hintText: '0.9.0',
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _updateNotesCtrl,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Notes de mise à jour (facultatif)',
-                      hintText: 'Nouvelles fonctionnalités, correctifs…',
-                      alignLabelWithHint: true,
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _updateNotesCtrl,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Notes de mise à jour (facultatif)',
+                        hintText: 'Nouvelles fonctionnalités, correctifs…',
+                        alignLabelWithHint: true,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _updateUrlCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Lien de téléchargement (facultatif)',
-                      hintText: 'https://…',
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _updateUrlCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Lien de téléchargement (facultatif)',
+                        hintText: 'https://…',
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  SwitchListTile(
-                    title: const Text('Mise à jour obligatoire'),
-                    subtitle: const Text(
-                        'Bloque l\'application sur les versions obsolètes'),
-                    value: _forceUpdate,
-                    onChanged: (v) => setState(() => _forceUpdate = v),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  const SizedBox(height: 32),
+                    const SizedBox(height: 4),
+                    SwitchListTile(
+                      title: const Text('Mise à jour obligatoire'),
+                      subtitle: const Text(
+                          'Bloque l\'application sur les versions obsolètes'),
+                      value: _forceUpdate,
+                      onChanged: (v) => setState(() => _forceUpdate = v),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ]),
+                  const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: _saving ? null : _save,
                     child: _saving

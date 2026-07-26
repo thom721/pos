@@ -858,7 +858,9 @@ def list_tenant_registers(
             "id":           r.id,
             "name":         r.name,
             "device_id":    r.device_id,
+            "warehouse_id": r.warehouse_id,
             "is_active":    r.is_active,
+            "is_initial":   bool(r.is_initial),
             "last_seen":    r.last_seen.isoformat() if r.last_seen else None,
             "has_session":  bool(r.session_token),
         }
