@@ -196,28 +196,50 @@ final kBackgroundOptions = Options(extra: {'skipAutoLogout': true});
 
 /// Traduit une DioException en message lisible pour l'utilisateur.
 /// Priorité : code HTTP connu → message de l'API → fallback générique.
+// HTTP status phrases that are too generic to show as-is.
+const _kGenericPhrases = {
+  'Internal Server Error', 'Bad Request', 'Unprocessable Entity',
+  'Not Found', 'Forbidden', 'Unauthorized', 'Service Unavailable',
+};
+
 String extractErrorMessage(DioException e) {
   final status = e.response?.statusCode;
-  if (status == 403) {
-    return 'Vous n\'avez pas la permission d\'effectuer cette action.';
-  }
-  if (status == 401) {
-    return 'Session expirée. Veuillez vous reconnecter.';
-  }
-  if (status == 503) {
-    return 'Service temporairement indisponible.';
-  }
+
+  // 1. Priorité : message spécifique retourné par le serveur.
   try {
     final data = e.response?.data;
     if (data is Map) {
-      return data['message']?.toString() ??
-          data['detail']?.toString() ??
-          'Erreur inconnue';
+      final raw = (data['detail'] ?? data['message'])?.toString();
+      if (raw != null && raw.isNotEmpty && !_kGenericPhrases.contains(raw)) {
+        return raw;
+      }
     }
-    return e.message ?? 'Erreur de connexion';
-  } catch (_) {
-    return 'Erreur de connexion';
+  } catch (_) {}
+
+  // 2. Fallback par code HTTP — messages français clairs.
+  if (status == 400) return 'Requête invalide — vérifiez les données saisies.';
+  if (status == 401) return 'Session expirée. Veuillez vous reconnecter.';
+  if (status == 403) return 'Vous n\'avez pas la permission d\'effectuer cette action.';
+  if (status == 404) return 'Ressource introuvable.';
+  if (status == 409) return 'Ce contenu existe déjà.';
+  if (status == 422) return 'Données invalides — vérifiez les informations saisies.';
+  if (status == 500) return 'Erreur interne du serveur. Contactez l\'administrateur.';
+  if (status == 503) return 'Service temporairement indisponible.';
+  if (status != null) return 'Erreur serveur ($status).';
+
+  // 3. Erreurs réseau.
+  final t = e.type;
+  if (t == DioExceptionType.connectionError ||
+      t == DioExceptionType.unknown) {
+    return 'Impossible de joindre le serveur — vérifiez votre connexion.';
   }
+  if (t == DioExceptionType.connectionTimeout ||
+      t == DioExceptionType.sendTimeout ||
+      t == DioExceptionType.receiveTimeout) {
+    return 'Le serveur met trop de temps à répondre.';
+  }
+
+  return 'Erreur de connexion.';
 }
 
 /// Traduit n'importe quelle exception (DioException ou autre) en message lisible.
