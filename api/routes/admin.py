@@ -852,6 +852,41 @@ def list_tenant_registers(
     _: dict = Depends(require_superadmin),
 ):
     """List all POS registers for a tenant."""
+    from datetime import timezone as _tz
+    now = datetime.now(_tz.utc)
+
+    def _norm(dt):
+        if dt is None:
+            return None
+        return dt if dt.tzinfo else dt.replace(tzinfo=_tz.utc)
+
+    def _billing(r):
+        sub_start = r.subscription_started_at
+        sub_end   = r.subscription_ends_at
+        trial_end = r.trial_ends_at
+        sub_end_n   = _norm(sub_end)
+        trial_end_n = _norm(trial_end)
+        plan_type = None
+        if sub_start and sub_end:
+            days = (sub_end - sub_start).days
+            plan_type = "annual" if days > 180 else "monthly"
+        if sub_end_n and sub_end_n > now:
+            status = "subscribed"
+        elif trial_end_n and trial_end_n > now:
+            status = "trial"
+        elif sub_end_n or trial_end_n:
+            status = "expired"
+        else:
+            status = "none"
+        expiry = sub_end or trial_end
+        return {
+            "billing_status":     status,
+            "plan_type":          plan_type,
+            "subscription_ends_at": sub_end.isoformat() if sub_end else None,
+            "trial_ends_at":        trial_end.isoformat() if trial_end else None,
+            "effective_expiry":     expiry.isoformat() if expiry else None,
+        }
+
     regs = db.query(PosRegister).filter_by(tenant_id=tenant_id).order_by(PosRegister.name).all()
     return [
         {
@@ -863,6 +898,7 @@ def list_tenant_registers(
             "is_initial":   bool(r.is_initial),
             "last_seen":    r.last_seen.isoformat() if r.last_seen else None,
             "has_session":  bool(r.session_token),
+            **_billing(r),
         }
         for r in regs
     ]

@@ -1107,12 +1107,16 @@ class _TenantBoutiquesSectionState
   }
 
   Widget _buildRegisterRow(BuildContext context, Map<String, dynamic> reg) {
-    final name       = reg['name']        as String? ?? '—';
-    final deviceId   = reg['device_id']   as String?;
-    final isActive   = reg['is_active']   as bool?   ?? false;
-    final hasSession = reg['has_session'] as bool?   ?? false;
-    final isInitial  = reg['is_initial']  as bool?   ?? false;
-    final shortId    = (deviceId != null && deviceId.length > 10)
+    final name            = reg['name']           as String? ?? '—';
+    final deviceId        = reg['device_id']      as String?;
+    final isActive        = reg['is_active']      as bool?   ?? false;
+    final hasSession      = reg['has_session']    as bool?   ?? false;
+    final isInitial       = reg['is_initial']     as bool?   ?? false;
+    final billingStatus   = reg['billing_status'] as String? ?? 'none';
+    final planType        = reg['plan_type']      as String?;
+    final effectiveExpiry = reg['effective_expiry'] as String?;
+
+    final shortId = (deviceId != null && deviceId.length > 10)
         ? '${deviceId.substring(0, 10)}…'
         : (deviceId ?? '—');
 
@@ -1120,38 +1124,103 @@ class _TenantBoutiquesSectionState
         ? AppColors.success
         : (isActive ? Colors.amber : AppColors.error);
 
+    // Billing status display
+    Color billingColor;
+    String billingLabel;
+    switch (billingStatus) {
+      case 'subscribed':
+        billingColor = AppColors.success;
+        billingLabel = planType == 'annual' ? 'Annuel' : 'Mensuel';
+      case 'trial':
+        billingColor = Colors.amber.shade700;
+        billingLabel = 'Essai';
+      case 'expired':
+        billingColor = AppColors.error;
+        billingLabel = 'Expiré';
+      default:
+        billingColor = AppColors.textSecondary;
+        billingLabel = 'Aucun';
+    }
+
+    String? expiryLabel;
+    if (effectiveExpiry != null) {
+      try {
+        final dt = toHaitiTime(DateTime.parse(effectiveExpiry));
+        expiryLabel = DateFormat('dd/MM/yy').format(dt);
+      } catch (_) {}
+    }
+
     return Padding(
       padding: const EdgeInsets.only(top: 5, left: 6),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.point_of_sale_rounded,
-              size: 13,
-              color: isActive ? AppColors.textSecondary : AppColors.error),
-          const SizedBox(width: 5),
-          Expanded(
-            child: Text(
-              isInitial ? '$name ★' : name,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(fontWeight: FontWeight.w500),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Text(
-            shortId,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
-                  fontSize: 10,
+          Row(
+            children: [
+              Icon(Icons.point_of_sale_rounded,
+                  size: 13,
+                  color: isActive ? AppColors.textSecondary : AppColors.error),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  isInitial ? '$name ★' : name,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
                 ),
+              ),
+              Text(
+                shortId,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                      fontSize: 10,
+                    ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: dotColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: dotColor,
-              shape: BoxShape.circle,
+          Padding(
+            padding: const EdgeInsets.only(left: 18, top: 2, bottom: 1),
+            child: Row(
+              children: [
+                Container(
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: billingColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  billingLabel,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: billingColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (expiryLabel != null) ...[
+                  Text(
+                    ' · ',
+                    style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                  ),
+                  Text(
+                    expiryLabel,
+                    style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
