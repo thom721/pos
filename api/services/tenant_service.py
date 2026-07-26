@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import or_
+from api.models.CashierSession import CashierSession
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
@@ -17,7 +18,6 @@ from api.models.InstallationCode import InstallationCode, generate_installation_
 from api.services.auth import Auth
 from api.core.security import create_access_token
 
-_ONLINE_WINDOW_MINUTES = 5
 
 
 def _expand_permissions(user: User, db: Session) -> list[str]:
@@ -170,25 +170,34 @@ def cloud_login(db: Session, email: str, password: str,
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="Tenant introuvable")
 
-    # Slot-based session management
+    # Pas de slot — une caisse est libre dès qu'elle n'a pas de session ouverte.
     register_id = None
     session_token = None
     if device_id:
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=_ONLINE_WINDOW_MINUTES)
+        open_reg_ids = (
+            db.query(CashierSession.register_id)
+            .filter(CashierSession.status == "open")
+            .scalar_subquery()
+        )
 
-        # 1. This device already owns a slot → re-login on same slot
+        # 1. Ce device a déjà une caisse avec une session ouverte → réutiliser.
         register = db.query(PosRegister).filter(
             PosRegister.tenant_id == tenant.id,
             PosRegister.device_id == device_id,
+            PosRegister.id.in_(open_reg_ids),
         ).first()
 
         if not register:
-            # 2. Claim a free slot if available — login is NEVER blocked by caisse limit
+            # 2. Prendre n'importe quelle caisse active sans session ouverte.
+            # Le login n'est JAMAIS bloqué par la limite de caisses.
             register = db.query(PosRegister).filter(
                 PosRegister.tenant_id == tenant.id,
                 PosRegister.is_active == True,   # noqa: E712
-                or_(PosRegister.last_seen.is_(None), PosRegister.last_seen < cutoff),
-            ).order_by(PosRegister.last_seen.is_(None).desc(), PosRegister.last_seen.asc()).first()
+                PosRegister.id.not_in(open_reg_ids),
+            ).order_by(
+                PosRegister.last_seen.is_(None).desc(),
+                PosRegister.last_seen.asc(),
+            ).first()
 
             if register:
                 register.device_id = device_id

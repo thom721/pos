@@ -182,6 +182,11 @@ async def require_active_plan(
     if not reg:
         return  # pas de caisse trouvée pour ce device → no-op
 
+    # La caisse initiale sans dates peut être réparée par open_session (héritage
+    # du trial tenant). Ne pas bloquer ici — laisser open_session faire la réparation.
+    if getattr(reg, "is_initial", False) and not reg.subscription_ends_at and not reg.trial_ends_at:
+        return
+
     now = datetime.now(timezone.utc)
     sub_end   = reg.subscription_ends_at
     trial_end = reg.trial_ends_at

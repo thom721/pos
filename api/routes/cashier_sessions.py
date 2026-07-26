@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -78,8 +78,6 @@ def _compute_reconciliation(db: Session, session: CashierSession, closed_at: dat
     }
 
 
-_SLOT_IDLE_MINUTES = 5   # slot considered free after 5 min without heartbeat
-
 
 def _get_or_create_register(
     db: Session, tenant_id: str, device_id: str, name: str,
@@ -128,12 +126,17 @@ def _get_or_create_register(
         # else: appareil dans un autre dépôt → chercher un slot dans le bon dépôt
 
     # 2. Chercher une caisse libre NON dédiée dans le dépôt demandé.
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=_SLOT_IDLE_MINUTES)
+    # Libre = pas de session ouverte dessus (plus de logique last_seen/slot).
+    open_reg_ids = (
+        db.query(CashierSession.register_id)
+        .filter(CashierSession.status == "open")
+        .scalar_subquery()
+    )
     slot_q = db.query(PosRegister).filter(
         PosRegister.tenant_id == tenant_id,
         PosRegister.is_active == True,  # noqa: E712
-        PosRegister.dedicated_user_id.is_(None),          # exclure les caisses dédiées
-        or_(PosRegister.last_seen.is_(None), PosRegister.last_seen < cutoff),
+        PosRegister.dedicated_user_id.is_(None),
+        PosRegister.id.not_in(open_reg_ids),
     )
     if warehouse_id:
         slot_q = slot_q.filter(PosRegister.warehouse_id == warehouse_id)
