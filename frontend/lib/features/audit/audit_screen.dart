@@ -45,6 +45,38 @@ final _openSessionsProvider =
   },
 );
 
+// ── Session history provider ──────────────────────────────────────────────────
+
+class _SessionHistoryParams {
+  final int page;
+  final String? warehouseId;
+
+  const _SessionHistoryParams({this.page = 1, this.warehouseId});
+
+  @override
+  bool operator ==(Object other) =>
+      other is _SessionHistoryParams &&
+      other.page == page &&
+      other.warehouseId == warehouseId;
+
+  @override
+  int get hashCode => Object.hash(page, warehouseId);
+}
+
+final _sessionHistoryParamsProvider =
+    StateProvider<_SessionHistoryParams>((_) => const _SessionHistoryParams());
+
+final _sessionHistoryProvider =
+    FutureProvider.autoDispose
+        .family<Map<String, dynamic>, _SessionHistoryParams>(
+  (ref, params) async {
+    final query = <String, dynamic>{'page': params.page, 'limit': 25};
+    if (params.warehouseId != null) query['warehouse_id'] = params.warehouseId;
+    final res = await dio.get('/api/sessions/', queryParameters: query);
+    return Map<String, dynamic>.from(res.data as Map);
+  },
+);
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 class AuditScreen extends ConsumerStatefulWidget {
@@ -85,7 +117,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
     }
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Column(
         children: [
           Container(
@@ -94,6 +126,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
               tabs: [
                 Tab(text: 'Journal'),
                 Tab(text: 'Sessions actives'),
+                Tab(text: 'Historique'),
               ],
             ),
           ),
@@ -102,6 +135,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
               children: [
                 _buildJournal(context),
                 const _OpenSessionsTab(),
+                const _SessionHistoryTab(),
               ],
             ),
           ),
@@ -479,6 +513,238 @@ class _OpenSessionsTabState extends ConsumerState<_OpenSessionsTab> {
             style: const TextStyle(color: AppColors.error)),
       ),
     );
+  }
+}
+
+// ── Session history tab (admin / manager) ─────────────────────────────────────
+
+class _SessionHistoryTab extends ConsumerStatefulWidget {
+  const _SessionHistoryTab();
+
+  @override
+  ConsumerState<_SessionHistoryTab> createState() => _SessionHistoryTabState();
+}
+
+class _SessionHistoryTabState extends ConsumerState<_SessionHistoryTab> {
+  void _setPage(int page) {
+    final cur = ref.read(_sessionHistoryParamsProvider);
+    ref.read(_sessionHistoryParamsProvider.notifier).state =
+        _SessionHistoryParams(page: page, warehouseId: cur.warehouseId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final params   = ref.watch(_sessionHistoryParamsProvider);
+    final async    = ref.watch(_sessionHistoryProvider(params));
+    final dateFmt  = DateFormat('dd/MM/yyyy HH:mm', 'fr');
+    final moneyFmt = NumberFormat('#,##0.00', 'fr');
+
+    return async.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error:   (e, _) => Center(
+        child: Text('Erreur : $e', style: const TextStyle(color: AppColors.error)),
+      ),
+      data: (data) {
+        final items = (data['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        final total = (data['total'] as num?)?.toInt() ?? 0;
+        final page  = (data['page']  as num?)?.toInt() ?? 1;
+        const limit = 25;
+        final pages = (total / limit).ceil().clamp(1, 9999);
+
+        return Column(
+          children: [
+            // ── Barre de navigation ─────────────────────────────────────
+            Container(
+              color: AppColors.surface,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Text(
+                    '$total session${total > 1 ? 's' : ''}',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    tooltip: 'Actualiser',
+                    onPressed: () => ref.invalidate(_sessionHistoryProvider),
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                  ),
+                  if (pages > 1) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_left_rounded),
+                      onPressed: page > 1 ? () => _setPage(page - 1) : null,
+                      constraints: const BoxConstraints(),
+                      padding: EdgeInsets.zero,
+                    ),
+                    Text('$page / $pages',
+                        style: const TextStyle(fontSize: 12)),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right_rounded),
+                      onPressed: page < pages ? () => _setPage(page + 1) : null,
+                      constraints: const BoxConstraints(),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+
+            if (items.isEmpty)
+              const Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.history_rounded,
+                          size: 48, color: AppColors.textSecondary),
+                      SizedBox(height: 12),
+                      Text('Aucune session enregistrée',
+                          style: TextStyle(color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                  itemBuilder: (_, i) {
+                    final s = items[i];
+
+                    final rawOpen  = s['opened_at'] != null
+                        ? DateTime.tryParse(s['opened_at'].toString())
+                        : null;
+                    final rawClose = s['closed_at'] != null
+                        ? DateTime.tryParse(s['closed_at'].toString())
+                        : null;
+                    final openedAt  = rawOpen  != null ? toHaitiTime(rawOpen)  : null;
+                    final closedAt  = rawClose != null ? toHaitiTime(rawClose) : null;
+
+                    final status       = s['status'] as String? ?? '';
+                    final isOpen       = status == 'open';
+                    final statusColor  = isOpen ? AppColors.accent : AppColors.textSecondary;
+                    final statusLabel  = isOpen ? 'Ouverte' : 'Fermée';
+                    final statusIcon   = isOpen
+                        ? Icons.lock_open_rounded
+                        : Icons.lock_rounded;
+
+                    final openBal  = (s['opening_balance'] as num?)?.toDouble() ?? 0;
+                    final closeBal = (s['closing_balance'] as num?)?.toDouble();
+
+                    Duration? duration;
+                    if (openedAt != null && closedAt != null) {
+                      duration = closedAt.difference(openedAt);
+                    }
+
+                    return ListTile(
+                      dense: true,
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      leading: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(statusIcon, color: statusColor, size: 18),
+                      ),
+                      title: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              s['cashier_name'] as String? ?? '—',
+                              style: const TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          _Chip(label: statusLabel, color: statusColor),
+                        ],
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            s['register_name'] as String? ?? '—',
+                            style: const TextStyle(
+                                fontSize: 11, color: AppColors.textSecondary),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              const Icon(Icons.schedule_rounded,
+                                  size: 10, color: AppColors.textSecondary),
+                              const SizedBox(width: 3),
+                              Text(
+                                openedAt != null
+                                    ? dateFmt.format(openedAt)
+                                    : '—',
+                                style: const TextStyle(fontSize: 10,
+                                    color: AppColors.textSecondary),
+                              ),
+                              if (closedAt != null) ...[
+                                const Text(' → ',
+                                    style: TextStyle(fontSize: 10,
+                                        color: AppColors.textSecondary)),
+                                Text(
+                                  dateFmt.format(closedAt),
+                                  style: const TextStyle(fontSize: 10,
+                                      color: AppColors.textSecondary),
+                                ),
+                              ],
+                              if (duration != null) ...[
+                                const SizedBox(width: 6),
+                                Text(
+                                  _formatDuration(duration),
+                                  style: const TextStyle(fontSize: 10,
+                                      color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Text(
+                                'Ouv. ${moneyFmt.format(openBal)} HTG',
+                                style: const TextStyle(fontSize: 10),
+                              ),
+                              if (closeBal != null) ...[
+                                const Text('  •  ',
+                                    style: TextStyle(fontSize: 10,
+                                        color: AppColors.textSecondary)),
+                                Text(
+                                  'Ferm. ${moneyFmt.format(closeBal)} HTG',
+                                  style: const TextStyle(fontSize: 10),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    if (d.inHours >= 1) return '${d.inHours}h${d.inMinutes.remainder(60).toString().padLeft(2, '0')}';
+    return '${d.inMinutes}min';
   }
 }
 
