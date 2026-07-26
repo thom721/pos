@@ -200,6 +200,7 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
             unit_price=unit_price,
             original_price=product.sale_price,
             subtotal=subtotal,
+            tenant_id=tenant_id,
         ))
         mv = StockMovement(
             product_id=product.id,
@@ -405,7 +406,8 @@ def create_sale(
             quantity=item.quantity,
             unit_price=applied_price,
             original_price=product.sale_price,
-            subtotal=applied_price * item.quantity
+            subtotal=applied_price * item.quantity,
+            tenant_id=tenant_id,
         ))
 
         mv = StockMovement(

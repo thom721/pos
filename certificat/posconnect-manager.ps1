@@ -692,7 +692,8 @@ $btnToSQLite.Add_Click({
     $MigrateScript  = Join-Path $ApiDir "migrate_db.py"
     $PythonExe      = Join-Path $ApiDir "python.exe"
     if (-not (Test-Path $PythonExe)) {
-        $PythonExe = (Get-Command "python" -ErrorAction SilentlyContinue)?.Source
+        $_pyCmd = Get-Command "python" -ErrorAction SilentlyContinue
+        $PythonExe = if ($_pyCmd) { $_pyCmd.Source } else { $null }
     }
 
     if (-not (Test-Path $MigrateScript) -or -not $PythonExe) {
