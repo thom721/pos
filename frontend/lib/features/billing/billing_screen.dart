@@ -1833,11 +1833,11 @@ class _RegisterPaymentSectionState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Payer des caisses supplémentaires',
+                  Text('Payer vos caisses',
                       style: TextStyle(
                           fontSize: 14, fontWeight: FontWeight.w600)),
                   Text(
-                      'Chaque caisse supplémentaire a sa propre période d\'abonnement.',
+                      'Chaque caisse a sa propre période d\'abonnement.',
                       style: TextStyle(
                           fontSize: 11, color: AppColors.textSecondary)),
                 ],
@@ -1918,8 +1918,7 @@ class _RegisterPaymentSectionState
               final groups = whRegs
                   .map((w) => _WhWithRegs(
                       w.warehouse,
-                      // Caisses initiales incluses dans le plan — pas de paiement requis.
-                      w.registers.where((r) => r.isActive && !r.isInitial).toList()))
+                      w.registers.where((r) => r.isActive).toList()))
                   .where((w) => w.registers.isNotEmpty)
                   .toList();
 

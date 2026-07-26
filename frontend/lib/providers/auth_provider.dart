@@ -11,6 +11,7 @@ import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/license_service.dart';
+import 'package:pos_connect/data/api/api_client.dart' show dio;
 import 'package:pos_connect/services/local_db_service.dart';
 
 class AuthState {
@@ -319,12 +320,25 @@ final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   return AuthNotifier(AuthRepository(), ref);
 });
 
-/// Reads the saved tenant JSON from SharedPreferences.
-/// Returns null in local mode (no tenant saved).
+/// Reads the saved tenant JSON from SharedPreferences, then rafraîchit
+/// depuis le serveur pour capter les changements admin (sell_cloud, status…).
 final tenantProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   ref.watch(authProvider); // rebuild when auth state changes
   final prefs = await SharedPreferences.getInstance();
   final raw = prefs.getString(AppConstants.tenantKey);
   if (raw == null) return null;
-  return jsonDecode(raw) as Map<String, dynamic>;
+  final cached = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+
+  final tenantId = cached['id'] as String?;
+  if (tenantId != null) {
+    try {
+      final res = await dio.get('/api/public/tenant/$tenantId');
+      final fresh = res.data as Map<String, dynamic>;
+      cached.addAll(fresh); // met à jour sell_cloud, status, trial_ends_at…
+      await prefs.setString(AppConstants.tenantKey, jsonEncode(cached));
+    } catch (_) {
+      // hors ligne → on garde le cache
+    }
+  }
+  return cached;
 });
