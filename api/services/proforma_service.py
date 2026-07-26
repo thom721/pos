@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
 
 from api.models.Proforma import Proforma, ProformaItem
-from api.schemas.proforma import ProformaCreate, ProformaUpdate
+from api.schemas.proforma import ProformaCreate, ProformaUpdate, ProformaRead
 
 
 def list_proformas(db: Session, page: int = 1, limit: int = 20, tenant_id: str | None = None):
@@ -16,7 +16,7 @@ def list_proformas(db: Session, page: int = 1, limit: int = 20, tenant_id: str |
         query = query.filter(Proforma.tenant_id == tenant_id)
     total = query.count()
     items = query.offset((page - 1) * limit).limit(limit).all()
-    return {"data": items, "meta": {"page": page, "limit": limit, "total": total}}
+    return {"data": [ProformaRead.model_validate(p) for p in items], "meta": {"page": page, "limit": limit, "total": total}}
 
 
 def get_proforma(db: Session, proforma_id: str, tenant_id: str | None = None):

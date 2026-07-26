@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
 
 from api.models.Invoice import Invoice, InvoiceItem
-from api.schemas.invoice import InvoiceCreate, InvoiceUpdate
+from api.schemas.invoice import InvoiceCreate, InvoiceUpdate, InvoiceRead
 
 
 def list_invoices(db: Session, page: int = 1, limit: int = 20, tenant_id: str | None = None):
@@ -15,7 +15,7 @@ def list_invoices(db: Session, page: int = 1, limit: int = 20, tenant_id: str | 
         query = query.filter(Invoice.tenant_id == tenant_id)
     total = query.count()
     items = query.offset((page - 1) * limit).limit(limit).all()
-    return {"data": items, "meta": {"page": page, "limit": limit, "total": total}}
+    return {"data": [InvoiceRead.model_validate(i) for i in items], "meta": {"page": page, "limit": limit, "total": total}}
 
 
 def get_invoice(db: Session, invoice_id: str, tenant_id: str | None = None):

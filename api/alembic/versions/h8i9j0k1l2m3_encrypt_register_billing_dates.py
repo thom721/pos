@@ -4,10 +4,16 @@ Les colonnes trial_ends_at, subscription_started_at et subscription_ends_at de
 pos_registers passent de DATETIME à TEXT pour stocker des tokens Fernet chiffrés
 avec une clé dérivée par register_id (HKDF-SHA256).
 
-Revision ID: h8i9j0k1l2m3
+Revision ID: s5t6u7v8w9x0
+Revises: r3e4g5s6u7b8
 """
 from alembic import op
 import sqlalchemy as sa
+
+revision = 's5t6u7v8w9x0'
+down_revision = 'r3e4g5s6u7b8'
+branch_labels = None
+depends_on = None
 
 
 def _col_exists(table: str, column: str) -> bool:

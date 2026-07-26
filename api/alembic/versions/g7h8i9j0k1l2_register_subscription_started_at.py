@@ -1,9 +1,15 @@
 """add subscription_started_at to pos_registers + init tenant trial on existing rows
 
-Revision ID: g7h8i9j0k1l2
+Revision ID: r3e4g5s6u7b8
+Revises: a1b2c3d4e5f6g7
 """
 from alembic import op
 import sqlalchemy as sa
+
+revision = 'r3e4g5s6u7b8'
+down_revision = 'a1b2c3d4e5f6g7'
+branch_labels = None
+depends_on = None
 
 
 def _col_exists(table: str, column: str) -> bool:
