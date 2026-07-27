@@ -267,7 +267,9 @@ def redeem_installation_code(payload: RedeemCodeRequest, db: Session = Depends(g
     """
     Exchange an installation code for a sync token — same response as /token.
     The code is valid as long as the associated warehouse has not been claimed
-    (is_claimed == False). No time-based expiry.
+    (is_claimed == False). No time-based expiry. Does NOT claim the warehouse
+    itself — that only happens in /claim-warehouse once the local install
+    actually completes, so a verify-only redemption can be retried freely.
     """
     from api.models.InstallationCode import InstallationCode
 
@@ -290,9 +292,9 @@ def redeem_installation_code(payload: RedeemCodeRequest, db: Session = Depends(g
     if not tenant:
         raise HTTPException(status_code=404, detail="Compte tenant introuvable")
 
-    # Marquer le dépôt comme installé — code à usage unique
-    wh.is_claimed = True
-    db.commit()
+    # Le dépôt n'est marqué is_claimed qu'à la finalisation réelle de l'installation,
+    # via /api/sync/claim-warehouse (appelé par connect-tenant) — pas ici, sinon
+    # le claim-warehouse suivant échoue toujours en 409 sur son propre claim.
 
     return {
         "sync_token":         _make_sync_token(tenant.id, payload.device_id, tenant.type),
