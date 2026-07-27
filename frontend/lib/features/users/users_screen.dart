@@ -422,7 +422,9 @@ class _UserRow extends ConsumerWidget {
                   Text(
                       '@${user['username'] ?? ''}  ·  ${user['email'] ?? ''}',
                       style: const TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary)),
+                          fontSize: 11, color: AppColors.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),
@@ -566,25 +568,29 @@ class _PermissionsMatrixTab extends ConsumerWidget {
           ),
           const SizedBox(height: 10),
 
-          // Role cards
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: roles
-                .map((r) => Expanded(
-                      child: Padding(
+          // Role cards — scroll horizontal sur mobile
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: roles
+                  .map((r) => Padding(
                         padding: EdgeInsets.only(
                           right: r == roles.last ? 0 : 10,
                         ),
-                        child: _RoleCard(
-                          role: r,
-                          onEdit: () => _showEdit(context, ref, r),
-                          onDelete: (r['is_builtin'] as bool? ?? true)
-                              ? null
-                              : () => _deleteRole(context, ref, r['name'] as String),
+                        child: SizedBox(
+                          width: 150,
+                          child: _RoleCard(
+                            role: r,
+                            onEdit: () => _showEdit(context, ref, r),
+                            onDelete: (r['is_builtin'] as bool? ?? true)
+                                ? null
+                                : () => _deleteRole(context, ref, r['name'] as String),
+                          ),
                         ),
-                      ),
-                    ))
-                .toList(),
+                      ))
+                  .toList(),
+            ),
           ),
 
           const SizedBox(height: 24),

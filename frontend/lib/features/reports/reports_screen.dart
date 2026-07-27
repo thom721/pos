@@ -507,22 +507,26 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
                 style:
                     TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.divider),
-              ),
-              clipBehavior: Clip.hardEdge,
-              child: Table(
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 640),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.divider),
+                  ),
+                  clipBehavior: Clip.hardEdge,
+                  child: Table(
                     columnWidths: const {
-                      0: FlexColumnWidth(1.4), // Référence
-                      1: FlexColumnWidth(1.4), // Date + heure
-                      2: FlexColumnWidth(1.8), // Client
-                      3: FlexColumnWidth(1.2), // Caissier
-                      4: FlexColumnWidth(1.1), // Total
-                      5: FlexColumnWidth(1.1), // Payé
-                      6: FlexColumnWidth(0.9), // Statut
+                      0: FixedColumnWidth(110), // Référence
+                      1: FixedColumnWidth(90),  // Date
+                      2: FixedColumnWidth(120), // Client
+                      3: FixedColumnWidth(100), // Caissier
+                      4: FixedColumnWidth(80),  // Total
+                      5: FixedColumnWidth(80),  // Payé
+                      6: FixedColumnWidth(70),  // Statut
                     },
                     children: [
                       _tableHeader([
@@ -545,6 +549,8 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
                           ], statusColor: _statusColor(s.status))),
                     ],
                   ),
+                ),
+              ),
             ),
           ],
         ],
