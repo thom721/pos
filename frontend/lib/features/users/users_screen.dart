@@ -229,7 +229,7 @@ class _UsersTab extends ConsumerWidget {
 
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error:   (e, _) => Center(child: Text('Erreur: $e',
+      error:   (e, _) => Center(child: Text('Erreur: ${extractAnyError(e)}',
           style: const TextStyle(color: AppColors.error))),
       data: (users) {
         final rolesData = ref.watch(_rolesProvider).valueOrNull ?? [];
@@ -346,7 +346,7 @@ class _UsersTab extends ConsumerWidget {
     } catch (e) {
       if (ctx.mounted) {
         ScaffoldMessenger.of(ctx).showSnackBar(
-          SnackBar(content: Text('Erreur: $e'),
+          SnackBar(content: Text('Erreur: ${extractAnyError(e)}'),
               backgroundColor: AppColors.error),
         );
       }
@@ -1388,7 +1388,7 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: ${extractErrorMessage(e as dynamic)}'),
+          SnackBar(content: Text('Erreur: ${extractAnyError(e)}'),
               backgroundColor: AppColors.error),
         );
       }

@@ -29,12 +29,7 @@ def create_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.USERS_CREATE)),
 ):
-    try:
-        return UserService(db, tenant_id=current_user.tenant_id).create(data)
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    return UserService(db, tenant_id=current_user.tenant_id).create(data)
 
 
 @router.get("/users/", response_model=List[UserPublicRead])

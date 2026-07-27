@@ -19,10 +19,21 @@ class UserService(TenantService):
         super().__init__(db, tenant_id)
         self.auth = AuthService(db)
 
+    def _check_unique(self, username: str, email: str | None, exclude_id: str | None = None) -> None:
+        q_user = self._q(User).filter(User.username == username)
+        if exclude_id:
+            q_user = q_user.filter(User.id != exclude_id)
+        if q_user.first():
+            raise HTTPException(status_code=409, detail=f"Le nom d'utilisateur '{username}' est déjà pris.")
+        if email:
+            q_email = self.db.query(User).filter(User.email == email)
+            if exclude_id:
+                q_email = q_email.filter(User.id != exclude_id)
+            if q_email.first():
+                raise HTTPException(status_code=409, detail=f"L'adresse email '{email}' est déjà utilisée.")
+
     def create(self, data: UserCreate) -> User:
-        existing = self._q(User).filter(User.username == data.username).first()
-        if existing:
-            raise HTTPException(status_code=400, detail=f"Le nom d'utilisateur '{data.username}' est déjà pris.")
+        self._check_unique(data.username, data.email or None)
         try:
             user = User(
                 fname=data.fname,
@@ -43,12 +54,12 @@ class UserService(TenantService):
             self.db.commit()
             self.db.refresh(user)
             return user
-        except IntegrityError:
+        except IntegrityError as e:
             self.db.rollback()
-            raise HTTPException(status_code=400, detail=f"Le nom d'utilisateur '{data.username}' est déjà pris.")
-        except Exception as e:
-            self.db.rollback()
-            raise HTTPException(status_code=500, detail=str(e))
+            err = str(e.orig).lower() if e.orig else ''
+            if 'email' in err:
+                raise HTTPException(status_code=409, detail=f"L'adresse email '{data.email}' est déjà utilisée.")
+            raise HTTPException(status_code=409, detail=f"Le nom d'utilisateur '{data.username}' est déjà pris.")
 
     def change_password(self, user_id: str, new_password: str) -> User:
         user = self.get(user_id)
@@ -72,6 +83,9 @@ class UserService(TenantService):
         user = self.get(user_id)
         if not user:
             return None
+        new_username = data.dict(exclude_unset=True).get('username', user.username)
+        new_email = data.dict(exclude_unset=True).get('email', user.email)
+        self._check_unique(new_username, new_email, exclude_id=user_id)
         new_password = None
         for field, value in data.dict(exclude_unset=True).items():
             if field == 'password':
@@ -79,14 +93,20 @@ class UserService(TenantService):
                     user.password = get_password_hash(value)
                     user.must_change_password = True
                     new_password = value
-                # si password est None/vide → ne rien changer
             else:
                 setattr(user, field, value)
         if new_password and user.email:
             user.offline_hash = compute_offline_hash(user.email, new_password)
-        self.db.commit()
-        self.db.refresh(user)
-        return user
+        try:
+            self.db.commit()
+            self.db.refresh(user)
+            return user
+        except IntegrityError as e:
+            self.db.rollback()
+            err = str(e.orig).lower() if e.orig else ''
+            if 'email' in err:
+                raise HTTPException(status_code=409, detail=f"L'adresse email '{new_email}' est déjà utilisée.")
+            raise HTTPException(status_code=409, detail=f"Le nom d'utilisateur '{new_username}' est déjà pris.")
 
     def delete(self, user_id: str) -> bool:
         user = self.get(user_id)
