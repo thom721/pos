@@ -630,16 +630,16 @@ class _PermissionsMatrixTab extends ConsumerWidget {
       BuildContext context, WidgetRef ref, String name) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         title: const Text('Supprimer ce rôle ?'),
         content: const Text(
             'Les utilisateurs avec ce rôle perdront ses permissions spécifiques.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(dialogCtx, false),
               child: const Text('Annuler')),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogCtx, true),
             style:
                 FilledButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('Supprimer'),

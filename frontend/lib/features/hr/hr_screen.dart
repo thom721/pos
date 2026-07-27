@@ -562,13 +562,13 @@ class _PayrollPeriodDetailState extends State<_PayrollPeriodDetail> {
   Future<void> _action(String endpoint, String confirmMsg) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         title: const Text('Confirmer'),
         content: Text(confirmMsg),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false),
+          TextButton(onPressed: () => Navigator.pop(dialogCtx, false),
               child: const Text('Annuler')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true),
+          ElevatedButton(onPressed: () => Navigator.pop(dialogCtx, true),
               child: const Text('Confirmer')),
         ],
       ),

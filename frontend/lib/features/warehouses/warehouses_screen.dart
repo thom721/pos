@@ -416,16 +416,16 @@ class _WarehouseSection extends ConsumerWidget {
         case 'delete':
           final confirm = await showDialog<bool>(
             context: context,
-            builder: (_) => AlertDialog(
+            builder: (dialogCtx) => AlertDialog(
               title: const Text('Supprimer le dépôt'),
               content: Text(
                   'Supprimer « ${warehouse.name} » ? Cette action est irréversible.'),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(context, false),
+                    onPressed: () => Navigator.pop(dialogCtx, false),
                     child: const Text('Annuler')),
                 FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
+                  onPressed: () => Navigator.pop(dialogCtx, true),
                   style: FilledButton.styleFrom(
                       backgroundColor: AppColors.error),
                   child: const Text('Supprimer'),
@@ -754,16 +754,16 @@ class _RegisterTile extends ConsumerWidget {
         case 'delete':
           final confirm = await showDialog<bool>(
             context: context,
-            builder: (_) => AlertDialog(
+            builder: (dialogCtx) => AlertDialog(
               title: const Text('Supprimer la caisse'),
               content: Text(
                   'Supprimer « ${register.name} » ? L\'historique des sessions reste conservé.'),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(context, false),
+                    onPressed: () => Navigator.pop(dialogCtx, false),
                     child: const Text('Annuler')),
                 FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
+                  onPressed: () => Navigator.pop(dialogCtx, true),
                   style: FilledButton.styleFrom(
                       backgroundColor: AppColors.error),
                   child: const Text('Supprimer'),

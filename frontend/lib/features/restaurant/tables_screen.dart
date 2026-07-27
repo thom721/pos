@@ -528,13 +528,13 @@ class _TableCard extends ConsumerWidget {
                 Navigator.pop(context);
                 final confirm = await showDialog<bool>(
                   context: context,
-                  builder: (_) => AlertDialog(
+                  builder: (dialogCtx) => AlertDialog(
                     title: Text(isHotel ? 'Supprimer la chambre' : 'Supprimer la table'),
                     content: Text('Supprimer "${table.name}" ?'),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
+                      TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('Annuler')),
                       TextButton(
-                        onPressed: () => Navigator.pop(context, true),
+                        onPressed: () => Navigator.pop(dialogCtx, true),
                         child: const Text('Supprimer', style: TextStyle(color: AppColors.error)),
                       ),
                     ],
