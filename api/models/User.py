@@ -13,7 +13,7 @@ class User(UUIDBase):
     username = Column(String(255), index=True, nullable=False)
     phone    = Column(String(255), index=True, nullable=True)
     address  = Column(String(255))
-    email    = Column(String(255), nullable=True)
+    email    = Column(String(255), nullable=True, unique=True)
 
     roles       = Column(JSON, nullable=True)
     permissions = Column(JSON, nullable=True)
@@ -29,6 +29,5 @@ class User(UUIDBase):
 
     __table_args__ = (
         UniqueConstraint("username", "tenant_id", name="uq_user_username_tenant"),
-        UniqueConstraint("email",    "tenant_id", name="uq_user_email_tenant"),
         UniqueConstraint("phone",    "tenant_id", name="uq_user_phone_tenant"),
     )
