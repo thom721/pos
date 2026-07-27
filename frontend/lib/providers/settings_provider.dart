@@ -39,6 +39,9 @@ class AppSettings {
   final int receiptDarkness; // 1=pâle … 5=noir pur
   // Hotel mode — check-in fields config [{label, required, onReceipt}]
   final List<Map<String, dynamic>> hotelCheckinFields;
+  // Règles métier
+  final bool allowSaleEdit;      // Modifier une vente après enregistrement
+  final bool allowCashierCredit; // Caissier peut créer une dette (paiement partiel)
 
   const AppSettings({
     this.businessName = 'Mon Commerce',
@@ -63,6 +66,8 @@ class AppSettings {
     this.paperWidth = 80,
     this.receiptDarkness = 4,
     this.hotelCheckinFields = const [],
+    this.allowSaleEdit = false,
+    this.allowCashierCredit = false,
   });
 
   AppSettings copyWith({
@@ -88,6 +93,8 @@ class AppSettings {
     int? paperWidth,
     int? receiptDarkness,
     List<Map<String, dynamic>>? hotelCheckinFields,
+    bool? allowSaleEdit,
+    bool? allowCashierCredit,
   }) =>
       AppSettings(
         businessName: businessName ?? this.businessName,
@@ -112,6 +119,8 @@ class AppSettings {
         paperWidth: paperWidth ?? this.paperWidth,
         receiptDarkness: receiptDarkness ?? this.receiptDarkness,
         hotelCheckinFields: hotelCheckinFields ?? this.hotelCheckinFields,
+        allowSaleEdit: allowSaleEdit ?? this.allowSaleEdit,
+        allowCashierCredit: allowCashierCredit ?? this.allowCashierCredit,
       );
 
   // Serialize to API (snake_case)
@@ -143,6 +152,8 @@ class AppSettings {
                     'on_receipt': f['onReceipt'] ?? false,
                   })
               .toList(),
+        'allow_sale_edit':      allowSaleEdit,
+        'allow_cashier_credit': allowCashierCredit,
       };
 
   // Parse from API response (snake_case)
@@ -167,6 +178,8 @@ class AppSettings {
         bluetoothPrinterMac: j['bluetooth_printer_mac'] as String? ?? '',
         bluetoothPrinterName: j['bluetooth_printer_name'] as String? ?? '',
         hotelCheckinFields: _parseCheckinFields(j['hotel_checkin_fields']),
+        allowSaleEdit:      j['allow_sale_edit']      as bool? ?? false,
+        allowCashierCredit: j['allow_cashier_credit'] as bool? ?? false,
       );
 
   static List<Map<String, dynamic>> _parseCheckinFields(dynamic raw) {
@@ -206,6 +219,8 @@ class AppSettings {
         'paperWidth': paperWidth,
         'receiptDarkness': receiptDarkness,
         'hotelCheckinFields': hotelCheckinFields,
+        'allowSaleEdit':      allowSaleEdit,
+        'allowCashierCredit': allowCashierCredit,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -231,6 +246,8 @@ class AppSettings {
         paperWidth: (j['paperWidth'] as num?)?.toInt() ?? 80,
         receiptDarkness: (j['receiptDarkness'] as num?)?.toInt() ?? 4,
         hotelCheckinFields: _parseCheckinFields(j['hotelCheckinFields']),
+        allowSaleEdit:      j['allowSaleEdit']      as bool? ?? false,
+        allowCashierCredit: j['allowCashierCredit'] as bool? ?? false,
       );
 }
 

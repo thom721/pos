@@ -1883,6 +1883,24 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                             return;
                           }
 
+                          // Cashier credit restriction
+                          if ((pos.total - pos.paidAmount) > 0.005) {
+                            final settings = ref.read(settingsProvider);
+                            final canCredit = settings.allowCashierCredit ||
+                                ref.read(hasPermissionProvider(Perm.salesDiscount));
+                            if (!canCredit) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      'Les ventes à crédit ne sont pas autorisées pour ce poste.'),
+                                  backgroundColor: AppColors.error,
+                                  duration: Duration(seconds: 3),
+                                ),
+                              );
+                              return;
+                            }
+                          }
+
                           // Crédit → client obligatoire
                           if ((pos.total - pos.paidAmount) > 0.005 &&
                               pos.customerId == null) {

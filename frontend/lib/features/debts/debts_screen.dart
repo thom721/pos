@@ -423,6 +423,17 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
             onPressed: () async {
               final amount = double.tryParse(ctrl.text) ?? 0;
               if (amount <= 0) return;
+              if (amount > widget.debt.balance + 0.005) {
+                Navigator.pop(dialogCtx);
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Le montant ne peut pas dépasser le solde dû (${widget.debt.balance.toStringAsFixed(2)}).'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+                return;
+              }
               Navigator.pop(dialogCtx);
               setState(() => _paying = true);
               try {

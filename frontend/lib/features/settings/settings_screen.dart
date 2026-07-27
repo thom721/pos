@@ -323,6 +323,63 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const SizedBox(height: 24),
 
+            // ── Règles métier ─────────────────────────────────────────────
+            _SectionHeader(icon: Icons.rule_rounded, title: 'Règles métier'),
+            const SizedBox(height: 16),
+            _Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    title: const Text('Autoriser la modification des ventes',
+                        style: TextStyle(fontSize: 14)),
+                    subtitle: const Text(
+                        'Le bouton crayon apparaît sur les ventes enregistrées',
+                        style: TextStyle(fontSize: 12)),
+                    trailing: Switch(
+                      value: settings.allowSaleEdit,
+                      thumbColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? Colors.white
+                            : null,
+                      ),
+                      trackColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? AppColors.primary
+                            : null,
+                      ),
+                      onChanged: (v) =>
+                          notifier.save(settings.copyWith(allowSaleEdit: v)),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    title: const Text('Autoriser le crédit par le caissier',
+                        style: TextStyle(fontSize: 14)),
+                    subtitle: const Text(
+                        'Le caissier peut enregistrer une vente à crédit (paiement partiel)',
+                        style: TextStyle(fontSize: 12)),
+                    trailing: Switch(
+                      value: settings.allowCashierCredit,
+                      thumbColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? Colors.white
+                            : null,
+                      ),
+                      trackColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? AppColors.primary
+                            : null,
+                      ),
+                      onChanged: (v) =>
+                          notifier.save(settings.copyWith(allowCashierCredit: v)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
             // ── Reçu ─────────────────────────────────────────────────────
             _SectionHeader(icon: Icons.receipt_rounded, title: 'Reçu de caisse'),
             const SizedBox(height: 16),

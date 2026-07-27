@@ -22,6 +22,8 @@ class ConfigRead(BaseModel):
     doc_printer_name: str = ''
     doc_auto_print: bool = False
     hotel_checkin_fields: Optional[list] = None
+    allow_sale_edit:      bool = False
+    allow_cashier_credit: bool = False
 
     @field_validator('hotel_checkin_fields', mode='before')
     @classmethod
@@ -56,3 +58,5 @@ class ConfigUpdate(BaseModel):
     doc_printer_name: Optional[str] = None
     doc_auto_print: Optional[bool] = None
     hotel_checkin_fields: Optional[list] = None
+    allow_sale_edit:      Optional[bool] = None
+    allow_cashier_credit: Optional[bool] = None

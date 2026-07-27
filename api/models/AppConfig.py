@@ -33,3 +33,7 @@ class AppConfig(UUIDBase):
 
     # Hotel mode — JSON list of check-in fields: [{label, required, on_receipt}, ...]
     hotel_checkin_fields = Column(Text, nullable=True, default=None)
+
+    # Règles métier
+    allow_sale_edit      = Column(Boolean, nullable=False, default=False)  # Modifier une vente après enregistrement
+    allow_cashier_credit = Column(Boolean, nullable=False, default=False)  # Caissier peut créer une dette (paiement partiel)

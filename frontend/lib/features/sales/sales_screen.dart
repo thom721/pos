@@ -361,6 +361,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
     final sale = widget.sale;
     final isMobile = context.isMobile;
 
+    final settings = ref.watch(settingsProvider);
     final actionButtons = [
       IconButton(
         onPressed: _showQuickReturn,
@@ -370,14 +371,15 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
         icon: const Icon(Icons.assignment_return_rounded,
             color: AppColors.warning, size: 18),
       ),
-      IconButton(
-        onPressed: _showEditSale,
-        tooltip: 'Modifier la vente',
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-        icon: const Icon(Icons.edit_rounded,
-            color: AppColors.info, size: 18),
-      ),
+      if (settings.allowSaleEdit)
+        IconButton(
+          onPressed: _showEditSale,
+          tooltip: 'Modifier la vente',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          icon: const Icon(Icons.edit_rounded,
+              color: AppColors.info, size: 18),
+        ),
       IconButton(
         onPressed: _printing ? null : _print,
         tooltip: 'Imprimer le reçu',
@@ -999,7 +1001,7 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
 
                     const Divider(height: 24),
 
-                    // Refund amount (auto-computed, editable)
+                    // Refund amount (auto-computed, read-only)
                     Row(children: [
                       const Expanded(
                         child: Column(
@@ -1009,7 +1011,7 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
                                 style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 14)),
-                            Text('Calculé automatiquement, modifiable',
+                            Text('Calculé automatiquement',
                                 style: TextStyle(
                                     fontSize: 11,
                                     color: AppColors.textSecondary)),
@@ -1020,9 +1022,7 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
                         width: 130,
                         child: TextField(
                           controller: _refundCtrl,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                                  decimal: true),
+                          readOnly: true,
                           textAlign: TextAlign.right,
                           style: const TextStyle(
                               fontWeight: FontWeight.w700,
