@@ -297,6 +297,94 @@ def _ensure_schema_patches() -> None:
     pass
 
 
+def _fix_register_billing_date_columns(active_engine=None) -> None:
+    """
+    Sur les installations PyInstaller (Alembic ignoré), pos_registers.trial_ends_at,
+    subscription_started_at et subscription_ends_at peuvent rester en DATETIME alors
+    que le modèle attend TEXT(600) pour les tokens Fernet.
+
+    Cette fonction :
+      1. Détecte si les colonnes sont encore en DATETIME
+      2. Lit et chiffre les valeurs existantes avec Fernet (per-register key)
+      3. Remplace la colonne DATETIME par TEXT(600)
+    Idempotent — sans effet si les colonnes sont déjà TEXT.
+    """
+    import api.database as _db_mod
+    from sqlalchemy import text as _text, inspect as _inspect
+
+    _eng = active_engine or _db_mod.engine
+    if _eng.dialect.name != "mysql":
+        return  # SQLite n'a pas de types stricts, pas de problème
+
+    _COLS = ("trial_ends_at", "subscription_started_at", "subscription_ends_at")
+
+    with _eng.connect() as conn:
+        for col in _COLS:
+            try:
+                row = conn.execute(_text(
+                    "SELECT DATA_TYPE FROM information_schema.columns "
+                    "WHERE table_schema = DATABASE() "
+                    "AND table_name = 'pos_registers' AND column_name = :c"
+                ), {"c": col}).fetchone()
+                if not row:
+                    continue  # colonne absente — create_all s'en charge
+                if row[0].lower() in ("text", "mediumtext", "longtext", "varchar"):
+                    continue  # déjà TEXT, rien à faire
+
+                _log.info("schema-fix: pos_registers.%s est DATETIME — conversion en TEXT(600)", col)
+
+                # 1. Colonne temporaire TEXT pour accueillir les tokens Fernet
+                tmp = f"{col}_enc"
+                has_tmp = conn.execute(_text(
+                    "SELECT COUNT(*) FROM information_schema.columns "
+                    "WHERE table_schema = DATABASE() "
+                    "AND table_name = 'pos_registers' AND column_name = :c"
+                ), {"c": tmp}).scalar()
+                if not has_tmp:
+                    conn.execute(_text(
+                        f"ALTER TABLE pos_registers ADD COLUMN `{tmp}` TEXT(600)"
+                    ))
+                    conn.commit()
+
+                # 2. Chiffrer les valeurs DATETIME existantes dans la colonne temp
+                from api.core.billing_crypto import encrypt_register_date as _enc_date
+                from datetime import timezone as _tz
+                rows = conn.execute(_text(
+                    f"SELECT id, `{col}` FROM pos_registers WHERE `{col}` IS NOT NULL"
+                )).fetchall()
+                for reg_id, dt in rows:
+                    if dt is None:
+                        continue
+                    try:
+                        if hasattr(dt, "tzinfo") and dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=_tz.utc)
+                        token = _enc_date(dt, str(reg_id))
+                        conn.execute(_text(
+                            f"UPDATE pos_registers SET `{tmp}` = :tok WHERE id = :id"
+                        ), {"tok": token, "id": str(reg_id)})
+                    except Exception as _enc_exc:
+                        _log.warning("schema-fix: chiffrement %s pour %s: %s", col, reg_id, _enc_exc)
+                conn.commit()
+
+                # 3. Supprimer l'ancienne colonne DATETIME
+                conn.execute(_text(f"ALTER TABLE pos_registers DROP COLUMN `{col}`"))
+                conn.commit()
+
+                # 4. Renommer la colonne temporaire → nom original
+                conn.execute(_text(
+                    f"ALTER TABLE pos_registers CHANGE COLUMN `{tmp}` `{col}` TEXT(600)"
+                ))
+                conn.commit()
+
+                _log.info("schema-fix: pos_registers.%s converti DATETIME → TEXT(600)", col)
+            except Exception as exc:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                _log.warning("schema-fix pos_registers.%s: %s", col, exc)
+
+
 def _migrate_per_tenant_unique(active_engine=None) -> None:
     """
     Convertit les contraintes UNIQUE globales en contraintes composées (col, tenant_id).
@@ -654,7 +742,9 @@ def on_startup():
                 _log.warning("Alembic migration warning: %s", exc)
             # 2b. Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy
             _sync_schema_from_models(_active_engine)
-            # 2c. Convertit les unique globaux en unique par-tenant (MySQL uniquement)
+            # 2c. Corrige les colonnes DATETIME → TEXT(600) pour les dates Fernet de pos_registers
+            _fix_register_billing_date_columns(_active_engine)
+            # 2d. Convertit les unique globaux en unique par-tenant (MySQL uniquement)
             _migrate_per_tenant_unique(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
