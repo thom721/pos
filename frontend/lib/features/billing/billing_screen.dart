@@ -466,7 +466,10 @@ class _BillingContent extends ConsumerWidget {
             final discountPct    = (cfg['annual_discount_pct']        as num? ??  20).toDouble();
             return _RegisterPaymentSection(
                 pricePerCaisse: pricePerCaisse,
-                annualDiscountPct: discountPct);
+                annualDiscountPct: discountPct,
+                cashEnabled: cfg['cash_enabled'] as bool? ?? true,
+                moncashEnabled: cfg['moncash_enabled'] as bool? ?? true,
+                natcashEnabled: cfg['natcash_enabled'] as bool? ?? true);
           },
         ),
         const SizedBox(height: 24),
@@ -1735,10 +1738,16 @@ class _ErrorCard extends StatelessWidget {
 class _RegisterPaymentSection extends ConsumerStatefulWidget {
   final double pricePerCaisse;
   final double annualDiscountPct;
+  final bool cashEnabled;
+  final bool moncashEnabled;
+  final bool natcashEnabled;
 
   const _RegisterPaymentSection({
     required this.pricePerCaisse,
     required this.annualDiscountPct,
+    this.cashEnabled = true,
+    this.moncashEnabled = true,
+    this.natcashEnabled = true,
   });
 
   @override
@@ -1751,12 +1760,20 @@ class _RegisterPaymentSectionState
   Set<String> _selected = {};
   String _planType = 'monthly';
   int _months = 1;
+  late String _method;
   bool _submitting = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _method = widget.cashEnabled
+        ? 'cash'
+        : widget.moncashEnabled
+            ? 'moncash'
+            : widget.natcashEnabled
+                ? 'natcash'
+                : 'cash';
     // Pré-sélection depuis la page Dépôts&Caisses (bouton "Payer" par caisse).
     final preSelected = ref.read(preSelectedRegisterIdsProvider);
     if (preSelected.isNotEmpty) {
@@ -1785,7 +1802,7 @@ class _RegisterPaymentSectionState
     try {
       await dio.post('/api/billing/submit-register-payment', data: {
         'register_ids': _selected.toList(),
-        'method': 'manual',
+        'method': _method,
         'months': _months,
         'plan_type': _planType,
       });
@@ -1896,6 +1913,38 @@ class _RegisterPaymentSectionState
                   )),
             ]),
           ],
+
+          // ── Méthode de paiement ─────────────────────────────────────────
+          const SizedBox(height: 10),
+          Row(children: [
+            const Text('Méthode :',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            const SizedBox(width: 10),
+            ...[
+              if (widget.cashEnabled) ('cash', 'Espèces'),
+              if (widget.moncashEnabled) ('moncash', 'MonCash'),
+              if (widget.natcashEnabled) ('natcash', 'NatCash'),
+            ].map((m) => Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: FilterChip(
+                    label: Text(m.$2),
+                    selected: _method == m.$1,
+                    onSelected: (_) => setState(() => _method = m.$1),
+                    showCheckmark: false,
+                    visualDensity: VisualDensity.compact,
+                    selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                    labelStyle: TextStyle(
+                      fontSize: 11,
+                      color: _method == m.$1
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
+                      fontWeight: _method == m.$1
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                    ),
+                  ),
+                )),
+          ]),
 
           const SizedBox(height: 16),
           const Divider(height: 1),

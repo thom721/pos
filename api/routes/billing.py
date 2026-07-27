@@ -479,14 +479,15 @@ def submit_payment(
     now = now_local()
     year   = now.year
     prefix = f"PEND-{year}-"
+    # invoice_number est unique globalement (tous tenants confondus) — le compteur
+    # doit donc porter sur tous les tenants, pas seulement celui-ci.
     count  = db.query(BillingPayment).filter(
-        BillingPayment.tenant_id == tenant.id,
         BillingPayment.invoice_number.like(f"{prefix}%"),
     ).count()
     invoice_number = f"{prefix}{count + 1:04d}"
 
     plan_label   = "Annuel (-{}%)".format(int(getattr(cfg, "annual_discount_pct", 20) if cfg else 20)) if plan_type == "annual" else f"{months} mois"
-    method_label = {"moncash": "MonCash", "natcash": "NatCash"}.get(body.method, "Manuel")
+    method_label = {"cash": "Espèces", "moncash": "MonCash", "natcash": "NatCash"}.get(body.method, "Manuel")
     days = 365 if plan_type == "annual" else 30 * months
 
     payment = BillingPayment(
@@ -552,7 +553,7 @@ def submit_register_payment(
     from collections import defaultdict as _defaultdict
 
     plan_label   = "Annuel" if plan_type == "annual" else f"{months} mois"
-    method_label = {"moncash": "MonCash", "natcash": "NatCash"}.get(body.method, "Manuel")
+    method_label = {"cash": "Espèces", "moncash": "MonCash", "natcash": "NatCash"}.get(body.method, "Manuel")
     days = 365 if plan_type == "annual" else 30 * months
     now  = now_local()
     year = now.year
@@ -563,8 +564,9 @@ def submit_register_payment(
     for reg in registers:
         by_wh[reg.warehouse_id or "__none__"].append(reg)
 
+    # invoice_number est unique globalement (tous tenants confondus) — le compteur
+    # doit donc porter sur tous les tenants, pas seulement celui-ci.
     base_count = db.query(BillingPayment).filter(
-        BillingPayment.tenant_id == tenant.id,
         BillingPayment.invoice_number.like(f"{prefix}%"),
     ).count()
 
