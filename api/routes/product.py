@@ -1,7 +1,6 @@
 import uuid
 import os
 import shutil
-from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional, Union
@@ -12,6 +11,7 @@ from api.database import get_db
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
 from api.core.PaginateHelper import PaginatedResponse
+from api.core.dt_coerce import now_local
 from api.models.Product import Product
 from api.models.User import User
 from api.models.StockMovement import StockMovement, StockType
@@ -136,7 +136,7 @@ def adjust_stock(
         note=payload.reason,
     )
     db.add(mv)
-    product.updated_at = datetime.now(timezone.utc)
+    product.updated_at = now_local()
     audit_service.log(db, user_id=current_user.id, tenant_id=current_user.tenant_id,
                       action="STOCK_ADJUST", resource_type="product", resource_id=product_id,
                       detail={"quantity": qty, "reason": payload.reason})

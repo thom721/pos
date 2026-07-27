@@ -4,7 +4,7 @@ Tenant context helpers for multi-tenant (SaaS) mode.
 In local mode: tenant_id is absent from JWT → get_current_tenant() returns None.
 In cloud mode: tenant_id is in the JWT → get_current_tenant() returns the Tenant row.
 """
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -13,6 +13,7 @@ from jose import jwt, JWTError
 
 from api.database import get_db
 from api.core.config import settings
+from api.core.dt_coerce import now_local
 from api.models.Tenant import Tenant
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
@@ -49,14 +50,10 @@ def _effective_expiry(tenant: Tenant) -> tuple[datetime | None, str]:
     """
     sub_end = getattr(tenant, "subscription_ends_at", None)
     if sub_end and tenant.status in ("active", "paid"):
-        if sub_end.tzinfo is None:
-            sub_end = sub_end.replace(tzinfo=timezone.utc)
         return sub_end, "subscription"
 
     trial_end = tenant.trial_ends_at
     if trial_end and tenant.status in ("trial", "expired"):
-        if trial_end.tzinfo is None:
-            trial_end = trial_end.replace(tzinfo=timezone.utc)
         return trial_end, "trial"
 
     return None, ""
@@ -74,7 +71,7 @@ def plan_warning(tenant: Tenant) -> dict | None:
     if not expiry:
         return None
 
-    now = datetime.now(timezone.utc)
+    now = now_local()
     delta = expiry - now
     days_left = delta.days  # négatif si déjà expiré
 
@@ -95,7 +92,7 @@ def _check_tenant_access(tenant: Tenant, db: Session, hard_block: bool = False) 
     hard_block=False → met à jour le statut mais ne bloque jamais (lecture / connexion)
     hard_block=True  → bloque avec 402 si expiré ou suspendu (ventes / commandes)
     """
-    now = datetime.now(timezone.utc)
+    now = now_local()
 
     expiry, kind = _effective_expiry(tenant)
     is_expired = expiry is not None and now > expiry
@@ -187,11 +184,9 @@ async def require_active_plan(
     if getattr(reg, "is_initial", False) and not reg.subscription_ends_at and not reg.trial_ends_at:
         return
 
-    now = datetime.now(timezone.utc)
+    now = now_local()
     sub_end   = reg.subscription_ends_at
     trial_end = reg.trial_ends_at
-    if sub_end   and sub_end.tzinfo   is None: sub_end   = sub_end.replace(tzinfo=timezone.utc)
-    if trial_end and trial_end.tzinfo is None: trial_end = trial_end.replace(tzinfo=timezone.utc)
 
     has_sub   = sub_end   is not None and sub_end   > now
     has_trial = trial_end is not None and trial_end > now

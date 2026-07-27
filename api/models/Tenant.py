@@ -13,8 +13,8 @@ class Tenant(UUIDBase):
 
     # 'trial' | 'active' | 'suspended' | 'local'
     status              = Column(String(20), nullable=False, default='trial')
-    trial_ends_at       = Column(DateTime(timezone=True), nullable=True)
-    subscription_started_at = Column(DateTime(timezone=True), nullable=True)
+    trial_ends_at       = Column(DateTime(timezone=False), nullable=True)
+    subscription_started_at = Column(DateTime(timezone=False), nullable=True)
 
     # True only for the auto-created LOCAL tenant on local-mode deployments
     is_local = Column(Boolean, nullable=False, default=False)
@@ -22,7 +22,7 @@ class Tenant(UUIDBase):
     # Stripe / payment
     stripe_customer_id     = Column(String(100), nullable=True)
     stripe_subscription_id = Column(String(100), nullable=True)
-    subscription_ends_at   = Column(DateTime(timezone=True), nullable=True)
+    subscription_ends_at   = Column(DateTime(timezone=False), nullable=True)
 
     # 'shared' = data hébergée sur posconnect.ht
     # 'selfhosted' = data sur le propre serveur du tenant, seul billing sync posconnect.ht
@@ -42,4 +42,4 @@ class Tenant(UUIDBase):
     sell_cloud = Column(Boolean, nullable=False, default=False)
 
     # Suivi des notifications d'expiration envoyées
-    last_warning_sent_at = Column(DateTime(timezone=True), nullable=True)
+    last_warning_sent_at = Column(DateTime(timezone=False), nullable=True)

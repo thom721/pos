@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -16,6 +16,7 @@ from api.models.PlatformConfig import PlatformConfig
 from api.dependencies.auth import require_permission
 from api.core.permissions import P, has_permission as _has_perm
 from api.core.tenant import require_active_plan
+from api.core.dt_coerce import now_local
 from api.services import audit_service
 from api.services import billing_extra_service as _billing
 
@@ -323,11 +324,9 @@ def open_session(
 
     # Vérifier l'abonnement de la caisse — chaque caisse (initiale ou non)
     # a sa propre ligne de facturation (trial_ends_at / subscription_ends_at).
-    _now = datetime.now(timezone.utc)
+    _now = now_local()
     _sub_end   = reg.subscription_ends_at
     _trial_end = reg.trial_ends_at
-    if _sub_end   and _sub_end.tzinfo   is None: _sub_end   = _sub_end.replace(tzinfo=timezone.utc)
-    if _trial_end and _trial_end.tzinfo is None: _trial_end = _trial_end.replace(tzinfo=timezone.utc)
     _has_sub   = _sub_end   is not None and _sub_end   > _now
     _has_trial = _trial_end is not None and _trial_end > _now
 
@@ -337,8 +336,6 @@ def open_session(
         _tenant = db.get(Tenant, current_user.tenant_id)
         if _tenant and _tenant.trial_ends_at:
             _t = _tenant.trial_ends_at
-            if _t.tzinfo is None:
-                _t = _t.replace(tzinfo=timezone.utc)
             if _t > _now:
                 reg.trial_ends_at = _t
                 db.flush()
@@ -363,7 +360,7 @@ def open_session(
         register_id=reg.id,
         cashier_id=current_user.id,
         warehouse_id=reg.warehouse_id,   # hérite du dépôt de la caisse
-        opened_at=datetime.now(timezone.utc),
+        opened_at=now_local(),
         opening_balance=body.opening_balance,
         status="open",
     )
@@ -454,7 +451,7 @@ def session_summary(
     if not session or session.tenant_id != current_user.tenant_id:
         raise HTTPException(404, "Session introuvable")
 
-    now   = datetime.now(timezone.utc)
+    now   = now_local()
     recon = _compute_reconciliation(db, session, now)
     return {
         "opening_balance":          float(session.opening_balance or 0),
@@ -484,7 +481,7 @@ def close_session(
         if not any(r in (current_user.roles or []) for r in ("admin", "manager")):
             raise HTTPException(403, "Vous ne pouvez pas fermer la session d'un autre caissier")
 
-    closed_at = datetime.now(timezone.utc)
+    closed_at = now_local()
     recon     = _compute_reconciliation(db, session, closed_at)
 
     session.closed_at                = closed_at
@@ -542,7 +539,7 @@ def force_close_session(
     if session.status != "open":
         raise HTTPException(400, "Session déjà fermée")
 
-    closed_at = datetime.now(timezone.utc)
+    closed_at = now_local()
     recon     = _compute_reconciliation(db, session, closed_at)
 
     session.closed_at                = closed_at

@@ -1300,6 +1300,21 @@ class _ProductTable extends ConsumerWidget {
                         ),
                       if (canEdit)
                         IconButton(
+                          icon: Icon(
+                              p.isLocked
+                                  ? Icons.lock_outline
+                                  : Icons.lock_open_outlined,
+                              size: 18,
+                              color: p.isLocked
+                                  ? AppColors.error
+                                  : AppColors.textSecondary),
+                          tooltip: p.isLocked
+                              ? 'Verrouillé — masqué de la caisse. Cliquer pour déverrouiller'
+                              : 'Verrouiller — masquer ce produit de la caisse',
+                          onPressed: () => _toggleLock(context, ref, p),
+                        ),
+                      if (canEdit)
+                        IconButton(
                           icon: const Icon(Icons.edit_outlined,
                               size: 18, color: AppColors.textSecondary),
                           onPressed: () => showDialog(
@@ -1315,6 +1330,31 @@ class _ProductTable extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _toggleLock(
+      BuildContext context, WidgetRef ref, ProductModel p) async {
+    try {
+      await ProductRepository().updateProduct(p.id, {
+        'name': p.name,
+        'barcode': p.barcode,
+        'description': p.description,
+        'category_id': p.category?.id,
+        'sale_price': p.salePrice,
+        'purchase_price': p.purchasePrice,
+        'alert_stock': p.alertStock,
+        'warehouse_id': p.warehouseId,
+        'is_locked': !p.isLocked,
+      });
+      ref.invalidate(productsProvider);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: ${extractAnyError(e)}'),
+              backgroundColor: AppColors.error),
+        );
+      }
+    }
   }
 }
 

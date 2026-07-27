@@ -92,18 +92,18 @@ class _IngredientsScreenState extends State<IngredientsScreen> {
   void _confirmDelete(IngredientModel ing) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         title: const Text('Supprimer l\'ingrédient ?'),
         content: Text('« ${ing.name} » sera supprimé définitivement.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogCtx),
               child: const Text('Annuler')),
           FilledButton(
             style:
                 FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () async {
-              Navigator.pop(context);
+              Navigator.pop(dialogCtx);
               try {
                 await _repo.deleteIngredient(ing.id);
                 await _load();

@@ -9,5 +9,5 @@ class BillingExtra(UUIDBase):
     tenant_id     = Column(String(36), ForeignKey('tenants.id'), nullable=False, index=True)
     resource_type = Column(String(20), nullable=False)   # 'caisse' | 'depot'
     resource_id   = Column(String(36), nullable=True)    # PosRegister.id or Warehouse.id
-    started_at    = Column(DateTime(timezone=True), nullable=False)
-    ended_at      = Column(DateTime(timezone=True), nullable=True)  # null = still active
+    started_at    = Column(DateTime(timezone=False), nullable=False)
+    ended_at      = Column(DateTime(timezone=False), nullable=True)  # null = still active

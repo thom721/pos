@@ -1,8 +1,9 @@
 from decimal import Decimal
-from datetime import date, datetime, timezone
+from datetime import date
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 
+from api.core.dt_coerce import now_local
 from api.models.EmployeeProfile import EmployeeProfile
 from api.models.EmployeeLoan import EmployeeLoan
 from api.models.PayrollPeriod import PayrollPeriod
@@ -187,7 +188,7 @@ def pay_period(db: Session, period_id: str, tenant_id: str | None = None) -> Pay
     if period.status != "processing":
         raise HTTPException(400, "La période doit être en statut 'processing' pour être payée")
 
-    now = datetime.now(timezone.utc)
+    now = now_local()
     entries = db.query(PayrollEntry).filter_by(period_id=period_id).all()
 
     for entry in entries:

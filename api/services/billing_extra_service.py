@@ -1,6 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy.orm import Session
 
+from api.core.dt_coerce import now_local
 from api.models.BillingExtra import BillingExtra
 
 
@@ -10,7 +11,7 @@ def record_extra(db: Session, tenant_id: str, resource_type: str, resource_id: s
         tenant_id=tenant_id,
         resource_type=resource_type,
         resource_id=resource_id,
-        started_at=datetime.now(timezone.utc),
+        started_at=now_local(),
     )
     db.add(extra)
     return extra
@@ -23,7 +24,7 @@ def close_extra(db: Session, resource_id: str) -> None:
         BillingExtra.ended_at == None,  # noqa: E711
     ).first()
     if extra:
-        extra.ended_at = datetime.now(timezone.utc)
+        extra.ended_at = now_local()
 
 
 def compute_prorated(
@@ -59,11 +60,7 @@ def compute_prorated(
 
     for extra in extras:
         started = extra.started_at
-        if started.tzinfo is None:
-            started = started.replace(tzinfo=timezone.utc)
         ended = extra.ended_at
-        if ended is not None and ended.tzinfo is None:
-            ended = ended.replace(tzinfo=timezone.utc)
         active_from = max(started, cycle_start)
         active_to   = min(ended or cycle_end, cycle_end)
         active_days = max(0, (active_to - active_from).days)

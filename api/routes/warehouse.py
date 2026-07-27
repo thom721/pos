@@ -1,6 +1,6 @@
 import json as _json
 import uuid as _uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ from typing import List, Optional
 from api.database import get_db
 from api.dependencies.auth import get_current_user, require_permission
 from api.core.permissions import P, has_permission as _has_perm
+from api.core.dt_coerce import now_local
 from api.models.User import User
 from api.models.Warehouse import Warehouse
 from api.models.PosRegister import PosRegister
@@ -115,6 +116,28 @@ def _get_or_404(db: Session, warehouse_id: str, tenant_id: str) -> Warehouse:
     return wh
 
 
+def _check_name_unique(db: Session, tenant_id: str, name: str, exclude_id: str | None = None) -> None:
+    q = db.query(Warehouse).filter(
+        Warehouse.tenant_id == tenant_id,
+        Warehouse.name == name,
+    )
+    if exclude_id:
+        q = q.filter(Warehouse.id != exclude_id)
+    if q.first():
+        raise HTTPException(status_code=409, detail=f"Un business nommé « {name} » existe déjà.")
+
+
+def _check_register_name_unique(db: Session, warehouse_id: str, name: str, exclude_id: str | None = None) -> None:
+    q = db.query(PosRegister).filter(
+        PosRegister.warehouse_id == warehouse_id,
+        PosRegister.name == name,
+    )
+    if exclude_id:
+        q = q.filter(PosRegister.id != exclude_id)
+    if q.first():
+        raise HTTPException(status_code=409, detail=f"Une caisse nommée « {name} » existe déjà dans ce dépôt.")
+
+
 @router.get("/", response_model=List[WarehouseRead])
 def list_warehouses(
     db: Session = Depends(get_db),
@@ -167,6 +190,8 @@ def create_warehouse(
             if current_count >= tenant.max_depots:
                 return _limit_response("dépôt", current_count, tenant.max_depots, _pricing(db))
 
+    _check_name_unique(db, current_user.tenant_id, data.name)
+
     tenant = db.get(Tenant, current_user.tenant_id)
     active_before = db.query(Warehouse).filter_by(
         tenant_id=current_user.tenant_id, is_active=True
@@ -196,7 +221,7 @@ def create_warehouse(
     # Trial propre à la caisse, indépendant du tenant.
     _cfg = db.query(PlatformConfig).first()
     _trial_days = int(_cfg.trial_days) if _cfg and _cfg.trial_days else 30
-    _now = datetime.now(timezone.utc)
+    _now = now_local()
     db.add(PosRegister(
         tenant_id=current_user.tenant_id,
         warehouse_id=wh.id,
@@ -281,7 +306,8 @@ def update_warehouse(
     current_user: User = Depends(require_permission(P.WAREHOUSES_UPDATE)),
 ):
     wh = _get_or_404(db, warehouse_id, current_user.tenant_id)
-    if data.name is not None:
+    if data.name is not None and data.name != wh.name:
+        _check_name_unique(db, current_user.tenant_id, data.name, exclude_id=wh.id)
         wh.name = data.name
     if data.description is not None:
         wh.description = data.description
@@ -388,13 +414,15 @@ def create_register(
             if current_count >= tenant.max_caisses:
                 return _limit_response("caisse", current_count, tenant.max_caisses, _pricing(db))
 
+    _check_register_name_unique(db, warehouse_id, data.name)
+
     device_id = data.device_id or str(_uuid.uuid4())
 
     # Période d'essai individuelle pour chaque caisse supplémentaire.
     # La durée d'essai provient de PlatformConfig.trial_days (défaut 30 j).
     cfg = db.query(PlatformConfig).first()
     trial_days = int(cfg.trial_days) if cfg and cfg.trial_days else 30
-    now = datetime.now(timezone.utc)
+    now = now_local()
 
     reg = PosRegister(
         tenant_id=current_user.tenant_id,
@@ -420,7 +448,8 @@ def update_register(
 ):
     from api.models.User import User as UserModel
     reg = _get_register_or_404(db, warehouse_id, register_id, current_user.tenant_id)
-    if data.name is not None:
+    if data.name is not None and data.name != reg.name:
+        _check_register_name_unique(db, warehouse_id, data.name, exclude_id=reg.id)
         reg.name = data.name
     if data.is_active is not None:
         if reg.is_active and not data.is_active:
@@ -473,7 +502,7 @@ def register_heartbeat(
         PosRegister.device_id == device_id,
     ).first()
     if register:
-        register.last_seen = datetime.now(timezone.utc)
+        register.last_seen = now_local()
         db.commit()
     return {"ok": True}
 

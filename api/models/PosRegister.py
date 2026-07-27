@@ -14,7 +14,7 @@ class PosRegister(UUIDBase):
     is_active     = Column(Boolean, nullable=False, default=True)
     # Session tracking
     session_token = Column(String(36), nullable=True)
-    last_seen     = Column(DateTime(timezone=True), nullable=True)   # updated by heartbeat
+    last_seen     = Column(DateTime(timezone=False), nullable=True)   # updated by heartbeat
 
     # ── Abonnement par caisse ────────────────────────────────────────────────────
     # Toutes les caisses (initiales ou supplémentaires) ont leur propre ligne de
@@ -33,6 +33,7 @@ class PosRegister(UUIDBase):
 
     __table_args__ = (
         UniqueConstraint('tenant_id', 'device_id', name='uq_register_tenant_device'),
+        UniqueConstraint('warehouse_id', 'name', name='uq_register_name_warehouse'),
     )
 
     # ── Constructeur — gère les dates chiffrées ───────────────────────────────

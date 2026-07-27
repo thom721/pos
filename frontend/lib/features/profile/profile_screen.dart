@@ -775,8 +775,17 @@ class _UsersManagement extends ConsumerWidget {
       ),
     );
     if (confirmed == true) {
-      await dio.delete('/api/users/$id');
-      ref.invalidate(_usersProvider);
+      try {
+        await dio.delete('/api/users/$id');
+        ref.invalidate(_usersProvider);
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur: ${extractAnyError(e)}'),
+                backgroundColor: AppColors.error),
+          );
+        }
+      }
     }
   }
 }

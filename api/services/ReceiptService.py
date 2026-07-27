@@ -5,12 +5,12 @@ from api.models.Purchase import Purchase
 from api.models.PurchaseReceiptItem import PurchaseReceiptItem
 from api.models.PurchaseItem import PurchaseItem
 from api.models.StockMovement import StockMovement
-from datetime import datetime, timezone
 from sqlalchemy import func
 
 from api.schemas.purchase_receipt import PurchaseReceiptCreate
 from api.models.StockMovement import StockType
 from api.services.warehouse_helper import resolve_warehouse_id
+from api.core.dt_coerce import now_local
 
 class ReceiptService:
 
@@ -89,7 +89,7 @@ class ReceiptService:
 
         if completed:
             purchase.status = "paid"
-            purchase.received_at = datetime.now(timezone.utc)
+            purchase.received_at = now_local()
         else:
             purchase.status = "partial"
 

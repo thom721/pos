@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
+import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:pos_connect/app.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/services/local_db_service.dart';
@@ -18,6 +19,10 @@ void main() async {
   // Désactiver le fetching réseau Google Fonts partout — toutes les pages
   // utilisent désormais TextStyle (police système) au lieu de GoogleFonts.inter()
   GoogleFonts.config.allowRuntimeFetching = false;
+
+  // Charge la base tz IANA (DST Haiti) — requis avant tout appel à
+  // toHaitiTime()/haitiNow() dans core/date_utils.dart.
+  tz_data.initializeTimeZones();
 
   await initializeDateFormatting('fr');
   await initServerUrl();

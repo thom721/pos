@@ -23,7 +23,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from api.core.config import settings, write_ini_config
-from api.core.dt_coerce import coerce_datetimes as _coerce_dt
+from api.core.dt_coerce import coerce_datetimes as _coerce_dt, parse_dt as _parse_dt, now_local
 from api.core.permissions import P
 from api.database import get_db
 from api.dependencies.auth import require_permission
@@ -199,16 +199,6 @@ def require_sync_token(
 
 # ── Utility ───────────────────────────────────────────────────────────────────
 
-def _parse_dt(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        dt = datetime.fromisoformat(value)
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-    except Exception:
-        return None
-
-
 def _row_to_dict(row: Any) -> dict:
     d = {}
     for c in sa_inspect(type(row)).columns:
@@ -377,10 +367,9 @@ def sync_push(
                 _log.warning("push insert %s %s: %s", body.entity_type, rid, exc)
                 skipped += 1
         else:
-            remote_ts = _parse_dt(clean.get("updated_at"))
+            # clean["updated_at"] est déjà un datetime (coercé par _coerce_dt ci-dessus)
+            remote_ts = clean.get("updated_at")
             local_ts  = existing.updated_at
-            if local_ts and local_ts.tzinfo is None:
-                local_ts = local_ts.replace(tzinfo=timezone.utc)
             if remote_ts and (not local_ts or remote_ts > local_ts):
                 for k, v in clean.items():
                     if k != "id":
@@ -405,7 +394,7 @@ _PULL_PAGE_SIZE = 500  # safe batch size — avoids 2000-record truncation data 
 @router.get("/pull")
 def sync_pull(
     entity_type: str = Query(...),
-    since:       str = Query("1970-01-01T00:00:00+00:00"),
+    since:       str = Query("1970-01-01T00:00:00"),
     claims:      dict = Depends(require_sync_token),
     db:          Session = Depends(get_db),
 ):

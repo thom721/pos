@@ -12,21 +12,12 @@ import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/purchase_model.dart';
-import 'package:pos_connect/core/date_utils.dart' show toHaitiTime;
+import 'package:pos_connect/core/date_utils.dart' show parseApiDate, haitiNow, toHaitiTime;
 import 'package:pos_connect/data/models/debt_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/models/supplier_model.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
-
-/// Convertit un DateTime naïf "heure Haïti" en chaîne ISO UTC.
-/// [toHaitiTime] retourne un naïf non-UTC — .toUtc() utiliserait le fuseau
-/// du téléphone, pas Haiti (UTC-5). Cette fonction corrige ça.
-String _haitiNaiveToUtcIso(DateTime dt) {
-  final asUtc = DateTime.utc(dt.year, dt.month, dt.day,
-      dt.hour, dt.minute, dt.second, dt.millisecond);
-  return asUtc.add(const Duration(hours: 5)).toIso8601String();
-}
 
 /// Cache SQLite local pour les données critiques POS (produits, clients, catégories).
 ///
@@ -53,7 +44,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 16,
+      version: 17,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -172,6 +163,9 @@ class LocalDbService {
     if (oldVersion < 16) {
       try { await db.execute('ALTER TABLE warehouses ADD COLUMN is_claimed INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
     }
+    if (oldVersion < 17) {
+      try { await db.execute('ALTER TABLE products ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -189,6 +183,7 @@ class LocalDbService {
         category_name  TEXT,
         image_url      TEXT,
         is_active      INTEGER NOT NULL DEFAULT 1,
+        is_locked      INTEGER NOT NULL DEFAULT 0,
         synced         INTEGER NOT NULL DEFAULT 1,
         warehouse_id   TEXT
       )
@@ -552,6 +547,7 @@ class LocalDbService {
           'category_name': p.category?.name,
           'image_url': p.imageUrl,
           'is_active': p.isActive ? 1 : 0,
+          'is_locked': p.isLocked ? 1 : 0,
           'synced': 1,
           'warehouse_id': p.warehouseId,
         },
@@ -576,6 +572,7 @@ class LocalDbService {
     int page = 1,
     int limit = 20,
     String? categoryId,
+    bool excludeLocked = false,
   }) async {
     final db = _safeDb;
     if (db == null) return _emptyProducts(limit);
@@ -583,6 +580,9 @@ class LocalDbService {
     final where = <String>['is_active = 1'];
     final args = <dynamic>[];
 
+    if (excludeLocked) {
+      where.add('is_locked = 0');
+    }
     if (search != null && search.isNotEmpty) {
       where.add('(name LIKE ? OR barcode LIKE ?)');
       args.addAll(['%$search%', '%$search%']);
@@ -626,7 +626,8 @@ class LocalDbService {
     int page = 1,
     int perPage = 20,
   }) =>
-      getProducts(search: search, page: page, limit: perPage);
+      getProducts(
+          search: search, page: page, limit: perPage, excludeLocked: true);
 
   ProductModel _productFromRow(Map<String, dynamic> row) => ProductModel(
         id: row['id'] as String,
@@ -644,6 +645,7 @@ class LocalDbService {
               )
             : null,
         imageUrl: row['image_url'] as String?,
+        isLocked: (row['is_locked'] as int? ?? 0) == 1,
         warehouseId: row['warehouse_id'] as String?,
       );
 
@@ -976,7 +978,7 @@ class LocalDbService {
     if (db == null) throw StateError('SQLite non disponible');
 
     final saleId   = const Uuid().v4();
-    final now      = DateTime.now().toUtc().toIso8601String();
+    final now      = haitiNow().toIso8601String();
     final total    = (payload['items'] as List).fold<double>(
       0, (s, i) => s + (i['subtotal'] as num).toDouble());
     final discount = (payload['discount'] as num?)?.toDouble() ?? 0;
@@ -1066,7 +1068,7 @@ class LocalDbService {
         'status':         s.status,
         'cashier_name':   s.userFullName,
         'warehouse_id':   warehouseId,
-        'created_at':     _haitiNaiveToUtcIso(s.createdAt),
+        'created_at':     s.createdAt.toIso8601String(),
         'synced':         1,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
 
@@ -1094,7 +1096,7 @@ class LocalDbService {
           'sale_id':    s.id,
           'amount':     p.amount,
           'method':     p.method,
-          'created_at': _haitiNaiveToUtcIso(p.createdAt),
+          'created_at': p.createdAt.toIso8601String(),
         });
       }
     }
@@ -1169,11 +1171,11 @@ class LocalDbService {
     }
     if (dateFrom != null) {
       where.add('created_at >= ?');
-      args.add(dateFrom.toUtc().toIso8601String());
+      args.add(toHaitiTime(dateFrom.toUtc()).toIso8601String());
     }
     if (dateTo != null) {
       where.add('created_at < ?');
-      args.add(dateTo.toUtc().toIso8601String());
+      args.add(toHaitiTime(dateTo.toUtc()).toIso8601String());
     }
     final whereStr = where.isEmpty ? null : where.join(' AND ');
 
@@ -1290,7 +1292,7 @@ class LocalDbService {
       finalAmount:  (row['final_amount'] as num).toDouble(),
       paidAmount:   (row['paid_amount'] as num).toDouble(),
       status:       row['status'] as String,
-      createdAt:    toHaitiTime(DateTime.parse(row['created_at'] as String)),
+      createdAt:    parseApiDate(row['created_at'] as String),
       customerName:  row['customer_name'] as String?,
       customerId:    row['customer_id'] as String?,
       userId:        row['user_id'] as String?,
@@ -1321,7 +1323,7 @@ class LocalDbService {
     if (db == null) throw StateError('SQLite non disponible');
 
     final purchaseId = const Uuid().v4();
-    final now        = DateTime.now().toUtc().toIso8601String();
+    final now        = haitiNow().toIso8601String();
     final total      = (payload['items'] as List).fold<double>(
       0, (s, i) => s + (i['subtotal'] as num).toDouble());
     final paid       = (payload['paid_amount'] as num?)?.toDouble() ?? 0;
@@ -1396,7 +1398,7 @@ class LocalDbService {
         'total_amount':  p.totalAmount,
         'paid_amount':   p.paidAmount,
         'status':        p.status,
-        'created_at':    _haitiNaiveToUtcIso(p.createdAt),
+        'created_at':    p.createdAt.toIso8601String(),
         'synced':        1,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
 
@@ -1504,7 +1506,7 @@ class LocalDbService {
         'paid_amount':    d.paidAmount,
         'balance':        d.balance,
         'status':         d.status,
-        'created_at':     _haitiNaiveToUtcIso(d.createdAt),
+        'created_at':     d.createdAt.toIso8601String(),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
@@ -1561,7 +1563,7 @@ class LocalDbService {
       paidAmount:    (row['paid_amount'] as num).toDouble(),
       balance:       (row['balance'] as num).toDouble(),
       status:        row['status'] as String,
-      createdAt:     toHaitiTime(DateTime.parse(row['created_at'] as String)),
+      createdAt:     parseApiDate(row['created_at'] as String),
     )).toList();
 
     return PaginatedResponse(
@@ -1591,7 +1593,7 @@ class LocalDbService {
       totalAmount:  (row['total_amount'] as num).toDouble(),
       paidAmount:   (row['paid_amount'] as num).toDouble(),
       status:       row['status'] as String,
-      createdAt:    toHaitiTime(DateTime.parse(row['created_at'] as String)),
+      createdAt:    parseApiDate(row['created_at'] as String),
       supplierName: row['supplier_name'] as String?,
       supplierId:   row['supplier_id'] as String?,
       items: itemRows.map((r) => PurchaseItemModel(

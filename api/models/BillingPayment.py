@@ -15,7 +15,7 @@ class BillingPayment(UUIDBase):
     months         = Column(Integer, nullable=False, default=1)
     reference      = Column(String(200), nullable=True)   # Stripe payment_intent / MonCash txn
     description    = Column(String(300), nullable=True)
-    paid_at        = Column(DateTime(timezone=True), nullable=True)
+    paid_at        = Column(DateTime(timezone=False), nullable=True)
     # Fernet-encrypted ISO datetimes — key = HKDF(SECRET_KEY, salt=tenant_id)
     period_start   = Column(Text, nullable=True)
     period_end     = Column(Text, nullable=True)

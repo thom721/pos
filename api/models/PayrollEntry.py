@@ -20,7 +20,7 @@ class PayrollEntry(UUIDBase):
     # "cash" | "bank_transfer" | "check" | "mobile_money"
     payment_method    = Column(String(30),   nullable=True)
     notes             = Column(String(500),  nullable=True)
-    paid_at           = Column(DateTime(timezone=True), nullable=True)
+    paid_at           = Column(DateTime(timezone=False), nullable=True)
 
     period           = relationship("PayrollPeriod", back_populates="entries")
     employee         = relationship("User", foreign_keys=[employee_id])

@@ -525,7 +525,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
         final tableName = data['table_name'] as String? ?? '';
         await showDialog<void>(
           context: context,
-          builder: (_) => AlertDialog(
+          builder: (dialogCtx) => AlertDialog(
             title: const Text('Paiement reçu'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -576,7 +576,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
             ),
             actions: [
               FilledButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogCtx),
                 child: const Text('Terminer'),
               ),
             ],

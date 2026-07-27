@@ -71,7 +71,9 @@ def search_products_for_sale(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_CREATE)),
 ):
-    return ProductService(db, tenant_id=current_user.tenant_id).list(page=page, per_page=per_page, search=search)
+    return ProductService(db, tenant_id=current_user.tenant_id).list(
+        page=page, per_page=per_page, search=search, exclude_locked=True,
+    )
 
 
 @router.get("/{sale_id}", response_model=SaleRead)

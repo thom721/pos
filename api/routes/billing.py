@@ -15,6 +15,7 @@ from api.models.Warehouse import Warehouse
 from api.models.PosRegister import PosRegister
 from api.core.config import settings
 from api.core.billing_crypto import try_decrypt_date, encrypt_date
+from api.core.dt_coerce import now_local
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
 from api.services import billing_extra_service as _billing
@@ -53,7 +54,7 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
     Modèle : 1 caisse initiale par dépôt est incluse. Seules les caisses
     supplémentaires (is_initial=False) sont facturées.
     """
-    now = datetime.now(timezone.utc)
+    now = now_local()
 
     # Toutes les caisses actives
     caisse_count = db.query(PosRegister).filter(
@@ -103,8 +104,6 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
     for reg, wh in regs_q:
         sub_end   = reg.subscription_ends_at
         trial_end = reg.trial_ends_at
-        if sub_end   and sub_end.tzinfo   is None: sub_end   = sub_end.replace(tzinfo=timezone.utc)
-        if trial_end and trial_end.tzinfo is None: trial_end = trial_end.replace(tzinfo=timezone.utc)
 
         if sub_end and sub_end > now:
             reg_status = "active"
@@ -189,11 +188,9 @@ def get_billing_status(
     tenant = _get_tenant(db, current_user)
 
     trial_end = tenant.trial_ends_at
-    if trial_end and trial_end.tzinfo is None:
-        trial_end = trial_end.replace(tzinfo=timezone.utc)
 
     from api.core.tenant import GRACE_DAYS
-    now = datetime.now(timezone.utc)
+    now = now_local()
     days_left = None
     is_grace = False
     grace_days_left = None
@@ -210,8 +207,6 @@ def get_billing_status(
             grace_days_left = max(0, ceil(grace_delta.total_seconds() / 86400))
 
     sub_end = getattr(tenant, "subscription_ends_at", None)
-    if sub_end and sub_end.tzinfo is None:
-        sub_end = sub_end.replace(tzinfo=timezone.utc)
 
     return {
         "status": tenant.status,
@@ -481,7 +476,7 @@ def submit_payment(
     else:
         amount = usage["total_monthly_htg"] * months
 
-    now = datetime.now(timezone.utc)
+    now = now_local()
     year   = now.year
     prefix = f"PEND-{year}-"
     count  = db.query(BillingPayment).filter(
@@ -559,7 +554,7 @@ def submit_register_payment(
     plan_label   = "Annuel" if plan_type == "annual" else f"{months} mois"
     method_label = {"moncash": "MonCash", "natcash": "NatCash"}.get(body.method, "Manuel")
     days = 365 if plan_type == "annual" else 30 * months
-    now  = datetime.now(timezone.utc)
+    now  = now_local()
     year = now.year
     prefix = f"REG-{year}-"
 

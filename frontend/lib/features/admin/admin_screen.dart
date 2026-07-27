@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:pos_connect/core/date_utils.dart' show toHaitiTime;
+import 'package:pos_connect/core/date_utils.dart' show parseApiDate;
 import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -434,7 +434,7 @@ class _TenantCard extends ConsumerWidget {
     String? formattedDate;
     if (createdAt != null) {
       try {
-        formattedDate = DateFormat('dd/MM/yyyy').format(toHaitiTime(DateTime.parse(createdAt)));
+        formattedDate = DateFormat('dd/MM/yyyy').format(parseApiDate(createdAt));
       } catch (_) {}
     }
 
@@ -1160,7 +1160,7 @@ class _TenantBoutiquesSectionState
     String? expiryLabel;
     if (effectiveExpiry != null) {
       try {
-        final dt = toHaitiTime(DateTime.parse(effectiveExpiry));
+        final dt = parseApiDate(effectiveExpiry);
         expiryLabel = DateFormat('dd/MM/yy').format(dt);
       } catch (_) {}
     }
@@ -1422,7 +1422,7 @@ class _PaymentRow extends ConsumerWidget {
   String _fmt(String? iso) {
     if (iso == null) return '';
     try {
-      return DateFormat('dd/MM/yyyy HH:mm').format(toHaitiTime(DateTime.parse(iso)));
+      return DateFormat('dd/MM/yyyy HH:mm').format(parseApiDate(iso));
     } catch (_) {
       return '';
     }
@@ -2504,7 +2504,7 @@ class _WarehousesDialogState extends ConsumerState<_WarehousesDialog> {
     if (iso == null) return '—';
     final rawDt = DateTime.tryParse(iso);
     if (rawDt == null) return '—';
-    final dt = toHaitiTime(rawDt);
+    final dt = parseApiDate(iso);
     return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} '
         '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
@@ -2917,9 +2917,7 @@ class _RegistersDialogState extends ConsumerState<_RegistersDialog> {
 
   String _formatDate(String? iso) {
     if (iso == null) return 'Jamais';
-    final rawDt = DateTime.tryParse(iso);
-    final dt = rawDt != null ? toHaitiTime(rawDt) : null;
-    if (dt == null) return '—';
+    final dt = parseApiDate(iso);
     return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} '
         '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }

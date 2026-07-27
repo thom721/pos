@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:pos_connect/core/date_utils.dart' show haitiNow, toHaitiTime;
+import 'package:pos_connect/core/date_utils.dart' show haitiNow, toHaitiTime, parseApiDate;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -683,7 +683,7 @@ class _StatusCard extends StatelessWidget {
                 icon: Icons.event_rounded,
                 label: 'Abonnement jusqu\'au',
                 value: DateFormat('dd MMM yyyy', 'fr_FR').format(
-                    toHaitiTime(DateTime.parse(subscriptionEndsAt!))),
+                    parseApiDate(subscriptionEndsAt)),
               ),
             ],
           ],

@@ -6,7 +6,9 @@ import smtplib
 import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
+
+from api.core.dt_coerce import now_local
 
 
 def _send_via_smtp(host: str, port: int, user: str, password: str,
@@ -96,11 +98,9 @@ def maybe_send_warning(tenant, db) -> None:
     if not warning:
         return
 
-    now = datetime.now(timezone.utc)
+    now = now_local()
     last = getattr(tenant, "last_warning_sent_at", None)
     if last:
-        if last.tzinfo is None:
-            last = last.replace(tzinfo=timezone.utc)
         if now - last < timedelta(hours=24):
             return  # déjà envoyé récemment
 

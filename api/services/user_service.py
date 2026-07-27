@@ -112,6 +112,14 @@ class UserService(TenantService):
         user = self.get(user_id)
         if not user:
             return False
-        self.db.delete(user)
-        self.db.commit()
-        return True
+        try:
+            self.db.delete(user)
+            self.db.commit()
+            return True
+        except IntegrityError:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Impossible de supprimer : cet utilisateur a des ventes, sessions "
+                       "ou autres données associées. Désactivez-le plutôt.",
+            )

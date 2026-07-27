@@ -4,7 +4,7 @@ These endpoints are called by the payment providers to confirm a payment
 and activate (or renew) a tenant's subscription.
 """
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request, HTTPException, Header
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from api.models.Tenant import Tenant
 from api.models.BillingPayment import BillingPayment
 from api.core.config import settings
 from api.core.billing_crypto import encrypt_date
+from api.core.dt_coerce import now_local, HAITI_TZ
 
 router = APIRouter(prefix="/api/webhooks", tags=["Webhooks"])
 _log = logging.getLogger("pos.webhooks")
@@ -23,7 +24,7 @@ _log = logging.getLogger("pos.webhooks")
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 def _next_invoice_number(db: Session, tenant_id: str) -> str:
-    year = datetime.now(timezone.utc).year
+    year = now_local().year
     prefix = f"INV-{year}-"
     count = db.query(BillingPayment).filter(
         BillingPayment.tenant_id == tenant_id,
@@ -52,7 +53,7 @@ def _record_payment(
         status="paid",
         reference=reference,
         description=description or "Abonnement POS Connect",
-        paid_at=datetime.now(timezone.utc),
+        paid_at=now_local(),
         period_start=encrypt_date(period_start, tenant_id) if period_start else None,
         period_end=encrypt_date(period_end, tenant_id) if period_end else None,
     )
@@ -64,7 +65,7 @@ def _record_payment(
 def _activate_tenant(db: Session, tenant: Tenant) -> None:
     """Mark tenant as active and set/renew subscription for 30 days."""
     tenant.status = "active"
-    tenant.subscription_started_at = datetime.now(timezone.utc)
+    tenant.subscription_started_at = now_local()
     db.commit()
     _log.info("Tenant activé : %s (%s)", tenant.slug, tenant.id)
 
@@ -122,8 +123,14 @@ async def stripe_webhook(
             amount_cents = data.get("amount_paid") or data.get("amount_total") or 0
             currency = (data.get("currency") or "usd").upper()
             period = data.get("lines", {}).get("data", [{}])[0].get("period", {})
-            period_start = datetime.fromtimestamp(period["start"], tz=timezone.utc) if period.get("start") else None
-            period_end   = datetime.fromtimestamp(period["end"],   tz=timezone.utc) if period.get("end")   else None
+            period_start = (
+                datetime.fromtimestamp(period["start"], tz=HAITI_TZ).replace(tzinfo=None)
+                if period.get("start") else None
+            )
+            period_end = (
+                datetime.fromtimestamp(period["end"], tz=HAITI_TZ).replace(tzinfo=None)
+                if period.get("end") else None
+            )
 
             _record_payment(
                 db, tenant_id,

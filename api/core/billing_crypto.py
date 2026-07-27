@@ -6,7 +6,7 @@ This ensures that even if one tenant's key is compromised, other tenants' data
 remains protected, and dates cannot be swapped between tenants.
 """
 import base64
-from datetime import datetime, timezone
+from datetime import datetime
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -26,21 +26,16 @@ def _derive_fernet(tenant_id: str) -> Fernet:
 
 
 def encrypt_date(dt: datetime, tenant_id: str) -> str:
-    """Encrypt a datetime to a URL-safe Fernet token string."""
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+    """Encrypt a naive (Haiti local) datetime to a URL-safe Fernet token string."""
     token = _derive_fernet(tenant_id).encrypt(dt.isoformat().encode("utf-8"))
     return token.decode("utf-8")
 
 
 def decrypt_date(token: str, tenant_id: str) -> datetime:
-    """Decrypt a Fernet token back to a datetime (UTC-aware)."""
+    """Decrypt a Fernet token back to a naive (Haiti local) datetime."""
     try:
         iso = _derive_fernet(tenant_id).decrypt(token.encode("utf-8")).decode("utf-8")
-        dt = datetime.fromisoformat(iso)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
+        return datetime.fromisoformat(iso)
     except (InvalidToken, ValueError) as exc:
         raise ValueError(f"Impossible de déchiffrer la date de facturation: {exc}") from exc
 
@@ -66,20 +61,17 @@ def _derive_register_fernet(register_id: str) -> Fernet:
 
 
 def encrypt_register_date(dt: datetime, register_id: str) -> str:
-    """Encrypt a register billing date with its own ID as salt."""
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+    """Encrypt a naive (Haiti local) register billing date with its own ID as salt."""
     token = _derive_register_fernet(register_id).encrypt(dt.isoformat().encode("utf-8"))
     return token.decode("utf-8")
 
 
 def try_decrypt_register_date(token: str | None, register_id: str) -> datetime | None:
-    """Decrypt a register date token; return None if missing or tampered."""
+    """Decrypt a register date token to a naive (Haiti local) datetime; None if missing or tampered."""
     if not token:
         return None
     try:
         iso = _derive_register_fernet(register_id).decrypt(token.encode("utf-8")).decode("utf-8")
-        dt = datetime.fromisoformat(iso)
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        return datetime.fromisoformat(iso)
     except Exception:
         return None  # token altéré → traité comme absent

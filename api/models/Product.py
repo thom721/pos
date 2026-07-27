@@ -18,6 +18,7 @@ class Product(UUIDBase):
     alert_stock = Column(Integer, default=0)
     description = Column(String(255) , nullable=True)
     is_active = Column(Boolean, default=True)
+    is_locked = Column(Boolean, default=False, nullable=False)
     image_url = Column(String(500), nullable=True)
 
     category = relationship("Category", back_populates="products")

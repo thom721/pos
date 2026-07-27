@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 
 import enum
 from .base import UUIDBase
-from datetime import datetime, timezone
+from api.core.dt_coerce import now_local
 
 class PurchaseStatus(enum.Enum):
     pending = "pending"
@@ -17,7 +17,7 @@ class PurchaseReceipt(UUIDBase):
     purchase_id  = Column(ForeignKey("purchases.id"), nullable=False)
     warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=True, index=True)
 
-    received_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    received_at = Column(DateTime(timezone=False), default=now_local)
     received_by = Column(String(36), nullable=True)
     note        = Column(Text, nullable=True)
 

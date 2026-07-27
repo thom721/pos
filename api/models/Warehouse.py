@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, Text, ForeignKey
+from sqlalchemy import Column, String, Boolean, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
@@ -21,3 +21,7 @@ class Warehouse(UUIDBase):
     sales              = relationship("Sale",             back_populates="warehouse")
     cashier_sessions   = relationship("CashierSession",   back_populates="warehouse")
     return_records     = relationship("ReturnRecord",     back_populates="warehouse")
+
+    __table_args__ = (
+        UniqueConstraint("name", "tenant_id", name="uq_warehouse_name_tenant"),
+    )

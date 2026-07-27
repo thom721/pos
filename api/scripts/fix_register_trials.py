@@ -11,8 +11,9 @@ Usage (depuis le conteneur) :
 import sys
 sys.path.insert(0, '/app')
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from api.database import SessionLocal
+from api.core.dt_coerce import now_local
 from api.models.PosRegister import PosRegister
 from api.models.Tenant import Tenant
 from api.core.billing_crypto import try_decrypt_register_date
@@ -28,19 +29,16 @@ try:
         # Tenter de déchiffrer le token existant
         current = try_decrypt_register_date(reg._trial_ends_at, reg.id)
 
-        if current is not None and current > datetime.now(timezone.utc):
+        if current is not None and current > now_local():
             already_ok += 1
             continue  # token valide, rien à faire
 
         # Trouver une date de remplacement
         tenant = db.get(Tenant, reg.tenant_id)
         if tenant and tenant.trial_ends_at:
-            t = tenant.trial_ends_at
-            if t.tzinfo is None:
-                t = t.replace(tzinfo=timezone.utc)
-            new_trial = t
+            new_trial = tenant.trial_ends_at
         else:
-            new_trial = datetime.now(timezone.utc) + timedelta(days=30)
+            new_trial = now_local() + timedelta(days=30)
 
         reg.trial_ends_at = new_trial
         fixed += 1

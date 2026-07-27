@@ -1,12 +1,13 @@
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from sqlalchemy import or_
 from api.models.CashierSession import CashierSession
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
+from api.core.dt_coerce import now_local
 from api.models.Tenant import Tenant
 from api.models.User import User
 from api.models.AppConfig import AppConfig
@@ -81,7 +82,7 @@ def register_tenant(db: Session, business_name: str, owner_email: str,
                             detail="Cet email est déjà utilisé")
 
     slug = _unique_slug(db, _slugify(business_name))
-    trial_ends = datetime.now(timezone.utc) + timedelta(days=_get_trial_days(db))
+    trial_ends = now_local() + timedelta(days=_get_trial_days(db))
 
     tenant = Tenant(
         slug=slug,
@@ -138,7 +139,7 @@ def register_tenant(db: Session, business_name: str, owner_email: str,
         name="Caisse principale",
         is_active=True,
         is_initial=True,
-        trial_ends_at=datetime.now(timezone.utc) + timedelta(days=_get_trial_days(db)),
+        trial_ends_at=now_local() + timedelta(days=_get_trial_days(db)),
         # device_id intentionally NULL — claimed by first device to log in
     )
     db.add(register)
@@ -206,7 +207,7 @@ def cloud_login(db: Session, email: str, password: str,
             # Rotate session token and stamp last_seen on every login
             session_token = str(uuid.uuid4())
             register.session_token = session_token
-            register.last_seen = datetime.now(timezone.utc)
+            register.last_seen = now_local()
             db.commit()
             db.refresh(register)
             register_id = register.id

@@ -9,7 +9,7 @@ Flow:
   4. Update SyncState timestamps
 """
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
@@ -17,7 +17,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from api.core.config import settings
-from api.core.dt_coerce import coerce_datetimes as _coerce_dt_shared
+from api.core.dt_coerce import coerce_datetimes as _coerce_dt_shared, now_local
 from api.models.SyncState import SyncState
 from api.models.Category import Category
 from api.models.Product import Product
@@ -256,9 +256,8 @@ def _run_sync_inner(db: Session) -> dict:
     except Exception:
         pass  # SQLite or unsupported engine — safe to ignore
 
-    # Cycle start in UTC — MySQL connection is forced to UTC (SET time_zone='+00:00')
-    # so updated_at comparisons are consistent across all timezones.
-    cycle_start = datetime.now(timezone.utc)
+    # Cycle start en heure locale Haiti — cohérent avec model.updated_at (naïf, Haiti)
+    cycle_start = now_local()
 
     summary = {"pushed": {}, "pulled": {}, "errors": []}
 
@@ -274,10 +273,7 @@ def _run_sync_inner(db: Session) -> dict:
             try:
                 query = db.query(model)
                 if state.last_push_at:
-                    lp = state.last_push_at
-                    if lp.tzinfo is None:
-                        lp = lp.replace(tzinfo=timezone.utc)
-                    query = query.filter(model.updated_at > lp)
+                    query = query.filter(model.updated_at > state.last_push_at)
                 rows = query.all()
 
                 if rows:
@@ -326,7 +322,7 @@ def _run_sync_inner(db: Session) -> dict:
     db.flush()
 
     cursors = {
-        e["type"]: (s.last_pull_at.isoformat() if s.last_pull_at else "1970-01-01T00:00:00+00:00")
+        e["type"]: (s.last_pull_at.isoformat() if s.last_pull_at else "1970-01-01T00:00:00")
         for e, s in pull_entities
     }
 
@@ -404,8 +400,6 @@ def _run_sync_inner(db: Session) -> dict:
                 else:
                     remote_ts = _parse_dt(rec.get("updated_at"))
                     local_ts  = existing.updated_at
-                    if local_ts and local_ts.tzinfo is None:
-                        local_ts = local_ts.replace(tzinfo=timezone.utc)
                     if remote_ts and (not local_ts or remote_ts > local_ts):
                         coerced = _coerce_for_db(model, rec)
                         for k, v in coerced.items():
@@ -415,7 +409,7 @@ def _run_sync_inner(db: Session) -> dict:
 
             summary["pulled"][etype] = applied
             state.records_pulled += applied
-            state.last_pull_at = datetime.now(timezone.utc)
+            state.last_pull_at = now_local()
             state.last_error = None
         except Exception as exc:
             msg = f"pull {etype}: {exc}"

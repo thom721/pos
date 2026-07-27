@@ -306,14 +306,14 @@ class _UsersTab extends ConsumerWidget {
   Future<void> _delete(BuildContext ctx, WidgetRef ref, String id) async {
     final ok = await showDialog<bool>(
       context: ctx,
-      builder: (_) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         title: const Text('Supprimer l\'utilisateur'),
         content: const Text('Cette action est irréversible.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false),
+          TextButton(onPressed: () => Navigator.pop(dialogCtx, false),
               child: const Text('Annuler')),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: () => Navigator.pop(dialogCtx, true),
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('Supprimer'),
           ),
@@ -321,8 +321,17 @@ class _UsersTab extends ConsumerWidget {
       ),
     );
     if (ok == true) {
-      await dio.delete('/api/users/$id');
-      ref.invalidate(_usersListProvider);
+      try {
+        await dio.delete('/api/users/$id');
+        ref.invalidate(_usersListProvider);
+      } catch (e) {
+        if (ctx.mounted) {
+          ScaffoldMessenger.of(ctx).showSnackBar(
+            SnackBar(content: Text('Erreur: ${extractAnyError(e)}'),
+                backgroundColor: AppColors.error),
+          );
+        }
+      }
     }
   }
 

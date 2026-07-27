@@ -2,7 +2,7 @@ from sqlalchemy import Column, String, Numeric, Enum, ForeignKey, DateTime, Inde
 from sqlalchemy.orm import relationship
 import enum
 from .base import UUIDBase
-from datetime import datetime, timezone
+from api.core.dt_coerce import now_local
 
 
 class PurchaseStatus(enum.Enum):
@@ -22,8 +22,8 @@ class Purchase(UUIDBase):
     total_amount = Column(Numeric(12, 2))
     paid_amount  = Column(Numeric(12, 2), default=0)
     status       = Column(Enum(PurchaseStatus), default=PurchaseStatus.pending)
-    ordered_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    received_at  = Column(DateTime(timezone=True), nullable=True)
+    ordered_at   = Column(DateTime(timezone=False), default=now_local)
+    received_at  = Column(DateTime(timezone=False), nullable=True)
 
     supplier  = relationship("Supplier",   back_populates="purchases")
     user      = relationship("User",       back_populates="purchases")

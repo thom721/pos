@@ -3,7 +3,7 @@ Super-admin panel API — platform-owner only.
 All endpoints are protected by require_superadmin (superadmin JWT).
 """
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from api.core.billing_crypto import try_decrypt_date, encrypt_date
 from api.core.config import settings
+from api.core.dt_coerce import now_local
 from api.core.security import create_access_token
 from api.core.superadmin import require_superadmin
 from api.database import get_db
@@ -116,7 +117,7 @@ class PlatformConfigUpdate(BaseModel):
 # ── Internal helpers ────────────────────────────────────────────────────────
 
 def _next_invoice_number(db: Session, tenant_id: str) -> str:
-    year = datetime.now(timezone.utc).year
+    year = now_local().year
     prefix = f"INV-{year}-"
     count = db.query(BillingPayment).filter(
         BillingPayment.tenant_id == tenant_id,
@@ -141,15 +142,12 @@ def _activate_tenant(db: Session, tenant: Tenant, months: int = 1,
       - 'annual'  : 12 mois × 30 jours avec rabais (le rabais est calculé côté prix,
                     ici on prolonge de 365 jours pour couvrir l'année complète).
     """
-    now = datetime.now(timezone.utc)
+    now = now_local()
     cfg = db.query(PlatformConfig).first()
     trial_included = bool(cfg.trial_included_in_billing) if cfg else False
     days = 365 if plan_type == "annual" else 30 * months
 
     current_end = getattr(tenant, "subscription_ends_at", None)
-    if current_end:
-        if current_end.tzinfo is None:
-            current_end = current_end.replace(tzinfo=timezone.utc)
 
     if current_end and current_end > now:
         # Renouvellement en cours de cycle : prolonger depuis la fin actuelle
@@ -157,8 +155,6 @@ def _activate_tenant(db: Session, tenant: Tenant, months: int = 1,
     elif trial_included and not tenant.subscription_started_at:
         # Premier paiement avec essai inclus : partir de la création du compte
         created = getattr(tenant, "created_at", None) or now
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
         # Si le compte a déjà plus de <days> jours, on repart de now
         base = created if (created + timedelta(days=days)) > now else now
     else:
@@ -175,10 +171,8 @@ def _activate_tenant(db: Session, tenant: Tenant, months: int = 1,
 def _days_left(tenant: Tenant) -> int | None:
     if tenant.trial_ends_at is None:
         return None
-    now = datetime.now(timezone.utc)
+    now = now_local()
     trial_end = tenant.trial_ends_at
-    if trial_end.tzinfo is None:
-        trial_end = trial_end.replace(tzinfo=timezone.utc)
     return max(0, ceil((trial_end - now).total_seconds() / 86400))
 
 
@@ -442,7 +436,7 @@ def create_tenant(
     cfg = _get_platform_config(db)
     trial_days = cfg.trial_days or 30
 
-    now = datetime.now(timezone.utc)
+    now = now_local()
     tenant = Tenant(
         slug=slug,
         business_name=body.business_name,
@@ -600,9 +594,7 @@ def patch_tenant(
         t.status = body.status
 
     if body.extra_trial_days is not None and body.extra_trial_days > 0:
-        base = t.trial_ends_at or datetime.now(timezone.utc)
-        if base.tzinfo is None:
-            base = base.replace(tzinfo=timezone.utc)
+        base = t.trial_ends_at or now_local()
         t.trial_ends_at = base + timedelta(days=body.extra_trial_days)
 
     if body.type is not None:
@@ -659,7 +651,7 @@ def manual_activate_tenant(
     if not t:
         raise HTTPException(status_code=404, detail="Tenant introuvable")
 
-    now = datetime.now(timezone.utc)
+    now = now_local()
     period_start = now
     period_end   = now + timedelta(days=30)
 
@@ -854,29 +846,21 @@ def list_tenant_registers(
     _: dict = Depends(require_superadmin),
 ):
     """List all POS registers for a tenant."""
-    from datetime import timezone as _tz
-    now = datetime.now(_tz.utc)
-
-    def _norm(dt):
-        if dt is None:
-            return None
-        return dt if dt.tzinfo else dt.replace(tzinfo=_tz.utc)
+    now = now_local()
 
     def _billing(r):
         sub_start = r.subscription_started_at
         sub_end   = r.subscription_ends_at
         trial_end = r.trial_ends_at
-        sub_end_n   = _norm(sub_end)
-        trial_end_n = _norm(trial_end)
         plan_type = None
         if sub_start and sub_end:
             days = (sub_end - sub_start).days
             plan_type = "annual" if days > 180 else "monthly"
-        if sub_end_n and sub_end_n > now:
+        if sub_end and sub_end > now:
             status = "subscribed"
-        elif trial_end_n and trial_end_n > now:
+        elif trial_end and trial_end > now:
             status = "trial"
-        elif sub_end_n or trial_end_n:
+        elif sub_end or trial_end:
             status = "expired"
         else:
             status = "none"
@@ -964,7 +948,7 @@ def confirm_payment(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant introuvable")
 
-    now        = datetime.now(timezone.utc)
+    now        = now_local()
     plan_type  = body.plan_type or getattr(payment, "plan_type", "monthly") or "monthly"
     stored_months = getattr(payment, "months", 1) or 1
     months    = max(1, body.months if body.months is not None else stored_months)
@@ -995,8 +979,6 @@ def confirm_payment(
                 continue
             current_end = reg.subscription_ends_at
             if current_end:
-                if current_end.tzinfo is None:
-                    current_end = current_end.replace(tzinfo=timezone.utc)
                 remaining = max(0, (current_end - now).days)
             else:
                 remaining = 0

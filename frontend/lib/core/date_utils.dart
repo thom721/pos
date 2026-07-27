@@ -1,12 +1,16 @@
-// Haiti = UTC-5, pas de changement d'heure (America/Port_au_Prince)
-const Duration _kHaitiOffset = Duration(hours: -5);
+import 'package:timezone/timezone.dart' as tz;
 
-/// Convertit un DateTime UTC → heure locale de Port-au-Prince.
+// Haiti applique un DST (UTC-5 en hiver, UTC-4 en été) — utiliser la vraie
+// base de données IANA (via package:timezone) plutôt qu'un offset fixe.
+// initializeTimeZones() doit avoir été appelé au démarrage de l'app (main.dart).
+tz.Location get _haiti => tz.getLocation('America/Port-au-Prince');
+
+/// Convertit un DateTime UTC → heure locale de Port-au-Prince (DST-aware).
 /// Le DateTime retourné contient les valeurs locales haïtiennes
 /// (pas de timezone Dart attachée, utilisé pour l'affichage).
 DateTime toHaitiTime(DateTime dt) {
-  final utc = dt.toUtc();
-  final local = utc.add(_kHaitiOffset);
+  final utc = dt.isUtc ? dt : dt.toUtc();
+  final local = tz.TZDateTime.from(utc, _haiti);
   return DateTime(local.year, local.month, local.day,
       local.hour, local.minute, local.second, local.millisecond);
 }
@@ -16,19 +20,23 @@ DateTime haitiNow() => toHaitiTime(DateTime.now().toUtc());
 
 /// Début du jour courant (minuit) à Port-au-Prince, exprimé en UTC.
 /// À utiliser pour les filtres SQLite et API (les dates y sont stockées en UTC).
-/// Minuit haïtien = 05:00 UTC (UTC-5).
 DateTime haitiTodayStartUtc() {
   final h = haitiNow();
-  return DateTime.utc(h.year, h.month, h.day, 5, 0, 0);
+  final localMidnight = tz.TZDateTime(_haiti, h.year, h.month, h.day);
+  return localMidnight.toUtc();
 }
 
 /// Parse une date ISO renvoyée par l'API FastAPI.
-/// FastAPI/SQLAlchemy retourne des datetimes UTC naïfs (sans 'Z').
-/// Appende 'Z' si absent, puis convertit vers l'heure de Port-au-Prince.
+/// Le backend envoie désormais des datetimes naïfs déjà en heure locale
+/// Haiti (now_local(), sans 'Z') — on les utilise directement, sans
+/// conversion supplémentaire. Les strings qui portent encore un offset/'Z'
+/// (legacy) sont converties depuis UTC par précaution.
 DateTime parseApiDate(String? s, {DateTime? fallback}) {
   if (s == null || s.isEmpty) return fallback ?? haitiNow();
-  final utc = (s.contains('Z') || s.contains('+')) ? s : '${s}Z';
-  final parsed = DateTime.tryParse(utc);
+  final parsed = DateTime.tryParse(s);
   if (parsed == null) return fallback ?? haitiNow();
-  return toHaitiTime(parsed);
+  if (s.contains('Z') || RegExp(r'[+-]\d{2}:\d{2}$').hasMatch(s)) {
+    return toHaitiTime(parsed);
+  }
+  return parsed;
 }

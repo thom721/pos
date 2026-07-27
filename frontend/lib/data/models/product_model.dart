@@ -30,6 +30,7 @@ class ProductModel {
   final int? stock;
   final String? imageUrl;
   final bool isActive;
+  final bool isLocked;
   final String? warehouseId;
 
   ProductModel({
@@ -44,6 +45,7 @@ class ProductModel {
     this.stock,
     this.imageUrl,
     this.isActive = true,
+    this.isLocked = false,
     this.warehouseId,
   });
 
@@ -66,6 +68,7 @@ class ProductModel {
             : null,
         imageUrl: json['image_url']?.toString(),
         isActive: json['is_active'] != false,
+        isLocked: json['is_locked'] == true,
         warehouseId: json['warehouse_id']?.toString(),
       );
 
@@ -79,6 +82,7 @@ class ProductModel {
         'category': category?.toJson(),
         'stock': stock,
         'image_url': imageUrl,
+        'is_locked': isLocked,
         if (warehouseId != null) 'warehouse_id': warehouseId,
       };
 }

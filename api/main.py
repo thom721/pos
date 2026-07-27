@@ -398,19 +398,23 @@ def _migrate_per_tenant_unique(active_engine=None) -> None:
     if _eng.dialect.name != "mysql":
         return
 
-    # (table, colonne, nom_nouvelle_contrainte)
+    # (table, colonne, colonne_scope, nom_nouvelle_contrainte)
+    # colonne_scope est "tenant_id" pour la plupart (unicité par tenant), mais
+    # "warehouse_id" pour les caisses (unicité par dépôt, pas par tenant entier).
     _TARGETS = [
-        ("sales",           "reference", "uq_sale_ref_tenant"),
-        ("purchases",       "reference", "uq_purchase_ref_tenant"),
-        ("products",        "name",      "uq_product_name_tenant"),
-        ("products",        "barcode",   "uq_product_barcode_tenant"),
-        ("users",           "username",  "uq_user_username_tenant"),
-        ("users",           "email",     "uq_user_email_tenant"),
-        ("users",           "phone",     "uq_user_phone_tenant"),
-        ("invoices",        "reference", "uq_invoice_ref_tenant"),
-        ("proformas",       "reference", "uq_proforma_ref_tenant"),
-        ("employee_loans",  "reference", "uq_employee_loan_ref_tenant"),
-        ("payroll_periods", "reference", "uq_payroll_period_ref_tenant"),
+        ("sales",           "reference", "tenant_id",    "uq_sale_ref_tenant"),
+        ("purchases",       "reference", "tenant_id",    "uq_purchase_ref_tenant"),
+        ("products",        "name",      "tenant_id",    "uq_product_name_tenant"),
+        ("products",        "barcode",   "tenant_id",    "uq_product_barcode_tenant"),
+        ("users",           "username",  "tenant_id",    "uq_user_username_tenant"),
+        ("users",           "email",     "tenant_id",    "uq_user_email_tenant"),
+        ("users",           "phone",     "tenant_id",    "uq_user_phone_tenant"),
+        ("invoices",        "reference", "tenant_id",    "uq_invoice_ref_tenant"),
+        ("proformas",       "reference", "tenant_id",    "uq_proforma_ref_tenant"),
+        ("employee_loans",  "reference", "tenant_id",    "uq_employee_loan_ref_tenant"),
+        ("payroll_periods", "reference", "tenant_id",    "uq_payroll_period_ref_tenant"),
+        ("warehouses",      "name",      "tenant_id",    "uq_warehouse_name_tenant"),
+        ("pos_registers",   "name",      "warehouse_id", "uq_register_name_warehouse"),
     ]
 
     try:
@@ -421,7 +425,7 @@ def _migrate_per_tenant_unique(active_engine=None) -> None:
         return
 
     with _eng.connect() as conn:
-        for table, col, new_name in _TARGETS:
+        for table, col, scope_col, new_name in _TARGETS:
             if table not in existing_tables:
                 continue
             try:
@@ -447,16 +451,182 @@ def _migrate_per_tenant_unique(active_engine=None) -> None:
                 try:
                     conn.execute(text(
                         f"ALTER TABLE `{table}` "
-                        f"ADD UNIQUE KEY `{new_name}` (`{col}`, `tenant_id`)"
+                        f"ADD UNIQUE KEY `{new_name}` (`{col}`, `{scope_col}`)"
                     ))
                     conn.commit()
-                    _log.info("per-tenant-unique: + %s(%s, tenant_id) → %s", table, col, new_name)
+                    _log.info("per-tenant-unique: + %s(%s, %s) → %s", table, col, scope_col, new_name)
                 except Exception as add_exc:
                     conn.rollback()
                     _log.warning("per-tenant-unique: ADD KEY %s.%s: %s", table, new_name, add_exc)
             except Exception as exc:
                 _log.warning("per-tenant-unique: %s.%s: %s", table, col, exc)
 
+
+def _backfill_haiti_local_time(active_engine=None) -> None:
+    """
+    Migration ponctuelle : les colonnes DateTime métier (created_at/updated_at,
+    dates de trial/abonnement, etc.) étaient historiquement calculées en UTC
+    (datetime.now(timezone.utc)). Le code utilise désormais now_local() (heure
+    locale Haiti, naïve, DST-aware via ZoneInfo). Les lignes déjà en base
+    contiennent donc des valeurs UTC — cette fonction les convertit vers la
+    nouvelle convention.
+
+    Haiti applique un DST (UTC-5 en hiver, UTC-4 en été) : le décalage n'est
+    PAS uniforme selon la date de la ligne. La conversion se fait donc valeur
+    par valeur via ZoneInfo (dt_utc.astimezone(HAITI_TZ)), pas par un simple
+    "-5h" SQL — l'ancienne valeur naïve est réinterprétée comme UTC puis
+    reconvertie.
+
+    Idempotent via une table marqueur (tz_migration_marker) — ne s'exécute
+    qu'une seule fois par base. Les champs Fernet (PosRegister, BillingPayment)
+    sont convertis séparément : un token legacy se déchiffre en datetime aware
+    (offset encore présent dans le JSON chiffré) alors qu'un token déjà migré
+    se déchiffre en naïf — ce qui sert de garde-fou supplémentaire par valeur.
+    """
+    import api.database as _db_mod
+    from datetime import datetime, timezone as _dt_timezone
+    from sqlalchemy import text as _text, inspect as _inspect
+    from api.core.dt_coerce import now_local, HAITI_TZ
+
+    def _to_haiti(naive_utc_dt):
+        """Réinterprète un datetime naïf (ancienne convention UTC) en heure Haiti naïve.
+
+        SQLite renvoie parfois une string via une requête texte brute plutôt
+        qu'un objet datetime déjà parsé (contrairement à PyMySQL).
+        """
+        if naive_utc_dt is None:
+            return None
+        if isinstance(naive_utc_dt, str):
+            naive_utc_dt = datetime.fromisoformat(naive_utc_dt.replace(" ", "T"))
+        aware = naive_utc_dt.replace(tzinfo=_dt_timezone.utc)
+        return aware.astimezone(HAITI_TZ).replace(tzinfo=None)
+
+    _eng = active_engine or _db_mod.engine
+    dialect = _eng.dialect.name
+
+    with _eng.connect() as conn:
+        conn.execute(_text(
+            "CREATE TABLE IF NOT EXISTS tz_migration_marker ("
+            "id INTEGER PRIMARY KEY, applied_at VARCHAR(30))"
+        ))
+        conn.commit()
+        already = conn.execute(_text("SELECT COUNT(*) FROM tz_migration_marker")).scalar()
+        if already:
+            return  # déjà exécuté sur cette base
+
+        _log.info("tz-backfill: conversion des colonnes DateTime existantes (UTC → Haiti local, DST-aware)")
+
+        try:
+            inspector = _inspect(_eng)
+            existing_tables = set(inspector.get_table_names())
+        except Exception as exc:
+            _log.warning("tz-backfill: impossible d'inspecter le schéma: %s", exc)
+            return
+
+        # Colonnes created_at/updated_at de tous les modèles (héritées de UUIDBase)
+        cols_by_table: dict[str, set[str]] = {}
+        for table_name, table in Base.metadata.tables.items():
+            if table_name not in existing_tables:
+                continue
+            for col_name in ("created_at", "updated_at"):
+                if col_name in table.columns:
+                    cols_by_table.setdefault(table_name, set()).add(col_name)
+
+        # Colonnes DateTime métier explicites hors created_at/updated_at
+        _EXTRA_COLS = {
+            "purchases":          {"ordered_at", "received_at"},
+            "purchase_receipts":  {"received_at"},
+            "cashier_sessions":   {"opened_at", "closed_at"},
+            "pos_registers":      {"last_seen"},
+            "tenants":            {"trial_ends_at", "subscription_started_at",
+                                    "subscription_ends_at", "last_warning_sent_at"},
+            "billing_payments":   {"paid_at"},
+            "billing_extras":     {"started_at", "ended_at"},
+            "payroll_entries":    {"paid_at"},
+            "sync_state":         {"last_push_at", "last_pull_at"},
+            "installation_codes": {"created_at"},
+        }
+        for table_name, extra in _EXTRA_COLS.items():
+            if table_name in existing_tables:
+                cols_by_table.setdefault(table_name, set()).update(extra)
+
+        _quote = '`' if dialect == "mysql" else '"'
+        for table_name, cols in cols_by_table.items():
+            for col in cols:
+                q = _quote
+                try:
+                    rows = conn.execute(_text(
+                        f"SELECT id, {q}{col}{q} FROM {q}{table_name}{q} WHERE {q}{col}{q} IS NOT NULL"
+                    )).fetchall()
+                    params = []
+                    for row_id, val in rows:
+                        if val is None:
+                            continue
+                        params.append({"id": row_id, "val": _to_haiti(val)})
+                    if params:
+                        conn.execute(_text(
+                            f"UPDATE {q}{table_name}{q} SET {q}{col}{q} = :val WHERE id = :id"
+                        ), params)
+                    conn.commit()
+                except Exception as exc:
+                    conn.rollback()
+                    _log.warning("tz-backfill: %s.%s: %s", table_name, col, exc)
+
+        # ── Champs Fernet chiffrés : décrypter (ancien format aware) → conversion Haiti → ré-encrypter
+        try:
+            from api.core.billing_crypto import (
+                try_decrypt_register_date, encrypt_register_date,
+                try_decrypt_date, encrypt_date,
+            )
+            if "pos_registers" in existing_tables:
+                _REG_COLS = ("trial_ends_at", "subscription_started_at", "subscription_ends_at")
+                rows = conn.execute(_text(
+                    "SELECT id, trial_ends_at, subscription_started_at, subscription_ends_at "
+                    "FROM pos_registers"
+                )).fetchall()
+                for reg_id, *tokens in rows:
+                    for col, token in zip(_REG_COLS, tokens):
+                        if not token:
+                            continue
+                        dt = try_decrypt_register_date(token, reg_id)
+                        if dt is None or dt.tzinfo is None:
+                            continue  # déjà au nouveau format (naïf) — rien à faire
+                        shifted = dt.astimezone(HAITI_TZ).replace(tzinfo=None)
+                        new_token = encrypt_register_date(shifted, reg_id)
+                        conn.execute(_text(
+                            f"UPDATE pos_registers SET `{col}` = :tok WHERE id = :id"
+                        ), {"tok": new_token, "id": reg_id})
+                conn.commit()
+
+            if "billing_payments" in existing_tables:
+                rows = conn.execute(_text(
+                    "SELECT id, tenant_id, period_start, period_end FROM billing_payments"
+                )).fetchall()
+                for pid, tenant_id, p_start, p_end in rows:
+                    updates = {}
+                    for col, token in (("period_start", p_start), ("period_end", p_end)):
+                        if not token:
+                            continue
+                        dt = try_decrypt_date(token, tenant_id)
+                        if dt is None or dt.tzinfo is None:
+                            continue
+                        shifted = dt.astimezone(HAITI_TZ).replace(tzinfo=None)
+                        updates[col] = encrypt_date(shifted, tenant_id)
+                    if updates:
+                        set_clause = ", ".join(f"`{c}` = :{c}" for c in updates)
+                        conn.execute(_text(
+                            f"UPDATE billing_payments SET {set_clause} WHERE id = :id"
+                        ), {**updates, "id": pid})
+                conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            _log.warning("tz-backfill: champs Fernet: %s", exc)
+
+        conn.execute(_text(
+            "INSERT INTO tz_migration_marker (id, applied_at) VALUES (1, :now)"
+        ), {"now": now_local().isoformat()})
+        conn.commit()
+        _log.info("tz-backfill: terminé.")
 
 
 def _ensure_default_warehouse(db, tenant_id: str | None) -> None:
@@ -746,6 +916,8 @@ def on_startup():
             _fix_register_billing_date_columns(_active_engine)
             # 2d. Convertit les unique globaux en unique par-tenant (MySQL uniquement)
             _migrate_per_tenant_unique(_active_engine)
+            # 2e. Décale -5h les DateTime historiques (UTC → Haiti local, one-shot)
+            _backfill_haiti_local_time(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
 

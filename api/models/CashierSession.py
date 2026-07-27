@@ -14,8 +14,8 @@ class CashierSession(UUIDBase):
 
     warehouse = relationship("Warehouse", back_populates="cashier_sessions")
 
-    opened_at       = Column(DateTime(timezone=True), nullable=False)
-    closed_at       = Column(DateTime(timezone=True), nullable=True)
+    opened_at       = Column(DateTime(timezone=False), nullable=False)
+    closed_at       = Column(DateTime(timezone=False), nullable=True)
     opening_balance = Column(Numeric(12, 2), default=0)
     closing_balance = Column(Numeric(12, 2), nullable=True)
 

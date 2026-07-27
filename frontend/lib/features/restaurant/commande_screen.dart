@@ -310,25 +310,25 @@ class _CommandeScreenState extends ConsumerState<CommandeScreen>
       // Laisser l'utilisateur choisir
       final choice = await showDialog<String>(
         context: context,
-        builder: (_) => SimpleDialog(
+        builder: (dialogCtx) => SimpleDialog(
           title: const Text('Choisir une imprimante'),
           children: [
             SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, settings.posPrinterName),
+              onPressed: () => Navigator.pop(dialogCtx, settings.posPrinterName),
               child: const ListTile(
                 leading: Icon(Icons.receipt_long_rounded),
                 title: Text('Imprimante tickets (POS)'),
               ),
             ),
             SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, settings.docPrinterName),
+              onPressed: () => Navigator.pop(dialogCtx, settings.docPrinterName),
               child: const ListTile(
                 leading: Icon(Icons.print_rounded),
                 title: Text('Imprimante documents'),
               ),
             ),
             SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, '__preview__'),
+              onPressed: () => Navigator.pop(dialogCtx, '__preview__'),
               child: const ListTile(
                 leading: Icon(Icons.preview_rounded),
                 title: Text('Aperçu / Impression système'),

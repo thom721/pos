@@ -25,6 +25,7 @@ class ProductRead(ProductBase):
     image_url: Optional[str] = None
     stock: Optional[float] = None
     category: Optional[CategoryRead] = None
+    is_locked: bool = False
 
     class Config:
         from_attributes = True
@@ -39,7 +40,8 @@ class ProductUpdate(BaseModel):
     supplier_id: Optional[str] = None
     category_id: Optional[str]
     warehouse_id: Optional[str] = None
- 
+    is_locked: Optional[bool] = None
+
 
 class ProductSaleItem(BaseModel):
     id: str
