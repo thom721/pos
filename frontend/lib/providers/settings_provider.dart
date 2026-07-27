@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -254,12 +255,18 @@ class AppSettings {
 class SettingsNotifier extends StateNotifier<AppSettings> {
   final Ref _ref;
   final FlutterSecureStorage _storage;
+  Timer? _syncTimer;
 
   SettingsNotifier(this._ref, this._storage) : super(const AppSettings()) {
     // Reload when the authenticated user changes
     _ref.listen<AuthState>(authProvider, (prev, next) {
       if (prev?.user?.id != next.user?.id) {
         _load();
+        if (next.user != null) {
+          _startSyncTimer();
+        } else {
+          _syncTimer?.cancel();
+        }
       }
     });
     // Reload when the active warehouse changes (each depot has its own config)
@@ -269,6 +276,23 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       }
     });
     _load();
+    _startSyncTimer();
+  }
+
+  /// Refresh settings from server every 5 minutes while authenticated.
+  void _startSyncTimer() {
+    _syncTimer?.cancel();
+    _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      if (_ref.read(authProvider).user != null) {
+        _load();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncTimer?.cancel();
+    super.dispose();
   }
 
   /// Returns a (tenant + warehouse)-scoped cache key so each depot has its own local cache.

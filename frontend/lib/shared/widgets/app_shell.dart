@@ -744,7 +744,8 @@ class _MobileShell extends ConsumerStatefulWidget {
   ConsumerState<_MobileShell> createState() => _MobileShellState();
 }
 
-class _MobileShellState extends ConsumerState<_MobileShell> {
+class _MobileShellState extends ConsumerState<_MobileShell>
+    with WidgetsBindingObserver {
   Timer? _pendingRefreshTimer;
   bool _isSyncing = false;
 
@@ -754,6 +755,7 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (_isAndroid) {
       // Rafraîchit le compteur d'opérations en attente toutes les 10 secondes.
       _pendingRefreshTimer = Timer.periodic(
@@ -765,8 +767,17 @@ class _MobileShellState extends ConsumerState<_MobileShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pendingRefreshTimer?.cancel();
     super.dispose();
+  }
+
+  /// Recharge la config dès que l'app revient au premier plan.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(settingsProvider.notifier).reload();
+    }
   }
 
   void _showPaperSizeSheet(BuildContext context, WidgetRef ref) {
