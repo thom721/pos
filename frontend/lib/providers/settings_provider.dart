@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
+import 'package:pos_connect/providers/license_provider.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 
@@ -283,10 +284,17 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   void _startSyncTimer() {
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-      if (_ref.read(authProvider).user != null) {
-        _load();
-      }
+      _refreshAll();
     });
+  }
+
+  /// Rafraîchit en arrière-plan : config, rôles utilisateur, licence et tenant.
+  Future<void> _refreshAll() async {
+    if (_ref.read(authProvider).user == null) return;
+    await _load();
+    await _ref.read(authProvider.notifier).refreshCurrentUser();
+    _ref.invalidate(licenseProvider);
+    _ref.invalidate(tenantProvider);
   }
 
   @override
@@ -409,8 +417,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     }
   }
 
-  /// Recharge la config depuis l'API (appelé par le cycle de sync auto).
-  Future<void> reload() => _load();
+  /// Recharge config + user + licence + tenant (appelé au resume de l'app).
+  Future<void> reload() => _refreshAll();
 
   Future<void> save(AppSettings settings) async {
     state = settings;

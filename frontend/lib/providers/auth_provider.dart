@@ -283,6 +283,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return 'Impossible de se connecter. Vérifiez votre connexion.';
   }
 
+  /// Rafraîchit les rôles et permissions depuis le serveur sans re-login.
+  Future<void> refreshCurrentUser() async {
+    if (state.user == null) return;
+    try {
+      final res = await dio.get('/api/users/me');
+      final data = res.data as Map<String, dynamic>;
+      final merged = {...state.user!.toJson(), ...data};
+      final updated = UserModel.fromJson(merged);
+      await _repo.saveUser(merged);
+      state = state.copyWith(user: updated);
+    } catch (_) {
+      // Silencieux — hors ligne ou token expiré géré ailleurs
+    }
+  }
+
   void dismissPlanWarning() {
     // Cache uniquement l'état "masqué pour cette session" — on garde expires_at
     // pour que le décompte reste correct au prochain démarrage.

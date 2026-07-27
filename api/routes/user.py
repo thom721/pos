@@ -40,6 +40,26 @@ def list_users(
     return UserService(db, tenant_id=current_user.tenant_id).list()
 
 
+@router.get("/users/me")
+def get_me(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Rôles et permissions à jour de l'utilisateur connecté (sans USERS_READ)."""
+    return {
+        "id": current_user.id,
+        "fname": current_user.fname,
+        "lname": current_user.lname,
+        "username": current_user.username,
+        "email": current_user.email or "",
+        "is_active": current_user.is_active,
+        "roles": current_user.roles or [],
+        "permissions": _resolve_permissions(current_user),
+        "must_change_password": current_user.must_change_password,
+        "warehouse_id": current_user.warehouse_id,
+    }
+
+
 @router.get("/users/offline-sync")
 def list_users_offline_sync(
     warehouse_id: Optional[str] = None,
