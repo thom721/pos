@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from api.database import get_db
 from api.models.User import User
@@ -23,8 +23,12 @@ _EXCLUDED_STATUS = "cancelled"
 
 def _apply_date_filters(q, date_from, date_to):
     if date_from:
+        if date_from.tzinfo is None:
+            date_from = date_from.replace(tzinfo=timezone.utc)
         q = q.filter(Sale.created_at >= date_from)
     if date_to:
+        if date_to.tzinfo is None:
+            date_to = date_to.replace(tzinfo=timezone.utc)
         q = q.filter(Sale.created_at <= date_to)
     return q
 

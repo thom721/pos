@@ -158,12 +158,18 @@ class _ProductParams {
   int get hashCode => Object.hash(from, to, warehouseId, categoryId);
 }
 
+/// Haiti = UTC-5. Naive Haiti-local midnight → UTC ISO string.
+String _haitiMidnightToUtcIso(DateTime haitiDate) {
+  final utc = DateTime.utc(haitiDate.year, haitiDate.month, haitiDate.day, 5);
+  return utc.toIso8601String();
+}
+
 final _warehouseStatsProvider = FutureProvider.autoDispose
     .family<({_GlobalStat global, List<_WarehouseStat> byWarehouse}), _ReportParams>(
   (ref, params) async {
     final res = await dio.get('/api/reports/warehouses', queryParameters: {
-      'date_from': params.from.toIso8601String(),
-      'date_to':   params.to.toIso8601String(),
+      'date_from': _haitiMidnightToUtcIso(params.from),
+      'date_to':   _haitiMidnightToUtcIso(params.to),
     });
     final data = res.data as Map<String, dynamic>;
     return (
@@ -178,8 +184,8 @@ final _warehouseStatsProvider = FutureProvider.autoDispose
 final _topProductsProvider = FutureProvider.autoDispose
     .family<List<_ProductStat>, _ProductParams>((ref, params) async {
   final res = await dio.get('/api/reports/top-products', queryParameters: {
-    'date_from': params.from.toIso8601String(),
-    'date_to':   params.to.toIso8601String(),
+    'date_from': _haitiMidnightToUtcIso(params.from),
+    'date_to':   _haitiMidnightToUtcIso(params.to),
     'limit':     20,
     if (params.warehouseId != null) 'warehouse_id': params.warehouseId,
     if (params.categoryId  != null) 'category_id':  params.categoryId,
@@ -331,17 +337,16 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
             const SizedBox(height: 32),
 
             // ── Top produits ───────────────────────────────────────────────
-            Row(
+            _SectionTitle(
+              icon: Icons.inventory_2_rounded,
+              title: 'Stock écoulé — Top produits',
+              subtitle: 'Produits les plus vendus sur la période',
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                Expanded(
-                  child: _SectionTitle(
-                    icon: Icons.inventory_2_rounded,
-                    title: 'Stock écoulé — Top produits',
-                    subtitle: 'Produits les plus vendus sur la période',
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Filtre catégorie
                 ref.watch(_categoriesProvider).maybeWhen(
                   data: (cats) => _CategoryFilterDropdown(
                     categories: cats,
@@ -350,8 +355,6 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
                   ),
                   orElse: () => const SizedBox.shrink(),
                 ),
-                const SizedBox(width: 8),
-                // Filtre dépôt
                 warehousesAsync.maybeWhen(
                   data: (warehouses) => _WarehouseFilterDropdown(
                     warehouses: warehouses,

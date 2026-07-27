@@ -107,17 +107,23 @@ class ReportParams {
 
 final reportParamsProvider = StateProvider((ref) => const ReportParams());
 
+/// Haiti = UTC-5. A naive Haiti-local midnight → UTC ISO string.
+/// Midnight Haiti (00:00) = 05:00 UTC of the same date.
+String _haitiMidnightToUtcIso(DateTime haitiDate) {
+  final utc = DateTime.utc(haitiDate.year, haitiDate.month, haitiDate.day, 5);
+  return utc.toIso8601String();
+}
+
 final reportSalesProvider =
     FutureProvider.autoDispose<List<SaleModel>>((ref) async {
   final params = ref.watch(reportParamsProvider);
   final (from, to) = params.effectiveRange;
-  final dateFmt = DateFormat('yyyy-MM-dd');
   const limit = 100;
 
   final baseQuery = {
     'limit': limit,
-    'date_from': dateFmt.format(from),
-    'date_to': dateFmt.format(to),
+    'date_from': _haitiMidnightToUtcIso(from),
+    'date_to': _haitiMidnightToUtcIso(to),
   };
 
   // First page — also tells us the total page count
@@ -353,87 +359,111 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Toolbar: period label + user filter + print button ──
-          Row(
-            children: [
-              // Period label
-              Expanded(
-                child: Text(
-                  _periodLabel(params),
-                  style: const TextStyle(
-                      fontSize: 13, color: AppColors.textSecondary),
-                ),
-              ),
+          LayoutBuilder(builder: (_, constraints) {
+            final narrow = constraints.maxWidth < 520;
 
-              // User filter — hidden for cashiers (backend enforces their own data)
-              if (!widget.isCashier && uniqueUsers.isNotEmpty) ...[
-                Container(
-                  height: 36,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: params.userFilter != null
-                          ? AppColors.primary
-                          : AppColors.divider,
+            final periodLabel = Text(
+              _periodLabel(params),
+              style: const TextStyle(
+                  fontSize: 13, color: AppColors.textSecondary),
+            );
+
+            final userFilter = !widget.isCashier && uniqueUsers.isNotEmpty
+                ? Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: params.userFilter != null
+                            ? AppColors.primary
+                            : AppColors.divider,
+                      ),
                     ),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String?>(
-                      value: params.userFilter,
-                      hint: const Text('Tous les caissiers',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary)),
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.textPrimary),
-                      icon: const Icon(Icons.arrow_drop_down,
-                          size: 18, color: AppColors.textSecondary),
-                      items: [
-                        const DropdownMenuItem<String?>(
-                          value: null,
-                          child: Text('Tous les caissiers',
-                              style: TextStyle(fontSize: 12)),
-                        ),
-                        ...uniqueUsers.map((u) => DropdownMenuItem<String?>(
-                              value: u,
-                              child: Text(u, style: const TextStyle(fontSize: 12)),
-                            )),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String?>(
+                        value: params.userFilter,
+                        hint: const Text('Tous les caissiers',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary)),
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textPrimary),
+                        icon: const Icon(Icons.arrow_drop_down,
+                            size: 18, color: AppColors.textSecondary),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('Tous les caissiers',
+                                style: TextStyle(fontSize: 12)),
+                          ),
+                          ...uniqueUsers.map((u) => DropdownMenuItem<String?>(
+                                value: u,
+                                child: Text(u,
+                                    style: const TextStyle(fontSize: 12)),
+                              )),
+                        ],
+                        onChanged: (user) {
+                          ref.read(reportParamsProvider.notifier).state =
+                              ReportParams(
+                            period: params.period,
+                            customFrom: params.customFrom,
+                            customTo: params.customTo,
+                            userFilter: user,
+                          );
+                        },
+                      ),
+                    ),
+                  )
+                : null;
+
+            final printBtn = SizedBox(
+              height: 36,
+              child: ElevatedButton.icon(
+                onPressed: () => showDialog(
+                  context: context,
+                  builder: (_) => _PrintConfigDialog(currentParams: params),
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  textStyle: const TextStyle(fontSize: 13),
+                ),
+                icon: const Icon(Icons.print_rounded, size: 16),
+                label: const Text('Imprimer PDF'),
+              ),
+            );
+
+            if (narrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  periodLabel,
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      if (userFilter != null) ...[
+                        Expanded(child: userFilter),
+                        const SizedBox(width: 8),
                       ],
-                      onChanged: (user) {
-                        ref.read(reportParamsProvider.notifier).state =
-                            ReportParams(
-                          period: params.period,
-                          customFrom: params.customFrom,
-                          customTo: params.customTo,
-                          userFilter: user,
-                        );
-                      },
-                    ),
+                      printBtn,
+                    ],
                   ),
-                ),
-                const SizedBox(width: 10),
-              ],
+                ],
+              );
+            }
 
-              // Print button — opens config dialog
-              SizedBox(
-                height: 36,
-                child: ElevatedButton.icon(
-                  onPressed: () => showDialog(
-                    context: context,
-                    builder: (_) =>
-                        _PrintConfigDialog(currentParams: params),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    textStyle: const TextStyle(fontSize: 13),
-                  ),
-                  icon: const Icon(Icons.print_rounded, size: 16),
-                  label: const Text('Imprimer PDF'),
-                ),
-              ),
-            ],
-          ),
+            return Row(
+              children: [
+                Expanded(child: periodLabel),
+                if (userFilter != null) ...[
+                  userFilter,
+                  const SizedBox(width: 10),
+                ],
+                printBtn,
+              ],
+            );
+          }),
           const SizedBox(height: 16),
 
           // ── KPI cards ────────────────────────────────────────────
@@ -510,7 +540,7 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 640),
+                constraints: const BoxConstraints(minWidth: 820),
                 child: Container(
                   decoration: BoxDecoration(
                     color: AppColors.surface,
@@ -520,13 +550,15 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
                   clipBehavior: Clip.hardEdge,
                   child: Table(
                     columnWidths: const {
-                      0: FixedColumnWidth(110), // Référence
-                      1: FixedColumnWidth(90),  // Date
-                      2: FixedColumnWidth(120), // Client
-                      3: FixedColumnWidth(100), // Caissier
+                      0: FixedColumnWidth(100), // Référence
+                      1: FixedColumnWidth(85),  // Date
+                      2: FixedColumnWidth(110), // Client
+                      3: FixedColumnWidth(95),  // Caissier
                       4: FixedColumnWidth(80),  // Total
-                      5: FixedColumnWidth(80),  // Payé
-                      6: FixedColumnWidth(70),  // Statut
+                      5: FixedColumnWidth(78),  // Payé
+                      6: FixedColumnWidth(72),  // Remise
+                      7: FixedColumnWidth(72),  // Crédit
+                      8: FixedColumnWidth(68),  // Statut
                     },
                     children: [
                       _tableHeader([
@@ -536,17 +568,25 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
                         'Caissier',
                         'Total',
                         'Payé',
-                        'Statut'
+                        'Remise',
+                        'Crédit',
+                        'Statut',
                       ]),
-                      ...sales.map((s) => _tableRow([
-                            s.reference,
-                            _dtFmt.format(s.createdAt),
-                            s.customerName ?? 'Comptoir',
-                            s.userFullName ?? '-',
-                            fmt.format(s.finalAmount),
-                            fmt.format(s.paidAmount),
-                            _statusLabel(s.status),
-                          ], statusColor: _statusColor(s.status))),
+                      ...sales.map((s) {
+                        final disc = s.discount + s.totalItemsDiscount;
+                        final credit = s.balance.clamp(0.0, double.maxFinite);
+                        return _tableRow([
+                          s.reference,
+                          _dtFmt.format(s.createdAt),
+                          s.customerName ?? 'Comptoir',
+                          s.userFullName ?? '-',
+                          fmt.format(s.finalAmount),
+                          fmt.format(s.paidAmount),
+                          disc > 0 ? fmt.format(disc) : '—',
+                          credit > 0 ? fmt.format(credit) : '—',
+                          _statusLabel(s.status),
+                        ], statusColor: _statusColor(s.status));
+                      }),
                     ],
                   ),
                 ),
@@ -629,13 +669,12 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
 // ── Print config dialog ────────────────────────────────────────────────────
 
 Future<List<SaleModel>> _fetchSalesForRange(DateTime from, DateTime to) async {
-  final dateFmt = DateFormat('yyyy-MM-dd');
   const limit = 100;
 
   final baseQuery = {
     'limit': limit,
-    'date_from': dateFmt.format(from),
-    'date_to': dateFmt.format(to),
+    'date_from': _haitiMidnightToUtcIso(from),
+    'date_to': _haitiMidnightToUtcIso(to),
   };
 
   final first = await dio.get('/api/sales/',
@@ -854,10 +893,12 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
     final buf = StringBuffer();
     buf.writeln([
       'Date', 'Référence', 'Caissier', 'Client', 'Statut',
-      'Total ($sym)', 'Encaissé ($sym)', 'Remise ($sym)',
+      'Total ($sym)', 'Encaissé ($sym)', 'Remise ($sym)', 'Crédit ($sym)',
     ].map((h) => '"$h"').join(sep));
 
     for (final s in sales) {
+      final disc   = s.discount + s.totalItemsDiscount;
+      final credit = s.balance.clamp(0.0, double.maxFinite);
       buf.writeln([
         '"${dateFmt.format(s.createdAt)}"',
         '"${s.reference}"',
@@ -866,7 +907,8 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
         '"${_statusFr(s.status)}"',
         s.finalAmount.toStringAsFixed(2),
         s.paidAmount.toStringAsFixed(2),
-        s.discount.toStringAsFixed(2),
+        disc.toStringAsFixed(2),
+        credit.toStringAsFixed(2),
       ].join(sep));
     }
     return buf.toString();
@@ -1226,22 +1268,26 @@ Future<void> _generatePdf(
                 font: bold, fontSize: 7, color: PdfColors.white),
             cellStyle: const pw.TextStyle(fontSize: 7),
             cellPadding: const pw.EdgeInsets.symmetric(
-                horizontal: 6, vertical: 4),
+                horizontal: 5, vertical: 4),
             cellAlignments: {
               4: pw.Alignment.centerRight,
               5: pw.Alignment.centerRight,
-              6: pw.Alignment.center,
+              6: pw.Alignment.centerRight,
+              7: pw.Alignment.centerRight,
+              8: pw.Alignment.center,
             },
             oddRowDecoration:
                 const pw.BoxDecoration(color: PdfColors.grey50),
             columnWidths: {
-              0: const pw.FlexColumnWidth(1.3),
-              1: const pw.FlexColumnWidth(1.5),
-              2: const pw.FlexColumnWidth(1.2),
-              3: const pw.FlexColumnWidth(1.2),
-              4: const pw.FlexColumnWidth(1.3),
-              5: const pw.FlexColumnWidth(1.2),
-              6: const pw.FlexColumnWidth(0.8),
+              0: const pw.FlexColumnWidth(1.2),
+              1: const pw.FlexColumnWidth(1.4),
+              2: const pw.FlexColumnWidth(1.1),
+              3: const pw.FlexColumnWidth(1.1),
+              4: const pw.FlexColumnWidth(1.2),
+              5: const pw.FlexColumnWidth(1.1),
+              6: const pw.FlexColumnWidth(1.0),
+              7: const pw.FlexColumnWidth(1.0),
+              8: const pw.FlexColumnWidth(0.7),
             },
             headers: [
               'Référence',
@@ -1250,18 +1296,26 @@ Future<void> _generatePdf(
               'Caissier',
               'Total',
               'Payé',
-              'Statut'
+              'Remise',
+              'Crédit',
+              'Statut',
             ],
             data: sales
-                .map((s) => [
-                      s.reference,
-                      dtFmt.format(s.createdAt),
-                      s.customerName ?? 'Comptoir',
-                      s.userFullName ?? '-',
-                      mon(s.finalAmount),
-                      mon(s.paidAmount),
-                      statusFr(s.status),
-                    ])
+                .map((s) {
+                  final disc   = s.discount + s.totalItemsDiscount;
+                  final credit = s.balance.clamp(0.0, double.maxFinite);
+                  return [
+                    s.reference,
+                    dtFmt.format(s.createdAt),
+                    s.customerName ?? 'Comptoir',
+                    s.userFullName ?? '-',
+                    mon(s.finalAmount),
+                    mon(s.paidAmount),
+                    disc > 0 ? mon(disc) : '—',
+                    credit > 0 ? mon(credit) : '—',
+                    statusFr(s.status),
+                  ];
+                })
                 .toList(),
           ),
         ] else ...[
