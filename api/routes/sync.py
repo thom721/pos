@@ -62,6 +62,7 @@ from api.models.ModifierGroup import ModifierGroup, ModifierOption
 from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
 from api.models.HousekeepingTask import HousekeepingTask
 from api.models.AppConfig import AppConfig
+from api.models.Discount import Discount
 
 router = APIRouter(prefix="/api/sync", tags=["Sync"])
 _log = logging.getLogger("pos.sync")
@@ -79,6 +80,7 @@ _MODEL_MAP: dict[str, Any] = {
     "customer":               Customer,
     "user":                   User,
     "pos_register":           PosRegister,
+    "discount":               Discount,
     # Sales & payments
     "sale":                   Sale,
     "sale_item":              SaleItem,
