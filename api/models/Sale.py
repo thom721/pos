@@ -6,11 +6,12 @@ from .base import UUIDBase
 
 
 class SaleStatus(enum.Enum):
-    unpaid  = "UNPAID"
-    paid    = "PAID"
-    partial = "partial"
-    credit  = "credit"
-    pending = "pending"
+    unpaid    = "UNPAID"
+    paid      = "PAID"
+    partial   = "PARTIAL"
+    cancelled = "CANCELLED"
+    credit    = "CREDIT"
+    pending   = "PENDING"
 
 
 class Sale(UUIDBase):
@@ -22,15 +23,20 @@ class Sale(UUIDBase):
     warehouse_id = Column(String(36), ForeignKey("warehouses.id"), nullable=True, index=True)
     reference    = Column(String(255), nullable=False)
     total_amount = Column(Numeric(12, 2), nullable=False)
-    discount     = Column(Numeric(12, 2), default=0)
+    discount     = Column(Numeric(12, 2), default=0, nullable=False)
+    discount_id  = Column(String(36), ForeignKey("discounts.id"), nullable=True)
     final_amount = Column(Numeric(12, 2), default=0)
     paid_amount  = Column(Numeric(12, 2), default=0)
-    status       = Column(Enum(SaleStatus), default=SaleStatus.unpaid)
+    status       = Column(
+        Enum(SaleStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=SaleStatus.unpaid,
+    )
 
-    customer  = relationship("Customer",  back_populates="sales")
-    user      = relationship("User",      back_populates="sales")
-    warehouse = relationship("Warehouse", back_populates="sales")
-    items     = relationship("SaleItem",  back_populates="sale")
+    customer        = relationship("Customer",  back_populates="sales")
+    user            = relationship("User",      back_populates="sales")
+    warehouse       = relationship("Warehouse", back_populates="sales")
+    items           = relationship("SaleItem",  back_populates="sale")
+    discount_catalog = relationship("Discount", foreign_keys=[discount_id])
 
     payments = relationship(
         "Payment",

@@ -12,6 +12,28 @@ import 'package:pos_connect/providers/warehouse_provider.dart';
 
 const _kKeyPrefix = 'pos_app_settings';
 
+/// Colonnes disponibles pour le tableau "Détail des ventes" (écran + CSV + PDF).
+const kReportColumnDefs = [
+  ('reference', 'Référence'),
+  ('date', 'Date'),
+  ('client', 'Client'),
+  ('cashier', 'Caissier'),
+  ('total', 'Total'),
+  ('paid', 'Payé'),
+  ('discount', 'Remise'),
+  ('credit', 'Crédit'),
+  ('status', 'Statut'),
+  ('category', 'Catégorie'),
+  ('product', 'Produit'),
+];
+
+/// État actuel préservé pour qui n'a jamais touché ce réglage —
+/// catégorie/produit désactivés par défaut.
+const kDefaultReportColumns = [
+  'reference', 'date', 'client', 'cashier', 'total', 'paid',
+  'discount', 'credit', 'status',
+];
+
 class AppSettings {
   final String businessName;
   final String businessType; // commerce | restaurant | business | hotel
@@ -44,6 +66,8 @@ class AppSettings {
   // Règles métier
   final bool allowSaleEdit;      // Modifier une vente après enregistrement
   final bool allowCashierCredit; // Caissier peut créer une dette (paiement partiel)
+  // Colonnes affichées dans le tableau "Détail des ventes" (écran + CSV + PDF)
+  final List<String> reportColumns;
 
   const AppSettings({
     this.businessName = 'Mon Commerce',
@@ -70,6 +94,7 @@ class AppSettings {
     this.hotelCheckinFields = const [],
     this.allowSaleEdit = false,
     this.allowCashierCredit = false,
+    this.reportColumns = kDefaultReportColumns,
   });
 
   AppSettings copyWith({
@@ -97,6 +122,7 @@ class AppSettings {
     List<Map<String, dynamic>>? hotelCheckinFields,
     bool? allowSaleEdit,
     bool? allowCashierCredit,
+    List<String>? reportColumns,
   }) =>
       AppSettings(
         businessName: businessName ?? this.businessName,
@@ -123,6 +149,7 @@ class AppSettings {
         hotelCheckinFields: hotelCheckinFields ?? this.hotelCheckinFields,
         allowSaleEdit: allowSaleEdit ?? this.allowSaleEdit,
         allowCashierCredit: allowCashierCredit ?? this.allowCashierCredit,
+        reportColumns: reportColumns ?? this.reportColumns,
       );
 
   // Serialize to API (snake_case)
@@ -156,6 +183,7 @@ class AppSettings {
               .toList(),
         'allow_sale_edit':      allowSaleEdit,
         'allow_cashier_credit': allowCashierCredit,
+        'report_columns': reportColumns,
       };
 
   // Parse from API response (snake_case)
@@ -182,7 +210,13 @@ class AppSettings {
         hotelCheckinFields: _parseCheckinFields(j['hotel_checkin_fields']),
         allowSaleEdit:      j['allow_sale_edit']      as bool? ?? false,
         allowCashierCredit: j['allow_cashier_credit'] as bool? ?? false,
+        reportColumns: _parseReportColumns(j['report_columns']),
       );
+
+  static List<String> _parseReportColumns(dynamic raw) {
+    if (raw == null || raw is! List || raw.isEmpty) return kDefaultReportColumns;
+    return raw.map((e) => e.toString()).toList();
+  }
 
   static List<Map<String, dynamic>> _parseCheckinFields(dynamic raw) {
     if (raw == null) return [];
@@ -223,6 +257,7 @@ class AppSettings {
         'hotelCheckinFields': hotelCheckinFields,
         'allowSaleEdit':      allowSaleEdit,
         'allowCashierCredit': allowCashierCredit,
+        'reportColumns': reportColumns,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -250,6 +285,7 @@ class AppSettings {
         hotelCheckinFields: _parseCheckinFields(j['hotelCheckinFields']),
         allowSaleEdit:      j['allowSaleEdit']      as bool? ?? false,
         allowCashierCredit: j['allowCashierCredit'] as bool? ?? false,
+        reportColumns: _parseReportColumns(j['reportColumns']),
       );
 }
 

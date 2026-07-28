@@ -589,6 +589,8 @@ class _StatsData {
   double get totalRevenue => sales.fold(0.0, (s, e) => s + e.finalAmount);
   double get totalPaid    => sales.fold(0.0, (s, e) => s + e.paidAmount);
   double get avgBasket    => sales.isEmpty ? 0 : totalRevenue / sales.length;
+  double get totalDiscount => sales.fold(0.0,
+      (s, e) => s + e.discount + e.totalItemsDiscount + e.totalCatalogItemDiscount);
 }
 
 // ── Screen ─────────────────────────────────────────────────────────────────
@@ -889,6 +891,8 @@ class _KpiRow extends StatelessWidget {
             icon: Icons.shopping_cart_rounded, color: AppColors.info),
         _Kpi(label: 'Nb transactions', value: '${data.sales.length}',
             icon: Icons.receipt_rounded, color: AppColors.warning),
+        _Kpi(label: 'Rabais accordés', value: fmt.format(data.totalDiscount),
+            icon: Icons.sell_outlined, color: AppColors.error),
       ],
     );
   }

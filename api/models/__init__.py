@@ -6,6 +6,7 @@ from api.models.CashierSession import CashierSession
 from api.models.OfflineSyncQueue import OfflineSyncQueue
 from api.models.User import User
 from api.models.Category import Category
+from api.models.Discount import Discount
 from api.models.Supplier import Supplier
 from api.models.Product import Product
 from api.models.Customer import Customer

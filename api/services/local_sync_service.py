@@ -20,6 +20,7 @@ from api.core.config import settings
 from api.core.dt_coerce import coerce_datetimes as _coerce_dt_shared, now_local
 from api.models.SyncState import SyncState
 from api.models.Category import Category
+from api.models.Discount import Discount
 from api.models.Product import Product
 from api.models.Customer import Customer
 from api.models.Supplier import Supplier
@@ -65,6 +66,7 @@ SYNC_ENTITIES: list[dict] = [
     # qui doit remonter vers le cloud pour être visible partout.
     {"type": "warehouse",              "model": Warehouse,            "direction": "both"},
     {"type": "category",               "model": Category,             "direction": "both"},
+    {"type": "discount",               "model": Discount,             "direction": "both"},
     {"type": "supplier",               "model": Supplier,             "direction": "both"},
     {"type": "product",                "model": Product,              "direction": "both"},
     {"type": "customer",               "model": Customer,             "direction": "both"},
@@ -380,7 +382,7 @@ def _run_sync_inner(db: Session) -> dict:
             for rec in records:
                 existing = db.get(model, rec["id"])
                 if existing is None:
-                    for unique_col in ("username", "slug", "reference"):
+                    for unique_col in ("username", "slug", "reference", "email"):
                         if unique_col in col_names and rec.get(unique_col):
                             existing = db.query(model).filter(
                                 getattr(model, unique_col) == rec[unique_col]

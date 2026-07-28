@@ -271,13 +271,30 @@ class BluetoothPrintService {
     dash();
 
     // ── Totaux ─────────────────────────────────────────────────────────────
-    if (sale.discount > 0) {
+    final itemsDisc = sale.totalItemsDiscount;
+    final catalogItemsDisc = sale.totalCatalogItemDiscount;
+    final hasDisc = itemsDisc > 0.001 || catalogItemsDisc > 0.001 || sale.discount > 0.001;
+    if (hasDisc) {
       text('Sous-total'.padRight(labelW) +
-          '$sym ${numFmt.format(sale.totalAmount)}'.padLeft(16));
+          '$sym ${numFmt.format(sale.totalAmount + itemsDisc)}'.padLeft(16));
       nl();
-      text('Remise'.padRight(labelW) +
-          '-$sym ${numFmt.format(sale.discount)}'.padLeft(16));
-      nl();
+      if (itemsDisc > 0.001) {
+        text('Remises articles'.padRight(labelW) +
+            '-$sym ${numFmt.format(itemsDisc)}'.padLeft(16));
+        nl();
+      }
+      if (catalogItemsDisc > 0.001) {
+        text('Rabais articles'.padRight(labelW) +
+            '-$sym ${numFmt.format(catalogItemsDisc)}'.padLeft(16));
+        nl();
+      }
+      if (sale.discount > 0.001) {
+        var label = sale.discountName != null ? 'Remise (${sale.discountName})' : 'Remise';
+        if (label.length > labelW) label = label.substring(0, labelW);
+        text(label.padRight(labelW) +
+            '-$sym ${numFmt.format(sale.discount)}'.padLeft(16));
+        nl();
+      }
     }
     esc([0x1B, 0x45, 0x01]);
     text('TOTAL'.padRight(labelW) +

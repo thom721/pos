@@ -22,6 +22,7 @@ from api.database import get_db, engine, Base
 from api.models.User import User
 from api.models.Tenant import Tenant
 from api.services.auth import get_password_hash
+from api.services.user_service import compute_offline_hash
 from api.core.config import settings, write_ini_config
 from api.core.dt_coerce import coerce_datetimes as _coerce_dt
 
@@ -903,6 +904,7 @@ def connect_tenant(data: ConnectTenantRequest):
             email=data.email,
             phone=None,
             password=get_password_hash(data.password),
+            offline_hash=compute_offline_hash(data.email, data.password),
             roles=["admin"],
             permissions=["all"],
             must_change_password=False,

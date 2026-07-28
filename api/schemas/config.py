@@ -24,8 +24,9 @@ class ConfigRead(BaseModel):
     hotel_checkin_fields: Optional[list] = None
     allow_sale_edit:      bool = False
     allow_cashier_credit: bool = False
+    report_columns: Optional[list] = None
 
-    @field_validator('hotel_checkin_fields', mode='before')
+    @field_validator('hotel_checkin_fields', 'report_columns', mode='before')
     @classmethod
     def _parse_checkin(cls, v):
         if isinstance(v, str):
@@ -60,3 +61,4 @@ class ConfigUpdate(BaseModel):
     hotel_checkin_fields: Optional[list] = None
     allow_sale_edit:      Optional[bool] = None
     allow_cashier_credit: Optional[bool] = None
+    report_columns: Optional[list] = None

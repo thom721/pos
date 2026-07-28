@@ -15,8 +15,10 @@ import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
+import 'package:pos_connect/data/models/discount_model.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
+import 'package:pos_connect/providers/discount_provider.dart';
 import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
@@ -280,13 +282,37 @@ class _ReceiptPreview extends StatelessWidget {
                 ),
               )),
           const Divider(height: 20),
-          if (sale.discount > 0) ...[
-            _total('Sous-total', _fmt.format(sale.totalAmount), lbl, val),
-            _total('Remise', '-${_fmt.format(sale.discount)}', lbl,
-                const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.warning,
-                    fontWeight: FontWeight.w500)),
+          if (sale.totalItemsDiscount > 0 ||
+              sale.totalCatalogItemDiscount > 0 ||
+              sale.discount > 0) ...[
+            _total('Sous-total',
+                _fmt.format(sale.totalAmount + sale.totalItemsDiscount),
+                lbl, val),
+            if (sale.totalItemsDiscount > 0)
+              _total('Remises articles', '-${_fmt.format(sale.totalItemsDiscount)}',
+                  lbl,
+                  const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.warning,
+                      fontWeight: FontWeight.w500)),
+            if (sale.totalCatalogItemDiscount > 0)
+              _total('Rabais articles (catalogue)',
+                  '-${_fmt.format(sale.totalCatalogItemDiscount)}', lbl,
+                  const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.success,
+                      fontWeight: FontWeight.w500)),
+            if (sale.discount > 0)
+              _total(
+                  sale.discountName != null
+                      ? 'Remise caisse (${sale.discountName})'
+                      : 'Remise caisse',
+                  '-${_fmt.format(sale.discount)}',
+                  lbl,
+                  const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.error,
+                      fontWeight: FontWeight.w500)),
           ],
           _total('Total', _fmt.format(sale.finalAmount), lbl, big),
           const SizedBox(height: 4),
@@ -1265,6 +1291,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     final drafts = ref.watch(draftsProvider);
     final isEdit = pos.isEditMode;
     final canDiscount = ref.watch(hasPermissionProvider(Perm.salesDiscount));
+    final discounts = ref.watch(discountsProvider).valueOrNull ?? const <DiscountModel>[];
 
     // Quand le dépôt actif se charge (null → valeur), re-vérifier la session
     // avec le warehouse_id correct pour détecter les sessions d'un autre business.
@@ -1279,13 +1306,14 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         // Réserve au minimum 160dp pour la liste panier sur mobile, 100dp sinon
         final minCartH = context.isMobile ? 160.0 : 100.0;
         final paymentMaxH = (constraints.maxHeight - 48 - minCartH).clamp(150.0, 420.0);
-        return _buildCart(context, pos, notifier, drafts, isEdit, paymentMaxH, canDiscount);
+        return _buildCart(context, pos, notifier, drafts, isEdit, paymentMaxH, canDiscount, discounts);
       },
     );
   }
 
   Widget _buildCart(BuildContext context, PosState pos, PosNotifier notifier,
-      List<DraftCart> drafts, bool isEdit, double paymentMaxH, bool canDiscount) {
+      List<DraftCart> drafts, bool isEdit, double paymentMaxH, bool canDiscount,
+      List<DiscountModel> discounts) {
     return Column(
       children: [
         // ── Auto-print banner ─────────────────────────────────────────
@@ -1510,6 +1538,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                       itemBuilder: (context, i) => _CartItemTile(
                         item: pos.items[i],
                         notifier: notifier,
+                        discounts: discounts,
                       ),
                     ),
               // Floating action buttons (normal mode only)
@@ -1566,61 +1595,110 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
               _CustomerDropdown(),
               const SizedBox(height: 12),
 
-              // Remise caisse
-              Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        const Text('Remise caisse (HTG)',
-                            style: TextStyle(
-                                color: AppColors.textSecondary, fontSize: 13)),
-                        if (!canDiscount && !_discountUnlocked) ...[
+              // Remise caisse — rabais catalogue (prioritaire) ou saisie libre
+              if (pos.selectedDiscount != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.sell_outlined, size: 14, color: AppColors.success),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${pos.selectedDiscount!.name} (-${_fmt.format(pos.receiptDiscountAmount)})',
+                          style: const TextStyle(fontSize: 13, color: AppColors.success, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => notifier.applyReceiptDiscount(null),
+                        child: const Icon(Icons.close_rounded, size: 16, color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          const Text('Remise caisse (HTG)',
+                              style: TextStyle(
+                                  color: AppColors.textSecondary, fontSize: 13)),
+                          if (!canDiscount && !_discountUnlocked) ...[
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              onTap: () => _requestDiscountAuth(context, notifier),
+                              child: const Tooltip(
+                                message: 'Autorisation requise',
+                                child: Icon(Icons.lock_rounded,
+                                    size: 14, color: AppColors.textSecondary),
+                              ),
+                            ),
+                          ],
                           const SizedBox(width: 6),
-                          GestureDetector(
-                            onTap: () => _requestDiscountAuth(context, notifier),
+                          InkWell(
+                            onTap: () async {
+                              final result = await _selectDiscount(
+                                context,
+                                discounts: discounts,
+                                forItem: false,
+                              );
+                              if (result is DiscountModel) {
+                                notifier.applyReceiptDiscount(result);
+                              }
+                            },
                             child: const Tooltip(
-                              message: 'Autorisation requise',
-                              child: Icon(Icons.lock_rounded,
+                              message: 'Choisir un rabais du catalogue',
+                              child: Icon(Icons.sell_outlined,
                                   size: 14, color: AppColors.textSecondary),
                             ),
                           ),
                         ],
-                      ],
-                    ),
-                  ),
-                  SizedBox(
-                    width: 100,
-                    child: TextField(
-                      controller: _discountCtrl,
-                      enabled: canDiscount || _discountUnlocked,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(fontSize: 13),
-                      decoration: const InputDecoration(
-                        contentPadding: EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 8),
-                        isDense: true,
                       ),
-                      onChanged: (v) =>
-                          notifier.setDiscount(double.tryParse(v) ?? 0),
                     ),
-                  ),
-                ],
-              ),
+                    SizedBox(
+                      width: 100,
+                      child: TextField(
+                        controller: _discountCtrl,
+                        enabled: canDiscount || _discountUnlocked,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(fontSize: 13),
+                        decoration: const InputDecoration(
+                          contentPadding: EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                          isDense: true,
+                        ),
+                        onChanged: (v) =>
+                            notifier.setDiscount(double.tryParse(v) ?? 0),
+                      ),
+                    ),
+                  ],
+                ),
               const SizedBox(height: 8),
 
               // Totals
               _TotalRow('Sous-total', _fmt.format(pos.subtotal)),
               if (pos.itemsDiscount > 0)
                 _TotalRow(
-                  'Remises articles',
+                  'Remises articles (prix)',
                   '-${_fmt.format(pos.itemsDiscount)}',
                   color: AppColors.warning,
                 ),
-              if (pos.discount > 0)
+              if (pos.catalogItemDiscountTotal > 0)
+                _TotalRow(
+                  'Rabais articles (catalogue)',
+                  '-${_fmt.format(pos.catalogItemDiscountTotal)}',
+                  color: AppColors.success,
+                ),
+              if (pos.receiptDiscountAmount > 0)
                 _TotalRow(
                   'Remise caisse',
-                  '-${_fmt.format(pos.discount)}',
+                  '-${_fmt.format(pos.receiptDiscountAmount)}',
                   color: AppColors.error,
                 ),
               const Divider(height: 16),
@@ -2041,11 +2119,84 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
 }
 
 // ─── Cart item tile ───────────────────────────────────────────────────────────
+// Résultat distinct de "aucun choix" (fermeture du dialog) pour permettre de
+// retirer explicitement un rabais déjà sélectionné.
+const Object _clearDiscountSentinel = Object();
+
+Future<Object?> _selectDiscount(
+  BuildContext context, {
+  required List<DiscountModel> discounts,
+  required bool forItem,
+  DiscountModel? current,
+}) {
+  final filtered = discounts
+      .where((d) => d.isActive && (forItem ? d.appliesItem : d.appliesReceipt))
+      .toList();
+  return showDialog<Object?>(
+    context: context,
+    builder: (ctx) => SimpleDialog(
+      title: const Text('Choisir un rabais'),
+      children: [
+        if (current != null)
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, _clearDiscountSentinel),
+            child: const Row(
+              children: [
+                Icon(Icons.close_rounded, size: 18, color: AppColors.error),
+                SizedBox(width: 8),
+                Text('Retirer le rabais'),
+              ],
+            ),
+          ),
+        if (filtered.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('Aucun rabais disponible',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+        ...filtered.map((d) => SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, d),
+              child: Row(
+                children: [
+                  Expanded(child: Text(d.name)),
+                  Text(
+                    d.isPercentage
+                        ? '${d.value.toStringAsFixed(0)}%'
+                        : '${d.value.toStringAsFixed(0)} HTG',
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                  ),
+                ],
+              ),
+            )),
+      ],
+    ),
+  );
+}
+
 class _CartItemTile extends StatelessWidget {
   final CartItem item;
   final PosNotifier notifier;
+  final List<DiscountModel> discounts;
 
-  const _CartItemTile({required this.item, required this.notifier});
+  const _CartItemTile({
+    required this.item,
+    required this.notifier,
+    required this.discounts,
+  });
+
+  Future<void> _pickDiscount(BuildContext context) async {
+    final result = await _selectDiscount(
+      context,
+      discounts: discounts,
+      forItem: true,
+      current: item.catalogDiscount,
+    );
+    if (result == _clearDiscountSentinel) {
+      notifier.applyItemDiscount(item.product.id, null);
+    } else if (result is DiscountModel) {
+      notifier.applyItemDiscount(item.product.id, result);
+    }
+  }
 
   void _editPrice(BuildContext context) {
     final ctrl =
@@ -2141,12 +2292,43 @@ class _CartItemTile extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SizedBox(height: 2),
+                GestureDetector(
+                  onTap: () => _pickDiscount(context),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.sell_outlined,
+                        size: 11,
+                        color: item.catalogDiscount != null
+                            ? AppColors.success
+                            : AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        item.catalogDiscount != null
+                            ? '${item.catalogDiscount!.name} (-${_fmt.format(item.catalogDiscountAmount)})'
+                            : 'Rabais',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: item.catalogDiscount != null
+                              ? AppColors.success
+                              : AppColors.textSecondary,
+                          fontWeight: item.catalogDiscount != null
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
           const SizedBox(width: 8),
           Text(
-            _fmt.format(item.subtotal),
+            _fmt.format(item.subtotal - item.catalogDiscountAmount),
             style:
                 const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           ),

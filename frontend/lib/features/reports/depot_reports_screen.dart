@@ -61,13 +61,14 @@ class _WarehouseStat {
   final double margin;
   final int sales;
   final double items;
+  final double discount;
   final int rank;
 
   const _WarehouseStat({
     required this.id, required this.name, required this.isDefault,
     required this.isActive, required this.revenue, required this.profit,
     required this.margin, required this.sales, required this.items,
-    required this.rank,
+    required this.discount, required this.rank,
   });
 
   factory _WarehouseStat.fromJson(Map<String, dynamic> j) => _WarehouseStat(
@@ -80,25 +81,27 @@ class _WarehouseStat {
     margin:    (j['profit_margin'] as num?)?.toDouble() ?? 0,
     sales:     (j['total_sales']   as num?)?.toInt()    ?? 0,
     items:     (j['total_items_sold'] as num?)?.toDouble() ?? 0,
+    discount:  (j['total_discount'] as num?)?.toDouble() ?? 0,
     rank:      (j['rank'] as num?)?.toInt() ?? 0,
   );
 }
 
 class _GlobalStat {
-  final double revenue, profit, margin, items;
+  final double revenue, profit, margin, items, discount;
   final int sales;
 
   const _GlobalStat({
     required this.revenue, required this.profit, required this.margin,
-    required this.sales, required this.items,
+    required this.sales, required this.items, required this.discount,
   });
 
   factory _GlobalStat.fromJson(Map<String, dynamic> j) => _GlobalStat(
-    revenue: (j['total_revenue']    as num?)?.toDouble() ?? 0,
-    profit:  (j['total_profit']     as num?)?.toDouble() ?? 0,
-    margin:  (j['profit_margin']    as num?)?.toDouble() ?? 0,
-    sales:   (j['total_sales']      as num?)?.toInt()    ?? 0,
-    items:   (j['total_items_sold'] as num?)?.toDouble() ?? 0,
+    revenue:  (j['total_revenue']    as num?)?.toDouble() ?? 0,
+    profit:   (j['total_profit']     as num?)?.toDouble() ?? 0,
+    margin:   (j['profit_margin']    as num?)?.toDouble() ?? 0,
+    sales:    (j['total_sales']      as num?)?.toInt()    ?? 0,
+    items:    (j['total_items_sold'] as num?)?.toDouble() ?? 0,
+    discount: (j['total_discount']   as num?)?.toDouble() ?? 0,
   );
 }
 
@@ -461,14 +464,14 @@ class _GlobalSummary extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         LayoutBuilder(builder: (_, constraints) {
-          final cols = constraints.maxWidth > 700 ? 4 : 2;
+          final cols = constraints.maxWidth > 700 ? 5 : 2;
           return GridView.count(
             crossAxisCount: cols,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
-            childAspectRatio: cols == 4 ? 2.2 : 2.0,
+            childAspectRatio: cols == 5 ? 2.0 : 2.0,
             children: [
               _KpiCard(
                 label: 'Chiffre d\'affaires',
@@ -494,6 +497,12 @@ class _GlobalSummary extends StatelessWidget {
                 value: _formatQty(global.items),
                 icon: Icons.inventory_rounded,
                 color: AppColors.accent,
+              ),
+              _KpiCard(
+                label: 'Rabais accordés',
+                value: fmt.format(global.discount),
+                icon: Icons.sell_outlined,
+                color: AppColors.error,
               ),
             ],
           );
@@ -542,6 +551,8 @@ class _WarehouseRanking extends StatelessWidget {
                     tooltip: 'Nombre de transactions complétées'),
                 _th('Articles', flex: 2, right: true,
                     tooltip: 'Quantité totale d\'articles vendus'),
+                _th('Rabais', flex: 2, right: true,
+                    tooltip: 'Total des rabais accordés (ticket + article)'),
               ],
             ),
           ),
@@ -702,6 +713,16 @@ class _WarehouseRow extends StatelessWidget {
                     textAlign: TextAlign.right,
                     style: const TextStyle(
                         fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                ),
+                // Rabais
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    fmt.format(stat.discount),
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                        fontSize: 13, color: AppColors.error),
                   ),
                 ),
               ],

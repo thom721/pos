@@ -14,6 +14,9 @@ class SaleItem(UUIDBase):
     unit_price     = Column(Numeric(12, 2), nullable=False)
     original_price = Column(Numeric(12, 2), nullable=True)
     subtotal       = Column(Numeric(12, 2), nullable=False)
+    discount       = Column(Numeric(12, 2), default=0, nullable=False)
+    discount_id    = Column(String(36), ForeignKey("discounts.id"), nullable=True)
 
-    sale    = relationship("Sale",    back_populates="items")
-    product = relationship("Product")
+    sale             = relationship("Sale",     back_populates="items")
+    product          = relationship("Product")
+    discount_catalog = relationship("Discount", foreign_keys=[discount_id])

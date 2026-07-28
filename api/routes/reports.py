@@ -16,7 +16,7 @@ from api.core.permissions import P
 
 router = APIRouter(prefix="/api/reports", tags=["Reports"])
 
-_EXCLUDED_STATUS = "cancelled"
+_EXCLUDED_STATUS = "CANCELLED"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -58,6 +58,7 @@ def warehouse_stats(
             Sale.warehouse_id,
             func.count(Sale.id.distinct()).label("total_sales"),
             func.coalesce(func.sum(Sale.final_amount), 0).label("total_revenue"),
+            func.coalesce(func.sum(Sale.discount), 0).label("total_receipt_discount"),
         )
         .filter(Sale.tenant_id == tid, Sale.status != _EXCLUDED_STATUS)
     )
@@ -70,6 +71,7 @@ def warehouse_stats(
             Sale.warehouse_id,
             func.coalesce(func.sum(_profit_expr()), 0).label("total_profit"),
             func.coalesce(func.sum(SaleItem.quantity), 0).label("total_items"),
+            func.coalesce(func.sum(SaleItem.discount), 0).label("total_item_discount"),
         )
         .join(SaleItem, SaleItem.sale_id == Sale.id)
         .join(Product,  Product.id == SaleItem.product_id)
@@ -87,22 +89,27 @@ def warehouse_stats(
     )
 
     by_warehouse = []
-    g_revenue = g_profit = g_sales = g_items = 0.0
+    g_revenue = g_profit = g_sales = g_items = g_discount = 0.0
 
     for wh in warehouses:
         rev_row    = rev_by_wh.get(wh.id)
         profit_row = profit_by_wh.get(wh.id)
 
-        revenue = float(rev_row.total_revenue)    if rev_row    else 0.0
-        profit  = float(profit_row.total_profit)  if profit_row else 0.0
-        sales   = int(rev_row.total_sales)        if rev_row    else 0
-        items   = float(profit_row.total_items)   if profit_row else 0.0
+        revenue  = float(rev_row.total_revenue)             if rev_row    else 0.0
+        profit   = float(profit_row.total_profit)           if profit_row else 0.0
+        sales    = int(rev_row.total_sales)                 if rev_row    else 0
+        items    = float(profit_row.total_items)            if profit_row else 0.0
+        discount = (
+            (float(rev_row.total_receipt_discount) if rev_row else 0.0)
+            + (float(profit_row.total_item_discount) if profit_row else 0.0)
+        )
         margin  = round(profit / revenue * 100, 1) if revenue > 0 else 0.0
 
-        g_revenue += revenue
-        g_profit  += profit
-        g_sales   += sales
-        g_items   += items
+        g_revenue  += revenue
+        g_profit   += profit
+        g_sales    += sales
+        g_items    += items
+        g_discount += discount
 
         by_warehouse.append({
             "warehouse_id":    wh.id,
@@ -114,6 +121,7 @@ def warehouse_stats(
             "profit_margin":   margin,
             "total_sales":     sales,
             "total_items_sold": items,
+            "total_discount":  discount,
         })
 
     # Sort by revenue and add rank
@@ -130,6 +138,7 @@ def warehouse_stats(
             "profit_margin":    g_margin,
             "total_sales":      int(g_sales),
             "total_items_sold": g_items,
+            "total_discount":   g_discount,
         },
         "by_warehouse": by_warehouse,
     }

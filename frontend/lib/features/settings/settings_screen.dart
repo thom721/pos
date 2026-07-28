@@ -380,6 +380,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
             const SizedBox(height: 24),
 
+            // ── Affichage des rapports ──────────────────────────────────────
+            _SectionHeader(icon: Icons.view_column_rounded, title: 'Affichage des rapports'),
+            const SizedBox(height: 16),
+            _Card(
+              child: Column(
+                children: kReportColumnDefs.asMap().entries.map((entry) {
+                  final isLast = entry.key == kReportColumnDefs.length - 1;
+                  final col = entry.value;
+                  return Column(
+                    children: [
+                      CheckboxListTile(
+                        dense: true,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: Text(col.$2, style: const TextStyle(fontSize: 14)),
+                        value: settings.reportColumns.contains(col.$1),
+                        onChanged: (v) => notifier.save(settings.copyWith(
+                          reportColumns: v == true
+                              ? [...settings.reportColumns, col.$1]
+                              : settings.reportColumns
+                                  .where((k) => k != col.$1)
+                                  .toList(),
+                        )),
+                      ),
+                      if (!isLast) const Divider(height: 1),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
             // ── Reçu ─────────────────────────────────────────────────────
             _SectionHeader(icon: Icons.receipt_rounded, title: 'Reçu de caisse'),
             const SizedBox(height: 16),

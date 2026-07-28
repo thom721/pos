@@ -20,6 +20,10 @@ class SaleItemModel {
   final double subtotal;
   final String? productName;
   final double returnedQty;
+  final double catalogDiscount; // rabais catalogue appliqué à cette ligne
+  final String? discountId;
+  final String? discountName;
+  final String? categoryName;
 
   SaleItemModel({
     required this.id,
@@ -31,6 +35,10 @@ class SaleItemModel {
     this.originalPrice,
     this.productName,
     this.returnedQty = 0,
+    this.catalogDiscount = 0,
+    this.discountId,
+    this.discountName,
+    this.categoryName,
   });
 
   /// Nom à afficher : label (plat resto) > nom du produit > fallback
@@ -42,7 +50,7 @@ class SaleItemModel {
     return (originalPrice! - unitPrice) * quantity;
   }
 
-  bool get hasDiscount => itemDiscount > 0;
+  bool get hasDiscount => itemDiscount > 0 || catalogDiscount > 0;
 
   factory SaleItemModel.fromJson(Map<String, dynamic> json) => SaleItemModel(
         id: json['id']?.toString() ?? '',
@@ -56,6 +64,10 @@ class SaleItemModel {
         subtotal: double.tryParse(json['subtotal']?.toString() ?? '0') ?? 0,
         productName: json['product']?['name']?.toString(),
         returnedQty: double.tryParse(json['returned_qty']?.toString() ?? '0') ?? 0,
+        catalogDiscount: double.tryParse(json['discount']?.toString() ?? '0') ?? 0,
+        discountId: json['discount_id']?.toString(),
+        discountName: json['discount_catalog']?['name']?.toString(),
+        categoryName: json['product']?['category']?['name']?.toString(),
       );
 }
 
@@ -86,6 +98,8 @@ class SaleModel {
   final String reference;
   final double totalAmount;
   final double discount;
+  final String? discountId;
+  final String? discountName;
   final double finalAmount;
   final double paidAmount;
   final String status;
@@ -104,6 +118,8 @@ class SaleModel {
     required this.reference,
     required this.totalAmount,
     required this.discount,
+    this.discountId,
+    this.discountName,
     required this.finalAmount,
     required this.paidAmount,
     required this.status,
@@ -123,12 +139,32 @@ class SaleModel {
   // Remises par article (original_price > unit_price)
   double get totalItemsDiscount => items.fold(0.0, (s, i) => s + i.itemDiscount);
 
+  // Rabais catalogue par article (Discount appliqué à la ligne)
+  double get totalCatalogItemDiscount =>
+      items.fold(0.0, (s, i) => s + i.catalogDiscount);
+
+  // Noms distincts des articles / catégories de la vente (pour les rapports)
+  String get productNames => items
+      .map((i) => i.displayName)
+      .where((n) => n.isNotEmpty && n != '—')
+      .toSet()
+      .join(', ');
+
+  String get categoryNames => items
+      .map((i) => i.categoryName)
+      .whereType<String>()
+      .where((n) => n.isNotEmpty)
+      .toSet()
+      .join(', ');
+
   factory SaleModel.fromJson(Map<String, dynamic> json) => SaleModel(
         id: json['id']?.toString() ?? '',
         reference: json['reference']?.toString() ?? '',
         totalAmount:
             double.tryParse(json['total_amount']?.toString() ?? '0') ?? 0,
         discount: double.tryParse(json['discount']?.toString() ?? '0') ?? 0,
+        discountId: json['discount_id']?.toString(),
+        discountName: json['discount_catalog']?['name']?.toString(),
         finalAmount:
             double.tryParse(json['final_amount']?.toString() ?? '0') ?? 0,
         paidAmount:

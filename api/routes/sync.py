@@ -296,6 +296,12 @@ def redeem_installation_code(payload: RedeemCodeRequest, db: Session = Depends(g
     # via /api/sync/claim-warehouse (appelé par connect-tenant) — pas ici, sinon
     # le claim-warehouse suivant échoue toujours en 409 sur son propre claim.
 
+    from api.models.User import User
+    owner_user = db.query(User).filter(
+        User.email == tenant.owner_email,
+        User.tenant_id == tenant.id,
+    ).first()
+
     return {
         "sync_token":         _make_sync_token(tenant.id, payload.device_id, tenant.type),
         "tenant_id":          tenant.id,
@@ -311,6 +317,7 @@ def redeem_installation_code(payload: RedeemCodeRequest, db: Session = Depends(g
         "max_depots":         getattr(tenant, "max_depots", 1),
         "trial_ends_at":      tenant.trial_ends_at.isoformat() if getattr(tenant, "trial_ends_at", None) else None,
         "expires_in_days":    365,
+        "user_id":            owner_user.id if owner_user else "",
         "warehouses":         [{"id": wh.id, "name": wh.name, "is_default": wh.is_default}],
     }
 

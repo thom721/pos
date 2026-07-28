@@ -162,7 +162,8 @@ class ThermalPrinterService {
 
     // Totaux (col widths: 20 + 12 = 32)
     final itemsDisc = sale.totalItemsDiscount;
-    final hasDisc = itemsDisc > 0.001 || sale.discount > 0.001;
+    final catalogItemsDisc = sale.totalCatalogItemDiscount;
+    final hasDisc = itemsDisc > 0.001 || catalogItemsDisc > 0.001 || sale.discount > 0.001;
     if (hasDisc) {
       await SunmiPrinter.printRow(cols: [
         SunmiColumn(text: 'Sous-total', width: 20,
@@ -178,9 +179,21 @@ class ThermalPrinterService {
               style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
         ]);
       }
-      if (sale.discount > 0.001) {
+      if (catalogItemsDisc > 0.001) {
         await SunmiPrinter.printRow(cols: [
-          SunmiColumn(text: 'Remise caisse', width: 20,
+          SunmiColumn(text: 'Rabais catalogue', width: 20,
+              style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
+          SunmiColumn(text: '-$sym${fmt.format(catalogItemsDisc)}', width: 12,
+              style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
+        ]);
+      }
+      if (sale.discount > 0.001) {
+        var label = sale.discountName != null
+            ? 'Remise (${sale.discountName})'
+            : 'Remise caisse';
+        if (label.length > 20) label = '${label.substring(0, 19)}…';
+        await SunmiPrinter.printRow(cols: [
+          SunmiColumn(text: label, width: 20,
               style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
           SunmiColumn(text: '-$sym${fmt.format(sale.discount)}', width: 12,
               style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),

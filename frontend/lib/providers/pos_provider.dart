@@ -1,14 +1,22 @@
 import 'package:dio/dio.dart' show DioException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_connect/data/models/discount_model.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
 import 'package:pos_connect/providers/draft_provider.dart';
 
+double _computeDiscountAmount(DiscountModel discount, double base) {
+  if (base <= 0) return 0;
+  final amount = discount.isPercentage ? base * discount.value / 100 : discount.value;
+  return amount.clamp(0, base).toDouble();
+}
+
 class CartItem {
   final ProductModel product;
   double quantity;
   double? _customPrice;
+  DiscountModel? catalogDiscount; // rabais catalogue choisi pour cette ligne
 
   CartItem({required this.product, this.quantity = 1});
 
@@ -27,12 +35,19 @@ class CartItem {
     final diff = product.salePrice - unitPrice;
     return diff > 0 ? diff * quantity : 0;
   }
+
+  // Rabais catalogue appliqué à cette ligne (aperçu — le serveur recalcule)
+  double get catalogDiscountAmount {
+    final d = catalogDiscount;
+    return d == null ? 0 : _computeDiscountAmount(d, subtotal);
+  }
 }
 
 class PosState {
   final List<CartItem> items;
   final String? customerId;
   final double discount;
+  final DiscountModel? selectedDiscount; // rabais catalogue niveau ticket
   final double paidAmount;
   final String paymentMethod;
   final bool isProcessing;
@@ -45,6 +60,7 @@ class PosState {
     this.items = const [],
     this.customerId,
     this.discount = 0,
+    this.selectedDiscount,
     this.paidAmount = 0,
     this.paymentMethod = 'CASH',
     this.isProcessing = false,
@@ -61,11 +77,25 @@ class PosState {
   // Auto-calculated discounts from per-item price reductions
   double get itemsDiscount => items.fold(0, (s, i) => s + i.itemDiscount);
 
+  // Rabais catalogue choisis par article (aperçu — le serveur recalcule)
+  double get catalogItemDiscountTotal =>
+      items.fold(0, (s, i) => s + i.catalogDiscountAmount);
+
   // Displayed subtotal = catalog prices (before any discount)
   double get subtotal => catalogSubtotal;
 
-  // Final total = catalog - per-item discounts - global cash discount
-  double get total => catalogSubtotal - itemsDiscount - discount;
+  double get _baseForReceiptDiscount =>
+      catalogSubtotal - itemsDiscount - catalogItemDiscountTotal;
+
+  // Montant du rabais ticket effectif : catalogue choisi (priorité) sinon saisie libre
+  double get receiptDiscountAmount {
+    final d = selectedDiscount;
+    if (d != null) return _computeDiscountAmount(d, _baseForReceiptDiscount);
+    return discount;
+  }
+
+  // Final total = catalog - per-item discounts (prix + catalogue) - rabais ticket
+  double get total => _baseForReceiptDiscount - receiptDiscountAmount;
 
   double get balance => total - paidAmount;
 
@@ -73,6 +103,8 @@ class PosState {
     List<CartItem>? items,
     String? customerId,
     double? discount,
+    DiscountModel? selectedDiscount,
+    bool clearSelectedDiscount = false,
     double? paidAmount,
     String? paymentMethod,
     bool? isProcessing,
@@ -84,6 +116,8 @@ class PosState {
         items: items ?? this.items,
         customerId: customerId ?? this.customerId,
         discount: discount ?? this.discount,
+        selectedDiscount:
+            clearSelectedDiscount ? null : (selectedDiscount ?? this.selectedDiscount),
         paidAmount: paidAmount ?? this.paidAmount,
         paymentMethod: paymentMethod ?? this.paymentMethod,
         isProcessing: isProcessing ?? this.isProcessing,
@@ -137,7 +171,28 @@ class PosNotifier extends StateNotifier<PosState> {
     state = state.copyWith(items: updated);
   }
 
-  void setDiscount(double d) => state = state.copyWith(discount: d);
+  /// Rabais catalogue niveau ticket. Passer null pour retirer la sélection.
+  void applyReceiptDiscount(DiscountModel? discount) {
+    if (discount == null) {
+      state = state.copyWith(clearSelectedDiscount: true);
+    } else {
+      state = state.copyWith(selectedDiscount: discount);
+    }
+  }
+
+  /// Rabais catalogue sur une ligne précise. Passer null pour retirer.
+  void applyItemDiscount(String productId, DiscountModel? discount) {
+    final updated = state.items.map((i) {
+      if (i.product.id == productId) i.catalogDiscount = discount;
+      return i;
+    }).toList();
+    state = state.copyWith(items: updated);
+  }
+
+  // Saisie libre (soumise à la permission sales.discount) — annule le rabais
+  // catalogue sélectionné puisqu'elle le remplace.
+  void setDiscount(double d) =>
+      state = state.copyWith(discount: d, clearSelectedDiscount: true);
   void setPaidAmount(double a) => state = state.copyWith(paidAmount: a);
   void setPaymentMethod(String m) => state = state.copyWith(paymentMethod: m);
   void setCustomer(String? id) => state = state.copyWith(customerId: id);
@@ -160,7 +215,8 @@ class PosNotifier extends StateNotifier<PosState> {
       final data = await _repo.createSale(
         {
           'customer_id': state.customerId,
-          'discount': state.discount,
+          'discount': state.receiptDiscountAmount,
+          if (state.selectedDiscount != null) 'discount_id': state.selectedDiscount!.id,
           'paid_amount': state.paidAmount,
           'payment_method': state.paymentMethod,
           if (approvalCode != null && approvalCode.isNotEmpty)
@@ -174,6 +230,8 @@ class PosNotifier extends StateNotifier<PosState> {
                     'unit_price': i.unitPrice,
                     'original_price': i.product.salePrice,
                     'subtotal': i.subtotal,
+                    'discount': i.catalogDiscountAmount,
+                    if (i.catalogDiscount != null) 'discount_id': i.catalogDiscount!.id,
                   })
               .toList(),
         },
@@ -259,7 +317,8 @@ class PosNotifier extends StateNotifier<PosState> {
     try {
       final data = await _repo.updateSale(s.editingSale!.id, {
         'customer_id': s.customerId,
-        'discount': s.discount,
+        'discount': s.receiptDiscountAmount,
+        if (s.selectedDiscount != null) 'discount_id': s.selectedDiscount!.id,
         'payment_method': s.paymentMethod,
         'additional_payment': s.paidAmount,
         'items': s.items
@@ -268,6 +327,8 @@ class PosNotifier extends StateNotifier<PosState> {
                   'quantity': i.quantity,
                   'unit_price': i.unitPrice,
                   'subtotal': i.subtotal,
+                  'discount': i.catalogDiscountAmount,
+                  if (i.catalogDiscount != null) 'discount_id': i.catalogDiscount!.id,
                 })
             .toList(),
       });

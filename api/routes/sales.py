@@ -18,6 +18,24 @@ from api.services import audit_service
 router = APIRouter(prefix="/api/sales", tags=["Sales"])
 
 
+def _check_discount_permission(payload, current_user: User) -> None:
+    """
+    Un rabais choisi dans le catalogue (discount_id) est pré-approuvé — pas de
+    permission requise. Un montant/pourcentage libre (sans discount_id) reste
+    soumis à sales.discount, au niveau ticket comme au niveau article.
+    """
+    free_form = (payload.discount and payload.discount > 0 and not payload.discount_id) or any(
+        item.discount and item.discount > 0 and not item.discount_id
+        for item in payload.items
+    )
+    if free_form and not _has_perm(
+        getattr(current_user, 'permissions', None) or [],
+        getattr(current_user, 'roles', None) or [],
+        P.SALES_DISCOUNT,
+    ):
+        raise HTTPException(status_code=403, detail="Permission refusée : remise non autorisée")
+
+
 @router.post("/", status_code=201)
 def store_sale(
     payload: SaleCreate,
@@ -25,13 +43,7 @@ def store_sale(
     current_user: User = Depends(require_permission(P.SALES_CREATE)),
     _plan: None = Depends(require_active_plan),
 ):
-    if payload.discount and payload.discount > 0:
-        if not _has_perm(
-            getattr(current_user, 'permissions', None) or [],
-            getattr(current_user, 'roles', None) or [],
-            P.SALES_DISCOUNT,
-        ):
-            raise HTTPException(status_code=403, detail="Permission refusée : remise non autorisée")
+    _check_discount_permission(payload, current_user)
     sale = create_sale(db, payload, current_user.id, tenant_id=current_user.tenant_id)
     audit_service.log(
         db, user_id=current_user.id, tenant_id=current_user.tenant_id,
@@ -96,13 +108,7 @@ def update_sale_endpoint(
     current_user: User = Depends(require_permission(P.SALES_UPDATE)),
     _plan: None = Depends(require_active_plan),
 ):
-    if payload.discount and payload.discount > 0:
-        if not _has_perm(
-            getattr(current_user, 'permissions', None) or [],
-            getattr(current_user, 'roles', None) or [],
-            P.SALES_DISCOUNT,
-        ):
-            raise HTTPException(status_code=403, detail="Permission refusée : remise non autorisée")
+    _check_discount_permission(payload, current_user)
     sale = update_sale(db, sale_id, payload, current_user.id, tenant_id=current_user.tenant_id)
     return {"message": "Vente modifiée avec succès", "sale_id": sale.id}
 

@@ -144,9 +144,11 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
           // Remises articles : écart original_price / unit_price
           // Remise caisse    : rabais global saisi à la caisse
           ...() {
-            final itemsDisc =
-                sale.items.fold(0.0, (s, i) => s + i.itemDiscount);
-            final hasDisc = itemsDisc > 0.001 || sale.discount > 0.001;
+            final itemsDisc = sale.totalItemsDiscount;
+            final catalogItemsDisc = sale.totalCatalogItemDiscount;
+            final hasDisc = itemsDisc > 0.001 ||
+                catalogItemsDisc > 0.001 ||
+                sale.discount > 0.001;
             if (!hasDisc) return <pw.Widget>[];
             return [
               totalRow('Sous-total',
@@ -154,8 +156,14 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
               if (itemsDisc > 0.001)
                 totalRow('Remises articles',
                     '-$sym${numFmt.format(itemsDisc)}'),
+              if (catalogItemsDisc > 0.001)
+                totalRow('Rabais articles (catalogue)',
+                    '-$sym${numFmt.format(catalogItemsDisc)}'),
               if (sale.discount > 0.001)
-                totalRow('Remise caisse',
+                totalRow(
+                    sale.discountName != null
+                        ? 'Remise caisse (${sale.discountName})'
+                        : 'Remise caisse',
                     '-$sym${numFmt.format(sale.discount)}'),
             ];
           }(),

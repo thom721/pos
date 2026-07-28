@@ -158,6 +158,51 @@ final reportSalesProvider =
 final _dateFmt = DateFormat('dd/MM/yyyy', 'fr');
 final _dtFmt = DateFormat('dd/MM/yyyy HH:mm', 'fr');
 
+const _kReportColWidths = {
+  'reference': 100.0,
+  'date': 85.0,
+  'client': 110.0,
+  'cashier': 95.0,
+  'total': 80.0,
+  'paid': 78.0,
+  'discount': 72.0,
+  'credit': 72.0,
+  'status': 68.0,
+  'category': 160.0,
+  'product': 200.0,
+};
+
+String _reportCellValue(String key, SaleModel s, NumberFormat fmt) {
+  switch (key) {
+    case 'reference':
+      return s.reference;
+    case 'date':
+      return _dtFmt.format(s.createdAt);
+    case 'client':
+      return s.customerName ?? 'Comptoir';
+    case 'cashier':
+      return s.userFullName ?? '-';
+    case 'total':
+      return fmt.format(s.finalAmount);
+    case 'paid':
+      return fmt.format(s.paidAmount);
+    case 'discount':
+      final d = s.discount + s.totalItemsDiscount + s.totalCatalogItemDiscount;
+      return d > 0 ? fmt.format(d) : '—';
+    case 'credit':
+      final c = s.balance.clamp(0.0, double.maxFinite);
+      return c > 0 ? fmt.format(c) : '—';
+    case 'status':
+      return _statusLabel(s.status);
+    case 'category':
+      return s.categoryNames.isEmpty ? '—' : s.categoryNames;
+    case 'product':
+      return s.productNames.isEmpty ? '—' : s.productNames;
+    default:
+      return '';
+  }
+}
+
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
 
@@ -346,8 +391,8 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
 
     final totalRevenue = sales.fold(0.0, (s, e) => s + e.finalAmount);
     final totalPaid = sales.fold(0.0, (s, e) => s + e.paidAmount);
-    final totalDiscount = sales.fold(
-        0.0, (s, e) => s + e.discount + e.totalItemsDiscount);
+    final totalDiscount = sales.fold(0.0,
+        (s, e) => s + e.discount + e.totalItemsDiscount + e.totalCatalogItemDiscount);
     final totalBalance = totalRevenue - totalPaid;
     final paidCount = sales.where((s) => s.status == 'PAID').length;
     final unpaidCount = sales.where((s) => s.status == 'UNPAID').length;
@@ -537,61 +582,41 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
                 style:
                     TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 820),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.divider),
-                  ),
-                  clipBehavior: Clip.hardEdge,
-                  child: Table(
-                    columnWidths: const {
-                      0: FixedColumnWidth(100), // Référence
-                      1: FixedColumnWidth(85),  // Date
-                      2: FixedColumnWidth(110), // Client
-                      3: FixedColumnWidth(95),  // Caissier
-                      4: FixedColumnWidth(80),  // Total
-                      5: FixedColumnWidth(78),  // Payé
-                      6: FixedColumnWidth(72),  // Remise
-                      7: FixedColumnWidth(72),  // Crédit
-                      8: FixedColumnWidth(68),  // Statut
-                    },
-                    children: [
-                      _tableHeader([
-                        'Référence',
-                        'Date',
-                        'Client',
-                        'Caissier',
-                        'Total',
-                        'Payé',
-                        'Remise',
-                        'Crédit',
-                        'Statut',
-                      ]),
-                      ...sales.map((s) {
-                        final disc = s.discount + s.totalItemsDiscount;
-                        final credit = s.balance.clamp(0.0, double.maxFinite);
-                        return _tableRow([
-                          s.reference,
-                          _dtFmt.format(s.createdAt),
-                          s.customerName ?? 'Comptoir',
-                          s.userFullName ?? '-',
-                          fmt.format(s.finalAmount),
-                          fmt.format(s.paidAmount),
-                          disc > 0 ? fmt.format(disc) : '—',
-                          credit > 0 ? fmt.format(credit) : '—',
-                          _statusLabel(s.status),
-                        ], statusColor: _statusColor(s.status));
-                      }),
-                    ],
+            Builder(builder: (_) {
+              final cols = kReportColumnDefs
+                  .where((c) => settings.reportColumns.contains(c.$1))
+                  .toList();
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: 820),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.divider),
+                    ),
+                    clipBehavior: Clip.hardEdge,
+                    child: Table(
+                      columnWidths: {
+                        for (var i = 0; i < cols.length; i++)
+                          i: FixedColumnWidth(_kReportColWidths[cols[i].$1] ?? 100),
+                      },
+                      children: [
+                        _tableHeader(cols.map((c) => c.$2).toList()),
+                        ...sales.map((s) => _tableRow(
+                              cols
+                                  .map((c) => _reportCellValue(c.$1, s, fmt))
+                                  .toList(),
+                              statusKeys: cols.map((c) => c.$1).toList(),
+                              statusColor: _statusColor(s.status),
+                            )),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ),
+              );
+            }),
           ],
         ],
       ),
@@ -627,13 +652,14 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
     );
   }
 
-  TableRow _tableRow(List<String> cols, {Color? statusColor}) {
+  TableRow _tableRow(List<String> cols,
+      {required List<String> statusKeys, Color? statusColor}) {
     return TableRow(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: AppColors.divider)),
       ),
       children: cols.asMap().entries.map((entry) {
-        final isStatus = entry.key == cols.length - 1;
+        final isStatus = statusKeys[entry.key] == 'status';
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: isStatus
@@ -887,29 +913,58 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
     );
   }
 
+  static const _kCsvNumericCols = {'total', 'paid', 'discount', 'credit'};
+
   String _buildCsv(List<SaleModel> sales, String sym) {
     final dateFmt = DateFormat('dd/MM/yyyy HH:mm', 'fr');
     const sep = ';';
     final buf = StringBuffer();
-    buf.writeln([
-      'Date', 'Référence', 'Caissier', 'Client', 'Statut',
-      'Total ($sym)', 'Encaissé ($sym)', 'Remise ($sym)', 'Crédit ($sym)',
-    ].map((h) => '"$h"').join(sep));
+    final reportColumns = ref.read(settingsProvider).reportColumns;
+    final cols = kReportColumnDefs
+        .where((c) => reportColumns.contains(c.$1))
+        .toList();
+
+    buf.writeln(cols
+        .map((c) => _kCsvNumericCols.contains(c.$1) ? '${c.$2} ($sym)' : c.$2)
+        .map((h) => '"$h"')
+        .join(sep));
 
     for (final s in sales) {
-      final disc   = s.discount + s.totalItemsDiscount;
+      final disc   = s.discount + s.totalItemsDiscount + s.totalCatalogItemDiscount;
       final credit = s.balance.clamp(0.0, double.maxFinite);
-      buf.writeln([
-        '"${dateFmt.format(s.createdAt)}"',
-        '"${s.reference}"',
-        '"${s.userFullName ?? ''}"',
-        '"${s.customerName ?? ''}"',
-        '"${_statusFr(s.status)}"',
-        s.finalAmount.toStringAsFixed(2),
-        s.paidAmount.toStringAsFixed(2),
-        disc.toStringAsFixed(2),
-        credit.toStringAsFixed(2),
-      ].join(sep));
+      String value(String key) {
+        switch (key) {
+          case 'reference':
+            return s.reference;
+          case 'date':
+            return dateFmt.format(s.createdAt);
+          case 'client':
+            return s.customerName ?? '';
+          case 'cashier':
+            return s.userFullName ?? '';
+          case 'total':
+            return s.finalAmount.toStringAsFixed(2);
+          case 'paid':
+            return s.paidAmount.toStringAsFixed(2);
+          case 'discount':
+            return disc.toStringAsFixed(2);
+          case 'credit':
+            return credit.toStringAsFixed(2);
+          case 'status':
+            return _statusFr(s.status);
+          case 'category':
+            return s.categoryNames;
+          case 'product':
+            return s.productNames;
+          default:
+            return '';
+        }
+      }
+
+      buf.writeln(cols.map((c) {
+        final v = value(c.$1);
+        return _kCsvNumericCols.contains(c.$1) ? v : '"$v"';
+      }).join(sep));
     }
     return buf.toString();
   }
@@ -1051,7 +1106,8 @@ Future<void> _generatePdf(
 
   final rev = sales.fold(0.0, (s, e) => s + e.finalAmount);
   final paid = sales.fold(0.0, (s, e) => s + e.paidAmount);
-  final disc = sales.fold(0.0, (s, e) => s + e.discount + e.totalItemsDiscount);
+  final disc = sales.fold(0.0,
+      (s, e) => s + e.discount + e.totalItemsDiscount + e.totalCatalogItemDiscount);
   final paidCnt = sales.where((s) => s.status == 'PAID').length;
   final partCnt = sales.where((s) => s.status == 'PARTIAL').length;
   final unpaidCnt = sales.where((s) => s.status == 'UNPAID').length;
@@ -1261,63 +1317,78 @@ Future<void> _generatePdf(
                 font: bold, fontSize: 10, color: PdfColors.grey900),
           ),
           pw.SizedBox(height: 8),
-          pw.TableHelper.fromTextArray(
-            headerDecoration:
-                const pw.BoxDecoration(color: PdfColors.blue800),
-            headerStyle: pw.TextStyle(
-                font: bold, fontSize: 7, color: PdfColors.white),
-            cellStyle: const pw.TextStyle(fontSize: 7),
-            cellPadding: const pw.EdgeInsets.symmetric(
-                horizontal: 5, vertical: 4),
-            cellAlignments: {
-              4: pw.Alignment.centerRight,
-              5: pw.Alignment.centerRight,
-              6: pw.Alignment.centerRight,
-              7: pw.Alignment.centerRight,
-              8: pw.Alignment.center,
-            },
-            oddRowDecoration:
-                const pw.BoxDecoration(color: PdfColors.grey50),
-            columnWidths: {
-              0: const pw.FlexColumnWidth(1.2),
-              1: const pw.FlexColumnWidth(1.4),
-              2: const pw.FlexColumnWidth(1.1),
-              3: const pw.FlexColumnWidth(1.1),
-              4: const pw.FlexColumnWidth(1.2),
-              5: const pw.FlexColumnWidth(1.1),
-              6: const pw.FlexColumnWidth(1.0),
-              7: const pw.FlexColumnWidth(1.0),
-              8: const pw.FlexColumnWidth(0.7),
-            },
-            headers: [
-              'Référence',
-              'Date',
-              'Client',
-              'Caissier',
-              'Total',
-              'Payé',
-              'Remise',
-              'Crédit',
-              'Statut',
-            ],
-            data: sales
-                .map((s) {
-                  final disc   = s.discount + s.totalItemsDiscount;
-                  final credit = s.balance.clamp(0.0, double.maxFinite);
-                  return [
-                    s.reference,
-                    dtFmt.format(s.createdAt),
-                    s.customerName ?? 'Comptoir',
-                    s.userFullName ?? '-',
-                    mon(s.finalAmount),
-                    mon(s.paidAmount),
-                    disc > 0 ? mon(disc) : '—',
-                    credit > 0 ? mon(credit) : '—',
-                    statusFr(s.status),
-                  ];
-                })
-                .toList(),
-          ),
+          ...() {
+            const flexByKey = {
+              'reference': 1.2, 'date': 1.4, 'client': 1.1, 'cashier': 1.1,
+              'total': 1.2, 'paid': 1.1, 'discount': 1.0, 'credit': 1.0,
+              'status': 0.7, 'category': 1.3, 'product': 1.5,
+            };
+            const rightAligned = {'total', 'paid', 'discount', 'credit'};
+            final cols = kReportColumnDefs
+                .where((c) => settings.reportColumns.contains(c.$1))
+                .toList();
+
+            String cellValue(String key, SaleModel s) {
+              final disc = s.discount + s.totalItemsDiscount + s.totalCatalogItemDiscount;
+              final credit = s.balance.clamp(0.0, double.maxFinite);
+              switch (key) {
+                case 'reference':
+                  return s.reference;
+                case 'date':
+                  return dtFmt.format(s.createdAt);
+                case 'client':
+                  return s.customerName ?? 'Comptoir';
+                case 'cashier':
+                  return s.userFullName ?? '-';
+                case 'total':
+                  return mon(s.finalAmount);
+                case 'paid':
+                  return mon(s.paidAmount);
+                case 'discount':
+                  return disc > 0 ? mon(disc) : '—';
+                case 'credit':
+                  return credit > 0 ? mon(credit) : '—';
+                case 'status':
+                  return statusFr(s.status);
+                case 'category':
+                  return s.categoryNames.isEmpty ? '—' : s.categoryNames;
+                case 'product':
+                  return s.productNames.isEmpty ? '—' : s.productNames;
+                default:
+                  return '';
+              }
+            }
+
+            return [
+              pw.TableHelper.fromTextArray(
+                headerDecoration:
+                    const pw.BoxDecoration(color: PdfColors.blue800),
+                headerStyle: pw.TextStyle(
+                    font: bold, fontSize: 7, color: PdfColors.white),
+                cellStyle: const pw.TextStyle(fontSize: 7),
+                cellPadding: const pw.EdgeInsets.symmetric(
+                    horizontal: 5, vertical: 4),
+                cellAlignments: {
+                  for (var i = 0; i < cols.length; i++)
+                    i: cols[i].$1 == 'status'
+                        ? pw.Alignment.center
+                        : rightAligned.contains(cols[i].$1)
+                            ? pw.Alignment.centerRight
+                            : pw.Alignment.centerLeft,
+                },
+                oddRowDecoration:
+                    const pw.BoxDecoration(color: PdfColors.grey50),
+                columnWidths: {
+                  for (var i = 0; i < cols.length; i++)
+                    i: pw.FlexColumnWidth(flexByKey[cols[i].$1] ?? 1.0),
+                },
+                headers: cols.map((c) => c.$2).toList(),
+                data: sales
+                    .map((s) => cols.map((c) => cellValue(c.$1, s)).toList())
+                    .toList(),
+              ),
+            ];
+          }(),
         ] else ...[
           pw.Center(
             child: pw.Text(

@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import or_, func
@@ -12,7 +13,9 @@ from api.models.StockMovement import StockMovement
 from api.models.Payment import Payment
 from api.models.Customer import Customer
 from api.models.User import User as UserModel
+from api.models.Discount import DiscountScope
 from api.services.warehouse_helper import resolve_warehouse_id
+from api.services.discount_service import resolve_discount, get_active_automatic_receipt_discount
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +61,9 @@ def list_sales(
         .options(
             joinedload(Sale.customer),
             joinedload(Sale.user),
-            selectinload(Sale.items).joinedload(SaleItem.product),
+            joinedload(Sale.discount_catalog),
+            selectinload(Sale.items).joinedload(SaleItem.product).joinedload(Product.category),
+            selectinload(Sale.items).joinedload(SaleItem.discount_catalog),
             selectinload(Sale.payments),
         )
     )
@@ -122,7 +127,9 @@ def get_sale(db: Session, sale_id: str, tenant_id: str | None = None):
         .options(
             joinedload(Sale.customer),
             joinedload(Sale.user),
-            selectinload(Sale.items).joinedload(SaleItem.product),
+            joinedload(Sale.discount_catalog),
+            selectinload(Sale.items).joinedload(SaleItem.product).joinedload(Product.category),
+            selectinload(Sale.items).joinedload(SaleItem.discount_catalog),
             selectinload(Sale.payments),
         )
         .filter(Sale.id == sale_id)
@@ -185,6 +192,7 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
 
     # 3. New items + stock OUT
     new_total = 0.0
+    new_item_discount_total = Decimal(0)
     for item in data.items:
         product = new_products.get(str(item.product_id))
         if not product:
@@ -193,6 +201,15 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
         subtotal = unit_price * item.quantity
         new_total += subtotal
 
+        item_amount, item_disc_id = resolve_discount(
+            db,
+            getattr(item, "discount_id", None),
+            getattr(item, "discount", 0),
+            {DiscountScope.item, DiscountScope.both},
+            subtotal,
+        )
+        new_item_discount_total += item_amount
+
         db.add(SaleItem(
             sale_id=sale.id,
             product_id=product.id,
@@ -200,6 +217,8 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
             unit_price=unit_price,
             original_price=product.sale_price,
             subtotal=subtotal,
+            discount=item_amount,
+            discount_id=item_disc_id,
             tenant_id=tenant_id,
         ))
         mv = StockMovement(
@@ -216,10 +235,19 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
         db.add(mv)
 
     # 4. Recalculate totals
-    discount = data.discount or 0.0
-    final = new_total - discount
+    net_before_receipt_discount = Decimal(str(new_total)) - new_item_discount_total
+    receipt_discount, receipt_discount_id = resolve_discount(
+        db,
+        getattr(data, "discount_id", None),
+        data.discount,
+        {DiscountScope.receipt, DiscountScope.both},
+        net_before_receipt_discount,
+    )
+    discount = float(receipt_discount)
+    final = float(net_before_receipt_discount - receipt_discount)
     sale.total_amount = new_total
     sale.discount = discount
+    sale.discount_id = receipt_discount_id
     sale.final_amount = final
     sale.customer_id = str(data.customer_id) if data.customer_id else None
 
@@ -330,8 +358,10 @@ def create_sale(
     }
 
     total = 0
+    item_discounts: list[tuple[Decimal, str | None]] = []
+    item_discount_total = Decimal(0)
 
-    # 1️⃣ Vérification stock + calcul total
+    # 1️⃣ Vérification stock + calcul total + résolution des rabais par article
     for item in data.items:
         product = products.get(str(item.product_id))
 
@@ -345,10 +375,37 @@ def create_sale(
             )
 
         unit_price = item.unit_price if item.unit_price else product.sale_price
-        total += unit_price * item.quantity
+        subtotal = unit_price * item.quantity
+        total += subtotal
 
-    discount = data.discount or 0
-    total_after_discount = total - discount
+        amount, disc_id = resolve_discount(
+            db,
+            getattr(item, "discount_id", None),
+            getattr(item, "discount", 0),
+            {DiscountScope.item, DiscountScope.both},
+            subtotal,
+        )
+        item_discounts.append((amount, disc_id))
+        item_discount_total += amount
+
+    net_before_receipt_discount = Decimal(str(total)) - item_discount_total
+
+    receipt_discount, receipt_discount_id = resolve_discount(
+        db,
+        getattr(data, "discount_id", None),
+        data.discount,
+        {DiscountScope.receipt, DiscountScope.both},
+        net_before_receipt_discount,
+    )
+    if receipt_discount == 0 and not receipt_discount_id:
+        auto = get_active_automatic_receipt_discount(db, tenant_id)
+        if auto:
+            from api.services.discount_service import compute_amount as _compute_amount
+            receipt_discount = _compute_amount(auto, net_before_receipt_discount)
+            receipt_discount_id = auto.id
+
+    discount = float(receipt_discount)
+    total_after_discount = float(net_before_receipt_discount - receipt_discount)
     paid = data.paid_amount or 0
     # The register keeps at most the sale amount; excess cash is given back as change.
     collected = min(paid, total_after_discount) if paid > 0 else 0
@@ -370,6 +427,7 @@ def create_sale(
         reference=f"VNT-{int(datetime.now(timezone.utc).timestamp())}",
         total_amount=total,
         discount=discount,
+        discount_id=receipt_discount_id,
         final_amount=total_after_discount,
         paid_amount=collected,
         status="UNPAID"
@@ -396,9 +454,10 @@ def create_sale(
         raise
 
     # 3️⃣ Items + mouvements stock OUT (réutilise le dict déjà chargé)
-    for item in data.items:
+    for idx, item in enumerate(data.items):
         product = products[str(item.product_id)]
         applied_price = item.unit_price if item.unit_price else product.sale_price
+        item_amount, item_disc_id = item_discounts[idx]
 
         db.add(SaleItem(
             sale_id=sale.id,
@@ -407,6 +466,8 @@ def create_sale(
             unit_price=applied_price,
             original_price=product.sale_price,
             subtotal=applied_price * item.quantity,
+            discount=item_amount,
+            discount_id=item_disc_id,
             tenant_id=tenant_id,
         ))
 

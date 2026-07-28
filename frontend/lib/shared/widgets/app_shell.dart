@@ -44,6 +44,7 @@ const _mainNavItems = [
   _NavItem('Produits', Icons.inventory_2_rounded, '/products'),
   _NavItem('Clients', Icons.people_alt_rounded, '/customers'),
   _NavItem('Fournisseurs', Icons.local_shipping_rounded, '/suppliers'),
+  _NavItem('Rabais', Icons.sell_outlined, '/discounts'),
   _NavItem('Dettes', Icons.account_balance_wallet_rounded, '/debts'),
   _NavItem('Retours', Icons.assignment_return_rounded, '/returns'),
   _NavItem('Inventaire',      Icons.warehouse_rounded, '/inventory'),
@@ -162,6 +163,9 @@ const _allNavItems = [
 const Map<String, String> _routePermission = {
   '/purchases':  Perm.purchasesRead,
   '/suppliers':  Perm.suppliersRead,
+  // discountsCreate (pas discountsRead) : le caissier a discountsRead pour piocher
+  // dans le catalogue au POS, mais l'écran de gestion reste manager/admin.
+  '/discounts':  Perm.discountsCreate,
   '/returns':    Perm.returnsRead,
   '/inventory':  Perm.inventoryRead,
   '/events':          Perm.invoicesRead,

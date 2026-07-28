@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, field_serializer, field_validator
 from typing import List, Optional
 from uuid import UUID
 from decimal import Decimal
@@ -8,11 +8,18 @@ from .category import CategoryRead
 _HAITI = timezone(timedelta(hours=-5))
 
 
+def _none_to_zero(v):
+    """Lignes créées avant l'ajout de la colonne discount : NULL en base."""
+    return Decimal(0) if v is None else v
+
+
 class SaleItemInput(BaseModel):
     product_id: UUID
     quantity: float
     unit_price: float
     subtotal: float
+    discount: float = 0
+    discount_id: Optional[UUID] = None
 
 
 class SaleCreate(BaseModel):
@@ -20,6 +27,7 @@ class SaleCreate(BaseModel):
     customer_id: Optional[UUID] = None
     warehouse_id: Optional[str] = None
     discount: float = 0
+    discount_id: Optional[UUID] = None
     paid_amount: float = 0
     total_amount: float = 0
     payment_method: Optional[str] = None
@@ -30,6 +38,7 @@ class SaleCreate(BaseModel):
 class SaleUpdate(BaseModel):
     customer_id: Optional[UUID] = None
     discount: float = 0
+    discount_id: Optional[UUID] = None
     payment_method: Optional[str] = "CASH"
     additional_payment: float = 0  # paiement supplémentaire collecté maintenant
     items: List[SaleItemInput]
@@ -56,6 +65,15 @@ class UserRead(BaseModel):
 class ProductRead(BaseModel):
     id: str
     name: str
+    category: Optional[CategoryRead] = None
+
+    class Config:
+        from_attributes = True
+
+
+class DiscountRef(BaseModel):
+    id: str
+    name: str
 
     class Config:
         from_attributes = True
@@ -69,8 +87,13 @@ class SaleItemRead(BaseModel):
     unit_price: Decimal
     original_price: Optional[Decimal] = None
     subtotal: Decimal
+    discount: Decimal = Decimal(0)
+    discount_id: Optional[str] = None
+    discount_catalog: Optional[DiscountRef] = None
     product: Optional[ProductRead] = None
     returned_qty: float = 0
+
+    _discount_none_to_zero = field_validator("discount", mode="before")(_none_to_zero)
 
     class Config:
         from_attributes = True
@@ -91,6 +114,8 @@ class SaleRead(BaseModel):
     reference: str
     total_amount: Decimal
     discount: Decimal
+    discount_id: Optional[str] = None
+    discount_catalog: Optional[DiscountRef] = None
     final_amount: Decimal
     paid_amount: Decimal
     status: str
@@ -103,6 +128,8 @@ class SaleRead(BaseModel):
     payments: Optional[List[PaymentRead]] = None
 
     created_at_str: str | None = None
+
+    _discount_none_to_zero = field_validator("discount", mode="before")(_none_to_zero)
 
     @field_serializer("created_at_str")
     def serialize_created_at_str(self, _):

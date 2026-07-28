@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from api.database import engine, Base
-from api.routes import returns, sales, purchases, user, category, customer, product, login, supplier, auth, stock, purchases_receive, payments, debts, config
+from api.routes import returns, sales, purchases, user, category, customer, product, login, supplier, auth, stock, purchases_receive, payments, debts, config, discount
 from api.routes import proformas, invoices, inventory
 from api.routes import employees, payroll
 from api.routes import setup as setup_router
@@ -104,6 +104,7 @@ app.include_router(user.router, prefix="/api")
 app.include_router(login.router)
 app.include_router(auth.router)
 app.include_router(category.router)
+app.include_router(discount.router)
 app.include_router(supplier.router, prefix="/api")
 app.include_router(product.router)
 app.include_router(purchases.router)

@@ -106,8 +106,8 @@ class DashboardScreen extends ConsumerWidget {
                   sales.data.fold(0.0, (s, e) => s + e.finalAmount);
               final totalPaid =
                   sales.data.fold(0.0, (s, e) => s + e.paidAmount);
-              final totalDiscount = sales.data.fold(
-                  0.0, (s, e) => s + e.discount + e.totalItemsDiscount);
+              final totalDiscount = sales.data.fold(0.0,
+                  (s, e) => s + e.discount + e.totalItemsDiscount + e.totalCatalogItemDiscount);
               final countSales = sales.meta.total;
 
               return _ResponsiveGrid(
