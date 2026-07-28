@@ -207,6 +207,7 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
             getattr(item, "discount", 0),
             {DiscountScope.item, DiscountScope.both},
             subtotal,
+            quantity=item.quantity,
         )
         new_item_discount_total += item_amount
 
@@ -384,6 +385,7 @@ def create_sale(
             getattr(item, "discount", 0),
             {DiscountScope.item, DiscountScope.both},
             subtotal,
+            quantity=item.quantity,
         )
         item_discounts.append((amount, disc_id))
         item_discount_total += amount

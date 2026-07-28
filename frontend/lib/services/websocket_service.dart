@@ -10,6 +10,7 @@ import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 
 typedef SyncCallback = void Function();
+typedef ForceLogoutCallback = void Function();
 
 const _tokenStorage = FlutterSecureStorage(
   aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -28,12 +29,14 @@ class WebSocketService {
   int _retrySeconds = 1;
   bool _active = false;
   SyncCallback? _onSync;
+  ForceLogoutCallback? _onPermissionsChanged;
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
-  void start(SyncCallback onSync) {
+  void start(SyncCallback onSync, {ForceLogoutCallback? onPermissionsChanged}) {
     if (kIsWeb) return;
     _onSync = onSync;
+    _onPermissionsChanged = onPermissionsChanged;
     _active = true;
     _retrySeconds = 1;
     _connect();
@@ -87,6 +90,9 @@ class WebSocketService {
       if (msg['type'] == 'sync') {
         debugPrint('[WS] sync push received');
         _onSync?.call();
+      } else if (msg['type'] == 'permissions_changed') {
+        debugPrint('[WS] permissions_changed push received');
+        _onPermissionsChanged?.call();
       }
       // 'ping' messages are silently ignored
     } catch (_) {}

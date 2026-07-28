@@ -83,11 +83,12 @@ class UserService(TenantService):
         user = self.get(user_id)
         if not user:
             return None
-        new_username = data.dict(exclude_unset=True).get('username', user.username)
-        new_email = data.dict(exclude_unset=True).get('email', user.email)
+        changed = data.dict(exclude_unset=True)
+        new_username = changed.get('username', user.username)
+        new_email = changed.get('email', user.email)
         self._check_unique(new_username, new_email, exclude_id=user_id)
         new_password = None
-        for field, value in data.dict(exclude_unset=True).items():
+        for field, value in changed.items():
             if field == 'password':
                 if value:
                     user.password = get_password_hash(value)
@@ -97,9 +98,15 @@ class UserService(TenantService):
                 setattr(user, field, value)
         if new_password and user.email:
             user.offline_hash = compute_offline_hash(user.email, new_password)
+        permissions_changed = 'roles' in changed or 'permissions' in changed
+        if permissions_changed:
+            user.permissions_version = (user.permissions_version or 0) + 1
         try:
             self.db.commit()
             self.db.refresh(user)
+            if permissions_changed:
+                from api.ws_manager import manager
+                manager.notify_user_threadsafe(user.id, {"type": "permissions_changed"})
             return user
         except IntegrityError as e:
             self.db.rollback()

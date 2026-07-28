@@ -35,3 +35,7 @@ class Discount(UUIDBase):
     schedule_days  = Column(String(20), nullable=True)  # "0,1,2,3,4" (0=lundi)
     schedule_start = Column(Time, nullable=True)
     schedule_end   = Column(Time, nullable=True)
+
+    # Quantité minimale (rabais article) — ex: à partir de 3 unités.
+    # NULL = pas de minimum. N'a de sens que pour scope item/both.
+    min_quantity = Column(Numeric(12, 2), nullable=True)

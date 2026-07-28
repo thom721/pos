@@ -31,23 +31,28 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     # Cloud login JWT carries tenant_id directly in the payload
     tenant_id: str | None = payload.get("tenant_id")
 
-    if not tenant_id:
-        # Fallback: local/legacy token — look up the user by sub
-        sub = payload.get("sub")
-        db = SessionLocal()
-        try:
-            user = db.query(User).filter(
-                (User.id == sub) | (User.username == sub)
-            ).first()
-            tenant_id = user.tenant_id if user else None
-        finally:
-            db.close()
+    # Toujours résoudre l'utilisateur (par sub) pour permettre le push ciblé
+    # par utilisateur (ex: forcer une reconnexion sur changement de permissions),
+    # et en repli pour retrouver tenant_id sur un token local/legacy.
+    sub = payload.get("sub")
+    user_id: str | None = None
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(
+            (User.id == sub) | (User.username == sub)
+        ).first()
+        if user:
+            user_id = user.id
+            if not tenant_id:
+                tenant_id = user.tenant_id
+    finally:
+        db.close()
 
     if not tenant_id:
         await websocket.close(code=4001)
         return
 
-    await manager.connect(websocket, tenant_id)
+    await manager.connect(websocket, tenant_id, user_id)
     try:
         while True:
             try:
@@ -63,4 +68,4 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     except Exception as exc:
         _log.debug("WS closed unexpectedly: %s", exc)
     finally:
-        manager.disconnect(websocket, tenant_id)
+        manager.disconnect(websocket, tenant_id, user_id)

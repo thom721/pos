@@ -227,6 +227,7 @@ def cloud_login(db: Session, email: str, password: str,
         "role": (user.roles or ["cashier"])[0],
         "device_id": device_id,
         "sid": session_token,   # session token — validated on each request
+        "perm_v": user.permissions_version or 0,
     }
     access_token = create_access_token(token_data)
 

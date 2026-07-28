@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, JSON, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, JSON, Boolean, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
@@ -21,6 +21,9 @@ class User(UUIDBase):
     offline_hash = Column(String(64), nullable=True)
     must_change_password = Column(Boolean, default=True, nullable=False)
     is_active    = Column(Boolean, default=True, nullable=False)
+    # Incrémenté à chaque changement de roles/permissions — comparé au claim
+    # "perm_v" du JWT pour forcer une reconnexion quand les droits changent.
+    permissions_version = Column(Integer, default=0, nullable=False)
 
     sales            = relationship("Sale",            back_populates="user")
     purchases        = relationship("Purchase",        back_populates="user")

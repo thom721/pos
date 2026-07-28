@@ -69,7 +69,8 @@ def login_for_access_token(
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
+        data={"sub": user.username, "perm_v": user.permissions_version or 0},
+        expires_delta=access_token_expires,
     )
 
     # Avertissement plan expirant (cloud seulement)

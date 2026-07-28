@@ -9,6 +9,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:pos_connect/data/models/customer_model.dart';
+import 'package:pos_connect/data/models/discount_model.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/purchase_model.dart';
@@ -44,7 +45,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 17,
+      version: 18,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -166,6 +167,12 @@ class LocalDbService {
     if (oldVersion < 17) {
       try { await db.execute('ALTER TABLE products ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
     }
+    if (oldVersion < 18) {
+      try { await db.execute('ALTER TABLE sales ADD COLUMN discount_id TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE sale_items ADD COLUMN discount REAL NOT NULL DEFAULT 0'); } catch (_) {}
+      try { await db.execute('ALTER TABLE sale_items ADD COLUMN discount_id TEXT'); } catch (_) {}
+      await _createDiscountsTable(db);
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -242,6 +249,25 @@ class LocalDbService {
     await db.execute('CREATE INDEX idx_products_name ON products (name)');
     await db.execute('CREATE INDEX idx_customers_name ON customers (name)');
     await _createSalesTables(db);
+    await _createDiscountsTable(db);
+  }
+
+  Future<void> _createDiscountsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS discounts (
+        id             TEXT PRIMARY KEY,
+        name           TEXT NOT NULL,
+        type           TEXT NOT NULL,
+        value          REAL NOT NULL,
+        scope          TEXT NOT NULL DEFAULT 'both',
+        is_automatic   INTEGER NOT NULL DEFAULT 0,
+        is_active      INTEGER NOT NULL DEFAULT 1,
+        schedule_days  TEXT,
+        schedule_start TEXT,
+        schedule_end   TEXT,
+        min_quantity   REAL
+      )
+    ''');
   }
 
   Future<void> _createSalesTables(Database db) async {
@@ -260,6 +286,7 @@ class LocalDbService {
         warehouse_id   TEXT,
         total_amount   REAL NOT NULL DEFAULT 0,
         discount       REAL NOT NULL DEFAULT 0,
+        discount_id    TEXT,
         final_amount   REAL NOT NULL DEFAULT 0,
         paid_amount    REAL NOT NULL DEFAULT 0,
         payment_method TEXT NOT NULL DEFAULT 'CASH',
@@ -280,7 +307,9 @@ class LocalDbService {
         unit_price     REAL NOT NULL,
         original_price REAL,
         subtotal       REAL NOT NULL,
-        returned_qty   REAL NOT NULL DEFAULT 0
+        returned_qty   REAL NOT NULL DEFAULT 0,
+        discount       REAL NOT NULL DEFAULT 0,
+        discount_id    TEXT
       )
     ''');
     await db.execute('''
@@ -841,6 +870,62 @@ class LocalDbService {
         .toList();
   }
 
+  // ── Rabais ───────────────────────────────────────────────────────────────
+
+  Future<void> upsertDiscounts(List<DiscountModel> discounts) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final d in discounts) {
+      batch.insert(
+        'discounts',
+        {
+          'id': d.id,
+          'name': d.name,
+          'type': d.type,
+          'value': d.value,
+          'scope': d.scope,
+          'is_automatic': d.isAutomatic ? 1 : 0,
+          'is_active': d.isActive ? 1 : 0,
+          'schedule_days': d.scheduleDays,
+          'schedule_start': d.scheduleStart,
+          'schedule_end': d.scheduleEnd,
+          'min_quantity': d.minQuantity,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> deleteStaleDiscounts(List<String> serverIds) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final placeholders = List.filled(serverIds.length, '?').join(',');
+    await db.delete('discounts', where: 'id NOT IN ($placeholders)', whereArgs: serverIds);
+  }
+
+  Future<List<DiscountModel>> getDiscounts() async {
+    final db = _safeDb;
+    if (db == null) return const [];
+    final rows = await db.query('discounts', orderBy: 'name ASC');
+    return rows
+        .map((r) => DiscountModel(
+              id: r['id'] as String,
+              name: r['name'] as String,
+              type: r['type'] as String,
+              value: (r['value'] as num).toDouble(),
+              scope: r['scope'] as String,
+              isAutomatic: (r['is_automatic'] as int? ?? 0) == 1,
+              isActive: (r['is_active'] as int? ?? 1) == 1,
+              scheduleDays: r['schedule_days'] as String?,
+              scheduleStart: r['schedule_start'] as String?,
+              scheduleEnd: r['schedule_end'] as String?,
+              minQuantity: (r['min_quantity'] as num?)?.toDouble(),
+            ))
+        .toList();
+  }
+
   // ── Dépôts ───────────────────────────────────────────────────────────────
 
   Future<void> upsertWarehouses(List<WarehouseModel> warehouses) async {
@@ -992,6 +1077,7 @@ class LocalDbService {
       'warehouse_id':   payload['warehouse_id'],
       'total_amount':   total,
       'discount':       discount,
+      'discount_id':    payload['discount_id'],
       'final_amount':   total - discount,
       'paid_amount':    paid,
       'payment_method': payload['payment_method'] ?? 'CASH',
@@ -1012,6 +1098,8 @@ class LocalDbService {
         'unit_price':     item['unit_price'],
         'original_price': item['original_price'],
         'subtotal':       item['subtotal'],
+        'discount':       (item['discount'] as num?)?.toDouble() ?? 0,
+        'discount_id':    item['discount_id'],
       });
     }
     await batch.commit(noResult: true);
@@ -1062,6 +1150,7 @@ class LocalDbService {
         'user_id':        s.userId,
         'total_amount':   s.totalAmount,
         'discount':       s.discount,
+        'discount_id':    s.discountId,
         'final_amount':   s.finalAmount,
         'paid_amount':    s.paidAmount,
         'payment_method': s.payments.isNotEmpty ? s.payments.first.method : 'CASH',
@@ -1088,6 +1177,8 @@ class LocalDbService {
           'original_price': item.originalPrice,
           'subtotal':       item.subtotal,
           'returned_qty':   item.returnedQty,
+          'discount':       item.catalogDiscount,
+          'discount_id':    item.discountId,
         });
       }
       for (final p in s.payments) {
@@ -1289,6 +1380,7 @@ class LocalDbService {
       reference:    row['reference'] as String,
       totalAmount:  (row['total_amount'] as num).toDouble(),
       discount:     (row['discount'] as num).toDouble(),
+      discountId:   row['discount_id'] as String?,
       finalAmount:  (row['final_amount'] as num).toDouble(),
       paidAmount:   (row['paid_amount'] as num).toDouble(),
       status:       row['status'] as String,
@@ -1307,6 +1399,8 @@ class LocalDbService {
         originalPrice: r['original_price'] != null ? (r['original_price'] as num).toDouble() : null,
         subtotal:      (r['subtotal'] as num).toDouble(),
         returnedQty:   r['returned_qty'] != null ? (r['returned_qty'] as num).toDouble() : 0,
+        catalogDiscount: r['discount'] != null ? (r['discount'] as num).toDouble() : 0,
+        discountId:    r['discount_id'] as String?,
       )).toList(),
       payments: const [],
     );

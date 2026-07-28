@@ -42,34 +42,10 @@ class _PosAppState extends ConsumerState<PosApp> {
   void initState() {
     super.initState();
     _authSub = onUnauthorized.listen((message) async {
-      _stopAutoSync();
-      // Show a blocking dialog when the server returns a specific reason
-      // (e.g. force-close by admin). Generic credential errors skip the dialog.
+      // Generic credential errors (bad login attempt) skip the dialog.
       const kGeneric = 'Could not validate credentials';
       final showReason = message != null && message != kGeneric;
-      if (showReason) {
-        final ctx = appNavigatorKey.currentContext;
-        if (ctx != null) {
-          // ctx is the root GoRouter navigator context — it outlives any route
-          // change, so the async-gap lint is a false positive here.
-          await showDialog<void>(
-            // ignore: use_build_context_synchronously
-            context: ctx,
-            barrierDismissible: false,
-            builder: (dialogCtx) => AlertDialog(
-              title: const Text('Session terminée'),
-              content: Text(message),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogCtx).pop(),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-      }
-      ref.read(authProvider.notifier).logoutDueToExpiry();
+      await _forceLogout(showReason ? message : null);
     });
     _droppedSub = OfflineQueueService.dropped.listen((item) {
       _messengerKey.currentState?.showSnackBar(SnackBar(
@@ -82,11 +58,46 @@ class _PosAppState extends ConsumerState<PosApp> {
     });
   }
 
+  /// Déconnexion forcée avec dialogue optionnel (raison serveur ou changement
+  /// de permissions). Réutilisé par le 401 générique et par le push WebSocket
+  /// "permissions_changed".
+  Future<void> _forceLogout(String? message) async {
+    _stopAutoSync();
+    if (message != null) {
+      final ctx = appNavigatorKey.currentContext;
+      if (ctx != null) {
+        // ctx is the root GoRouter navigator context — it outlives any route
+        // change, so the async-gap lint is a false positive here.
+        await showDialog<void>(
+          // ignore: use_build_context_synchronously
+          context: ctx,
+          barrierDismissible: false,
+          builder: (dialogCtx) => AlertDialog(
+            title: const Text('Session terminée'),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+    ref.read(authProvider.notifier).logoutDueToExpiry();
+  }
+
   void _startAutoSync() {
     _syncTimer?.cancel();
     _triggerSync();
     if (_isAndroid) {
-      WebSocketService.instance.start(_triggerSync);
+      WebSocketService.instance.start(
+        _triggerSync,
+        onPermissionsChanged: () => _forceLogout(
+          'Vos permissions ont été modifiées par un administrateur — veuillez vous reconnecter.',
+        ),
+      );
       _syncTimer = Timer.periodic(_kAndroidFallbackInterval, (_) => _triggerSync());
     } else {
       _syncTimer = Timer.periodic(_kDesktopSyncInterval, (_) => _triggerSync());

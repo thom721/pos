@@ -9,6 +9,7 @@ class DiscountModel {
   final String? scheduleDays; // "0,1,2,3,4" (0=lundi)
   final String? scheduleStart; // "HH:MM:SS"
   final String? scheduleEnd;
+  final double? minQuantity; // seuil de quantité (rabais article) — ex: à partir de 3
 
   DiscountModel({
     required this.id,
@@ -21,6 +22,7 @@ class DiscountModel {
     this.scheduleDays,
     this.scheduleStart,
     this.scheduleEnd,
+    this.minQuantity,
   });
 
   bool get isPercentage => type == 'percentage';
@@ -39,6 +41,7 @@ class DiscountModel {
         scheduleDays: json['schedule_days']?.toString(),
         scheduleStart: json['schedule_start']?.toString(),
         scheduleEnd: json['schedule_end']?.toString(),
+        minQuantity: (json['min_quantity'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -51,5 +54,6 @@ class DiscountModel {
         if (scheduleDays != null) 'schedule_days': scheduleDays,
         if (scheduleStart != null) 'schedule_start': scheduleStart,
         if (scheduleEnd != null) 'schedule_end': scheduleEnd,
+        if (minQuantity != null) 'min_quantity': minQuantity,
       };
 }

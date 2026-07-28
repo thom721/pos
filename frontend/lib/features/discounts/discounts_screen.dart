@@ -131,6 +131,10 @@ class _DiscountCard extends ConsumerWidget {
           children: [
             Text('${_formatValue(discount)} — ${_formatScope(discount.scope)}',
                 style: const TextStyle(fontSize: 12)),
+            if (discount.minQuantity != null && discount.minQuantity! > 0)
+              Text(
+                  'À partir de ${discount.minQuantity!.toStringAsFixed(discount.minQuantity! % 1 == 0 ? 0 : 2)} unité(s)',
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
             if (discount.isAutomatic)
               Text('Automatique — ${_formatSchedule(discount)}',
                   style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
@@ -201,6 +205,7 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameCtrl;
   late final TextEditingController _valueCtrl;
+  late final TextEditingController _minQuantityCtrl;
   late String _type;
   late String _scope;
   late bool _isAutomatic;
@@ -219,6 +224,8 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
     final d = widget.discount;
     _nameCtrl = TextEditingController(text: d?.name ?? '');
     _valueCtrl = TextEditingController(text: d != null ? d.value.toString() : '');
+    _minQuantityCtrl = TextEditingController(
+        text: d?.minQuantity != null ? d!.minQuantity!.toString() : '');
     _type = d?.type ?? 'percentage';
     _scope = d?.scope ?? 'both';
     _isAutomatic = d?.isAutomatic ?? false;
@@ -244,6 +251,7 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
   void dispose() {
     _nameCtrl.dispose();
     _valueCtrl.dispose();
+    _minQuantityCtrl.dispose();
     super.dispose();
   }
 
@@ -307,6 +315,23 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
                   ],
                   onChanged: (v) => setState(() => _scope = v ?? 'both'),
                 ),
+                if (_scope == 'item' || _scope == 'both') ...[
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _minQuantityCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Quantité minimale (article) — optionnel',
+                      helperText: 'Ex: 3 → le rabais ne s\'applique qu\'à partir de 3 unités',
+                    ),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return null;
+                      final n = double.tryParse(v.trim());
+                      if (n == null || n <= 0) return 'Invalide';
+                      return null;
+                    },
+                  ),
+                ],
                 const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -414,6 +439,9 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
             : null,
         'schedule_start': _isAutomatic && _startTime != null ? _formatTime(_startTime!) : null,
         'schedule_end': _isAutomatic && _endTime != null ? _formatTime(_endTime!) : null,
+        'min_quantity': (_scope == 'item' || _scope == 'both') && _minQuantityCtrl.text.trim().isNotEmpty
+            ? double.tryParse(_minQuantityCtrl.text.trim())
+            : null,
       };
       final repo = DiscountRepository();
       if (isEdit) {

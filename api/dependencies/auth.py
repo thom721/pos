@@ -44,6 +44,16 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Forcer une reconnexion si les rôles/permissions ont changé depuis l'émission
+    # de ce token (perm_v embarqué au login, comparé à la valeur fraîche en DB).
+    token_perm_v = payload.get("perm_v")
+    if token_perm_v is not None and token_perm_v != (user.permissions_version or 0):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Vos permissions ont été modifiées — veuillez vous reconnecter",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # Validate session token for device-based logins (cloud JWTs include device_id + sid)
     device_id = payload.get("device_id")
     sid = payload.get("sid")

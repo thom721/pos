@@ -2158,7 +2158,20 @@ Future<Object?> _selectDiscount(
               onPressed: () => Navigator.pop(ctx, d),
               child: Row(
                 children: [
-                  Expanded(child: Text(d.name)),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(d.name),
+                        if (forItem && d.minQuantity != null && d.minQuantity! > 0)
+                          Text(
+                            'À partir de ${d.minQuantity!.toStringAsFixed(d.minQuantity! % 1 == 0 ? 0 : 2)} unité(s)',
+                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                          ),
+                      ],
+                    ),
+                  ),
                   Text(
                     d.isPercentage
                         ? '${d.value.toStringAsFixed(0)}%'
@@ -2194,6 +2207,18 @@ class _CartItemTile extends StatelessWidget {
     if (result == _clearDiscountSentinel) {
       notifier.applyItemDiscount(item.product.id, null);
     } else if (result is DiscountModel) {
+      final minQty = result.minQuantity;
+      if (minQty != null && item.quantity < minQty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                '« ${result.name} » nécessite au moins ${minQty.toStringAsFixed(minQty % 1 == 0 ? 0 : 2)} unité(s) '
+                '(quantité actuelle : ${_fmtQty(item.quantity)}).'),
+            backgroundColor: AppColors.error,
+          ));
+        }
+        return;
+      }
       notifier.applyItemDiscount(item.product.id, result);
     }
   }

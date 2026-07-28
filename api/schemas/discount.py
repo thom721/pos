@@ -13,6 +13,7 @@ class DiscountCreate(BaseModel):
     schedule_days: Optional[str] = None   # "0,1,2,3,4" (0=lundi)
     schedule_start: Optional[time] = None
     schedule_end: Optional[time] = None
+    min_quantity: Optional[float] = None  # seuil de quantité (rabais article)
 
 
 class DiscountRead(BaseModel):
@@ -26,6 +27,7 @@ class DiscountRead(BaseModel):
     schedule_days: Optional[str] = None
     schedule_start: Optional[time] = None
     schedule_end: Optional[time] = None
+    min_quantity: Optional[float] = None
 
     @field_validator("type", "scope", mode="before")
     @classmethod
@@ -46,3 +48,4 @@ class DiscountUpdate(BaseModel):
     schedule_days: Optional[str] = None
     schedule_start: Optional[time] = None
     schedule_end: Optional[time] = None
+    min_quantity: Optional[float] = None

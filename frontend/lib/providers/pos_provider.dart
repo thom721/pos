@@ -157,7 +157,13 @@ class PosNotifier extends StateNotifier<PosState> {
       return;
     }
     final updated = state.items.map((i) {
-      if (i.product.id == productId) i.quantity = qty;
+      if (i.product.id == productId) {
+        i.quantity = qty;
+        // Retire le rabais catalogue si la quantité minimale n'est plus atteinte
+        // (évite un rejet surprise du serveur au moment du checkout).
+        final minQty = i.catalogDiscount?.minQuantity;
+        if (minQty != null && qty < minQty) i.catalogDiscount = null;
+      }
       return i;
     }).toList();
     state = state.copyWith(items: updated);

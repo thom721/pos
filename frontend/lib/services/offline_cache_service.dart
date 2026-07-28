@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/models/debt_model.dart';
+import 'package:pos_connect/data/models/discount_model.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/purchase_model.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
@@ -75,6 +76,7 @@ class OfflineCacheService {
         _syncProducts(),
         _syncCustomers(),
         _syncCategories(),
+        _syncDiscounts(),
         _syncWarehouses(),
         _syncSales(warehouseId: warehouseId),
         _syncPurchases(warehouseId: warehouseId),
@@ -197,6 +199,26 @@ class OfflineCacheService {
       debugPrint('[OfflineCache] categories: ${cats.length} mis en cache');
     } catch (e) {
       if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] categories sync error: $e');
+    }
+  }
+
+  // ── Rabais ────────────────────────────────────────────────────────────────
+
+  Future<void> _syncDiscounts() async {
+    try {
+      final res = await dio.get('/api/discounts/', options: kBackgroundOptions);
+      final raw = res.data;
+      final items = raw is Map
+          ? (raw['data'] as List? ?? [])
+          : (raw as List? ?? []);
+      final discounts = items
+          .map((e) => DiscountModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await LocalDbService.instance.upsertDiscounts(discounts);
+      await LocalDbService.instance.deleteStaleDiscounts(discounts.map((d) => d.id).toList());
+      debugPrint('[OfflineCache] discounts: ${discounts.length} mis en cache');
+    } catch (e) {
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] discounts sync error: $e');
     }
   }
 
