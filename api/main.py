@@ -225,72 +225,101 @@ def _sync_schema_from_models(active_engine=None) -> None:
     aux nouvelles colonnes ajoutées dans les modèles. Plus aucune liste manuelle
     à maintenir : toute colonne dans un modèle sera présente en DB au prochain
     démarrage, quoi qu'il arrive.
+
+    Protégé par le même verrou advisory MySQL que _run_alembic_migrations —
+    sans ça, plusieurs workers Gunicorn démarrant en parallèle peuvent lancer
+    des ALTER TABLE concurrents sur la même colonne (l'un réussit, l'autre
+    échoue avec une erreur qui n'est pas un simple "colonne déjà présente"
+    et se retrouve silencieusement avalée, ce qui a masqué l'échec réel
+    d'ajout de users.permissions_version en production).
     """
     import api.database as _db_mod
     from sqlalchemy import inspect as _inspect
 
     _eng = active_engine or _db_mod.engine
 
+    lock_conn = None
+    got_lock = True
+    if _eng.dialect.name == "mysql":
+        lock_conn = _eng.connect()
+        got_lock = lock_conn.execute(text("SELECT GET_LOCK('pos_schema_sync', 60)")).scalar()
+        if not got_lock:
+            _log.warning("schema-sync: verrou occupé par un autre worker — ignoré ce cycle")
+            lock_conn.close()
+            return
+
     try:
-        inspector = _inspect(_eng)
-        existing_tables = set(inspector.get_table_names())
-    except Exception as exc:
-        _log.warning("schema-sync: impossible d'inspecter les tables: %s", exc)
-        return
+        try:
+            inspector = _inspect(_eng)
+            existing_tables = set(inspector.get_table_names())
+        except Exception as exc:
+            _log.warning("schema-sync: impossible d'inspecter les tables: %s", exc)
+            return
 
-    dialect = _eng.dialect
-    added = 0
+        dialect = _eng.dialect
+        added = 0
 
-    with _eng.connect() as conn:
-        for table in Base.metadata.sorted_tables:
-            if table.name not in existing_tables:
-                continue  # table absente — create_all s'en charge
-
-            try:
-                db_cols = {c["name"] for c in inspector.get_columns(table.name)}
-            except Exception:
-                continue
-
-            for col in table.columns:
-                if col.name in db_cols or col.primary_key:
-                    continue  # déjà présente ou clé primaire
+        with _eng.connect() as conn:
+            for table in Base.metadata.sorted_tables:
+                if table.name not in existing_tables:
+                    continue  # table absente — create_all s'en charge
 
                 try:
-                    col_type = col.type.compile(dialect=dialect)
-
-                    # Clause NULL / NOT NULL
-                    nullable_sql = "" if col.nullable else " NOT NULL"
-
-                    # Clause DEFAULT
-                    default_sql = ""
-                    if col.server_default is not None:
-                        sd_arg = col.server_default.arg
-                        # TextClause (sa.text("'val'")) ou chaîne simple
-                        raw = sd_arg.text if hasattr(sd_arg, "text") else str(sd_arg)
-                        default_sql = f" DEFAULT {raw}"
-                    elif not col.nullable:
-                        # NOT NULL sans server_default → défaut neutre pour ne pas bloquer
-                        t = col_type.upper()
-                        if any(k in t for k in ("INT", "BOOL", "DECIMAL", "FLOAT", "DOUBLE", "NUMERIC")):
-                            default_sql = " DEFAULT 0"
-                        elif "DATETIME" in t or "TIMESTAMP" in t:
-                            default_sql = " DEFAULT CURRENT_TIMESTAMP"
-                        else:
-                            default_sql = " DEFAULT ''"
-
-                    stmt = (
-                        f"ALTER TABLE `{table.name}` "
-                        f"ADD COLUMN `{col.name}` {col_type}{nullable_sql}{default_sql}"
-                    )
-                    conn.execute(text(stmt))
-                    conn.commit()
-                    added += 1
-                    _log.info("schema-sync: + %s.%s %s", table.name, col.name, col_type)
+                    db_cols = {c["name"] for c in inspector.get_columns(table.name)}
                 except Exception:
-                    conn.rollback()  # colonne déjà présente ou type incompatible — ignoré
+                    continue
 
-    if added:
-        _log.info("schema-sync: %d colonne(s) ajoutée(s)", added)
+                for col in table.columns:
+                    if col.name in db_cols or col.primary_key:
+                        continue  # déjà présente ou clé primaire
+
+                    try:
+                        col_type = col.type.compile(dialect=dialect)
+
+                        # Clause NULL / NOT NULL
+                        nullable_sql = "" if col.nullable else " NOT NULL"
+
+                        # Clause DEFAULT
+                        default_sql = ""
+                        if col.server_default is not None:
+                            sd_arg = col.server_default.arg
+                            # TextClause (sa.text("'val'")) ou chaîne simple
+                            raw = sd_arg.text if hasattr(sd_arg, "text") else str(sd_arg)
+                            default_sql = f" DEFAULT {raw}"
+                        elif not col.nullable:
+                            # NOT NULL sans server_default → défaut neutre pour ne pas bloquer
+                            t = col_type.upper()
+                            if any(k in t for k in ("INT", "BOOL", "DECIMAL", "FLOAT", "DOUBLE", "NUMERIC")):
+                                default_sql = " DEFAULT 0"
+                            elif "DATETIME" in t or "TIMESTAMP" in t:
+                                default_sql = " DEFAULT CURRENT_TIMESTAMP"
+                            else:
+                                default_sql = " DEFAULT ''"
+
+                        stmt = (
+                            f"ALTER TABLE `{table.name}` "
+                            f"ADD COLUMN `{col.name}` {col_type}{nullable_sql}{default_sql}"
+                        )
+                        conn.execute(text(stmt))
+                        conn.commit()
+                        added += 1
+                        _log.info("schema-sync: + %s.%s %s", table.name, col.name, col_type)
+                    except Exception as col_exc:
+                        conn.rollback()
+                        _log.warning(
+                            "schema-sync: échec ajout %s.%s (%s) — colonne probablement déjà présente",
+                            table.name, col.name, col_exc,
+                        )
+
+        if added:
+            _log.info("schema-sync: %d colonne(s) ajoutée(s)", added)
+    finally:
+        if lock_conn is not None:
+            try:
+                if got_lock:
+                    lock_conn.execute(text("SELECT RELEASE_LOCK('pos_schema_sync')"))
+            finally:
+                lock_conn.close()
 
 
 # Gardé pour compatibilité — remplacé par _sync_schema_from_models()
