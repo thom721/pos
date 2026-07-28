@@ -688,10 +688,18 @@ def _normalize_sale_status_casing(active_engine=None) -> None:
         _log.warning("status-casing: impossible d'inspecter le schéma: %s", exc)
         return
 
+    # MySQL compare les VARCHAR/ENUM de façon insensible à la casse par défaut
+    # (collation *_ci) : "status <> UPPER(status)" y est TOUJOURS faux même
+    # pour une ligne 'paid', donc aucune ligne n'est jamais sélectionnée sans
+    # forcer une comparaison binaire. SQLite est déjà sensible à la casse par
+    # défaut, BINARY n'y est pas nécessaire (et non supporté).
+    is_mysql = _eng.dialect.name == "mysql"
+    status_expr = "BINARY status" if is_mysql else "status"
+
     with _eng.connect() as conn:
         try:
             pending = conn.execute(_text(
-                "SELECT COUNT(*) FROM sales WHERE status <> UPPER(status) OR status = ''"
+                f"SELECT COUNT(*) FROM sales WHERE {status_expr} <> UPPER(status) OR status = ''"
             )).scalar()
         except Exception as exc:
             _log.warning("status-casing: vérification impossible: %s", exc)
@@ -702,7 +710,7 @@ def _normalize_sale_status_casing(active_engine=None) -> None:
 
         try:
             conn.execute(_text(
-                "UPDATE sales SET status = UPPER(status) WHERE status <> UPPER(status)"
+                f"UPDATE sales SET status = UPPER(status) WHERE {status_expr} <> UPPER(status)"
             ))
             conn.execute(_text(
                 "UPDATE sales SET status = 'CANCELLED' WHERE status = ''"

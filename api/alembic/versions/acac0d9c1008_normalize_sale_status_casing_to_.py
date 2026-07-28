@@ -33,7 +33,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.execute(sa.text("UPDATE sales SET status = UPPER(status) WHERE status <> UPPER(status)"))
+    # MySQL compare les VARCHAR/ENUM insensible à la casse par défaut (collation
+    # *_ci) : "status <> UPPER(status)" y est TOUJOURS faux pour une ligne
+    # 'paid', donc rien ne serait sélectionné sans forcer une comparaison
+    # binaire. SQLite est déjà sensible à la casse par défaut.
+    bind = op.get_bind()
+    status_expr = "BINARY status" if bind.dialect.name == "mysql" else "status"
+    op.execute(sa.text(f"UPDATE sales SET status = UPPER(status) WHERE {status_expr} <> UPPER(status)"))
     # '' = valeur ENUM invalide historique — seul 'CANCELLED' n'existait pas
     # dans l'ancien ENUM, donc toute ligne '' provient forcément de là.
     op.execute(sa.text("UPDATE sales SET status = 'CANCELLED' WHERE status = ''"))
