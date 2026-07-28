@@ -659,6 +659,61 @@ def _backfill_haiti_local_time(active_engine=None) -> None:
         _log.info("tz-backfill: terminé.")
 
 
+def _normalize_sale_status_casing(active_engine=None) -> None:
+    """
+    Migration ponctuelle : l'ancien ENUM natif MySQL de sales.status avait des
+    libellés en minuscules ('unpaid','paid','partial','credit','pending' — pas
+    de 'cancelled' du tout). MySQL normalise toujours la valeur stockée sur la
+    casse du libellé déclaré : les ventes historiques ont donc été enregistrées
+    en minuscules, et les ventes annulées tronquées en chaîne vide (valeur ENUM
+    invalide en mode non strict, faute de libellé 'cancelled').
+
+    L'ENUM a depuis été élargi en majuscules (avec CANCELLED). Cette fonction
+    aligne les données existantes, indépendamment de l'état d'Alembic — la
+    migration acac0d9c1008 fait la même chose, mais un graphe Alembic cassé
+    peut empêcher son exécution ; cette fonction s'exécute à chaque démarrage
+    (idempotente, no-op dès que tout est déjà en majuscules) pour garantir la
+    correction sans dépendre d'Alembic ni d'une intervention manuelle.
+    """
+    from sqlalchemy import text as _text, inspect as _inspect
+
+    import api.database as _db_mod
+    _eng = active_engine or _db_mod.engine
+
+    try:
+        inspector = _inspect(_eng)
+        if "sales" not in inspector.get_table_names():
+            return
+    except Exception as exc:
+        _log.warning("status-casing: impossible d'inspecter le schéma: %s", exc)
+        return
+
+    with _eng.connect() as conn:
+        try:
+            pending = conn.execute(_text(
+                "SELECT COUNT(*) FROM sales WHERE status <> UPPER(status) OR status = ''"
+            )).scalar()
+        except Exception as exc:
+            _log.warning("status-casing: vérification impossible: %s", exc)
+            return
+
+        if not pending:
+            return
+
+        try:
+            conn.execute(_text(
+                "UPDATE sales SET status = UPPER(status) WHERE status <> UPPER(status)"
+            ))
+            conn.execute(_text(
+                "UPDATE sales SET status = 'CANCELLED' WHERE status = ''"
+            ))
+            conn.commit()
+            _log.info("status-casing: %d vente(s) normalisée(s) vers la casse majuscule", pending)
+        except Exception as exc:
+            conn.rollback()
+            _log.warning("status-casing: échec de la normalisation: %s", exc)
+
+
 def _ensure_default_warehouse(db, tenant_id: str | None) -> None:
     """
     Les dépôts viennent UNIQUEMENT du cloud via sync pull.
@@ -948,6 +1003,8 @@ def on_startup():
             _migrate_per_tenant_unique(_active_engine)
             # 2e. Décale -5h les DateTime historiques (UTC → Haiti local, one-shot)
             _backfill_haiti_local_time(_active_engine)
+            # 2f. Normalise la casse historique de sales.status (one-shot)
+            _normalize_sale_status_casing(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
 
