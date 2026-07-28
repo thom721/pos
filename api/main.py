@@ -679,10 +679,12 @@ def _normalize_sale_status_casing(active_engine=None) -> None:
 
     import api.database as _db_mod
     _eng = active_engine or _db_mod.engine
+    _log.info("status-casing: démarrage de la vérification (dialect=%s)", _eng.dialect.name)
 
     try:
         inspector = _inspect(_eng)
         if "sales" not in inspector.get_table_names():
+            _log.warning("status-casing: table 'sales' absente, vérification ignorée")
             return
     except Exception as exc:
         _log.warning("status-casing: impossible d'inspecter le schéma: %s", exc)
@@ -706,8 +708,10 @@ def _normalize_sale_status_casing(active_engine=None) -> None:
             return
 
         if not pending:
+            _log.info("status-casing: vérification OK, 0 ligne à corriger")
             return
 
+        _log.info("status-casing: %d ligne(s) à corriger détectée(s), correction en cours…", pending)
         try:
             conn.execute(_text(
                 f"UPDATE sales SET status = UPPER(status) WHERE {status_expr} <> UPPER(status)"
@@ -997,22 +1001,26 @@ def on_startup():
                 _cae,
             )
             _log.info("Démarrage en mode dégradé — schéma non synchronisé.")
-        else:
-            # 2. Applique les migrations Alembic (ou stamp si premier démarrage)
-            try:
-                _run_alembic_migrations()
-            except Exception as exc:
-                _log.warning("Alembic migration warning: %s", exc)
-            # 2b. Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy
-            _sync_schema_from_models(_active_engine)
-            # 2c. Corrige les colonnes DATETIME → TEXT(600) pour les dates Fernet de pos_registers
-            _fix_register_billing_date_columns(_active_engine)
-            # 2d. Convertit les unique globaux en unique par-tenant (MySQL uniquement)
-            _migrate_per_tenant_unique(_active_engine)
-            # 2e. Décale -5h les DateTime historiques (UTC → Haiti local, one-shot)
-            _backfill_haiti_local_time(_active_engine)
-            # 2f. Normalise la casse historique de sales.status (one-shot)
-            _normalize_sale_status_casing(_active_engine)
+
+        # Ces correctifs portent sur des tables déjà existantes et sont
+        # indépendants de create_all() (qui ne fait que créer les tables
+        # manquantes) — ils doivent tourner même si create_all() a échoué,
+        # sans quoi un échec sans rapport avec sales.status bloquait aussi
+        # silencieusement la correction de la casse de sales.status.
+        try:
+            _run_alembic_migrations()
+        except Exception as exc:
+            _log.warning("Alembic migration warning: %s", exc)
+        # 2b. Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy
+        _sync_schema_from_models(_active_engine)
+        # 2c. Corrige les colonnes DATETIME → TEXT(600) pour les dates Fernet de pos_registers
+        _fix_register_billing_date_columns(_active_engine)
+        # 2d. Convertit les unique globaux en unique par-tenant (MySQL uniquement)
+        _migrate_per_tenant_unique(_active_engine)
+        # 2e. Décale -5h les DateTime historiques (UTC → Haiti local, one-shot)
+        _backfill_haiti_local_time(_active_engine)
+        # 2f. Normalise la casse historique de sales.status (one-shot)
+        _normalize_sale_status_casing(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
 
