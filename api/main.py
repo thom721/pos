@@ -732,6 +732,91 @@ def _normalize_sale_status_casing(active_engine=None) -> None:
             _log.warning("status-casing: échec de la normalisation: %s", exc)
 
 
+def _repair_duplicate_registers(active_engine=None) -> None:
+    """
+    Migration ponctuelle : PosRegister déclare UniqueConstraint('tenant_id',
+    'device_id', name='uq_register_tenant_device') dans le modèle, mais
+    _sync_schema_from_models() n'ajoute que des COLONNES manquantes — jamais
+    de contraintes/index — donc cette contrainte n'a jamais été réellement
+    appliquée sur une table pos_registers déjà existante en production
+    (seule une table créée à partir de zéro via create_all() l'obtient).
+    Résultat : deux registres ont pu être créés pour le même (tenant_id,
+    device_id) sur le cloud, et une installation locale fraîche (dont la
+    table respecte la contrainte dès sa création) échoue à les tirer tous
+    les deux ("Duplicate entry ... for key uq_register_tenant_device").
+
+    Corrige en désactivant (is_active=False, non destructif) tous les
+    doublons sauf le plus récemment vu par (tenant_id, device_id), puis tente
+    d'ajouter la contrainte manquante (idempotente, MySQL uniquement — sans
+    ça la prochaine duplication ne serait jamais empêchée). S'exécute à
+    chaque démarrage.
+    """
+    from sqlalchemy import text as _text, inspect as _inspect
+
+    import api.database as _db_mod
+    _eng = active_engine or _db_mod.engine
+    if _eng.dialect.name != "mysql":
+        return
+
+    try:
+        inspector = _inspect(_eng)
+        if "pos_registers" not in inspector.get_table_names():
+            return
+    except Exception as exc:
+        _log.warning("registres dupliqués: impossible d'inspecter le schéma: %s", exc)
+        return
+
+    with _eng.connect() as conn:
+        try:
+            dupes = conn.execute(_text(
+                "SELECT tenant_id, device_id, COUNT(*) AS n "
+                "FROM pos_registers "
+                "WHERE device_id IS NOT NULL "
+                "GROUP BY tenant_id, device_id HAVING COUNT(*) > 1"
+            )).fetchall()
+        except Exception as exc:
+            _log.warning("registres dupliqués: vérification impossible: %s", exc)
+            return
+
+        if dupes:
+            _log.warning("registres dupliqués: %d paire(s) (tenant_id, device_id) en doublon détectée(s)", len(dupes))
+            for tenant_id, device_id, _n in dupes:
+                try:
+                    rows = conn.execute(_text(
+                        "SELECT id FROM pos_registers "
+                        "WHERE tenant_id = :tid AND device_id = :did "
+                        "ORDER BY last_seen IS NULL, last_seen DESC, updated_at DESC"
+                    ), {"tid": tenant_id, "did": device_id}).fetchall()
+                    keep_id = rows[0][0]
+                    for (rid,) in rows[1:]:
+                        conn.execute(_text(
+                            "UPDATE pos_registers SET is_active = 0 WHERE id = :rid"
+                        ), {"rid": rid})
+                    conn.commit()
+                    _log.warning(
+                        "registres dupliqués: tenant=%s device=%s → conservé %s, désactivé %d autre(s)",
+                        tenant_id, device_id, keep_id, len(rows) - 1,
+                    )
+                except Exception as exc:
+                    conn.rollback()
+                    _log.warning("registres dupliqués: correction tenant=%s device=%s: %s", tenant_id, device_id, exc)
+        else:
+            _log.info("registres dupliqués: vérification OK, 0 doublon à corriger")
+
+        try:
+            indexes = inspector.get_indexes("pos_registers")
+            if not any(idx["name"] == "uq_register_tenant_device" for idx in indexes):
+                conn.execute(_text(
+                    "ALTER TABLE `pos_registers` "
+                    "ADD UNIQUE KEY `uq_register_tenant_device` (`tenant_id`, `device_id`)"
+                ))
+                conn.commit()
+                _log.info("registres dupliqués: contrainte uq_register_tenant_device ajoutée")
+        except Exception as exc:
+            conn.rollback()
+            _log.warning("registres dupliqués: ajout de la contrainte échoué (nouveaux doublons ?): %s", exc)
+
+
 def _repair_cross_tenant_app_config(active_engine=None) -> None:
     """
     Migration ponctuelle : `config.py::_wh_id()` acceptait un warehouse_id
@@ -1161,6 +1246,9 @@ def on_startup():
         _migrate_register_dates_to_shared_key(_active_engine)
         # 2h. Corrige les app_config avec un warehouse_id cross-tenant (one-shot)
         _repair_cross_tenant_app_config(_active_engine)
+        # 2i. Désactive les pos_registers dupliqués (tenant_id, device_id) et
+        # ajoute la contrainte manquante (one-shot, MySQL uniquement)
+        _repair_duplicate_registers(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
 

@@ -396,6 +396,18 @@ def _run_sync_inner(db: Session) -> dict:
                             ).first()
                             if existing:
                                 break
+                    # pos_register n'a pas de colonne unique simple — sa clé
+                    # naturelle est composite (tenant_id, device_id). Sans ce
+                    # fallback, un doublon existant côté cloud (deux registres
+                    # pour le même device_id, contrainte jamais réellement
+                    # appliquée sur une table MySQL déjà existante — voir
+                    # _repair_duplicate_registers) échoue à l'insert local à
+                    # chaque cycle sans jamais se corriger.
+                    if existing is None and etype == "pos_register" and rec.get("device_id"):
+                        existing = db.query(model).filter(
+                            model.tenant_id == rec.get("tenant_id"),
+                            model.device_id == rec["device_id"],
+                        ).first()
                 if existing is None:
                     coerced = _coerce_for_db(model, rec)
                     fields = {k: v for k, v in coerced.items() if k in col_names and k not in entity_excl}
