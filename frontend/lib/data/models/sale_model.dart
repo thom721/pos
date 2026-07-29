@@ -176,7 +176,7 @@ class SaleModel {
         customerId: json['customer']?['id']?.toString(),
         userId: json['user']?['id']?.toString(),
         userFullName: json['user'] != null
-            ? '${json['user']['fname']} ${json['user']['lname']}'
+            ? '${json['user']['fname']} ${json['user']['lname']}'.trim()
             : null,
         warehouseId: json['warehouse_id']?.toString(),
         items: _deduplicateById(

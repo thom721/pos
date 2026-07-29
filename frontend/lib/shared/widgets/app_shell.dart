@@ -1067,12 +1067,28 @@ class _MobileShellState extends ConsumerState<_MobileShell>
             ? _hotelMainNavItems
             : _androidDrawerMainItems;
 
+    // "Voir plus" — rapport complet sur le web, uniquement pour un tenant
+    // cloud (masqué en self-hosted ou installation purement locale).
+    final tenant = ref.watch(tenantProvider).valueOrNull;
+    final isSelfHosted = tenant?['tenant_type'] == 'selfhosted' || tenant?['type'] == 'selfhosted';
+    final showSeeMore = tenant != null && !isSelfHosted;
+
     return [
       ...mainItems.map((item) => _SidebarItem(
             item: item,
             isActive: location.startsWith(item.route),
             onTap: () => go(item.route),
           )),
+      if (showSeeMore)
+        _SidebarItem(
+          item: const _NavItem('Voir plus', Icons.open_in_new_rounded, ''),
+          isActive: false,
+          onTap: () async {
+            Navigator.pop(context);
+            final uri = Uri.tryParse(dio.options.baseUrl);
+            if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+          },
+        ),
       if (isAdmin) ...[
         _SectionDivider(label: 'Administration'),
         ..._adminNavItems.map((item) => _SidebarItem(

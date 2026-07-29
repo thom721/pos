@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'package:pos_connect/core/theme.dart';
-import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/features/reports/reports_screen.dart'
     show ReportPeriod, ReportPeriodLabel, ReportParams, fetchSalesForRange, generateSalesReportPdf;
@@ -12,9 +10,10 @@ import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/shared/widgets/stat_card.dart';
 
 /// Rapport personnel — Android uniquement. Affiche exclusivement les ventes
-/// du caissier connecté (jamais celles des autres, quel que soit son rôle) ;
-/// pour le rapport complet (toutes les caisses, export CSV/PDF configurable),
-/// le bouton "Voir plus" renvoie vers le login web du tenant cloud.
+/// du caissier connecté (jamais celles des autres, quel que soit son rôle).
+/// Le rapport complet (toutes les caisses, export CSV/PDF configurable) est
+/// accessible via l'entrée "Voir plus" du tiroir de navigation (app_shell.dart),
+/// pas depuis cet écran.
 class MobileReportScreen extends ConsumerStatefulWidget {
   const MobileReportScreen({super.key});
 
@@ -97,18 +96,8 @@ class _MobileReportScreenState extends ConsumerState<MobileReportScreen> {
     }
   }
 
-  Future<void> _openWebLogin() async {
-    final uri = Uri.tryParse(dio.options.baseUrl);
-    if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final tenant = ref.watch(tenantProvider).valueOrNull;
-    final isSelfHosted = tenant?['tenant_type'] == 'selfhosted' || tenant?['type'] == 'selfhosted';
-    final showSeeMore = tenant != null && !isSelfHosted;
-
     final canViewAll = ref.watch(authProvider).user?.canViewAllReports ?? false;
     final sales = _sales ?? const <SaleModel>[];
     final totalSales = sales.fold<double>(0, (s, e) => s + e.finalAmount);
@@ -193,17 +182,6 @@ class _MobileReportScreenState extends ConsumerState<MobileReportScreen> {
                   label: Text(canViewAll ? 'Imprimer le rapport' : 'Imprimer mon rapport'),
                 ),
               ),
-              if (showSeeMore) ...[
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _openWebLogin,
-                    icon: const Icon(Icons.open_in_new_rounded),
-                    label: const Text('Voir plus — rapport complet sur le web'),
-                  ),
-                ),
-              ],
             ],
           ],
         ),
