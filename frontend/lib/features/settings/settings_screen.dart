@@ -406,7 +406,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      initialValue: settings.compositeStockTrigger,
+                      // Repli défensif : une valeur inconnue (legacy, chaîne
+                      // vide, etc.) ferait planter le dropdown (aucun item ne
+                      // correspondrait à sa valeur).
+                      initialValue: const {'manual', 'purchase_receipt'}
+                              .contains(settings.compositeStockTrigger)
+                          ? settings.compositeStockTrigger
+                          : 'manual',
                       decoration: const InputDecoration(
                         prefixIcon: Icon(Icons.sync_alt_rounded),
                       ),

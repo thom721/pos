@@ -227,9 +227,17 @@ class AppSettings {
         allowSaleEdit:      j['allow_sale_edit']      as bool? ?? false,
         allowCashierCredit: j['allow_cashier_credit'] as bool? ?? false,
         reportColumns: _parseReportColumns(j['report_columns']),
-        compositeStockTrigger: j['composite_stock_trigger'] as String? ?? 'manual',
+        compositeStockTrigger: _parseCompositeStockTrigger(j['composite_stock_trigger']),
         clientSabotageFields: _parseSabotageFields(j['client_sabotage_fields']),
       );
+
+  /// Une chaîne vide (pas seulement null) doit retomber sur 'manual' — sinon
+  /// le DropdownButtonFormField de la page Paramètres plante (aucun item ne
+  /// correspond à '').
+  static String _parseCompositeStockTrigger(dynamic raw) {
+    final v = raw as String?;
+    return (v == null || v.isEmpty) ? 'manual' : v;
+  }
 
   static List<Map<String, dynamic>> _parseSabotageFields(dynamic raw) {
     if (raw == null || raw is! List) return [];
@@ -314,7 +322,7 @@ class AppSettings {
         allowSaleEdit:      j['allowSaleEdit']      as bool? ?? false,
         allowCashierCredit: j['allowCashierCredit'] as bool? ?? false,
         reportColumns: _parseReportColumns(j['reportColumns']),
-        compositeStockTrigger: j['compositeStockTrigger'] as String? ?? 'manual',
+        compositeStockTrigger: _parseCompositeStockTrigger(j['compositeStockTrigger']),
         clientSabotageFields: _parseSabotageFields(j['clientSabotageFields']),
       );
 }
