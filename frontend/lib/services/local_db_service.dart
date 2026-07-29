@@ -45,7 +45,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 18,
+      version: 19,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -173,6 +173,9 @@ class LocalDbService {
       try { await db.execute('ALTER TABLE sale_items ADD COLUMN discount_id TEXT'); } catch (_) {}
       await _createDiscountsTable(db);
     }
+    if (oldVersion < 19) {
+      try { await db.execute('ALTER TABLE discounts ADD COLUMN product_ids TEXT'); } catch (_) {}
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -265,7 +268,8 @@ class LocalDbService {
         schedule_days  TEXT,
         schedule_start TEXT,
         schedule_end   TEXT,
-        min_quantity   REAL
+        min_quantity   REAL,
+        product_ids    TEXT
       )
     ''');
   }
@@ -891,6 +895,7 @@ class LocalDbService {
           'schedule_start': d.scheduleStart,
           'schedule_end': d.scheduleEnd,
           'min_quantity': d.minQuantity,
+          'product_ids': jsonEncode(d.productIds),
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -922,8 +927,18 @@ class LocalDbService {
               scheduleStart: r['schedule_start'] as String?,
               scheduleEnd: r['schedule_end'] as String?,
               minQuantity: (r['min_quantity'] as num?)?.toDouble(),
+              productIds: _decodeStringList(r['product_ids'] as String?),
             ))
         .toList();
+  }
+
+  List<String> _decodeStringList(String? raw) {
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      return (jsonDecode(raw) as List<dynamic>).map((e) => e.toString()).toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   // ── Dépôts ───────────────────────────────────────────────────────────────

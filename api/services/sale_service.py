@@ -208,6 +208,7 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
             {DiscountScope.item, DiscountScope.both},
             subtotal,
             quantity=item.quantity,
+            product_id=product.id,
         )
         new_item_discount_total += item_amount
 
@@ -386,6 +387,7 @@ def create_sale(
             {DiscountScope.item, DiscountScope.both},
             subtotal,
             quantity=item.quantity,
+            product_id=product.id,
         )
         item_discounts.append((amount, disc_id))
         item_discount_total += amount

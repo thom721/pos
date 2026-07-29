@@ -2129,8 +2129,13 @@ Future<Object?> _selectDiscount(
   required bool forItem,
   DiscountModel? current,
 }) {
+  // Les rabais liés à des produits précis ne sont jamais sélectionnables ici —
+  // ils sont suggérés automatiquement sur la ligne panier du produit concerné.
   final filtered = discounts
-      .where((d) => d.isActive && (forItem ? d.appliesItem : d.appliesReceipt))
+      .where((d) =>
+          d.isActive &&
+          !d.isLinkedToProducts &&
+          (forItem ? d.appliesItem : d.appliesReceipt))
       .toList();
   return showDialog<Object?>(
     context: context,
@@ -2196,6 +2201,22 @@ class _CartItemTile extends StatelessWidget {
     required this.notifier,
     required this.discounts,
   });
+
+  /// Rabais lié spécifiquement à ce produit (configuré dans Réglages > Rabais).
+  /// S'il existe, il remplace la sélection manuelle pour ce produit : il est
+  /// suggéré automatiquement dès que sa condition (quantité) est remplie.
+  DiscountModel? get _linkedDiscount {
+    for (final d in discounts) {
+      if (d.isActive && d.isLinkedToProducts && d.appliesItem &&
+          d.productIds.contains(item.product.id)) {
+        return d;
+      }
+    }
+    return null;
+  }
+
+  bool _linkedConditionMet(DiscountModel d) =>
+      d.minQuantity == null || item.quantity >= d.minQuantity!;
 
   Future<void> _pickDiscount(BuildContext context) async {
     final result = await _selectDiscount(
@@ -2318,36 +2339,80 @@ class _CartItemTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                GestureDetector(
-                  onTap: () => _pickDiscount(context),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.sell_outlined,
-                        size: 11,
-                        color: item.catalogDiscount != null
-                            ? AppColors.success
-                            : AppColors.textSecondary,
+                Builder(builder: (context) {
+                  final linked = _linkedDiscount;
+                  if (linked != null) {
+                    final applied = item.catalogDiscount?.id == linked.id;
+                    if (!applied && !_linkedConditionMet(linked)) {
+                      // Condition (quantité) pas encore remplie — rien à afficher.
+                      return const SizedBox.shrink();
+                    }
+                    final label = linked.isPercentage
+                        ? '${linked.value.toStringAsFixed(0)}%'
+                        : '${linked.value.toStringAsFixed(0)} HTG';
+                    return GestureDetector(
+                      onTap: () => notifier.applyItemDiscount(
+                          item.product.id, applied ? null : linked),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.local_offer_rounded,
+                              size: 11,
+                              color: applied ? AppColors.success : AppColors.warning),
+                          const SizedBox(width: 3),
+                          Text(
+                            applied
+                                ? '${linked.name} (-${_fmt.format(item.catalogDiscountAmount)})'
+                                : 'Rabais dispo: -$label',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: applied ? AppColors.success : AppColors.warning,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (!applied) ...[
+                            const SizedBox(width: 4),
+                            const Text('· Appliquer',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    decoration: TextDecoration.underline,
+                                    color: AppColors.warning)),
+                          ],
+                        ],
                       ),
-                      const SizedBox(width: 3),
-                      Text(
-                        item.catalogDiscount != null
-                            ? '${item.catalogDiscount!.name} (-${_fmt.format(item.catalogDiscountAmount)})'
-                            : 'Rabais',
-                        style: TextStyle(
-                          fontSize: 10,
+                    );
+                  }
+                  return GestureDetector(
+                    onTap: () => _pickDiscount(context),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.sell_outlined,
+                          size: 11,
                           color: item.catalogDiscount != null
                               ? AppColors.success
                               : AppColors.textSecondary,
-                          fontWeight: item.catalogDiscount != null
-                              ? FontWeight.w600
-                              : FontWeight.w400,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
+                        const SizedBox(width: 3),
+                        Text(
+                          item.catalogDiscount != null
+                              ? '${item.catalogDiscount!.name} (-${_fmt.format(item.catalogDiscountAmount)})'
+                              : 'Rabais',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: item.catalogDiscount != null
+                                ? AppColors.success
+                                : AppColors.textSecondary,
+                            fontWeight: item.catalogDiscount != null
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
               ],
             ),
           ),

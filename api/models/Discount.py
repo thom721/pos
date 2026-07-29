@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, Boolean, Time, Enum, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Numeric, Boolean, Time, Enum, ForeignKey, UniqueConstraint, JSON
 import enum
 from .base import UUIDBase
 
@@ -39,3 +39,9 @@ class Discount(UUIDBase):
     # Quantité minimale (rabais article) — ex: à partir de 3 unités.
     # NULL = pas de minimum. N'a de sens que pour scope item/both.
     min_quantity = Column(Numeric(12, 2), nullable=True)
+
+    # Produits liés — NULL/vide = rabais générique (sélection manuelle en caisse).
+    # Si renseigné, ce rabais n'apparaît plus dans le sélecteur manuel pour ces
+    # produits : il est suggéré automatiquement sur la ligne panier dès que la
+    # condition (min_quantity) est remplie, et le caissier choisit de l'appliquer.
+    product_ids = Column(JSON, nullable=True)

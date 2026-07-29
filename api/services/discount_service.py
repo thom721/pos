@@ -32,6 +32,7 @@ class DiscountService(TenantService):
             schedule_start=payload.get("schedule_start"),
             schedule_end=payload.get("schedule_end"),
             min_quantity=payload.get("min_quantity"),
+            product_ids=payload.get("product_ids"),
         )
         self._set_tenant(discount)
         self.db.add(discount)
@@ -75,6 +76,7 @@ def resolve_discount(
     allowed_scopes: set,
     base,
     quantity=None,
+    product_id: str | None = None,
 ) -> tuple[Decimal, str | None]:
     """
     Si discount_id est fourni : charge le rabais catalogue, vérifie sa portée,
@@ -85,6 +87,11 @@ def resolve_discount(
     `quantity` : quantité de la ligne concernée — fourni uniquement lors d'une
     résolution au niveau article, pour vérifier `min_quantity` (condition
     "à partir de N unités"). Non fourni au niveau ticket (pas de sens).
+
+    `product_id` : produit de la ligne concernée — si le rabais est lié à des
+    produits précis (product_ids non vide), interdit son application à tout
+    autre produit (défense en profondeur, le client ne devrait déjà proposer
+    ce rabais que pour les produits liés).
     """
     if discount_id:
         discount = db.query(Discount).filter(Discount.id == str(discount_id)).first()
@@ -94,6 +101,11 @@ def resolve_discount(
             raise HTTPException(400, f"Le rabais « {discount.name} » est désactivé")
         if discount.scope not in allowed_scopes:
             raise HTTPException(400, f"Le rabais « {discount.name} » n'est pas applicable ici")
+        if discount.product_ids and str(product_id) not in {str(p) for p in discount.product_ids}:
+            raise HTTPException(
+                400,
+                f"Le rabais « {discount.name} » n'est pas applicable à ce produit",
+            )
         if quantity is not None and discount.min_quantity and Decimal(str(quantity)) < Decimal(discount.min_quantity):
             raise HTTPException(
                 400,

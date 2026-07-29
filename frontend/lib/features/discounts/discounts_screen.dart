@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/discount_model.dart';
+import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/repositories/discount_repository.dart';
+import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:pos_connect/providers/discount_provider.dart';
 
 const List<String> _dayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -135,6 +137,10 @@ class _DiscountCard extends ConsumerWidget {
               Text(
                   'À partir de ${discount.minQuantity!.toStringAsFixed(discount.minQuantity! % 1 == 0 ? 0 : 2)} unité(s)',
                   style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            if (discount.isLinkedToProducts)
+              Text(
+                  '${discount.productIds.length} produit(s) lié(s) — suggestion automatique en caisse',
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
             if (discount.isAutomatic)
               Text('Automatique — ${_formatSchedule(discount)}',
                   style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
@@ -215,6 +221,8 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
   TimeOfDay? _endTime;
   bool _loading = false;
   String? _error;
+  // Produits liés — id -> nom (résolu au fur et à mesure pour l'affichage)
+  final Map<String, String> _linkedProducts = {};
 
   bool get isEdit => widget.discount != null;
 
@@ -235,6 +243,41 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
         : d.scheduleDays!.split(',').map((s) => int.parse(s.trim())).toSet();
     _startTime = _parseTime(d?.scheduleStart);
     _endTime = _parseTime(d?.scheduleEnd);
+    if (d != null && d.productIds.isNotEmpty) {
+      for (final id in d.productIds) {
+        _linkedProducts[id] = id; // nom résolu dès l'ouverture du sélecteur
+      }
+      _resolveLinkedProductNames();
+    }
+  }
+
+  Future<void> _resolveLinkedProductNames() async {
+    try {
+      final res = await ProductRepository().getProducts(limit: 500);
+      final byId = {for (final p in res.data) p.id: p.name};
+      if (!mounted) return;
+      setState(() {
+        for (final id in _linkedProducts.keys.toList()) {
+          if (byId.containsKey(id)) _linkedProducts[id] = byId[id]!;
+        }
+      });
+    } catch (_) {
+      // Affichage dégradé (ID brut) si la résolution échoue — non bloquant
+    }
+  }
+
+  Future<void> _openProductPicker() async {
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => _ProductPickerDialog(initiallySelected: Map.of(_linkedProducts)),
+    );
+    if (result != null) {
+      setState(() {
+        _linkedProducts
+          ..clear()
+          ..addAll(result);
+      });
+    }
   }
 
   TimeOfDay? _parseTime(String? raw) {
@@ -330,6 +373,47 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
                       if (n == null || n <= 0) return 'Invalide';
                       return null;
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Produits liés — optionnel',
+                                style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                            const Text(
+                              'Si renseigné, ce rabais n\'est plus sélectionnable manuellement — '
+                              'il est suggéré automatiquement sur ces produits en caisse.',
+                              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                            ),
+                            const SizedBox(height: 6),
+                            if (_linkedProducts.isEmpty)
+                              const Text('Aucun produit lié', style: TextStyle(fontSize: 12))
+                            else
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: _linkedProducts.entries
+                                    .map((e) => Chip(
+                                          label: Text(e.value, style: const TextStyle(fontSize: 12)),
+                                          onDeleted: () =>
+                                              setState(() => _linkedProducts.remove(e.key)),
+                                        ))
+                                    .toList(),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: _openProductPicker,
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Produits'),
+                      ),
+                    ],
                   ),
                 ],
                 const SizedBox(height: 8),
@@ -442,6 +526,9 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
         'min_quantity': (_scope == 'item' || _scope == 'both') && _minQuantityCtrl.text.trim().isNotEmpty
             ? double.tryParse(_minQuantityCtrl.text.trim())
             : null,
+        'product_ids': (_scope == 'item' || _scope == 'both') && _linkedProducts.isNotEmpty
+            ? _linkedProducts.keys.toList()
+            : <String>[],
       };
       final repo = DiscountRepository();
       if (isEdit) {
@@ -457,5 +544,112 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
         _error = extractAnyError(e);
       });
     }
+  }
+}
+
+/// Sélecteur de produits — recherche + cases à cocher, renvoie une map
+/// id -> nom des produits sélectionnés (ou null si annulé).
+class _ProductPickerDialog extends StatefulWidget {
+  final Map<String, String> initiallySelected;
+
+  const _ProductPickerDialog({required this.initiallySelected});
+
+  @override
+  State<_ProductPickerDialog> createState() => _ProductPickerDialogState();
+}
+
+class _ProductPickerDialogState extends State<_ProductPickerDialog> {
+  late final Map<String, String> _selected;
+  List<ProductModel> _all = [];
+  String _search = '';
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = Map.of(widget.initiallySelected);
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await ProductRepository().getProducts(limit: 500);
+      if (!mounted) return;
+      setState(() {
+        _all = res.data;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = extractAnyError(e);
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _search.isEmpty
+        ? _all
+        : _all.where((p) => p.name.toLowerCase().contains(_search.toLowerCase())).toList();
+
+    return AlertDialog(
+      title: const Text('Choisir les produits'),
+      content: SizedBox(
+        width: 480,
+        height: 480,
+        child: Column(
+          children: [
+            TextField(
+              decoration: const InputDecoration(
+                labelText: 'Rechercher un produit',
+                prefixIcon: Icon(Icons.search, size: 20),
+              ),
+              onChanged: (v) => setState(() => _search = v),
+            ),
+            const SizedBox(height: 8),
+            Text('${_selected.length} produit(s) sélectionné(s)',
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            const Divider(),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                      ? Center(child: Text(_error!, style: const TextStyle(color: AppColors.error)))
+                      : filtered.isEmpty
+                          ? const Center(child: Text('Aucun produit trouvé'))
+                          : ListView.builder(
+                              itemCount: filtered.length,
+                              itemBuilder: (_, i) {
+                                final p = filtered[i];
+                                final checked = _selected.containsKey(p.id);
+                                return CheckboxListTile(
+                                  dense: true,
+                                  title: Text(p.name),
+                                  value: checked,
+                                  onChanged: (v) => setState(() {
+                                    if (v == true) {
+                                      _selected[p.id] = p.name;
+                                    } else {
+                                      _selected.remove(p.id);
+                                    }
+                                  }),
+                                );
+                              },
+                            ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, _selected),
+          child: const Text('Valider'),
+        ),
+      ],
+    );
   }
 }

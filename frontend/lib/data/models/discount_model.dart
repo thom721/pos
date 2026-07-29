@@ -10,6 +10,9 @@ class DiscountModel {
   final String? scheduleStart; // "HH:MM:SS"
   final String? scheduleEnd;
   final double? minQuantity; // seuil de quantité (rabais article) — ex: à partir de 3
+  // Produits liés — non vide = rabais suggéré automatiquement sur ces produits
+  // en caisse (remplace la sélection manuelle pour ces produits précis).
+  final List<String> productIds;
 
   DiscountModel({
     required this.id,
@@ -23,12 +26,14 @@ class DiscountModel {
     this.scheduleStart,
     this.scheduleEnd,
     this.minQuantity,
+    this.productIds = const [],
   });
 
   bool get isPercentage => type == 'percentage';
 
   bool get appliesReceipt => scope == 'receipt' || scope == 'both';
   bool get appliesItem => scope == 'item' || scope == 'both';
+  bool get isLinkedToProducts => productIds.isNotEmpty;
 
   factory DiscountModel.fromJson(Map<String, dynamic> json) => DiscountModel(
         id: json['id']?.toString() ?? '',
@@ -42,6 +47,10 @@ class DiscountModel {
         scheduleStart: json['schedule_start']?.toString(),
         scheduleEnd: json['schedule_end']?.toString(),
         minQuantity: (json['min_quantity'] as num?)?.toDouble(),
+        productIds: (json['product_ids'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            const [],
       );
 
   Map<String, dynamic> toJson() => {
@@ -55,5 +64,6 @@ class DiscountModel {
         if (scheduleStart != null) 'schedule_start': scheduleStart,
         if (scheduleEnd != null) 'schedule_end': scheduleEnd,
         if (minQuantity != null) 'min_quantity': minQuantity,
+        'product_ids': productIds,
       };
 }
