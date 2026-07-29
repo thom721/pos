@@ -380,13 +380,7 @@ def get_caisse_count(
     }
 
 
-@router.get("/payments")
-def list_payments(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(P.CONFIG_READ)),
-):
-    """Returns all billing payments for the current tenant, newest first."""
-    tenant = _get_tenant(db, current_user)
+def _list_payments_for_tenant(db: Session, tenant: Tenant) -> list[dict]:
     payments = (
         db.query(BillingPayment)
         .filter(BillingPayment.tenant_id == tenant.id)
@@ -412,6 +406,62 @@ def list_payments(
             "created_at": p.created_at.isoformat(),
         })
     return result
+
+
+@router.get("/payments")
+def list_payments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.CONFIG_READ)),
+):
+    """Returns all billing payments for the current tenant, newest first.
+
+    BillingPayment est une donnée cloud uniquement (jamais synchronisée vers
+    les installations locales — voir SYNC_ENTITIES/_MODEL_MAP). Sur un
+    serveur local/self-hosted (BILLING_URL configuré), on doit donc toujours
+    aller chercher cette liste sur posconnect.ht, sinon elle apparaît
+    perpétuellement vide (aucun BillingPayment n'existe jamais localement).
+    """
+    billing_url = (settings.BILLING_URL or "").rstrip("/")
+    sync_token  = settings.CLOUD_SYNC_TOKEN or ""
+
+    if billing_url and sync_token:
+        import httpx as _httpx
+        try:
+            r = _httpx.get(
+                f"{billing_url}/api/billing/payments-sync-proxy",
+                headers={"Authorization": f"Bearer {sync_token}"},
+                timeout=15,
+            )
+            r.raise_for_status()
+            return r.json()
+        except _httpx.HTTPStatusError as exc:
+            raise HTTPException(exc.response.status_code,
+                                f"Erreur billing proxy: {exc.response.text[:200]}")
+        except Exception as exc:
+            raise HTTPException(503, f"Serveur de billing inaccessible: {exc}")
+
+    tenant = _get_tenant(db, current_user)
+    return _list_payments_for_tenant(db, tenant)
+
+
+@router.get("/payments-sync-proxy")
+def get_payments_sync_proxy(request: Request, db: Session = Depends(get_db)):
+    """Cloud-side counterpart of list_payments, appelé par un serveur local/
+    self-hosted (voir license-sync-proxy pour le même principe). Authentifié
+    par sync token, pas par JWT utilisateur (le JWT local n'est pas valide
+    sur le cloud — clé de signature propre à chaque serveur)."""
+    from api.routes.sync import _decode_sync_token
+
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(401, "Token de synchronisation requis")
+
+    claims = _decode_sync_token(auth_header[7:])
+    tenant = db.query(Tenant).filter(Tenant.id == claims["tenant_id"]).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant introuvable")
+
+    return _list_payments_for_tenant(db, tenant)
 
 
 @router.post("/checkout/stripe")
@@ -500,7 +550,10 @@ def submit_payment(
         status="pending",
         reference=body.reference,
         plan_type=plan_type,
-        description=f"Demande {method_label} — {plan_label} ({amount:.0f} HTG) — en attente de validation",
+        # Séparateur ASCII (pas d'em dash "—") : le reçu PDF utilise la police
+        # par défaut du package `pdf` (Helvetica/WinAnsi), qui ne couvre pas
+        # U+2014 et affichait un caractère de remplacement "□" à la place.
+        description=f"Demande {method_label} - {plan_label} ({amount:.0f} HTG) - en attente de validation",
         paid_at=None,
         period_start=encrypt_date(now, tenant.id),
         period_end=encrypt_date(now + timedelta(days=days), tenant.id),
@@ -519,12 +572,9 @@ def submit_payment(
     }
 
 
-@router.post("/submit-register-payment", status_code=201)
-def submit_register_payment(
-    body: SubmitRegisterPaymentRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(P.CONFIG_READ)),
-):
+def _submit_register_payment_for_tenant(
+    db: Session, tenant: Tenant, body: "SubmitRegisterPaymentRequest",
+) -> dict:
     """
     Tenant soumet un paiement pour une ou plusieurs caisses spécifiques.
     Le superadmin confirme via PATCH /api/admin/payments/{id}/confirm.
@@ -533,7 +583,6 @@ def submit_register_payment(
     if not body.register_ids:
         raise HTTPException(status_code=400, detail="Aucune caisse spécifiée")
 
-    tenant = _get_tenant(db, current_user)
     plan_type = body.plan_type if body.plan_type in ("monthly", "annual") else "monthly"
     months = 12 if plan_type == "annual" else max(1, min(body.months, 12))
 
@@ -597,7 +646,9 @@ def submit_register_payment(
             reference=body.reference,
             plan_type=plan_type,
             register_ids_json=_json.dumps([r.id for r in wh_regs]),
-            description=f"{wh_name} — {reg_names} — {method_label} — {plan_label} ({wh_amount:.0f} HTG)",
+            # Voir le commentaire équivalent ci-dessus (submit_payment) — même
+            # correctif d'encodage pour le reçu PDF.
+            description=f"{wh_name} - {reg_names} - {method_label} - {plan_label} ({wh_amount:.0f} HTG)",
             paid_at=None,
             period_start=encrypt_date(now, tenant.id),
             period_end=encrypt_date(now + timedelta(days=days), tenant.id),
@@ -616,3 +667,58 @@ def submit_register_payment(
         "amount_htg":     round(total_amount, 2),
         "message":        "Paiement soumis. Un administrateur le validera sous peu.",
     }
+
+
+@router.post("/submit-register-payment", status_code=201)
+def submit_register_payment(
+    body: SubmitRegisterPaymentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.CONFIG_READ)),
+):
+    """Point d'entrée appelé par l'app (bureau/web). Sur un serveur local/
+    self-hosted (BILLING_URL configuré), proxie vers posconnect.ht — sinon
+    la demande de paiement est créée dans la base LOCALE, où l'admin cloud
+    ne la voit jamais (BillingPayment n'est pas synchronisé, voir
+    _list_payments_for_tenant). Même principe que get_license/license-sync-proxy."""
+    billing_url = (settings.BILLING_URL or "").rstrip("/")
+    sync_token  = settings.CLOUD_SYNC_TOKEN or ""
+
+    if billing_url and sync_token:
+        import httpx as _httpx
+        try:
+            r = _httpx.post(
+                f"{billing_url}/api/billing/submit-register-payment-sync-proxy",
+                json=body.model_dump(),
+                headers={"Authorization": f"Bearer {sync_token}"},
+                timeout=15,
+            )
+            r.raise_for_status()
+            return r.json()
+        except _httpx.HTTPStatusError as exc:
+            raise HTTPException(exc.response.status_code,
+                                f"Erreur billing proxy: {exc.response.text[:200]}")
+        except Exception as exc:
+            raise HTTPException(503, f"Serveur de billing inaccessible: {exc}")
+
+    tenant = _get_tenant(db, current_user)
+    return _submit_register_payment_for_tenant(db, tenant, body)
+
+
+@router.post("/submit-register-payment-sync-proxy", status_code=201)
+def submit_register_payment_sync_proxy(
+    body: SubmitRegisterPaymentRequest, request: Request, db: Session = Depends(get_db),
+):
+    """Cloud-side counterpart, authentifié par sync token (voir
+    payments-sync-proxy / license-sync-proxy pour le même principe)."""
+    from api.routes.sync import _decode_sync_token
+
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(401, "Token de synchronisation requis")
+
+    claims = _decode_sync_token(auth_header[7:])
+    tenant = db.query(Tenant).filter(Tenant.id == claims["tenant_id"]).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant introuvable")
+
+    return _submit_register_payment_for_tenant(db, tenant, body)

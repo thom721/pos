@@ -250,7 +250,9 @@ Future<void> _printBillingInvoice(
                   child: pw.Text('Date de paiement',
                       style: pw.TextStyle(fontSize: 10, color: grey)),
                 ),
-                pw.Text(paidAt != null ? fmtFull.format(toHaitiTime(paidAt)) : '—',
+                // '-' plutôt que '—' : la police par défaut du package `pdf`
+                // (Helvetica/WinAnsi) ne couvre pas l'em dash U+2014.
+                pw.Text(paidAt != null ? fmtFull.format(toHaitiTime(paidAt)) : '-',
                     style: pw.TextStyle(fontSize: 10, color: darkTxt)),
               ]),
             ]),
@@ -318,7 +320,7 @@ Future<void> _printBillingInvoice(
 
         // ── 3. Résumé paiement ────────────────────────────────────────────────
         pw.Text(
-          '$amtStr payé le ${paidAt != null ? fmtFull.format(toHaitiTime(paidAt)) : '—'}',
+          '$amtStr payé le ${paidAt != null ? fmtFull.format(toHaitiTime(paidAt)) : '-'}',
           style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold,
               color: darkTxt),
         ),
@@ -388,7 +390,7 @@ Future<void> _printBillingInvoice(
         pw.Row(children: [
           pw.Expanded(flex: 2, child: cell(methodLabel)),
           pw.Expanded(flex: 2, child: cell(
-              paidAt != null ? fmtFull.format(toHaitiTime(paidAt)) : '—')),
+              paidAt != null ? fmtFull.format(toHaitiTime(paidAt)) : '-')),
           pw.Expanded(flex: 2, child: cell(amtStr)),
           pw.Expanded(flex: 2, child: cell(receiptNum)),
         ]),
@@ -423,8 +425,6 @@ class _BillingContent extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final status           = data['status'] as String? ?? 'trial';
     final daysLeft         = data['days_left'] as int?;
-    final isGrace          = data['is_grace'] as bool? ?? false;
-    final graceDaysLeft    = data['grace_days_left'] as int?;
     final business         = data['business_name'] as String? ?? '';
     final email            = data['owner_email'] as String? ?? '';
     final hasStripe        = data['has_stripe'] as bool? ?? false;
@@ -434,12 +434,6 @@ class _BillingContent extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Grace period banner ────────────────────────────────────────────
-        if (isGrace && graceDaysLeft != null) ...[
-          _GraceBanner(daysLeft: graceDaysLeft),
-          const SizedBox(height: 16),
-        ],
-
         // ── Status card ────────────────────────────────────────────────────
         _StatusCard(status: status, daysLeft: daysLeft,
             business: business, email: email, hasStripe: hasStripe,
@@ -469,39 +463,11 @@ class _BillingContent extends ConsumerWidget {
                 annualDiscountPct: discountPct,
                 cashEnabled: cfg['cash_enabled'] as bool? ?? true,
                 moncashEnabled: cfg['moncash_enabled'] as bool? ?? true,
-                natcashEnabled: cfg['natcash_enabled'] as bool? ?? true);
+                natcashEnabled: cfg['natcash_enabled'] as bool? ?? true,
+                cardEnabled: cfg['card_enabled'] as bool? ?? true);
           },
         ),
         const SizedBox(height: 24),
-
-        // ── Payment options ────────────────────────────────────────────────
-        if (status != 'active') ...[
-          const Text('Souscrire à un plan',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          const Text(
-              'Choisissez votre méthode de paiement pour continuer à utiliser POS Connect.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-          const SizedBox(height: 16),
-          // Combine plan-usage (real total) + config (payment modes)
-          Builder(builder: (ctx) {
-            final cfgAsync   = ref.watch(_billingConfigProvider);
-            final usageAsync = ref.watch(_planUsageProvider);
-            return cfgAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error:   (_, __) => const SizedBox.shrink(),
-              data: (cfg) {
-                final priceHtg = usageAsync.when(
-                  data:    (u) => (u['total_monthly_htg'] as num? ?? cfg['monthly_price_htg'] as num? ?? 1500).toDouble(),
-                  loading: ()  => (cfg['monthly_price_htg'] as num? ?? 1500).toDouble(),
-                  error:   (_, __) => (cfg['monthly_price_htg'] as num? ?? 1500).toDouble(),
-                );
-                return _PaymentCards(priceHtg: priceHtg, config: cfg);
-              },
-            );
-          }),
-          const SizedBox(height: 24),
-        ],
 
         // ── Already active ─────────────────────────────────────────────────
         if (status == 'active') ...[
@@ -691,63 +657,6 @@ class _StatusCard extends StatelessWidget {
             ],
           ],
         ],
-      ),
-    );
-  }
-}
-
-// ── Stripe card ───────────────────────────────────────────────────────────────
-
-class _StripeCard extends StatefulWidget {
-  final WidgetRef ref;
-  const _StripeCard({required this.ref});
-
-  @override
-  State<_StripeCard> createState() => _StripeCardState();
-}
-
-class _StripeCardState extends State<_StripeCard> {
-  bool _loading = false;
-  String? _error;
-
-  Future<void> _checkout() async {
-    setState(() { _loading = true; _error = null; });
-    try {
-      final res = await dio.post('/api/billing/checkout/stripe');
-      final url = res.data['checkout_url'] as String?;
-      if (url != null) {
-        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      }
-    } catch (e) {
-      final msg = extractErrorMessage(e is Exception ? e as dynamic : Exception(e));
-      setState(() { _error = msg; });
-    } finally {
-      if (mounted) setState(() { _loading = false; });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _PaymentCard(
-      icon: Icons.credit_card_rounded,
-      iconColor: const Color(0xFF635BFF),
-      title: 'Carte bancaire (Stripe)',
-      subtitle: 'Visa, Mastercard, American Express — paiement sécurisé',
-      errorMessage: _error,
-      action: SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFF635BFF),
-            minimumSize: const Size.fromHeight(44),
-          ),
-          onPressed: _loading ? null : _checkout,
-          icon: _loading
-              ? const SizedBox(width: 16, height: 16,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-              : const Icon(Icons.open_in_new_rounded, size: 16),
-          label: Text(_loading ? 'Redirection...' : 'Payer avec Stripe'),
-        ),
       ),
     );
   }
@@ -1015,186 +924,6 @@ class _RegisterUsageGroup extends StatelessWidget {
 }
 
 
-// ── 4 méthodes de paiement (Cash / MonCash / NatCash / Card) ─────────────────
-// Chaque carte est grisée si sa méthode est désactivée dans platform_config.
-
-class _PaymentCards extends ConsumerWidget {
-  final double               priceHtg;
-  final Map<String, dynamic> config;
-
-  const _PaymentCards({required this.priceHtg, required this.config});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cashEnabled    = config['cash_enabled']    as bool? ?? true;
-    final moncashEnabled = config['moncash_enabled'] as bool? ?? true;
-    final natcashEnabled = config['natcash_enabled'] as bool? ?? true;
-    final cardEnabled    = config['card_enabled']    as bool? ?? true;
-    final moncashMode    = config['moncash_mode']    as String? ?? 'manual';
-    final natcashMode    = config['natcash_mode']    as String? ?? 'manual';
-
-    return Column(children: [
-      // ── Cash ────────────────────────────────────────────────────────────
-      Opacity(
-        opacity: cashEnabled ? 1.0 : 0.4,
-        child: _PaymentCard(
-          icon: Icons.payments_rounded,
-          iconColor: const Color(0xFF2E7D32),
-          title: 'Espèces (Cash)',
-          subtitle: 'Paiement en espèces — remise à l\'administrateur',
-          disabled: !cashEnabled,
-          action: cashEnabled
-              ? _ManualPaymentForm(method: 'cash', priceHtg: priceHtg)
-              : const SizedBox.shrink(),
-        ),
-      ),
-      const SizedBox(height: 12),
-
-      // ── MonCash ──────────────────────────────────────────────────────────
-      Opacity(
-        opacity: moncashEnabled ? 1.0 : 0.4,
-        child: _PaymentCard(
-          icon: Icons.phone_android_rounded,
-          iconColor: const Color(0xFFE53935),
-          title: 'MonCash',
-          subtitle: moncashMode == 'api'
-              ? 'Paiement automatique MonCash (Digicel)'
-              : 'Paiement mobile MonCash (Digicel)',
-          disabled: !moncashEnabled,
-          action: !moncashEnabled
-              ? const SizedBox.shrink()
-              : moncashMode == 'api'
-                  ? _ApiModeAction(
-                      priceLabel: '${priceHtg.toStringAsFixed(0)} HTG / mois',
-                      buttonLabel: 'Payer avec MonCash',
-                      color: const Color(0xFFE53935),
-                    )
-                  : _ManualPaymentForm(method: 'moncash', priceHtg: priceHtg),
-        ),
-      ),
-      const SizedBox(height: 12),
-
-      // ── NatCash ──────────────────────────────────────────────────────────
-      Opacity(
-        opacity: natcashEnabled ? 1.0 : 0.4,
-        child: _PaymentCard(
-          icon: Icons.smartphone_rounded,
-          iconColor: const Color(0xFF1565C0),
-          title: 'NatCash',
-          subtitle: natcashMode == 'api'
-              ? 'Paiement automatique NatCash (Natcom)'
-              : 'Paiement mobile NatCash (Natcom)',
-          disabled: !natcashEnabled,
-          action: !natcashEnabled
-              ? const SizedBox.shrink()
-              : natcashMode == 'api'
-                  ? _ApiModeAction(
-                      priceLabel: '${priceHtg.toStringAsFixed(0)} HTG / mois',
-                      buttonLabel: 'Payer avec NatCash',
-                      color: const Color(0xFF1565C0),
-                    )
-                  : _ManualPaymentForm(method: 'natcash', priceHtg: priceHtg),
-        ),
-      ),
-      const SizedBox(height: 12),
-
-      // ── Card (Stripe) ────────────────────────────────────────────────────
-      Opacity(
-        opacity: cardEnabled ? 1.0 : 0.4,
-        child: cardEnabled
-            ? _StripeCard(ref: ref)
-            : _PaymentCard(
-                icon: Icons.credit_card_rounded,
-                iconColor: const Color(0xFF635BFF),
-                title: 'Carte bancaire (Stripe)',
-                subtitle: 'Visa, Mastercard, American Express',
-                disabled: true,
-                action: const SizedBox.shrink(),
-              ),
-      ),
-    ]);
-  }
-}
-
-// ── API mode action ───────────────────────────────────────────────────────────
-
-class _ApiModeAction extends StatelessWidget {
-  final String priceLabel;
-  final String buttonLabel;
-  final Color color;
-  const _ApiModeAction({
-    required this.priceLabel,
-    required this.buttonLabel,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.bolt_rounded, size: 14, color: color),
-            const SizedBox(width: 4),
-            Text(
-              'Traitement automatique — $priceLabel',
-              style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w500),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Intégration API en cours de configuration — contactez le support.')),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white),
-            child: Text(buttonLabel),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Grace period banner ───────────────────────────────────────────────────────
-
-class _GraceBanner extends StatelessWidget {
-  final int daysLeft;
-  const _GraceBanner({required this.daysLeft});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.orange.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Votre période d\'essai est terminée. '
-              'Il vous reste $daysLeft jour${daysLeft > 1 ? 's' : ''} de grâce pour renouveler '
-              'avant la suspension de votre compte.',
-              style: const TextStyle(fontSize: 13, color: Colors.orange),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ── Shared widgets ────────────────────────────────────────────────────────────
 
 class _Card extends StatelessWidget {
@@ -1212,91 +941,6 @@ class _Card extends StatelessWidget {
         border: Border.all(color: AppColors.divider),
       ),
       child: child,
-    );
-  }
-}
-
-class _PaymentCard extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-  final Widget action;
-  final String? errorMessage;
-  final bool disabled;
-
-  const _PaymentCard({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-    required this.action,
-    this.errorMessage,
-    this.disabled = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: iconColor, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 14)),
-                  Text(subtitle,
-                      style: const TextStyle(
-                          color: AppColors.textSecondary, fontSize: 12)),
-                ],
-              ),
-            ),
-            if (disabled)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppColors.textSecondary.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text('Non disponible',
-                    style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-              ),
-          ]),
-          if (errorMessage != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.error.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(children: [
-                const Icon(Icons.error_outline, color: AppColors.error, size: 14),
-                const SizedBox(width: 6),
-                Expanded(
-                    child: Text(errorMessage!,
-                        style: const TextStyle(
-                            color: AppColors.error, fontSize: 12))),
-              ]),
-            ),
-          ],
-          const SizedBox(height: 16),
-          action,
-        ],
-      ),
     );
   }
 }
@@ -1342,241 +986,6 @@ class _InfoRow extends StatelessWidget {
             child: Text(value,
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                 overflow: TextOverflow.ellipsis)),
-      ]),
-    );
-  }
-}
-
-// ── Manual payment submission form ────────────────────────────────────────────
-
-class _ManualPaymentForm extends StatefulWidget {
-  final String  method;
-  final double  priceHtg;
-  final String? number;    // null = cache étapes + champ référence
-  final String? stepVerb;
-
-  const _ManualPaymentForm({
-    required this.method,
-    required this.priceHtg,
-    this.number,
-    this.stepVerb,
-  });
-
-  @override
-  State<_ManualPaymentForm> createState() => _ManualPaymentFormState();
-}
-
-class _ManualPaymentFormState extends State<_ManualPaymentForm> {
-  final _refCtrl = TextEditingController();
-  int    _months    = 1;
-  bool   _submitting = false;
-  bool   _submitted  = false;
-  String? _error;
-
-  static const _monthOptions = [1, 2, 3, 6, 12];
-
-  @override
-  void dispose() {
-    _refCtrl.dispose();
-    super.dispose();
-  }
-
-  double get _totalAmount => widget.priceHtg * _months;
-
-  Future<void> _submit() async {
-    final ref = _refCtrl.text.trim();
-    // Référence obligatoire seulement si le numéro de paiement est affiché
-    if (widget.number != null && ref.isEmpty) return;
-    setState(() { _submitting = true; _error = null; _submitted = false; });
-    try {
-      await dio.post('/api/billing/submit-payment', data: {
-        'method':  widget.method,
-        'months':  _months,
-        if (ref.isNotEmpty) 'reference': ref,
-      });
-      setState(() { _submitted = true; });
-    } catch (e) {
-      setState(() { _error = e is DioException ? extractErrorMessage(e) : e.toString(); });
-    } finally {
-      setState(() { _submitting = false; });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_submitted) {
-      return Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.success.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(children: [
-          const Icon(Icons.check_circle_outline, color: AppColors.success, size: 18),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Paiement de $_months mois soumis — un administrateur le validera sous peu '
-              'et votre abonnement sera activé.',
-              style: const TextStyle(color: AppColors.success, fontSize: 13),
-            ),
-          ),
-        ]),
-      );
-    }
-
-    final totalStr = _totalAmount.toStringAsFixed(0);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // ── Month selector ────────────────────────────────────────────────
-        const Text('Nombre de mois',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary)),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 6,
-          children: _monthOptions.map((m) {
-            final selected = m == _months;
-            return ChoiceChip(
-              label: Text('$m mois'),
-              selected: selected,
-              onSelected: (_) => setState(() { _months = m; }),
-              labelStyle: TextStyle(
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
-                color: selected ? Colors.white : AppColors.textSecondary,
-              ),
-              selectedColor: AppColors.primary,
-              backgroundColor: AppColors.background,
-              side: BorderSide(
-                color: selected ? AppColors.primary : AppColors.divider,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 12),
-
-        // ── Étapes de paiement (visibles uniquement si un numéro est configuré) ──
-        if (widget.number != null) ...[
-          _PaymentStep(number: '1',
-              text: 'Ouvrez ${widget.method == 'moncash' ? 'MonCash' : 'NatCash'} '
-                    'et sélectionnez "${widget.stepVerb ?? ''}"'),
-          _PaymentStep(number: '2',
-              text: 'Envoyez $totalStr HTG'
-                    '${_months > 1 ? ' ($_months × ${widget.priceHtg.toStringAsFixed(0)} HTG)' : ''}'
-                    ' au numéro :'),
-          _CopyRow(value: widget.number!),
-          _PaymentStep(number: '3',
-              text: 'Entrez le numéro de transaction ci-dessous et cliquez Soumettre :'),
-          const SizedBox(height: 6),
-          TextField(
-            controller: _refCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Numéro de transaction / reçu',
-              hintText: 'Ex: MC-20260715-XXXX',
-              prefixIcon: Icon(Icons.tag_rounded),
-              isDense: true,
-            ),
-            onSubmitted: (_) { if (!_submitting) _submit(); },
-          ),
-          const SizedBox(height: 12),
-        ],
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _submitting ? null : _submit,
-            icon: _submitting
-                ? const SizedBox(width: 14, height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.send_rounded, size: 16),
-            label: Text(_submitting ? 'Envoi...' : 'Soumettre — $totalStr HTG / $_months mois'),
-          ),
-        ),
-        if (_error != null) ...[
-          const SizedBox(height: 8),
-          Row(children: [
-            const Icon(Icons.error_outline, color: AppColors.error, size: 16),
-            const SizedBox(width: 6),
-            Expanded(child: Text(_error!,
-                style: const TextStyle(color: AppColors.error, fontSize: 12))),
-          ]),
-        ],
-      ],
-    );
-  }
-}
-
-class _PaymentStep extends StatelessWidget {
-  final String number;
-  final String text;
-  const _PaymentStep({required this.number, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(
-          width: 20,
-          height: 20,
-          decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Center(
-            child: Text(number,
-                style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary)),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-            child: Text(text,
-                style: const TextStyle(fontSize: 13, height: 1.4))),
-      ]),
-    );
-  }
-}
-
-class _CopyRow extends StatelessWidget {
-  final String value;
-  const _CopyRow({required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(left: 28, bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Row(children: [
-        Text(value,
-            style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 14,
-                letterSpacing: 0.5)),
-        const Spacer(),
-        GestureDetector(
-          onTap: () {
-            Clipboard.setData(ClipboardData(text: value));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Numéro copié'),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          },
-          child: const Icon(Icons.copy_rounded,
-              size: 16, color: AppColors.textSecondary),
-        ),
       ]),
     );
   }
@@ -1741,6 +1150,7 @@ class _RegisterPaymentSection extends ConsumerStatefulWidget {
   final bool cashEnabled;
   final bool moncashEnabled;
   final bool natcashEnabled;
+  final bool cardEnabled;
 
   const _RegisterPaymentSection({
     required this.pricePerCaisse,
@@ -1748,6 +1158,7 @@ class _RegisterPaymentSection extends ConsumerStatefulWidget {
     this.cashEnabled = true,
     this.moncashEnabled = true,
     this.natcashEnabled = true,
+    this.cardEnabled = true,
   });
 
   @override
@@ -1823,6 +1234,27 @@ class _RegisterPaymentSectionState
       });
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  /// La carte bancaire (Stripe) n'a pas de flux "demande manuelle par
+  /// caisse" — c'est un abonnement global, payé et activé immédiatement via
+  /// un checkout externe (contrairement à cash/MonCash/NatCash qui créent
+  /// une demande "pending" pour validation admin).
+  Future<void> _launchStripeCheckout() async {
+    try {
+      final res = await dio.post('/api/billing/checkout/stripe');
+      final url = res.data['checkout_url'] as String?;
+      if (url != null) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e is DioException
+            ? extractErrorMessage(e)
+            : 'Paiement par carte indisponible pour le moment.'),
+      ));
     }
   }
 
@@ -1915,35 +1347,51 @@ class _RegisterPaymentSectionState
           ],
 
           // ── Méthode de paiement ─────────────────────────────────────────
+          // Les 4 méthodes sont toujours visibles ; celles désactivées par
+          // la plateforme restent affichées mais non cliquables (grisées).
           const SizedBox(height: 10),
           Row(children: [
             const Text('Méthode :',
                 style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
             const SizedBox(width: 10),
             ...[
-              if (widget.cashEnabled) ('cash', 'Espèces'),
-              if (widget.moncashEnabled) ('moncash', 'MonCash'),
-              if (widget.natcashEnabled) ('natcash', 'NatCash'),
-            ].map((m) => Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: FilterChip(
-                    label: Text(m.$2),
-                    selected: _method == m.$1,
-                    onSelected: (_) => setState(() => _method = m.$1),
-                    showCheckmark: false,
-                    visualDensity: VisualDensity.compact,
-                    selectedColor: AppColors.primary.withValues(alpha: 0.15),
-                    labelStyle: TextStyle(
-                      fontSize: 11,
-                      color: _method == m.$1
-                          ? AppColors.primary
-                          : AppColors.textSecondary,
-                      fontWeight: _method == m.$1
-                          ? FontWeight.w600
-                          : FontWeight.w400,
-                    ),
+              ('cash', 'Espèces', widget.cashEnabled),
+              ('moncash', 'MonCash', widget.moncashEnabled),
+              ('natcash', 'NatCash', widget.natcashEnabled),
+              ('card', 'Carte', widget.cardEnabled),
+            ].map((m) {
+              final (value, label, enabled) = m;
+              // "Carte" n'a pas de flux de demande manuelle par caisse — elle
+              // déclenche directement le checkout Stripe (abonnement global).
+              final isCard = value == 'card';
+              final active = !isCard && _method == value;
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  label: Text(label),
+                  selected: active,
+                  onSelected: !enabled
+                      ? null
+                      : (_) {
+                          if (isCard) {
+                            _launchStripeCheckout();
+                          } else {
+                            setState(() => _method = value);
+                          }
+                        },
+                  showCheckmark: false,
+                  visualDensity: VisualDensity.compact,
+                  selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                  labelStyle: TextStyle(
+                    fontSize: 11,
+                    color: !enabled
+                        ? AppColors.textSecondary.withValues(alpha: 0.4)
+                        : (active ? AppColors.primary : AppColors.textSecondary),
+                    fontWeight: active ? FontWeight.w600 : FontWeight.w400,
                   ),
-                )),
+                ),
+              );
+            }),
           ]),
 
           const SizedBox(height: 16),

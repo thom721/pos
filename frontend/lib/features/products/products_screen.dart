@@ -1240,6 +1240,12 @@ class _ProductTable extends ConsumerWidget {
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
+            // columnSpacing par défaut (56) pousse la colonne d'actions
+            // (verrou + crayon) hors de la zone visible sur une fenêtre de
+            // largeur standard, avec 9 colonnes — resserré ici pour que le
+            // bouton d'édition reste visible sans scroll horizontal.
+            columnSpacing: 20,
+            horizontalMargin: 16,
             headingRowColor: WidgetStateProperty.all(AppColors.background),
             columns: [
               const DataColumn(label: Text('')),
