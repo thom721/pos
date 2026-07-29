@@ -15,6 +15,11 @@ class ProductBase(BaseModel):
     supplier_id: Optional[str] = None
     category_id: Optional[str]
     warehouse_id: Optional[str] = None
+    # Produit composé (ex: "Caisse" = 12 x "Boîte") — component_product_id
+    # référence le produit dont le stock est réellement suivi ; ce produit-ci
+    # n'a alors plus de stock propre (dérivé du composant).
+    component_product_id: Optional[str] = None
+    component_quantity: Optional[float] = None
 
 
 class ProductCreate(ProductBase):
@@ -41,6 +46,8 @@ class ProductUpdate(BaseModel):
     category_id: Optional[str]
     warehouse_id: Optional[str] = None
     is_locked: Optional[bool] = None
+    component_product_id: Optional[str] = None
+    component_quantity: Optional[float] = None
 
 
 class ProductSaleItem(BaseModel):

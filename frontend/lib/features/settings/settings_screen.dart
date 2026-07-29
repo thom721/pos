@@ -380,6 +380,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
             const SizedBox(height: 24),
 
+            // ── Produits composés ───────────────────────────────────────────
+            _SectionHeader(icon: Icons.inventory_2_rounded, title: 'Produits composés'),
+            const SizedBox(height: 16),
+            _Card(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Pour un produit composé (ex: "Caisse" = 12 x "Boîte"), où '
+                      'entrez-vous habituellement le stock reçu ?',
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: settings.compositeStockTrigger,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.sync_alt_rounded),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'manual',
+                          child: Text('Ajustement manuel (page Produits)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'purchase_receipt',
+                          child: Text('Réception d\'achat fournisseur'),
+                        ),
+                      ],
+                      onChanged: (v) => notifier.save(
+                          settings.copyWith(compositeStockTrigger: v ?? 'manual')),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
             // ── Affichage des rapports ──────────────────────────────────────
             _SectionHeader(icon: Icons.view_column_rounded, title: 'Affichage des rapports'),
             const SizedBox(height: 16),

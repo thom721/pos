@@ -32,6 +32,11 @@ class ProductModel {
   final bool isActive;
   final bool isLocked;
   final String? warehouseId;
+  // Produit composé (ex: "Caisse" = 12 x "Boîte") — componentProductId
+  // référence le produit dont le stock est réellement suivi ; ce produit-ci
+  // n'a alors plus de stock propre (dérivé du composant côté serveur).
+  final String? componentProductId;
+  final double? componentQuantity;
 
   ProductModel({
     required this.id,
@@ -47,9 +52,12 @@ class ProductModel {
     this.isActive = true,
     this.isLocked = false,
     this.warehouseId,
+    this.componentProductId,
+    this.componentQuantity,
   });
 
   bool get isLowStock => stock != null && stock! <= alertStock;
+  bool get isComposite => componentProductId != null && componentQuantity != null;
 
   factory ProductModel.fromJson(Map<String, dynamic> json) => ProductModel(
         id: json['id']?.toString() ?? '',
@@ -70,6 +78,10 @@ class ProductModel {
         isActive: json['is_active'] != false,
         isLocked: json['is_locked'] == true,
         warehouseId: json['warehouse_id']?.toString(),
+        componentProductId: json['component_product_id']?.toString(),
+        componentQuantity: json['component_quantity'] != null
+            ? (json['component_quantity'] as num?)?.toDouble()
+            : null,
       );
 
   Map<String, dynamic> toJson() => {
@@ -84,5 +96,7 @@ class ProductModel {
         'image_url': imageUrl,
         'is_locked': isLocked,
         if (warehouseId != null) 'warehouse_id': warehouseId,
+        'component_product_id': componentProductId,
+        'component_quantity': componentQuantity,
       };
 }

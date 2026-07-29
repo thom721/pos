@@ -24,6 +24,19 @@ final _fmt =
 
 String _imgUrl(String path) => '${dio.options.baseUrl}$path';
 
+/// /api/products/ plafonne per_page à 100 — on pagine pour tout récupérer.
+Future<List<ProductModel>> _fetchAllProductsForPicker() async {
+  const perPage = 100;
+  final repo = ProductRepository();
+  final first = await repo.getProducts(page: 1, limit: perPage);
+  final all = [...first.data];
+  for (var p = 2; p <= first.meta.pages; p++) {
+    final res = await repo.getProducts(page: p, limit: perPage);
+    all.addAll(res.data);
+  }
+  return all;
+}
+
 class ProductsScreen extends ConsumerWidget {
   const ProductsScreen({super.key});
 
@@ -1505,6 +1518,12 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
   List<CategoryModel> _categories = [];
   List<WarehouseModel> _warehouses = [];
 
+  // Produit composé (ex: "Caisse" = 12 x "Boîte")
+  bool _isComposite = false;
+  String? _componentProductId;
+  String? _componentProductName;
+  late final TextEditingController _componentQtyCtrl;
+
   Uint8List? _imageBytes;
   String? _imageFilename;
 
@@ -1526,7 +1545,35 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
         text: widget.product?.alertStock.toString() ?? '5');
     _categoryId = widget.product?.category?.id;
     _warehouseId = widget.product?.warehouseId;
+    _isComposite = widget.product?.isComposite ?? false;
+    _componentProductId = widget.product?.componentProductId;
+    _componentQtyCtrl = TextEditingController(
+        text: widget.product?.componentQuantity?.toString() ?? '');
     _loadData();
+    if (_componentProductId != null) _resolveComponentName();
+  }
+
+  Future<void> _resolveComponentName() async {
+    try {
+      final all = await _fetchAllProductsForPicker();
+      final match = all.where((p) => p.id == _componentProductId);
+      if (match.isNotEmpty && mounted) {
+        setState(() => _componentProductName = match.first.name);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _pickComponentProduct() async {
+    final result = await showDialog<ProductModel>(
+      context: context,
+      builder: (_) => _SingleProductPickerDialog(excludeId: widget.product?.id),
+    );
+    if (result != null) {
+      setState(() {
+        _componentProductId = result.id;
+        _componentProductName = result.name;
+      });
+    }
   }
 
   Future<void> _loadData() async {
@@ -1567,6 +1614,7 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
     _salePriceCtrl.dispose();
     _purchasePriceCtrl.dispose();
     _alertCtrl.dispose();
+    _componentQtyCtrl.dispose();
     super.dispose();
   }
 
@@ -1692,6 +1740,60 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                   decoration: const InputDecoration(
                       labelText: 'Seuil d\'alerte stock'),
                 ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Produit composé'),
+                  subtitle: const Text(
+                    'Ex: "Caisse" = 12 x "Boîte" — le stock réel est suivi sur '
+                    'le produit choisi, pas sur celui-ci.',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  value: _isComposite,
+                  onChanged: (v) => setState(() {
+                    _isComposite = v;
+                    if (!v) {
+                      _componentProductId = null;
+                      _componentProductName = null;
+                      _componentQtyCtrl.clear();
+                    }
+                  }),
+                ),
+                if (_isComposite) ...[
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: _pickComponentProduct,
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Produit composant *',
+                        suffixIcon: Icon(Icons.search),
+                      ),
+                      child: Text(
+                        _componentProductName ?? 'Choisir un produit',
+                        style: TextStyle(
+                          color: _componentProductName == null
+                              ? AppColors.textSecondary
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _componentQtyCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Quantité par unité *',
+                      helperText: 'Ex: 12 → 1 "Caisse" = 12 unités de stock du composant',
+                    ),
+                    validator: (v) {
+                      if (!_isComposite) return null;
+                      final n = double.tryParse(v ?? '');
+                      if (n == null || n <= 0) return 'Invalide';
+                      return null;
+                    },
+                  ),
+                ],
                 if (_error != null) ...[
                   const SizedBox(height: 8),
                   Text(_error!,
@@ -1723,6 +1825,10 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_isComposite && _componentProductId == null) {
+      setState(() => _error = 'Choisissez le produit composant');
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -1743,6 +1849,9 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
         'purchase_price': double.tryParse(_purchasePriceCtrl.text) ?? 0,
         'alert_stock': int.tryParse(_alertCtrl.text) ?? 5,
         'warehouse_id': _warehouseId,
+        'component_product_id': _isComposite ? _componentProductId : null,
+        'component_quantity':
+            _isComposite ? double.tryParse(_componentQtyCtrl.text) : null,
       };
       final repo = ProductRepository();
       if (isEdit) {
@@ -1776,6 +1885,101 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
 
     ref.invalidate(productsProvider);
     if (mounted) Navigator.pop(context);
+  }
+}
+
+// ─── Sélecteur de produit unique (produit composant) ─────────────────────────
+
+class _SingleProductPickerDialog extends StatefulWidget {
+  final String? excludeId;
+
+  const _SingleProductPickerDialog({this.excludeId});
+
+  @override
+  State<_SingleProductPickerDialog> createState() => _SingleProductPickerDialogState();
+}
+
+class _SingleProductPickerDialogState extends State<_SingleProductPickerDialog> {
+  List<ProductModel> _all = [];
+  String _search = '';
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final all = await _fetchAllProductsForPicker();
+      if (!mounted) return;
+      setState(() {
+        // Un produit composé ne peut pas lui-même être composant (évite les
+        // chaînes/cycles) ; on exclut aussi le produit en cours d'édition.
+        _all = all
+            .where((p) => p.id != widget.excludeId && !p.isComposite)
+            .toList();
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = extractAnyError(e);
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _search.isEmpty
+        ? _all
+        : _all.where((p) => p.name.toLowerCase().contains(_search.toLowerCase())).toList();
+
+    return AlertDialog(
+      title: const Text('Choisir le produit composant'),
+      content: SizedBox(
+        width: 440,
+        height: 440,
+        child: Column(
+          children: [
+            TextField(
+              decoration: const InputDecoration(
+                labelText: 'Rechercher un produit',
+                prefixIcon: Icon(Icons.search, size: 20),
+              ),
+              onChanged: (v) => setState(() => _search = v),
+            ),
+            const Divider(),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                      ? Center(child: Text(_error!, style: const TextStyle(color: AppColors.error)))
+                      : filtered.isEmpty
+                          ? const Center(child: Text('Aucun produit trouvé'))
+                          : ListView.builder(
+                              itemCount: filtered.length,
+                              itemBuilder: (_, i) {
+                                final p = filtered[i];
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(p.name),
+                                  subtitle: Text('Stock: ${p.stock ?? 0}'),
+                                  onTap: () => Navigator.pop(context, p),
+                                );
+                              },
+                            ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+      ],
+    );
   }
 }
 

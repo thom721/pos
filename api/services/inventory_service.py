@@ -9,6 +9,7 @@ from api.models.Category import Category
 from api.models.StockMovement import StockMovement, StockType
 from api.models.InventoryRecord import InventoryRecord
 from api.services.warehouse_helper import resolve_warehouse_id
+from api.services.stock_service import record_stock_movement
 
 
 def _stock_map(
@@ -135,7 +136,10 @@ def create_inventory(db: Session, data, user_id: str, tenant_id: str | None = No
         if not product:
             continue
 
-        expected = stocks.get(pid, 0.0)
+        # _stock_map agrège directement StockMovement.product_id — un produit
+        # composé n'a jamais ses propres mouvements (voir record_stock_movement),
+        # donc son stock attendu doit venir de la propriété dérivée, pas du map.
+        expected = float(product.stock) if product.is_composite else stocks.get(pid, 0.0)
         counted = float(item.counted_qty)
         diff = counted - expected
 
@@ -150,9 +154,11 @@ def create_inventory(db: Session, data, user_id: str, tenant_id: str | None = No
 
         if abs(diff) > 0.001:
             discrepancy_count += 1
-            mv = StockMovement(
+            record_stock_movement(
+                db,
                 product_id=pid,
                 user_id=user_id,
+                tenant_id=tenant_id,
                 warehouse_id=wh_id,
                 type=StockType.adjust,
                 quantity=diff,
@@ -160,9 +166,6 @@ def create_inventory(db: Session, data, user_id: str, tenant_id: str | None = No
                 source_id=record.id,
                 note=f"Inventaire {reference}: ajustement {expected:+.2f}->{counted:.2f}",
             )
-            if tenant_id:
-                mv.tenant_id = tenant_id
-            db.add(mv)
 
     record.discrepancy_count = discrepancy_count
     record.items_json = json.dumps(items_summary)

@@ -25,6 +25,7 @@ class ConfigRead(BaseModel):
     allow_sale_edit:      bool = False
     allow_cashier_credit: bool = False
     report_columns: Optional[list] = None
+    composite_stock_trigger: str = 'manual'
 
     @field_validator('hotel_checkin_fields', 'report_columns', mode='before')
     @classmethod
@@ -62,3 +63,4 @@ class ConfigUpdate(BaseModel):
     allow_sale_edit:      Optional[bool] = None
     allow_cashier_credit: Optional[bool] = None
     report_columns: Optional[list] = None
+    composite_stock_trigger: Optional[str] = None

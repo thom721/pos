@@ -16,6 +16,7 @@ from api.models.User import User as UserModel
 from api.models.Discount import DiscountScope
 from api.services.warehouse_helper import resolve_warehouse_id
 from api.services.discount_service import resolve_discount, get_active_automatic_receipt_discount
+from api.services.stock_service import record_stock_movement
 
 logger = logging.getLogger(__name__)
 
@@ -172,18 +173,17 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
 
     # 1. Revert stock for old items
     for old_item in sale.items:
-        mv = StockMovement(
+        record_stock_movement(
+            db,
             product_id=old_item.product_id,
             user_id=user_id,
+            tenant_id=tenant_id,
             type=StockType.in_,
             quantity=float(old_item.quantity),
             source_type="sale_edit_revert",
             source_id=sale.id,
             note="Correction vente — réversion anciens articles",
         )
-        if tenant_id:
-            mv.tenant_id = tenant_id
-        db.add(mv)
 
     # 2. Delete old items
     for old_item in sale.items:
@@ -223,18 +223,17 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
             discount_id=item_disc_id,
             tenant_id=tenant_id,
         ))
-        mv = StockMovement(
+        record_stock_movement(
+            db,
             product_id=product.id,
             user_id=user_id,
+            tenant_id=tenant_id,
             type=StockType.out,
             quantity=-item.quantity,
             source_type="SALE",
             source_id=sale.id,
             note="Vente POS (modification)",
         )
-        if tenant_id:
-            mv.tenant_id = tenant_id
-        db.add(mv)
 
     # 4. Recalculate totals
     net_before_receipt_discount = Decimal(str(new_total)) - new_item_discount_total
@@ -475,19 +474,18 @@ def create_sale(
             tenant_id=tenant_id,
         ))
 
-        mv = StockMovement(
+        record_stock_movement(
+            db,
             product_id=product.id,
             user_id=user_id,
+            tenant_id=tenant_id,
             warehouse_id=wh_id,
             type=StockType.out,
             quantity=-item.quantity,
             source_type="SALE",
             source_id=sale.id,
-            note="Vente POS"
+            note="Vente POS",
         )
-        if tenant_id:
-            mv.tenant_id = tenant_id
-        db.add(mv)
 
     # 4️⃣ Paiement + statut + dette
     if collected > 0:
@@ -551,18 +549,17 @@ def cancel_sale(db: Session, sale_id: str, user_id: str, tenant_id: str | None =
         raise HTTPException(404, "Vente introuvable")
 
     for item in sale.items:
-        mv = StockMovement(
+        record_stock_movement(
+            db,
             product_id=item.product_id,
             user_id=user_id,
+            tenant_id=tenant_id,
             type=StockType.in_,
             quantity=item.quantity,
             source_type="sale_cancel",
             source_id=sale.id,
-            note="Annulation vente"
+            note="Annulation vente",
         )
-        if tenant_id:
-            mv.tenant_id = tenant_id
-        db.add(mv)
 
     sale.status = "CANCELLED"
     db.commit()

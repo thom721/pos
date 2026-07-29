@@ -68,6 +68,8 @@ class AppSettings {
   final bool allowCashierCredit; // Caissier peut créer une dette (paiement partiel)
   // Colonnes affichées dans le tableau "Détail des ventes" (écran + CSV + PDF)
   final List<String> reportColumns;
+  // Produits composés : "manual" (ajustement page Produits) ou "purchase_receipt"
+  final String compositeStockTrigger;
 
   const AppSettings({
     this.businessName = 'Mon Commerce',
@@ -95,6 +97,7 @@ class AppSettings {
     this.allowSaleEdit = false,
     this.allowCashierCredit = false,
     this.reportColumns = kDefaultReportColumns,
+    this.compositeStockTrigger = 'manual',
   });
 
   AppSettings copyWith({
@@ -123,6 +126,7 @@ class AppSettings {
     bool? allowSaleEdit,
     bool? allowCashierCredit,
     List<String>? reportColumns,
+    String? compositeStockTrigger,
   }) =>
       AppSettings(
         businessName: businessName ?? this.businessName,
@@ -150,6 +154,7 @@ class AppSettings {
         allowSaleEdit: allowSaleEdit ?? this.allowSaleEdit,
         allowCashierCredit: allowCashierCredit ?? this.allowCashierCredit,
         reportColumns: reportColumns ?? this.reportColumns,
+        compositeStockTrigger: compositeStockTrigger ?? this.compositeStockTrigger,
       );
 
   // Serialize to API (snake_case)
@@ -184,6 +189,7 @@ class AppSettings {
         'allow_sale_edit':      allowSaleEdit,
         'allow_cashier_credit': allowCashierCredit,
         'report_columns': reportColumns,
+        'composite_stock_trigger': compositeStockTrigger,
       };
 
   // Parse from API response (snake_case)
@@ -211,6 +217,7 @@ class AppSettings {
         allowSaleEdit:      j['allow_sale_edit']      as bool? ?? false,
         allowCashierCredit: j['allow_cashier_credit'] as bool? ?? false,
         reportColumns: _parseReportColumns(j['report_columns']),
+        compositeStockTrigger: j['composite_stock_trigger'] as String? ?? 'manual',
       );
 
   static List<String> _parseReportColumns(dynamic raw) {
@@ -258,6 +265,7 @@ class AppSettings {
         'allowSaleEdit':      allowSaleEdit,
         'allowCashierCredit': allowCashierCredit,
         'reportColumns': reportColumns,
+        'compositeStockTrigger': compositeStockTrigger,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -286,6 +294,7 @@ class AppSettings {
         allowSaleEdit:      j['allowSaleEdit']      as bool? ?? false,
         allowCashierCredit: j['allowCashierCredit'] as bool? ?? false,
         reportColumns: _parseReportColumns(j['reportColumns']),
+        compositeStockTrigger: j['compositeStockTrigger'] as String? ?? 'manual',
       );
 }
 

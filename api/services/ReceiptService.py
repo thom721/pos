@@ -4,12 +4,12 @@ from api.models.PurchaseReceipt import PurchaseReceipt
 from api.models.Purchase import Purchase
 from api.models.PurchaseReceiptItem import PurchaseReceiptItem
 from api.models.PurchaseItem import PurchaseItem
-from api.models.StockMovement import StockMovement
 from sqlalchemy import func
 
 from api.schemas.purchase_receipt import PurchaseReceiptCreate
 from api.models.StockMovement import StockType
 from api.services.warehouse_helper import resolve_warehouse_id
+from api.services.stock_service import record_stock_movement
 from api.core.dt_coerce import now_local
 
 class ReceiptService:
@@ -52,7 +52,8 @@ class ReceiptService:
             ))
 
             # Stock movement
-            self.db.add(StockMovement(
+            record_stock_movement(
+                self.db,
                 product_id=item.product_id,
                 user_id=user_id,
                 warehouse_id=wh_id,
@@ -64,7 +65,7 @@ class ReceiptService:
                 note="Entree stock (achat)",
                 lot_number=item.lot_number,
                 expiry_date=item.expiry_date,
-            ))
+            )
 
         self._update_purchase_status(data.purchase_id)
         self.db.commit()

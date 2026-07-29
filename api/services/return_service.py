@@ -9,9 +9,10 @@ from api.models.Sale import Sale
 from api.models.SaleItem import SaleItem
 from api.models.Purchase import Purchase
 from api.models.PurchaseItem import PurchaseItem
-from api.models.StockMovement import StockMovement, StockType
+from api.models.StockMovement import StockType
 from api.models.Payment import Payment
 from api.models.ReturnRecord import ReturnRecord
+from api.services.stock_service import record_stock_movement
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -72,9 +73,11 @@ def process_sale_return(
         })
 
         # Stock comes back IN (même dépôt que la vente d'origine)
-        mv = StockMovement(
+        record_stock_movement(
+            db,
             product_id=str(item['product_id']),
             user_id=user_id,
+            tenant_id=tenant_id,
             warehouse_id=sale.warehouse_id,
             type=StockType.in_,
             quantity=qty,
@@ -82,9 +85,6 @@ def process_sale_return(
             source_id=sale.id,
             note=f"Retour client{f' - {reason}' if reason else ''}",
         )
-        if tenant_id:
-            mv.tenant_id = tenant_id
-        db.add(mv)
 
     # Record refund payment (negative reduces paid_amount)
     actual_refund = refund_amount if refund_amount > 0 else refund_total
@@ -185,9 +185,11 @@ def process_purchase_return(
         })
 
         # Stock goes OUT (meme depot que l'achat d'origine)
-        mv = StockMovement(
+        record_stock_movement(
+            db,
             product_id=str(item['product_id']),
             user_id=user_id,
+            tenant_id=tenant_id,
             warehouse_id=purchase.warehouse_id,
             type=StockType.out,
             quantity=-qty,
@@ -195,9 +197,6 @@ def process_purchase_return(
             source_id=purchase.id,
             note=f"Retour fournisseur{f' - {reason}' if reason else ''}",
         )
-        if tenant_id:
-            mv.tenant_id = tenant_id
-        db.add(mv)
 
     # Adjust purchase total
     purchase.total_amount = max(0, float(purchase.total_amount) - return_total)

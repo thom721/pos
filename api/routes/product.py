@@ -14,8 +14,9 @@ from api.core.PaginateHelper import PaginatedResponse
 from api.core.dt_coerce import now_local
 from api.models.Product import Product
 from api.models.User import User
-from api.models.StockMovement import StockMovement, StockType
+from api.models.StockMovement import StockType
 from api.services import audit_service
+from api.services.stock_service import record_stock_movement
 from api.ws_manager import manager
 
 
@@ -126,7 +127,8 @@ def adjust_stock(
     if qty == 0:
         raise HTTPException(status_code=400, detail="La quantité doit être non nulle")
 
-    mv = StockMovement(
+    record_stock_movement(
+        db,
         product_id=product_id,
         user_id=current_user.id,
         tenant_id=current_user.tenant_id,
@@ -135,7 +137,6 @@ def adjust_stock(
         source_type="adjustment",
         note=payload.reason,
     )
-    db.add(mv)
     product.updated_at = now_local()
     audit_service.log(db, user_id=current_user.id, tenant_id=current_user.tenant_id,
                       action="STOCK_ADJUST", resource_type="product", resource_id=product_id,

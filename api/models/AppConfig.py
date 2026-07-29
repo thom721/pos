@@ -41,3 +41,10 @@ class AppConfig(UUIDBase):
     # Affichage des rapports — JSON list des clés de colonnes activées
     # (ex: ["reference","date","client","total","status","category","product"])
     report_columns = Column(Text, nullable=True, default=None)
+
+    # Produits composés — où le tenant gère habituellement l'entrée de stock :
+    # "manual" (ajustement direct page Produits) ou "purchase_receipt"
+    # (réception d'achat). Les deux mécanismes convertissent toujours
+    # correctement vers le produit composant ; ce réglage sert uniquement à
+    # orienter l'interface (quel workflow est mis en avant pour ce tenant).
+    composite_stock_trigger = Column(String(20), nullable=False, default='manual')

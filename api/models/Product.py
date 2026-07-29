@@ -21,9 +21,19 @@ class Product(UUIDBase):
     is_locked = Column(Boolean, default=False, nullable=False)
     image_url = Column(String(500), nullable=True)
 
+    # ── Produit composé (ex: "Caisse" = 12 x "Boîte lait") ────────────────────
+    # component_product_id pointe vers le produit dont le stock réel est suivi
+    # (l'unité de vérité) ; component_quantity = combien d'unités du composant
+    # équivalent à 1 unité de ce produit-ci. Un produit composé n'a jamais de
+    # mouvements de stock propres — son stock est toujours dérivé de celui du
+    # composant (voir la propriété `stock` ci-dessous).
+    component_product_id = Column(String(36), ForeignKey("products.id"), nullable=True)
+    component_quantity   = Column(Numeric(12, 4), nullable=True)
+
     category = relationship("Category", back_populates="products")
     supplier = relationship("Supplier")
     stock_movements = relationship("StockMovement", back_populates="product")
+    component = relationship("Product", remote_side="Product.id", foreign_keys=[component_product_id])
 
     __table_args__ = (
         UniqueConstraint("name",    "tenant_id", name="uq_product_name_tenant"),
@@ -31,5 +41,12 @@ class Product(UUIDBase):
     )
 
     @hybrid_property
+    def is_composite(self):
+        return self.component_product_id is not None and self.component_quantity is not None
+
+    @hybrid_property
     def stock(self):
+        if self.is_composite:
+            comp_stock = sum(m.quantity for m in self.component.stock_movements) if self.component else 0
+            return int(comp_stock // self.component_quantity)
         return sum(m.quantity for m in self.stock_movements)

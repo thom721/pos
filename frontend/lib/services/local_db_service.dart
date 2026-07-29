@@ -45,7 +45,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 19,
+      version: 20,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -176,6 +176,10 @@ class LocalDbService {
     if (oldVersion < 19) {
       try { await db.execute('ALTER TABLE discounts ADD COLUMN product_ids TEXT'); } catch (_) {}
     }
+    if (oldVersion < 20) {
+      try { await db.execute('ALTER TABLE products ADD COLUMN component_product_id TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE products ADD COLUMN component_quantity REAL'); } catch (_) {}
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -195,7 +199,9 @@ class LocalDbService {
         is_active      INTEGER NOT NULL DEFAULT 1,
         is_locked      INTEGER NOT NULL DEFAULT 0,
         synced         INTEGER NOT NULL DEFAULT 1,
-        warehouse_id   TEXT
+        warehouse_id   TEXT,
+        component_product_id TEXT,
+        component_quantity   REAL
       )
     ''');
 
@@ -583,6 +589,8 @@ class LocalDbService {
           'is_locked': p.isLocked ? 1 : 0,
           'synced': 1,
           'warehouse_id': p.warehouseId,
+          'component_product_id': p.componentProductId,
+          'component_quantity': p.componentQuantity,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -680,6 +688,8 @@ class LocalDbService {
         imageUrl: row['image_url'] as String?,
         isLocked: (row['is_locked'] as int? ?? 0) == 1,
         warehouseId: row['warehouse_id'] as String?,
+        componentProductId: row['component_product_id'] as String?,
+        componentQuantity: (row['component_quantity'] as num?)?.toDouble(),
       );
 
   // ── Auth hors ligne ───────────────────────────────────────────────────────
