@@ -109,7 +109,7 @@ final reportParamsProvider = StateProvider((ref) => const ReportParams());
 
 /// Haiti = UTC-5. A naive Haiti-local midnight → UTC ISO string.
 /// Midnight Haiti (00:00) = 05:00 UTC of the same date.
-String _haitiMidnightToUtcIso(DateTime haitiDate) {
+String haitiMidnightToUtcIso(DateTime haitiDate) {
   final utc = DateTime.utc(haitiDate.year, haitiDate.month, haitiDate.day, 5);
   return utc.toIso8601String();
 }
@@ -122,8 +122,8 @@ final reportSalesProvider =
 
   final baseQuery = {
     'limit': limit,
-    'date_from': _haitiMidnightToUtcIso(from),
-    'date_to': _haitiMidnightToUtcIso(to),
+    'date_from': haitiMidnightToUtcIso(from),
+    'date_to': haitiMidnightToUtcIso(to),
   };
 
   // First page — also tells us the total page count
@@ -694,13 +694,13 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
 
 // ── Print config dialog ────────────────────────────────────────────────────
 
-Future<List<SaleModel>> _fetchSalesForRange(DateTime from, DateTime to) async {
+Future<List<SaleModel>> fetchSalesForRange(DateTime from, DateTime to) async {
   const limit = 100;
 
   final baseQuery = {
     'limit': limit,
-    'date_from': _haitiMidnightToUtcIso(from),
-    'date_to': _haitiMidnightToUtcIso(to),
+    'date_from': haitiMidnightToUtcIso(from),
+    'date_to': haitiMidnightToUtcIso(to),
   };
 
   final first = await dio.get('/api/sales/',
@@ -983,7 +983,7 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
     setState(() => _loading = true);
     try {
       final toExclusive = _to.add(const Duration(days: 1));
-      final sales = await _fetchSalesForRange(_from, toExclusive);
+      final sales = await fetchSalesForRange(_from, toExclusive);
 
       final filtered = canViewAll
           ? (_selectedUserName != null
@@ -1043,7 +1043,7 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
     setState(() => _loading = true);
     try {
       final toExclusive = _to.add(const Duration(days: 1));
-      final sales = await _fetchSalesForRange(_from, toExclusive);
+      final sales = await fetchSalesForRange(_from, toExclusive);
 
       final filteredSales = canViewAll
           ? (_selectedUserName != null
@@ -1062,7 +1062,7 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
         userFilter: canViewAll ? _selectedUserName : currentUser.user?.fullName,
       );
 
-      await _generatePdf(filteredSales, pdfParams, settings);
+      await generateSalesReportPdf(filteredSales, pdfParams, settings);
     } catch (e) {
       if (mounted) {
         messenger.showSnackBar(SnackBar(
@@ -1078,7 +1078,7 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
 
 // ── PDF generation ─────────────────────────────────────────────────────────
 
-Future<void> _generatePdf(
+Future<void> generateSalesReportPdf(
     List<SaleModel> sales, ReportParams params, AppSettings settings) async {
   final regular = await PdfGoogleFonts.notoSansRegular()
       .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helvetica());

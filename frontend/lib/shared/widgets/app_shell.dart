@@ -146,6 +146,7 @@ const _androidDrawerMainItems = [
   _NavItem('Retours',          Icons.assignment_return_rounded,      '/returns'),
   _NavItem('Produits',         Icons.inventory_2_rounded,            '/products'),
   _NavItem('Factures / Devis', Icons.description_rounded,            '/events'),
+  _NavItem('Rapport',          Icons.assessment_rounded,             '/mobile-report'),
 ];
 
 // All items for title lookup (includes all business types)
@@ -157,6 +158,7 @@ const _allNavItems = [
   ..._hrNavItems,
   ..._adminNavItems,
   ..._bottomNavItems,
+  ..._androidDrawerMainItems,
 ];
 
 // Required permission per route (null = always visible)

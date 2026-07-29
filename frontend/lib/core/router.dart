@@ -17,6 +17,7 @@ import 'package:pos_connect/features/discounts/discounts_screen.dart';
 import 'package:pos_connect/features/debts/debts_screen.dart';
 import 'package:pos_connect/features/events/events_screen.dart';
 import 'package:pos_connect/features/reports/reports_screen.dart';
+import 'package:pos_connect/features/reports/mobile_report_screen.dart';
 import 'package:pos_connect/features/statistics/statistics_screen.dart';
 import 'package:pos_connect/features/profile/profile_screen.dart';
 import 'package:pos_connect/features/inventory/inventory_screen.dart';
@@ -225,6 +226,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/reports',
             builder: (context, state) => const ReportsScreen(),
+          ),
+          GoRoute(
+            path: '/mobile-report',
+            builder: (context, state) => const MobileReportScreen(),
           ),
           GoRoute(
             path: '/reports/depots',
