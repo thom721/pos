@@ -1236,7 +1236,10 @@ class _ProductTable extends ConsumerWidget {
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Card(
+      // SizedBox force la carte (et sa bordure/fond) à occuper toute la
+      // largeur disponible — sans lui, Card se limite à la largeur
+      // intrinsèque du DataTable, laissant un grand vide à droite.
+      child: SizedBox(width: double.infinity, child: Card(
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
@@ -1347,7 +1350,7 @@ class _ProductTable extends ConsumerWidget {
             }).toList(),
           ),
         ),
-      ),
+      )),
     );
   }
 

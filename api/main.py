@@ -292,6 +292,20 @@ def _sync_schema_from_models(active_engine=None) -> None:
                             # TextClause (sa.text("'val'")) ou chaîne simple
                             raw = sd_arg.text if hasattr(sd_arg, "text") else str(sd_arg)
                             default_sql = f" DEFAULT {raw}"
+                        elif getattr(col, "default", None) is not None and getattr(col.default, "is_scalar", False):
+                            # default= (Python, appliqué par l'ORM à l'INSERT) — sans ce
+                            # cas, une colonne ADD COLUMN sur une table déjà existante
+                            # ignorait ce default et retombait sur le neutre ci-dessous
+                            # (0 / '' / CURRENT_TIMESTAMP), même quand le modèle en
+                            # déclarait un autre (ex: PlatformConfig.annual_discount_pct
+                            # default=20 → colonne ajoutée avec DEFAULT 0).
+                            arg = col.default.arg
+                            if isinstance(arg, bool):
+                                default_sql = f" DEFAULT {1 if arg else 0}"
+                            elif isinstance(arg, (int, float)):
+                                default_sql = f" DEFAULT {arg}"
+                            elif isinstance(arg, str):
+                                default_sql = " DEFAULT '{}'".format(arg.replace("'", "''"))
                         elif not col.nullable:
                             # NOT NULL sans server_default → défaut neutre pour ne pas bloquer
                             t = col_type.upper()
@@ -817,6 +831,57 @@ def _repair_duplicate_registers(active_engine=None) -> None:
             _log.warning("registres dupliqués: ajout de la contrainte échoué (nouveaux doublons ?): %s", exc)
 
 
+def _repair_annual_discount_default(active_engine=None) -> None:
+    """
+    Migration ponctuelle : PlatformConfig.annual_discount_pct déclare
+    default=20 côté Python, mais _sync_schema_from_models() ne générait
+    jusqu'ici une clause DEFAULT que depuis server_default — un default=
+    Python n'était jamais honoré lors de l'ADD COLUMN sur une table déjà
+    existante, qui retombait alors sur le neutre "DEFAULT 0" (colonne
+    entière NOT NULL). platform_config est une ligne unique : ce 0 s'est
+    donc retrouvé affiché partout comme "Annuel -0%" au lieu de -20%.
+
+    Corrige la ligne existante si elle est encore à 0 (jamais explicitement
+    configurée) — n'écrase pas un choix admin ultérieur différent de 0.
+    Idempotente, s'exécute à chaque démarrage.
+    """
+    from sqlalchemy import inspect as _inspect
+
+    import api.database as _db_mod
+    _eng = active_engine or _db_mod.engine
+
+    try:
+        inspector = _inspect(_eng)
+        if "platform_config" not in inspector.get_table_names():
+            return
+    except Exception as exc:
+        _log.warning("annual-discount: impossible d'inspecter le schéma: %s", exc)
+        return
+
+    with _eng.connect() as conn:
+        try:
+            row = conn.execute(text(
+                "SELECT id, annual_discount_pct FROM platform_config LIMIT 1"
+            )).first()
+        except Exception as exc:
+            _log.warning("annual-discount: vérification impossible: %s", exc)
+            return
+
+        if not row or row[1] != 0:
+            _log.info("annual-discount: vérification OK, rien à corriger")
+            return
+
+        try:
+            conn.execute(text(
+                "UPDATE platform_config SET annual_discount_pct = 20 WHERE id = :id"
+            ), {"id": row[0]})
+            conn.commit()
+            _log.warning("annual-discount: platform_config.annual_discount_pct corrigé 0 → 20")
+        except Exception as exc:
+            conn.rollback()
+            _log.warning("annual-discount: échec de la correction: %s", exc)
+
+
 def _repair_cross_tenant_app_config(active_engine=None) -> None:
     """
     Migration ponctuelle : `config.py::_wh_id()` acceptait un warehouse_id
@@ -1249,6 +1314,8 @@ def on_startup():
         # 2i. Désactive les pos_registers dupliqués (tenant_id, device_id) et
         # ajoute la contrainte manquante (one-shot, MySQL uniquement)
         _repair_duplicate_registers(_active_engine)
+        # 2j. Corrige platform_config.annual_discount_pct si resté à 0 (one-shot)
+        _repair_annual_discount_default(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
 

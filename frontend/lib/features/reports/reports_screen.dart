@@ -586,10 +586,15 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
               final cols = kReportColumnDefs
                   .where((c) => settings.reportColumns.contains(c.$1))
                   .toList();
-              return SingleChildScrollView(
+              return LayoutBuilder(builder: (context, constraints) {
+                return SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: 820),
+                  // Étire le tableau sur toute la largeur disponible (au lieu
+                  // de se limiter à 820px, laissant un grand vide à droite
+                  // sur les fenêtres plus larges) — 820 reste le minimum
+                  // pour déclencher le scroll horizontal sur petit écran.
+                  constraints: BoxConstraints(minWidth: constraints.maxWidth < 820 ? 820 : constraints.maxWidth),
                   child: Container(
                     decoration: BoxDecoration(
                       color: AppColors.surface,
@@ -616,6 +621,7 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
                   ),
                 ),
               );
+              });
             }),
           ],
         ],
