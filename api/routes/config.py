@@ -5,6 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Qu
 from sqlalchemy.orm import Session
 from api.database import get_db
 from api.models.User import User
+from api.models.Warehouse import Warehouse
 from api.schemas.config import ConfigRead, ConfigUpdate
 from api.services import config_service
 from api.dependencies.auth import require_permission
@@ -18,12 +19,21 @@ _ALLOWED_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}
 router = APIRouter(prefix="/api/config", tags=["Config"])
 
 
-def _wh_id(current_user: User, warehouse_id: Optional[str]) -> Optional[str]:
+def _wh_id(db: Session, current_user: User, warehouse_id: Optional[str]) -> Optional[str]:
     """Resolve the effective warehouse_id:
-    prefer the client-supplied value, fall back to the user's own warehouse.
+    prefer the client-supplied value (validated to belong to the caller's own
+    tenant — sans cette vérification, un warehouse_id d'un AUTRE tenant serait
+    accepté tel quel et créerait un AppConfig cross-tenant, cf. bug corrigé),
+    fall back to the user's own warehouse.
     User.warehouse_id is stored as a JSON list — extract first element."""
     if warehouse_id:
-        return warehouse_id
+        owned = db.query(Warehouse.id).filter(
+            Warehouse.id == warehouse_id,
+            Warehouse.tenant_id == current_user.tenant_id,
+        ).first()
+        if owned:
+            return warehouse_id
+        return None
     raw = getattr(current_user, 'warehouse_id', None)
     if isinstance(raw, list):
         return raw[0] if raw else None
@@ -45,7 +55,7 @@ def get_config(
     return config_service.get_or_create(
         db,
         tenant_id=current_user.tenant_id,
-        warehouse_id=_wh_id(current_user, warehouse_id),
+        warehouse_id=_wh_id(db, current_user, warehouse_id),
     )
 
 
@@ -61,7 +71,7 @@ def update_config(
         db,
         data.model_dump(exclude_none=True),
         tenant_id=current_user.tenant_id,
-        warehouse_id=_wh_id(current_user, warehouse_id),
+        warehouse_id=_wh_id(db, current_user, warehouse_id),
     )
     background_tasks.add_task(_notify, current_user.tenant_id)
     return result
@@ -79,7 +89,7 @@ async def upload_logo(
     if ext not in _ALLOWED_EXTS:
         raise HTTPException(status_code=400, detail="Format non supporté. Utilisez jpg, png ou webp.")
 
-    wid = _wh_id(current_user, warehouse_id)
+    wid = _wh_id(db, current_user, warehouse_id)
     config = config_service.get_or_create(
         db, tenant_id=current_user.tenant_id, warehouse_id=wid
     )

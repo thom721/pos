@@ -30,6 +30,9 @@ from api.routes import warehouse as warehouse_router
 from api.routes import reports as reports_router
 from api.routes import ws as ws_router
 from api.routes import restaurant as restaurant_router
+from api.routes import client_sabotage as client_sabotage_router
+from api.routes import depot as depot_router
+from api.routes import retrait as retrait_router
 from api.ws_manager import manager as _ws_manager
 from api.core.security import verify_token as _verify_token
 # Import models so create_all picks them up
@@ -134,6 +137,9 @@ app.include_router(admin_router.router)
 app.include_router(reports_router.router)
 app.include_router(warehouse_router.router)
 app.include_router(ws_router.router)
+app.include_router(client_sabotage_router.router)
+app.include_router(depot_router.router)
+app.include_router(retrait_router.router)
 
 # ── Built-in role definitions ─────────────────────────────────────────────────
 _BUILTIN_ROLES = [
@@ -726,6 +732,83 @@ def _normalize_sale_status_casing(active_engine=None) -> None:
             _log.warning("status-casing: échec de la normalisation: %s", exc)
 
 
+def _repair_cross_tenant_app_config(active_engine=None) -> None:
+    """
+    Migration ponctuelle : `config.py::_wh_id()` acceptait un warehouse_id
+    fourni par le client (query param) sans vérifier qu'il appartenait bien au
+    tenant de l'utilisateur authentifié (bug corrigé dans le même changement
+    que cette fonction). Résultat possible : des lignes app_config créées avec
+    un warehouse_id pointant vers le dépôt d'un AUTRE tenant — invisible côté
+    cloud (la contrainte FK est satisfaite, la ligne référencée existe bien,
+    juste sous le mauvais tenant), mais provoque une erreur de contrainte FK
+    dès qu'une installation locale tire cette ligne (le dépôt étranger n'existe
+    pas localement, car hors du tenant de cette installation).
+
+    Corrige en réinitialisant warehouse_id à NULL (config globale du tenant —
+    repli déjà géré par config_service.get_or_create). Idempotente, s'exécute
+    à chaque démarrage.
+    """
+    from sqlalchemy import text as _text, inspect as _inspect
+
+    import api.database as _db_mod
+    _eng = active_engine or _db_mod.engine
+
+    try:
+        inspector = _inspect(_eng)
+        tables = inspector.get_table_names()
+        if "app_config" not in tables or "warehouses" not in tables:
+            return
+    except Exception as exc:
+        _log.warning("app_config cross-tenant: impossible d'inspecter le schéma: %s", exc)
+        return
+
+    with _eng.connect() as conn:
+        try:
+            pending = conn.execute(_text(
+                "SELECT COUNT(*) FROM app_config ac "
+                "JOIN warehouses w ON ac.warehouse_id = w.id "
+                "WHERE ac.tenant_id IS NOT NULL AND w.tenant_id IS NOT NULL "
+                "AND ac.tenant_id <> w.tenant_id"
+            )).scalar()
+        except Exception as exc:
+            _log.warning("app_config cross-tenant: vérification impossible: %s", exc)
+            return
+
+        if not pending:
+            _log.info("app_config cross-tenant: vérification OK, 0 ligne à corriger")
+            return
+
+        _log.warning(
+            "app_config cross-tenant: %d ligne(s) corrompue(s) détectée(s), correction en cours…",
+            pending,
+        )
+        try:
+            if _eng.dialect.name == "mysql":
+                conn.execute(_text(
+                    "UPDATE app_config ac "
+                    "JOIN warehouses w ON ac.warehouse_id = w.id "
+                    "SET ac.warehouse_id = NULL "
+                    "WHERE ac.tenant_id IS NOT NULL AND w.tenant_id IS NOT NULL "
+                    "AND ac.tenant_id <> w.tenant_id"
+                ))
+            else:
+                conn.execute(_text(
+                    "UPDATE app_config SET warehouse_id = NULL WHERE id IN ("
+                    "SELECT ac.id FROM app_config ac "
+                    "JOIN warehouses w ON ac.warehouse_id = w.id "
+                    "WHERE ac.tenant_id IS NOT NULL AND w.tenant_id IS NOT NULL "
+                    "AND ac.tenant_id <> w.tenant_id)"
+                ))
+            conn.commit()
+            _log.warning(
+                "app_config cross-tenant: %d ligne(s) corrigée(s) (warehouse_id réinitialisé à NULL)",
+                pending,
+            )
+        except Exception as exc:
+            conn.rollback()
+            _log.warning("app_config cross-tenant: échec de la correction: %s", exc)
+
+
 def _migrate_register_dates_to_shared_key(active_engine=None) -> None:
     """
     Migration ponctuelle : PosRegister.trial_ends_at / subscription_started_at /
@@ -1076,6 +1159,8 @@ def on_startup():
         _normalize_sale_status_casing(_active_engine)
         # 2g. Re-chiffre les dates de caisse vers la clé partagée (one-shot)
         _migrate_register_dates_to_shared_key(_active_engine)
+        # 2h. Corrige les app_config avec un warehouse_id cross-tenant (one-shot)
+        _repair_cross_tenant_app_config(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
 

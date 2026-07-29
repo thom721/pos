@@ -291,7 +291,13 @@ def create_table(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_CREATE)),
 ):
-    wh_id = data.warehouse_id or _resolve_wh(db, current_user)
+    # data.warehouse_id vient du client — valider qu'il appartient bien au
+    # tenant courant avant de l'utiliser (sinon un warehouse_id d'un autre
+    # tenant créerait une table cross-tenant, même bug que config.py::_wh_id).
+    wh_id = (
+        resolve_warehouse_id(db, current_user.tenant_id, data.warehouse_id)
+        if data.warehouse_id else None
+    ) or _resolve_wh(db, current_user)
     table = RestaurantTable(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
@@ -1084,10 +1090,16 @@ def create_menu_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.TABLES_CREATE)),
 ):
+    # Même validation que create_table : ne jamais faire confiance à
+    # data.warehouse_id sans vérifier qu'il appartient au tenant courant.
+    wh_id = (
+        resolve_warehouse_id(db, current_user.tenant_id, data.warehouse_id)
+        if data.warehouse_id else None
+    ) or _resolve_wh(db, current_user)
     m = MenuItem(
         id=str(uuid.uuid4()),
         tenant_id=current_user.tenant_id,
-        warehouse_id=data.warehouse_id or _resolve_wh(db, current_user),
+        warehouse_id=wh_id,
         name=data.name,
         description=data.description,
         price=data.price,
@@ -1133,7 +1145,9 @@ def update_menu_item(
     if 'variants' in data.model_fields_set:
         m.variants = data.variants if data.variants else None
     if 'warehouse_id' in data.model_fields_set and data.warehouse_id is not None:
-        m.warehouse_id = data.warehouse_id
+        validated = resolve_warehouse_id(db, current_user.tenant_id, data.warehouse_id)
+        if validated:
+            m.warehouse_id = validated
     db.commit()
     db.refresh(m)
     return _menu_item_dict(m)

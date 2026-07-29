@@ -18,6 +18,7 @@ from api.core.permissions import P, has_permission as _has_perm
 from api.core.tenant import require_active_plan
 from api.core.dt_coerce import now_local
 from api.services import audit_service
+from api.services.warehouse_helper import resolve_warehouse_id
 from api.services import billing_extra_service as _billing
 
 router = APIRouter(prefix="/api/sessions", tags=["Cashier Sessions"])
@@ -86,6 +87,13 @@ def _get_or_create_register(
     is_admin: bool = False, user_id: str | None = None,
 ) -> PosRegister | JSONResponse:
     from api.models.AppConfig import AppConfig
+
+    # warehouse_id vient du client (body.warehouse_id) — le valider ici une
+    # fois pour toutes protège aussi bien les filtres ci-dessous que la
+    # création de caisse plus bas (sinon un warehouse_id d'un autre tenant
+    # pourrait finir stocké sur une nouvelle PosRegister, même bug que
+    # config.py::_wh_id / restaurant.py create_table/create_menu_item).
+    warehouse_id = resolve_warehouse_id(db, tenant_id, warehouse_id) if warehouse_id else None
 
     tenant = db.get(Tenant, tenant_id)
 
