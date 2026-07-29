@@ -726,6 +726,59 @@ def _normalize_sale_status_casing(active_engine=None) -> None:
             _log.warning("status-casing: échec de la normalisation: %s", exc)
 
 
+def _migrate_register_dates_to_shared_key(active_engine=None) -> None:
+    """
+    Migration ponctuelle : PosRegister.trial_ends_at / subscription_started_at /
+    subscription_ends_at étaient chiffrées avec une clé dérivée de
+    settings.SECRET_KEY — propre à CHAQUE serveur (cloud, chaque installation
+    Windows). Comme pos_register se synchronise entre le cloud et les
+    installations locales (SYNC_ENTITIES, direction "both"), un serveur ne
+    pouvait jamais déchiffrer une date chiffrée par un AUTRE serveur : le
+    déchiffrement échouait silencieusement et la date apparaissait comme
+    absente (voir try_decrypt_register_date).
+
+    Ces champs utilisent désormais une clé fixe partagée par tous les
+    serveurs (_REGISTER_DATE_MASTER_KEY, billing_crypto.py). Cette fonction
+    re-chiffre les données existantes créées AVANT ce changement : pour
+    chaque caisse, tente un déchiffrement avec l'ancien schéma (clé =
+    SECRET_KEY de CE serveur) ; en cas de succès (donnée créée localement,
+    ici, sous l'ancien schéma), la valeur est ré-écrite via la propriété
+    Python normale, qui la re-chiffre automatiquement avec la nouvelle clé
+    fixe. Idempotente : sans effet sur des données déjà migrées ou reçues
+    d'un autre serveur (jamais déchiffrables ici de toute façon, ancien
+    schéma ou nouveau).
+    """
+    from sqlalchemy.orm import sessionmaker as _sessionmaker
+    from api.core.billing_crypto import try_decrypt_register_date_legacy
+    from api.models.PosRegister import PosRegister
+    import api.database as _db_mod
+
+    _eng = active_engine or _db_mod.engine
+    db = _sessionmaker(bind=_eng)()
+    try:
+        migrated = 0
+        for reg in db.query(PosRegister).all():
+            changed = False
+            for raw_attr in ("_trial_ends_at", "_subscription_started_at", "_subscription_ends_at"):
+                raw_val = getattr(reg, raw_attr, None)
+                if not raw_val:
+                    continue
+                plaintext = try_decrypt_register_date_legacy(raw_val, reg.id)
+                if plaintext is not None:
+                    setattr(reg, raw_attr[1:], plaintext)  # passe par le setter → re-chiffre (clé fixe)
+                    changed = True
+            if changed:
+                migrated += 1
+        if migrated:
+            db.commit()
+            _log.info("register-dates: %d caisse(s) migrée(s) vers la clé de chiffrement partagée", migrated)
+    except Exception as exc:
+        db.rollback()
+        _log.warning("register-dates: échec de la migration: %s", exc)
+    finally:
+        db.close()
+
+
 def _ensure_default_warehouse(db, tenant_id: str | None) -> None:
     """
     Les dépôts viennent UNIQUEMENT du cloud via sync pull.
@@ -1021,6 +1074,8 @@ def on_startup():
         _backfill_haiti_local_time(_active_engine)
         # 2f. Normalise la casse historique de sales.status (one-shot)
         _normalize_sale_status_casing(_active_engine)
+        # 2g. Re-chiffre les dates de caisse vers la clé partagée (one-shot)
+        _migrate_register_dates_to_shared_key(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
 

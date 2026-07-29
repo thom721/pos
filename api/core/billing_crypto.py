@@ -13,6 +13,22 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from api.core.config import settings
 
+# Secret fixe, partagé par TOUTES les installations (cloud et locales),
+# indépendant de settings.SECRET_KEY (qui lui est propre à chaque
+# installation — généré aléatoirement par le script Windows — car il
+# sert à signer les JWT et ne doit jamais être partagé entre serveurs).
+#
+# PosRegister.trial_ends_at / subscription_started_at / subscription_ends_at
+# sont synchronisés entre le cloud et les installations locales
+# (SYNC_ENTITIES, direction "both"). Si ces dates étaient chiffrées avec
+# settings.SECRET_KEY, un serveur ne pourrait jamais déchiffrer une date
+# chiffrée par un AUTRE serveur (secret différent) — le déchiffrement
+# échoue silencieusement et la date apparaît comme absente (voir
+# try_decrypt_register_date). Ce secret fixe résout ce problème : son but
+# est seulement d'empêcher une modification directe et triviale en base
+# (UPDATE SQL manuel), pas de résister à un attaquant ayant accès au code.
+_REGISTER_DATE_MASTER_KEY = "91a9a4be1ab17b6a11514083dac3660d1a4860f46a52606f3bb6987611913bd4"
+
 
 def _derive_fernet(tenant_id: str) -> Fernet:
     hkdf = HKDF(
@@ -56,7 +72,7 @@ def _derive_register_fernet(register_id: str) -> Fernet:
         salt=register_id.encode("utf-8"),
         info=b"register-billing",
     )
-    key_bytes = hkdf.derive(settings.SECRET_KEY.encode("utf-8"))
+    key_bytes = hkdf.derive(_REGISTER_DATE_MASTER_KEY.encode("utf-8"))
     return Fernet(base64.urlsafe_b64encode(key_bytes))
 
 
@@ -75,3 +91,33 @@ def try_decrypt_register_date(token: str | None, register_id: str) -> datetime |
         return datetime.fromisoformat(iso)
     except Exception:
         return None  # token altéré → traité comme absent
+
+
+# ── Migration one-shot : ancien schéma (clé = settings.SECRET_KEY) ───────────
+# Utilisé uniquement par le correctif de démarrage qui re-chiffre les dates
+# existantes vers _REGISTER_DATE_MASTER_KEY (voir main.py). Ne pas utiliser
+# ailleurs — try_decrypt_register_date/encrypt_register_date sont la seule
+# API valable pour tout nouveau code.
+def _derive_register_fernet_legacy(register_id: str) -> Fernet:
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=register_id.encode("utf-8"),
+        info=b"register-billing",
+    )
+    key_bytes = hkdf.derive(settings.SECRET_KEY.encode("utf-8"))
+    return Fernet(base64.urlsafe_b64encode(key_bytes))
+
+
+def try_decrypt_register_date_legacy(token: str | None, register_id: str) -> datetime | None:
+    """Déchiffre avec l'ancien schéma (clé = settings.SECRET_KEY de CE serveur).
+    Utilisé uniquement pour migrer les données créées avant le passage à la
+    clé fixe partagée — voir _migrate_register_dates_to_shared_key (main.py).
+    """
+    if not token:
+        return None
+    try:
+        iso = _derive_register_fernet_legacy(register_id).decrypt(token.encode("utf-8")).decode("utf-8")
+        return datetime.fromisoformat(iso)
+    except Exception:
+        return None
