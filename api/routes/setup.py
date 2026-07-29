@@ -73,6 +73,7 @@ class ConnectTenantRequest(BaseModel):
     sync_token_prefetched: str | None = None
     prefetched_tenant_id:  str | None = None
     prefetched_owner_email: str | None = None
+    prefetched_user_id:    str | None = None
     # DB config — to build engine targeting the configured database
     db_type: str
     host: str = "localhost"
@@ -608,7 +609,7 @@ def connect_tenant(data: ConnectTenantRequest):
         self_hosted_url = None
         body            = {
             "tenant_id":   data.prefetched_tenant_id or "",
-            "user_id":     "",
+            "user_id":     data.prefetched_user_id or "",
             "owner_email": data.prefetched_owner_email or data.email,
             "can_manage_tenants": False,
             "tenant_type": "shared",

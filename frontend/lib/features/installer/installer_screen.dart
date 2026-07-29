@@ -42,6 +42,7 @@ class InstallConfig {
   String syncTokenPrefetched;
   String prefetchedTenantId;
   String prefetchedOwnerEmail;
+  String prefetchedUserId;
   // Depot sélectionné lors de l'installation
   String selectedWarehouseId;
   String selectedWarehouseName;
@@ -64,6 +65,7 @@ class InstallConfig {
     this.syncTokenPrefetched = '',
     this.prefetchedTenantId = '',
     this.prefetchedOwnerEmail = '',
+    this.prefetchedUserId = '',
     this.selectedWarehouseId = '',
     this.selectedWarehouseName = '',
   });
@@ -339,7 +341,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
           ? cfg.serverUrl
           : isClient
               ? dio.options.baseUrl
-              : 'http://localhost:9003',
+              : 'http://127.0.0.1:9003',
     );
     _detectLocalIps();
   }
@@ -361,10 +363,13 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
           .toList();
       if (!mounted) return;
       setState(() => _localIps = ips);
-      // En mode serveur, on utilise automatiquement la première IP locale détectée
+      // Les IPs détectées ne servent qu'à l'affichage (adresse à donner aux postes clients).
+      // Le serveur communique toujours avec lui-même en 127.0.0.1 : le pare-feu Windows et le
+      // fichier hosts ne sont configurés qu'à une étape ultérieure du wizard (Base de données),
+      // donc tester/utiliser l'IP LAN à ce stade échoue systématiquement.
       final cfg = ref.read(_configProvider);
-      if (cfg.mode != InstallMode.client && ips.isNotEmpty && cfg.serverUrl.isEmpty) {
-        final detected = 'http://${ips.first}:9003';
+      if (cfg.mode != InstallMode.client && cfg.serverUrl.isEmpty) {
+        const detected = 'http://127.0.0.1:9003';
         _urlCtrl.text = detected;
         ref.read(_configProvider.notifier).state = cfg..serverUrl = detected;
       }
@@ -1593,6 +1598,7 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
       final syncToken   = body['sync_token'] as String? ?? '';
       final tenantId    = body['tenant_id'] as String? ?? '';
       final ownerEmail  = body['owner_email'] as String? ?? '';
+      final userId      = body['user_id'] as String? ?? '';
 
       final c = ref.read(_configProvider);
       ref.read(_configProvider.notifier).state = c
@@ -1602,6 +1608,7 @@ class _TenantConnectPageState extends ConsumerState<_TenantConnectPage> {
         ..syncTokenPrefetched     = syncToken
         ..prefetchedTenantId      = tenantId
         ..prefetchedOwnerEmail    = ownerEmail
+        ..prefetchedUserId        = userId
         ..selectedWarehouseId     = autoSelectedId ?? ''
         ..selectedWarehouseName   = autoSelectedName;
 
@@ -1980,6 +1987,7 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
           body['sync_token_prefetched']  = cfg.syncTokenPrefetched;
           body['prefetched_tenant_id']   = cfg.prefetchedTenantId;
           body['prefetched_owner_email'] = cfg.prefetchedOwnerEmail;
+          body['prefetched_user_id']     = cfg.prefetchedUserId;
         }
         await dio.post('/api/setup/connect-tenant', data: body);
       });
