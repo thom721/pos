@@ -164,6 +164,16 @@ if ($DbType -eq "mysql") {
 
     # -- 2b. MySQL : telecharger si ZIP absent ------------------------------------
     if (-not (Test-Path "$MySqlBinDir\mysqld.exe")) {
+        # Un ZIP deja present mais anormalement petit (< 50 Mo, le vrai fait ~200 Mo)
+        # vient forcement d'un telechargement precedent interrompu/corrompu -- on
+        # le supprime pour forcer une nouvelle tentative plutot que d'echouer plus
+        # tard sur une extraction impossible avec un message trompeur.
+        if ((Test-Path $MySqlZip) -and (Get-Item $MySqlZip).Length -lt 50MB) {
+            Write-Log "ZIP MySQL present mais anormalement petit ($([math]::Round((Get-Item $MySqlZip).Length / 1MB, 1)) Mo) -- suppression et nouvelle tentative" "WARN"
+            Remove-Item $MySqlZip -Force -ErrorAction SilentlyContinue
+        }
+
+        $DownloadError = $null
         if (-not (Test-Path $MySqlZip)) {
             Write-Log "MySQL ZIP absent -- telechargement depuis MySQL officiel..."
             try {
@@ -171,9 +181,15 @@ if ($DbType -eq "mysql") {
                 $wc = New-Object System.Net.WebClient
                 $wc.DownloadFile($MySqlZipUrl, $MySqlZip)
                 $sizeMb = [math]::Round((Get-Item $MySqlZip).Length / 1MB, 1)
+                if ($sizeMb -lt 50) {
+                    # Contenu recu (souvent une page HTML d'erreur) au lieu du vrai ZIP
+                    Remove-Item $MySqlZip -Force -ErrorAction SilentlyContinue
+                    throw "fichier recu anormalement petit (${sizeMb} Mo) -- probablement pas un vrai ZIP MySQL"
+                }
                 Write-Log "MySQL $MySqlVersion telecharge ($sizeMb Mo)"
             } catch {
-                Write-Log "Impossible de telecharger MySQL : $_" "WARN"
+                $DownloadError = $_
+                Write-Log "Impossible de telecharger MySQL : $_" "ERROR"
             }
         }
 
@@ -189,8 +205,33 @@ if ($DbType -eq "mysql") {
                 }
                 Write-Log "MySQL extrait dans $MySqlDir"
             } catch {
-                Write-Log "Extraction MySQL : $_" "WARN"
+                # ZIP corrompu/incomplet -- le supprimer pour qu'une prochaine
+                # tentative retelecharge au lieu de retomber sur ce meme fichier casse.
+                Write-Log "Extraction MySQL : $_" "ERROR"
+                Remove-Item $MySqlZip -Force -ErrorAction SilentlyContinue
             }
+        }
+
+        # -- Echec definitif : arreter ICI avec un message explicite plutot que de
+        # continuer vers l'echec generique "MySQL n'a pas demarre" (qui ne mentionne
+        # jamais que le telechargement/l'extraction a echoue).
+        if (-not (Test-Path "$MySqlBinDir\mysqld.exe")) {
+            Add-Type -AssemblyName System.Windows.Forms | Out-Null
+            [System.Windows.Forms.MessageBox]::Show(
+                "Le telechargement ou l'extraction de MySQL a echoue.`n`n" +
+                "L'installation ne peut pas continuer sans MySQL.`n`n" +
+                "Detail : $DownloadError`n`n" +
+                "Causes frequentes :`n" +
+                "  - Pas de connexion Internet ou pare-feu/proxy bloquant downloads.mysql.com`n" +
+                "  - Connexion trop lente ou coupee pendant le telechargement (~200 Mo)`n`n" +
+                "Verifiez votre connexion et relancez l'installation.`n" +
+                "Log complet : $LogFile",
+                "Erreur critique -- POS Connect",
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+            Write-Log "=== Configuration POS Connect terminee avec erreur telechargement MySQL ===" "ERROR"
+            exit 1
         }
     }
 }
