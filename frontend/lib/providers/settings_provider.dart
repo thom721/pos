@@ -70,6 +70,9 @@ class AppSettings {
   final List<String> reportColumns;
   // Produits composés : "manual" (ajustement page Produits) ou "purchase_receipt"
   final String compositeStockTrigger;
+  // Système de Sabotage — champs additionnels du client [{label, required}]
+  // (nom/prenom/telephone/adresse sont toujours obligatoires, jamais ici)
+  final List<Map<String, dynamic>> clientSabotageFields;
 
   const AppSettings({
     this.businessName = 'Mon Commerce',
@@ -98,6 +101,7 @@ class AppSettings {
     this.allowCashierCredit = false,
     this.reportColumns = kDefaultReportColumns,
     this.compositeStockTrigger = 'manual',
+    this.clientSabotageFields = const [],
   });
 
   AppSettings copyWith({
@@ -127,6 +131,7 @@ class AppSettings {
     bool? allowCashierCredit,
     List<String>? reportColumns,
     String? compositeStockTrigger,
+    List<Map<String, dynamic>>? clientSabotageFields,
   }) =>
       AppSettings(
         businessName: businessName ?? this.businessName,
@@ -155,6 +160,7 @@ class AppSettings {
         allowCashierCredit: allowCashierCredit ?? this.allowCashierCredit,
         reportColumns: reportColumns ?? this.reportColumns,
         compositeStockTrigger: compositeStockTrigger ?? this.compositeStockTrigger,
+        clientSabotageFields: clientSabotageFields ?? this.clientSabotageFields,
       );
 
   // Serialize to API (snake_case)
@@ -190,6 +196,10 @@ class AppSettings {
         'allow_cashier_credit': allowCashierCredit,
         'report_columns': reportColumns,
         'composite_stock_trigger': compositeStockTrigger,
+        if (clientSabotageFields.isNotEmpty)
+          'client_sabotage_fields': clientSabotageFields
+              .map((f) => {'label': f['label'] ?? '', 'required': f['required'] ?? false})
+              .toList(),
       };
 
   // Parse from API response (snake_case)
@@ -218,7 +228,16 @@ class AppSettings {
         allowCashierCredit: j['allow_cashier_credit'] as bool? ?? false,
         reportColumns: _parseReportColumns(j['report_columns']),
         compositeStockTrigger: j['composite_stock_trigger'] as String? ?? 'manual',
+        clientSabotageFields: _parseSabotageFields(j['client_sabotage_fields']),
       );
+
+  static List<Map<String, dynamic>> _parseSabotageFields(dynamic raw) {
+    if (raw == null || raw is! List) return [];
+    return raw.map((e) {
+      final m = e as Map<String, dynamic>;
+      return <String, dynamic>{'label': m['label'] ?? '', 'required': m['required'] ?? false};
+    }).toList();
+  }
 
   static List<String> _parseReportColumns(dynamic raw) {
     if (raw == null || raw is! List || raw.isEmpty) return kDefaultReportColumns;
@@ -266,6 +285,7 @@ class AppSettings {
         'allowCashierCredit': allowCashierCredit,
         'reportColumns': reportColumns,
         'compositeStockTrigger': compositeStockTrigger,
+        'clientSabotageFields': clientSabotageFields,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -295,6 +315,7 @@ class AppSettings {
         allowCashierCredit: j['allowCashierCredit'] as bool? ?? false,
         reportColumns: _parseReportColumns(j['reportColumns']),
         compositeStockTrigger: j['compositeStockTrigger'] as String? ?? 'manual',
+        clientSabotageFields: _parseSabotageFields(j['clientSabotageFields']),
       );
 }
 

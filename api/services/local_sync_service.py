@@ -17,7 +17,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from api.core.config import settings
-from api.core.dt_coerce import coerce_datetimes as _coerce_dt_shared, now_local
+from api.core.dt_coerce import coerce_datetimes as _coerce_dt_shared, coerce_enums as _coerce_enums_shared, now_local
 from api.models.SyncState import SyncState
 from api.models.Category import Category
 from api.models.Discount import Discount
@@ -54,6 +54,9 @@ from api.models.MenuItem import MenuItem
 from api.models.ModifierGroup import ModifierGroup, ModifierOption
 from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
 from api.models.HousekeepingTask import HousekeepingTask
+from api.models.ClientSabotage import ClientSabotage
+from api.models.Depot import Depot
+from api.models.Retrait import Retrait
 
 _log = logging.getLogger("pos.sync")
 
@@ -122,6 +125,10 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "restaurant_order_item", "model": RestaurantOrderItem, "direction": "push"},
     # Tâches housekeeping : historique poussé vers le cloud
     {"type": "housekeeping_task", "model": HousekeepingTask, "direction": "push"},
+    # ── Système de Sabotage ──────────────────────────────────────────────────
+    {"type": "client_sabotage", "model": ClientSabotage, "direction": "both"},
+    {"type": "depot",           "model": Depot,          "direction": "both"},
+    {"type": "retrait",         "model": Retrait,        "direction": "both"},
 ]
 
 # Columns excluded when sending to cloud (cloud assigns its own tenant_id via sync token)
@@ -496,11 +503,14 @@ def _parse_dt(value: str | None) -> datetime | None:
 
 def _coerce_for_db(model: Any, record: dict) -> dict:
     """
-    Convert ISO datetime strings to Python datetime objects for DateTime columns.
-    Délègue à dt_coerce.coerce_datetimes avec fallback heuristique si le modèle
-    ne peut pas être inspecté.
+    Convert ISO datetime strings to Python datetime objects for DateTime columns,
+    and raw enum-column strings (format API `.value`) back into leur membre Enum
+    Python correspondant (voir dt_coerce.coerce_enums — nécessaire quand la DB
+    locale est MySQL, qui valide réellement les labels ENUM, contrairement à
+    SQLite qui stocke ces colonnes en VARCHAR libre).
     """
-    return _coerce_dt_shared(record, strip_tz=(settings.DB_TYPE == "sqlite"))
+    result = _coerce_dt_shared(record, strip_tz=(settings.DB_TYPE == "sqlite"))
+    return _coerce_enums_shared(model, result)
 
 
 # ── Sync status ──────────────────────────────────────────────────────────────

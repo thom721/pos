@@ -35,6 +35,9 @@ import 'package:pos_connect/features/reports/depot_reports_screen.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/features/restaurant/tables_screen.dart';
 import 'package:pos_connect/features/restaurant/table_order_screen.dart';
+import 'package:pos_connect/features/sabotage/clients_sabotage_screen.dart';
+import 'package:pos_connect/features/sabotage/depot_screen.dart';
+import 'package:pos_connect/features/sabotage/retrait_screen.dart';
 import 'package:pos_connect/features/restaurant/kitchen_screen.dart';
 import 'package:pos_connect/features/restaurant/housekeeping_screen.dart';
 import 'package:pos_connect/features/restaurant/commandes_screen.dart';
@@ -266,6 +269,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/warehouses',
             builder: (context, state) => const WarehousesScreen(),
+          ),
+          GoRoute(
+            path: '/clients-sabotage',
+            builder: (context, state) => const ClientsSabotageScreen(),
+          ),
+          GoRoute(
+            path: '/depots',
+            builder: (context, state) => const DepotScreen(),
+          ),
+          GoRoute(
+            path: '/retraits',
+            builder: (context, state) => const RetraitScreen(),
           ),
           GoRoute(
             path: '/restaurant/tables',

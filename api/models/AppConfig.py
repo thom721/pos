@@ -48,3 +48,8 @@ class AppConfig(UUIDBase):
     # correctement vers le produit composant ; ce réglage sert uniquement à
     # orienter l'interface (quel workflow est mis en avant pour ce tenant).
     composite_stock_trigger = Column(String(20), nullable=False, default='manual')
+
+    # Système de Sabotage — champs additionnels configurables pour ClientSabotage.
+    # JSON list [{label, required}, ...]. Ne contient jamais nom/prenom/telephone/
+    # adresse : ces champs sont toujours obligatoires, codés en dur côté modèle.
+    client_sabotage_fields = Column(Text, nullable=True, default=None)

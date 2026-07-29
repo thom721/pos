@@ -127,6 +127,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     onTap: () => notifier.save(
                         settings.copyWith(businessType: 'hotel')),
                   ),
+                  const Divider(height: 1),
+                  _SelectionTile(
+                    value: 'sabotage',
+                    label: 'Système de Sabotage',
+                    description: 'Clients, dépôts et retraits — comme une banque',
+                    icon: Icons.account_balance_rounded,
+                    selected: settings.businessType == 'sabotage',
+                    onTap: () => notifier.save(
+                        settings.copyWith(businessType: 'sabotage')),
+                  ),
                 ],
               ),
             ),
@@ -503,6 +513,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             if (settings.businessType == 'hotel') ...[
               const SizedBox(height: 24),
               _HotelCheckinSection(settings: settings, notifier: notifier),
+            ],
+
+            // ── Champs client — Système de Sabotage ──────────────────────
+            if (settings.businessType == 'sabotage') ...[
+              const SizedBox(height: 24),
+              _SabotageFieldsSection(settings: settings, notifier: notifier),
             ],
 
             // ── Synchronisation cloud (local uniquement) ─────────────────
@@ -1932,6 +1948,152 @@ class _BluetoothPrinterSectionState extends State<_BluetoothPrinterSection> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Système de Sabotage — champs additionnels du client ───────────────────────
+// nom/prenom/telephone/adresse sont toujours obligatoires et ne figurent jamais
+// dans cette liste configurable (voir ClientSabotage côté backend).
+
+class _SabotageFieldsSection extends StatefulWidget {
+  final AppSettings settings;
+  final SettingsNotifier notifier;
+  const _SabotageFieldsSection({required this.settings, required this.notifier});
+
+  @override
+  State<_SabotageFieldsSection> createState() => _SabotageFieldsSectionState();
+}
+
+class _SabotageFieldsSectionState extends State<_SabotageFieldsSection> {
+  late List<Map<String, dynamic>> _fields;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fields = widget.settings.clientSabotageFields
+        .map((f) => Map<String, dynamic>.from(f))
+        .toList();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    await widget.notifier.save(
+      widget.settings.copyWith(clientSabotageFields: List.from(_fields)),
+    );
+    setState(() => _saving = false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Champs client enregistrés'),
+        backgroundColor: AppColors.success,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader(icon: Icons.badge_outlined, title: 'Champs additionnels du client'),
+        const SizedBox(height: 8),
+        const Text(
+          'Nom, prénom, téléphone et adresse sont toujours obligatoires et ne sont pas '
+          'listés ici. Ajoutez ci-dessous des champs additionnels spécifiques à votre activité.',
+          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(children: const [
+            Expanded(flex: 5, child: Text('Champ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary))),
+            SizedBox(width: 8),
+            SizedBox(width: 90, child: Text('Obligatoire', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary))),
+            SizedBox(width: 32),
+          ]),
+        ),
+        const SizedBox(height: 6),
+        _Card(
+          child: _fields.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text('Aucun champ additionnel configuré.',
+                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                )
+              : Column(
+                  children: List.generate(_fields.length, (i) {
+                    final f = _fields[i];
+                    return Column(
+                      children: [
+                        if (i > 0) const Divider(height: 1),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                flex: 5,
+                                child: TextFormField(
+                                  initialValue: f['label'] as String? ?? '',
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  style: const TextStyle(fontSize: 13),
+                                  onChanged: (v) => setState(() => f['label'] = v),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: 90,
+                                child: Switch(
+                                  value: f['required'] as bool? ?? false,
+                                  onChanged: (v) => setState(() => f['required'] = v),
+                                  activeThumbColor: AppColors.primary,
+                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                              SizedBox(
+                                width: 32,
+                                child: IconButton(
+                                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                                  color: AppColors.error,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () => setState(() => _fields.removeAt(i)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            TextButton.icon(
+              onPressed: () => setState(() => _fields.add({'label': '', 'required': false})),
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Ajouter un champ'),
+              style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+            ),
+            const Spacer(),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.save_rounded, size: 16),
+              label: const Text('Enregistrer'),
+              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

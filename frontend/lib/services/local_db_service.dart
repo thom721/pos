@@ -19,6 +19,9 @@ import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/models/supplier_model.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
+import 'package:pos_connect/data/models/client_sabotage_model.dart';
+import 'package:pos_connect/data/models/depot_model.dart';
+import 'package:pos_connect/data/models/retrait_model.dart';
 
 /// Cache SQLite local pour les données critiques POS (produits, clients, catégories).
 ///
@@ -45,7 +48,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 20,
+      version: 21,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -180,6 +183,9 @@ class LocalDbService {
       try { await db.execute('ALTER TABLE products ADD COLUMN component_product_id TEXT'); } catch (_) {}
       try { await db.execute('ALTER TABLE products ADD COLUMN component_quantity REAL'); } catch (_) {}
     }
+    if (oldVersion < 21) {
+      await _createSabotageTables(db);
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -259,6 +265,45 @@ class LocalDbService {
     await db.execute('CREATE INDEX idx_customers_name ON customers (name)');
     await _createSalesTables(db);
     await _createDiscountsTable(db);
+    await _createSabotageTables(db);
+  }
+
+  Future<void> _createSabotageTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS clients_sabotage (
+        id             TEXT PRIMARY KEY,
+        tenant_id      TEXT,
+        warehouse_id   TEXT,
+        nom            TEXT NOT NULL,
+        prenom         TEXT NOT NULL,
+        telephone      TEXT NOT NULL,
+        adresse        TEXT NOT NULL,
+        account_number TEXT NOT NULL,
+        extra_fields   TEXT,
+        is_active      INTEGER NOT NULL DEFAULT 1,
+        balance        REAL NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS depots_sabotage (
+        id            TEXT PRIMARY KEY,
+        client_id     TEXT NOT NULL,
+        warehouse_id  TEXT,
+        amount        REAL NOT NULL DEFAULT 0,
+        note          TEXT,
+        created_at    TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS retraits_sabotage (
+        id            TEXT PRIMARY KEY,
+        client_id     TEXT NOT NULL,
+        warehouse_id  TEXT,
+        amount        REAL NOT NULL DEFAULT 0,
+        note          TEXT,
+        created_at    TEXT
+      )
+    ''');
   }
 
   Future<void> _createDiscountsTable(Database db) async {
@@ -949,6 +994,159 @@ class LocalDbService {
     } catch (_) {
       return const [];
     }
+  }
+
+  // ── Système de Sabotage ──────────────────────────────────────────────────
+
+  Future<void> upsertClientsSabotage(List<ClientSabotageModel> clients) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final c in clients) {
+      batch.insert(
+        'clients_sabotage',
+        {
+          'id': c.id,
+          'warehouse_id': c.warehouseId,
+          'nom': c.nom,
+          'prenom': c.prenom,
+          'telephone': c.telephone,
+          'adresse': c.adresse,
+          'account_number': c.accountNumber,
+          'extra_fields': c.extraFields.isEmpty ? null : jsonEncode(c.extraFields),
+          'is_active': c.isActive ? 1 : 0,
+          'balance': c.balance,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> deleteStaleClientsSabotage(List<String> serverIds) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final placeholders = List.filled(serverIds.length, '?').join(',');
+    await db.delete('clients_sabotage', where: 'id NOT IN ($placeholders)', whereArgs: serverIds);
+  }
+
+  Future<List<ClientSabotageModel>> getClientsSabotage() async {
+    final db = _safeDb;
+    if (db == null) return const [];
+    final rows = await db.query('clients_sabotage', orderBy: 'nom ASC');
+    return rows.map((r) {
+      final rawExtra = r['extra_fields'] as String?;
+      Map<String, String> extra = const {};
+      if (rawExtra != null && rawExtra.isNotEmpty) {
+        try {
+          extra = (jsonDecode(rawExtra) as Map).map((k, v) => MapEntry(k.toString(), v.toString()));
+        } catch (_) {}
+      }
+      return ClientSabotageModel(
+        id: r['id'] as String,
+        nom: r['nom'] as String,
+        prenom: r['prenom'] as String,
+        telephone: r['telephone'] as String,
+        adresse: r['adresse'] as String,
+        accountNumber: r['account_number'] as String,
+        warehouseId: r['warehouse_id'] as String?,
+        extraFields: extra,
+        isActive: (r['is_active'] as int? ?? 1) == 1,
+        balance: (r['balance'] as num?)?.toDouble() ?? 0,
+      );
+    }).toList();
+  }
+
+  Future<void> upsertDepots(List<DepotModel> depots) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final d in depots) {
+      batch.insert(
+        'depots_sabotage',
+        {
+          'id': d.id,
+          'client_id': d.clientId,
+          'warehouse_id': d.warehouseId,
+          'amount': d.amount,
+          'note': d.note,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> deleteStaleDepots(List<String> serverIds) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final placeholders = List.filled(serverIds.length, '?').join(',');
+    await db.delete('depots_sabotage', where: 'id NOT IN ($placeholders)', whereArgs: serverIds);
+  }
+
+  Future<List<DepotModel>> getDepots({String? clientId}) async {
+    final db = _safeDb;
+    if (db == null) return const [];
+    final rows = await db.query(
+      'depots_sabotage',
+      where: clientId != null ? 'client_id = ?' : null,
+      whereArgs: clientId != null ? [clientId] : null,
+    );
+    return rows
+        .map((r) => DepotModel(
+              id: r['id'] as String,
+              clientId: r['client_id'] as String,
+              amount: (r['amount'] as num?)?.toDouble() ?? 0,
+              warehouseId: r['warehouse_id'] as String?,
+              note: r['note'] as String?,
+            ))
+        .toList();
+  }
+
+  Future<void> upsertRetraits(List<RetraitModel> retraits) async {
+    final db = _safeDb;
+    if (db == null) return;
+    final batch = db.batch();
+    for (final r in retraits) {
+      batch.insert(
+        'retraits_sabotage',
+        {
+          'id': r.id,
+          'client_id': r.clientId,
+          'warehouse_id': r.warehouseId,
+          'amount': r.amount,
+          'note': r.note,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> deleteStaleRetraits(List<String> serverIds) async {
+    final db = _safeDb;
+    if (db == null || serverIds.isEmpty) return;
+    final placeholders = List.filled(serverIds.length, '?').join(',');
+    await db.delete('retraits_sabotage', where: 'id NOT IN ($placeholders)', whereArgs: serverIds);
+  }
+
+  Future<List<RetraitModel>> getRetraits({String? clientId}) async {
+    final db = _safeDb;
+    if (db == null) return const [];
+    final rows = await db.query(
+      'retraits_sabotage',
+      where: clientId != null ? 'client_id = ?' : null,
+      whereArgs: clientId != null ? [clientId] : null,
+    );
+    return rows
+        .map((r) => RetraitModel(
+              id: r['id'] as String,
+              clientId: r['client_id'] as String,
+              amount: (r['amount'] as num?)?.toDouble() ?? 0,
+              warehouseId: r['warehouse_id'] as String?,
+              note: r['note'] as String?,
+            ))
+        .toList();
   }
 
   // ── Dépôts ───────────────────────────────────────────────────────────────

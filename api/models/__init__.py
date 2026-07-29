@@ -34,3 +34,6 @@ from api.models.PlatformConfig import PlatformConfig
 from api.models.SyncState import SyncState
 from api.models.AuditLog import AuditLog
 from api.models.BillingExtra import BillingExtra
+from api.models.ClientSabotage import ClientSabotage
+from api.models.Depot import Depot
+from api.models.Retrait import Retrait

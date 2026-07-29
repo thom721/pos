@@ -23,7 +23,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from api.core.config import settings, write_ini_config
-from api.core.dt_coerce import coerce_datetimes as _coerce_dt, parse_dt as _parse_dt, now_local
+from api.core.dt_coerce import coerce_datetimes as _coerce_dt, coerce_enums as _coerce_enums, parse_dt as _parse_dt, now_local
 from api.core.permissions import P
 from api.database import get_db
 from api.dependencies.auth import require_permission
@@ -63,6 +63,9 @@ from api.models.RestaurantOrder import RestaurantOrder, RestaurantOrderItem
 from api.models.HousekeepingTask import HousekeepingTask
 from api.models.AppConfig import AppConfig
 from api.models.Discount import Discount
+from api.models.ClientSabotage import ClientSabotage
+from api.models.Depot import Depot
+from api.models.Retrait import Retrait
 
 router = APIRouter(prefix="/api/sync", tags=["Sync"])
 _log = logging.getLogger("pos.sync")
@@ -121,6 +124,10 @@ _MODEL_MAP: dict[str, Any] = {
     "restaurant_order":      RestaurantOrder,
     "restaurant_order_item": RestaurantOrderItem,
     "housekeeping_task":     HousekeepingTask,
+    # Système de Sabotage
+    "client_sabotage":       ClientSabotage,
+    "depot":                 Depot,
+    "retrait":               Retrait,
     # App settings
     "app_config":            AppConfig,
 }
@@ -365,6 +372,7 @@ def sync_push(
 
         _strip = settings.DB_TYPE == "sqlite"
         clean  = _coerce_dt(clean, strip_tz=_strip)
+        clean  = _coerce_enums(model, clean)
 
         existing = db.get(model, rid)
         if existing is None:

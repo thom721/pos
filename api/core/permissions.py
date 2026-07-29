@@ -129,6 +129,18 @@ class P:
     TABLES_UPDATE = "tables.update"
     TABLES_DELETE = "tables.delete"
 
+    # Système de Sabotage — clients, dépôts, retraits
+    CLIENTS_SABOTAGE_CREATE = "clients_sabotage.create"
+    CLIENTS_SABOTAGE_READ   = "clients_sabotage.read"
+    CLIENTS_SABOTAGE_UPDATE = "clients_sabotage.update"
+    CLIENTS_SABOTAGE_DELETE = "clients_sabotage.delete"
+
+    DEPOTS_CREATE = "depots.create"
+    DEPOTS_READ   = "depots.read"
+
+    RETRAITS_CREATE = "retraits.create"
+    RETRAITS_READ   = "retraits.read"
+
 
 # ---------------------------------------------------------------------------
 # Role → permissions mapping
@@ -162,6 +174,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.AUDIT_READ,
         P.WAREHOUSES_CREATE, P.WAREHOUSES_READ, P.WAREHOUSES_UPDATE, P.WAREHOUSES_DELETE,
         P.TABLES_CREATE, P.TABLES_READ, P.TABLES_UPDATE, P.TABLES_DELETE,
+        P.CLIENTS_SABOTAGE_CREATE, P.CLIENTS_SABOTAGE_READ, P.CLIENTS_SABOTAGE_UPDATE, P.CLIENTS_SABOTAGE_DELETE,
+        P.DEPOTS_CREATE, P.DEPOTS_READ,
+        P.RETRAITS_CREATE, P.RETRAITS_READ,
     },
 
     "cashier": {
@@ -180,6 +195,9 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.SESSIONS_OPEN, P.SESSIONS_CLOSE, P.SESSIONS_READ,
         P.WAREHOUSES_READ,
         P.TABLES_READ,
+        P.CLIENTS_SABOTAGE_CREATE, P.CLIENTS_SABOTAGE_READ, P.CLIENTS_SABOTAGE_UPDATE,
+        P.DEPOTS_CREATE, P.DEPOTS_READ,
+        P.RETRAITS_CREATE, P.RETRAITS_READ,
     },
 
     "stock_manager": {

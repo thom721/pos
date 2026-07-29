@@ -11,6 +11,8 @@ import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/sale_provider.dart';
 import 'package:pos_connect/providers/debt_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/client_sabotage_provider.dart';
+import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:pos_connect/shared/widgets/stat_card.dart';
 import 'package:pos_connect/shared/widgets/status_badge.dart';
 
@@ -21,11 +23,15 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final businessType = ref.watch(settingsProvider).businessType;
+    // Système de Sabotage : pas de ventes/stock/dettes — vue dédiée (clients,
+    // dépôts, retraits, solde en circulation).
+    if (businessType == 'sabotage') return const _SabotageDashboard();
+
     final user = ref.watch(authProvider).user;
     final isCashier = !(user?.hasPermission(Perm.reportsReadAll) ?? false);
     final salesAsync = ref.watch(dashboardSalesProvider(isCashier));
     final debtsAsync = ref.watch(debtsProvider);
-    final businessType = ref.watch(settingsProvider).businessType;
     final isOrderBased = businessType == 'restaurant' || businessType == 'hotel';
     // Autorisation vente depuis le web (champ sell_cloud sur le tenant)
     final sellCloud =
@@ -486,6 +492,87 @@ class _ErrorCard extends StatelessWidget {
             Expanded(child: Text(message, style: const TextStyle(color: AppColors.error))),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Système de Sabotage : tableau de bord dédié ───────────────────────────
+// Pas de ventes/stock/dettes ici — les indicateurs pertinents sont le nombre
+// de clients, le total des dépôts/retraits et le solde total en circulation
+// (dérivé côté client depuis ClientSabotageModel.balance, déjà calculé serveur).
+
+class _SabotageDashboard extends ConsumerWidget {
+  const _SabotageDashboard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final clientsAsync = ref.watch(clientsSabotageProvider);
+    final pad = context.hPad;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(pad),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Bienvenue 👋', style: Theme.of(context).textTheme.displayMedium),
+          const SizedBox(height: 2),
+          Text(
+            DateFormat('EEEE d MMMM yyyy', 'fr').format(haitiNow()),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 20),
+          clientsAsync.when(
+            data: (clients) {
+              final totalBalance = clients.fold<double>(0, (s, c) => s + c.balance);
+              final cols = context.isMobile ? 2 : 4;
+              return GridView.count(
+                crossAxisCount: cols,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: cols == 2 ? 1.6 : 2.0,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  StatCard(
+                    label: 'Clients',
+                    value: '${clients.length}',
+                    icon: Icons.people_alt_rounded,
+                    color: AppColors.primary,
+                  ),
+                  StatCard(
+                    label: 'Solde en circulation',
+                    value: _fmt.format(totalBalance),
+                    icon: Icons.account_balance_rounded,
+                    color: AppColors.accent,
+                  ),
+                ],
+              );
+            },
+            loading: () => const _StatsSkeletons(),
+            error: (e, _) => _ErrorCard(message: 'Erreur: ${extractAnyError(e)}'),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => context.go('/depots'),
+                  icon: const Icon(Icons.savings_rounded),
+                  label: const Text('Nouveau dépôt'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => context.go('/retraits'),
+                  icon: const Icon(Icons.money_off_rounded),
+                  label: const Text('Nouveau retrait'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

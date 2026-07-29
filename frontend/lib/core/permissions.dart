@@ -120,6 +120,18 @@ abstract class Perm {
   static const payrollRead    = 'payroll.read';
   static const payrollProcess = 'payroll.process';
   static const payrollPay     = 'payroll.pay';
+
+  // Système de Sabotage — clients, dépôts, retraits
+  static const clientsSabotageCreate = 'clients_sabotage.create';
+  static const clientsSabotageRead   = 'clients_sabotage.read';
+  static const clientsSabotageUpdate = 'clients_sabotage.update';
+  static const clientsSabotageDelete = 'clients_sabotage.delete';
+
+  static const depotsCreate = 'depots.create';
+  static const depotsRead   = 'depots.read';
+
+  static const retraitsCreate = 'retraits.create';
+  static const retraitsRead   = 'retraits.read';
 }
 
 /// Permissions regroupées par rôle — miroir de ROLE_PERMISSIONS en Python.
@@ -149,6 +161,9 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.loansCreate, Perm.loansRead, Perm.loansApprove,
     Perm.payrollCreate, Perm.payrollRead, Perm.payrollProcess, Perm.payrollPay,
     Perm.tablesCreate, Perm.tablesRead, Perm.tablesUpdate, Perm.tablesDelete,
+    Perm.clientsSabotageCreate, Perm.clientsSabotageRead, Perm.clientsSabotageUpdate, Perm.clientsSabotageDelete,
+    Perm.depotsCreate, Perm.depotsRead,
+    Perm.retraitsCreate, Perm.retraitsRead,
   },
   'cashier': {
     Perm.salesCreate, Perm.salesRead, Perm.salesUpdate, Perm.salesCancel,
@@ -164,6 +179,9 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.invoicesCreate, Perm.invoicesRead, Perm.invoicesUpdate,
     Perm.configRead,
     Perm.tablesRead,
+    Perm.clientsSabotageCreate, Perm.clientsSabotageRead, Perm.clientsSabotageUpdate,
+    Perm.depotsCreate, Perm.depotsRead,
+    Perm.retraitsCreate, Perm.retraitsRead,
   },
   'waiter': {
     Perm.tablesRead, Perm.tablesUpdate,

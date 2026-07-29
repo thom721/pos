@@ -13,6 +13,9 @@ import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/supplier_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
+import 'package:pos_connect/data/models/client_sabotage_model.dart';
+import 'package:pos_connect/data/models/depot_model.dart';
+import 'package:pos_connect/data/models/retrait_model.dart';
 import 'package:pos_connect/services/local_db_service.dart';
 
 bool _isPermissionDenied(Object e) =>
@@ -104,6 +107,15 @@ class OfflineCacheService {
       }
       if (syncHotel) {
         await _syncHousekeepingTasks(warehouseId: warehouseId);
+      }
+
+      final syncSabotage = _isDesktop || businessType == 'sabotage';
+      if (syncSabotage) {
+        await _syncClientsSabotage();
+        await Future.wait([
+          _syncDepots(),
+          _syncRetraits(),
+        ]);
       }
     } catch (e) {
       debugPrint('[OfflineCache] syncAll error: $e');
@@ -219,6 +231,52 @@ class OfflineCacheService {
       debugPrint('[OfflineCache] discounts: ${discounts.length} mis en cache');
     } catch (e) {
       if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] discounts sync error: $e');
+    }
+  }
+
+  // ── Système de Sabotage ───────────────────────────────────────────────────
+
+  Future<void> _syncClientsSabotage() async {
+    try {
+      final res = await dio.get('/api/clients-sabotage/', options: kBackgroundOptions);
+      final raw = res.data;
+      final items = raw is Map ? (raw['data'] as List? ?? []) : (raw as List? ?? []);
+      final clients = items
+          .map((e) => ClientSabotageModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+      await LocalDbService.instance.upsertClientsSabotage(clients);
+      await LocalDbService.instance.deleteStaleClientsSabotage(clients.map((c) => c.id).toList());
+      debugPrint('[OfflineCache] clients_sabotage: ${clients.length} mis en cache');
+    } catch (e) {
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] clients_sabotage sync error: $e');
+    }
+  }
+
+  Future<void> _syncDepots() async {
+    try {
+      final res = await dio.get('/api/depots/', options: kBackgroundOptions);
+      final raw = res.data;
+      final items = raw is Map ? (raw['data'] as List? ?? []) : (raw as List? ?? []);
+      final depots = items.map((e) => DepotModel.fromJson(e as Map<String, dynamic>)).toList();
+      await LocalDbService.instance.upsertDepots(depots);
+      await LocalDbService.instance.deleteStaleDepots(depots.map((d) => d.id).toList());
+      debugPrint('[OfflineCache] depots: ${depots.length} mis en cache');
+    } catch (e) {
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] depots sync error: $e');
+    }
+  }
+
+  Future<void> _syncRetraits() async {
+    try {
+      final res = await dio.get('/api/retraits/', options: kBackgroundOptions);
+      final raw = res.data;
+      final items = raw is Map ? (raw['data'] as List? ?? []) : (raw as List? ?? []);
+      final retraits = items.map((e) => RetraitModel.fromJson(e as Map<String, dynamic>)).toList();
+      await LocalDbService.instance.upsertRetraits(retraits);
+      await LocalDbService.instance.deleteStaleRetraits(retraits.map((r) => r.id).toList());
+      debugPrint('[OfflineCache] retraits: ${retraits.length} mis en cache');
+    } catch (e) {
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] retraits sync error: $e');
     }
   }
 

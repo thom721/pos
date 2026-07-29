@@ -26,8 +26,9 @@ class ConfigRead(BaseModel):
     allow_cashier_credit: bool = False
     report_columns: Optional[list] = None
     composite_stock_trigger: str = 'manual'
+    client_sabotage_fields: Optional[list] = None
 
-    @field_validator('hotel_checkin_fields', 'report_columns', mode='before')
+    @field_validator('hotel_checkin_fields', 'report_columns', 'client_sabotage_fields', mode='before')
     @classmethod
     def _parse_checkin(cls, v):
         if isinstance(v, str):
@@ -64,3 +65,4 @@ class ConfigUpdate(BaseModel):
     allow_cashier_credit: Optional[bool] = None
     report_columns: Optional[list] = None
     composite_stock_trigger: Optional[str] = None
+    client_sabotage_fields: Optional[list] = None

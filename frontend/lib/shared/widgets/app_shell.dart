@@ -117,15 +117,34 @@ const _hotelAndroidBottomItems = [
   _NavItem('Transactions',  Icons.receipt_long_rounded,      '/sales'),
 ];
 
+// ── Système de Sabotage nav (compte client type banque) ───────────────────
+const _sabotageMainNavItems = [
+  _NavItem('Tableau de bord', Icons.dashboard_rounded,  '/dashboard'),
+  _NavItem('Client',          Icons.people_alt_rounded, '/clients-sabotage'),
+  _NavItem('Dépôt',           Icons.savings_rounded,    '/depots'),
+  _NavItem('Retrait',         Icons.money_off_rounded,  '/retraits'),
+  _NavItem('Business',        Icons.apartment_rounded,  '/warehouses'),
+];
+
+const _sabotageAndroidBottomItems = [
+  _NavItem('Accueil', Icons.dashboard_rounded,  '/dashboard'),
+  _NavItem('Client',  Icons.people_alt_rounded, '/clients-sabotage'),
+  _NavItem('Dépôt',   Icons.savings_rounded,    '/depots'),
+  _NavItem('Retrait', Icons.money_off_rounded,  '/retraits'),
+  _NavItem('Profil',  Icons.person_rounded,     '/profile'),
+];
+
 List<_NavItem> _resolveMainNav(String businessType) {
   if (businessType == 'restaurant') return _restaurantMainNavItems;
   if (businessType == 'hotel')      return _hotelMainNavItems;
+  if (businessType == 'sabotage')   return _sabotageMainNavItems;
   return _mainNavItems;
 }
 
 List<_NavItem> _resolveAndroidBottom(String businessType) {
   if (businessType == 'restaurant') return _restaurantAndroidBottomItems;
   if (businessType == 'hotel')      return _hotelAndroidBottomItems;
+  if (businessType == 'sabotage')   return _sabotageAndroidBottomItems;
   return _androidBottomNavItems;
 }
 
@@ -154,6 +173,7 @@ const _allNavItems = [
   ..._mainNavItems,
   ..._restaurantMainNavItems,
   ..._hotelMainNavItems,
+  ..._sabotageMainNavItems,
   ..._analyticsNavItems,
   ..._hrNavItems,
   ..._adminNavItems,
@@ -176,6 +196,9 @@ const Map<String, String> _routePermission = {
   '/hr':         Perm.employeesRead,
   '/settings':    Perm.configUpdate,
   '/warehouses':  Perm.warehousesRead,
+  '/clients-sabotage': Perm.clientsSabotageRead,
+  '/depots':           Perm.depotsRead,
+  '/retraits':         Perm.retraitsRead,
 };
 
 bool _canShowItem(_NavItem item, UserModel? user, {bool sellCloud = false}) {
@@ -1065,7 +1088,9 @@ class _MobileShellState extends ConsumerState<_MobileShell>
         ? _restaurantMainNavItems
         : businessType == 'hotel'
             ? _hotelMainNavItems
-            : _androidDrawerMainItems;
+            : businessType == 'sabotage'
+                ? _sabotageMainNavItems
+                : _androidDrawerMainItems;
 
     // "Voir plus" — rapport complet sur le web, uniquement pour un tenant
     // cloud (masqué en self-hosted ou installation purement locale).
