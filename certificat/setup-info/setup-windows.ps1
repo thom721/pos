@@ -21,7 +21,13 @@ $NginxExe    = "$InstallDir\nginx\nginx.exe"
 $ApiExe      = "$InstallDir\posconnect-server.exe"
 $MySqlVersion = "8.0.41"
 $MySqlZip    = "$InstallDir\mysql-$MySqlVersion-winx64.zip"
-$MySqlZipUrl = "https://downloads.mysql.com/archives/get/p/23/file/mysql-$MySqlVersion-winx64.zip"
+# Miroir GitHub Releases en premier : le serveur officiel MySQL (Oracle) renvoie
+# frequemment 403 Forbidden (anti-bot/limitation de debit) apres quelques
+# telechargements rapproches -- le miroir n'a pas cette limitation.
+$MySqlZipUrls = @(
+    "https://github.com/thom721/pos/releases/download/mysql-$MySqlVersion-mirror/mysql-$MySqlVersion-winx64.zip",
+    "https://downloads.mysql.com/archives/get/p/23/file/mysql-$MySqlVersion-winx64.zip"
+)
 $MySqlDir    = "$InstallDir\mysql"
 # Chemin datadir provisoire -- sera precise apres journalisation (detection migration)
 $MySqlData   = "$env:ProgramData\POS_Connect_MySQL\data"
@@ -175,21 +181,28 @@ if ($DbType -eq "mysql") {
 
         $DownloadError = $null
         if (-not (Test-Path $MySqlZip)) {
-            Write-Log "MySQL ZIP absent -- telechargement depuis MySQL officiel..."
-            try {
-                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                $wc = New-Object System.Net.WebClient
-                $wc.DownloadFile($MySqlZipUrl, $MySqlZip)
-                $sizeMb = [math]::Round((Get-Item $MySqlZip).Length / 1MB, 1)
-                if ($sizeMb -lt 50) {
-                    # Contenu recu (souvent une page HTML d'erreur) au lieu du vrai ZIP
-                    Remove-Item $MySqlZip -Force -ErrorAction SilentlyContinue
-                    throw "fichier recu anormalement petit (${sizeMb} Mo) -- probablement pas un vrai ZIP MySQL"
+            foreach ($url in $MySqlZipUrls) {
+                Write-Log "MySQL ZIP absent -- telechargement depuis $url ..."
+                try {
+                    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                    $wc = New-Object System.Net.WebClient
+                    $wc.DownloadFile($url, $MySqlZip)
+                    $sizeMb = [math]::Round((Get-Item $MySqlZip).Length / 1MB, 1)
+                    if ($sizeMb -lt 50) {
+                        # Contenu recu (souvent une page HTML d'erreur) au lieu du vrai ZIP
+                        Remove-Item $MySqlZip -Force -ErrorAction SilentlyContinue
+                        throw "fichier recu anormalement petit (${sizeMb} Mo) -- probablement pas un vrai ZIP MySQL"
+                    }
+                    Write-Log "MySQL $MySqlVersion telecharge depuis $url ($sizeMb Mo)"
+                    $DownloadError = $null
+                    break
+                } catch {
+                    $DownloadError = $_
+                    Write-Log "Echec telechargement depuis ${url} : $_" "WARN"
                 }
-                Write-Log "MySQL $MySqlVersion telecharge ($sizeMb Mo)"
-            } catch {
-                $DownloadError = $_
-                Write-Log "Impossible de telecharger MySQL : $_" "ERROR"
+            }
+            if ($DownloadError) {
+                Write-Log "Toutes les sources de telechargement MySQL ont echoue." "ERROR"
             }
         }
 
