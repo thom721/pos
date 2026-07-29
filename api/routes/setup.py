@@ -103,6 +103,51 @@ class MigrateRequest(BaseModel):
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+def _pull_admin_password_from_cloud(
+    cloud_url: str, sync_token: str, target_user_id: str, target_email: str,
+    db: Session,
+) -> None:
+    """
+    Avec un code d'installation (sync_token_prefetched), l'installeur n'a pas
+    fait saisir le mot de passe du tenant — data.password est vide, donc le
+    mot de passe local ne peut pas être dérivé de celui-ci. Cette fonction va
+    chercher immédiatement le vrai hash de mot de passe (+ offline_hash) déjà
+    présent sur le cloud, au lieu d'attendre le premier cycle de sync
+    automatique — pour que le tenant puisse se connecter tout de suite avec
+    son mot de passe cloud habituel (mirror du pull immédiat du warehouse
+    après claim, un peu plus haut).
+    """
+    import httpx
+    try:
+        resp = httpx.get(
+            f"{cloud_url}/api/sync/pull",
+            params={"entity_type": "user", "since": "1970-01-01T00:00:00+00:00"},
+            headers={"Authorization": f"Bearer {sync_token}"},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return
+        for rec in resp.json().get("records", []):
+            matches = rec.get("id") == target_user_id or (
+                target_email and (rec.get("email") or "").lower() == target_email.lower()
+            )
+            if not matches:
+                continue
+            local_user = db.get(User, rec.get("id")) or db.query(User).filter(
+                User.email == target_email
+            ).first()
+            if not local_user:
+                return
+            if rec.get("password"):
+                local_user.password = rec["password"]
+            if rec.get("offline_hash"):
+                local_user.offline_hash = rec["offline_hash"]
+            db.commit()
+            return
+    except Exception:
+        pass  # Non-bloquant — la sync automatique corrigera au prochain cycle
+
+
 def _is_setup_done(db: Session) -> bool:
     try:
         return db.query(User).count() > 0
@@ -885,6 +930,9 @@ def connect_tenant(data: ConnectTenantRequest):
                 except Exception:
                     pass
 
+            if not data.password:
+                _pull_admin_password_from_cloud(cloud_url, sync_token, cloud_user_id, data.email, db)
+
             return {"ok": True, "message": "Compte déjà lié — mot de passe mis à jour."}
 
         # Use business_name from cloud response for the user's display name
@@ -972,6 +1020,9 @@ def connect_tenant(data: ConnectTenantRequest):
                 raise
             except Exception:
                 pass  # Non-bloquant si le cloud est injoignable
+
+        if not data.password:
+            _pull_admin_password_from_cloud(cloud_url, sync_token, cloud_user_id, data.email, db)
 
         return {
             "ok":               True,
