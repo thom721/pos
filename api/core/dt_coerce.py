@@ -50,3 +50,47 @@ def coerce_datetimes(record: dict, *, strip_tz: bool = True) -> dict:
                 v = parsed
         result[k] = v
     return result
+
+
+def coerce_enums(model, record: dict) -> dict:
+    """Convertit les strings brutes reçues sur le fil (format API `.value`, ex:
+    StockType.in_ → "in") en instances du Python Enum correspondant, pour les
+    colonnes Enum du modèle.
+
+    Nécessaire car un modèle Enum SQLAlchemy peut être configuré pour stocker
+    soit le NOM du membre (défaut, ex: "in_"), soit sa VALEUR (via
+    values_callable, ex: Sale.status → "PAID") — la représentation exposée par
+    l'API est toujours `.value`, mais le label DB attendu par `model(**clean)`
+    dépend de cette config par colonne. Assigner directement la string brute
+    au constructeur du modèle contourne la conversion normale de SQLAlchemy
+    et peut échouer (ex: MySQL "Data truncated for column 'type'") si le label
+    DB réel ne correspond pas à la string reçue. Reconvertir en membre Enum ici
+    laisse SQLAlchemy dériver le bon label au flush, comme partout ailleurs
+    dans le code où l'on assigne StockType.in_ / SaleStatus.paid directement.
+    """
+    from sqlalchemy import inspect as _sa_inspect
+
+    try:
+        mapper = _sa_inspect(model)
+    except Exception:
+        return record
+
+    result = dict(record)
+    for col in mapper.columns:
+        key = col.key
+        if key not in result:
+            continue
+        v = result[key]
+        if not isinstance(v, str):
+            continue
+        enum_class = getattr(col.type, "enum_class", None)
+        if enum_class is None:
+            continue
+        try:
+            result[key] = enum_class(v)
+        except ValueError:
+            try:
+                result[key] = enum_class[v]
+            except KeyError:
+                pass  # valeur invalide — laissée telle quelle, échouera comme avant
+    return result
