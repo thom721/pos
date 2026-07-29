@@ -10,6 +10,20 @@ import 'package:pos_connect/providers/discount_provider.dart';
 
 const List<String> _dayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
+/// /api/products/ plafonne per_page à 100 (Query(..., le=100)) — on pagine
+/// pour récupérer tout le catalogue au lieu d'envoyer une limite invalide.
+Future<List<ProductModel>> _fetchAllProducts() async {
+  const perPage = 100;
+  final repo = ProductRepository();
+  final first = await repo.getProducts(page: 1, limit: perPage);
+  final all = [...first.data];
+  for (var p = 2; p <= first.meta.pages; p++) {
+    final res = await repo.getProducts(page: p, limit: perPage);
+    all.addAll(res.data);
+  }
+  return all;
+}
+
 String _formatValue(DiscountModel d) =>
     d.isPercentage ? '${d.value.toStringAsFixed(0)}%' : '${d.value.toStringAsFixed(0)} HTG';
 
@@ -253,8 +267,8 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
 
   Future<void> _resolveLinkedProductNames() async {
     try {
-      final res = await ProductRepository().getProducts(limit: 500);
-      final byId = {for (final p in res.data) p.id: p.name};
+      final all = await _fetchAllProducts();
+      final byId = {for (final p in all) p.id: p.name};
       if (!mounted) return;
       setState(() {
         for (final id in _linkedProducts.keys.toList()) {
@@ -574,10 +588,10 @@ class _ProductPickerDialogState extends State<_ProductPickerDialog> {
 
   Future<void> _load() async {
     try {
-      final res = await ProductRepository().getProducts(limit: 500);
+      final all = await _fetchAllProducts();
       if (!mounted) return;
       setState(() {
-        _all = res.data;
+        _all = all;
         _loading = false;
       });
     } catch (e) {
