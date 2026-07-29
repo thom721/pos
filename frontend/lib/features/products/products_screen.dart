@@ -2363,6 +2363,26 @@ class _AdjustStockDialogState extends ConsumerState<_AdjustStockDialog> {
   final _reasonCtrl = TextEditingController();
   bool _loading = false;
   String? _error;
+  String? _componentName;
+
+  @override
+  void initState() {
+    super.initState();
+    _qtyCtrl.addListener(() => setState(() {}));
+    if (widget.product.isComposite) _resolveComponentName();
+  }
+
+  String _fmtQty(double v) => v % 1 == 0 ? v.toInt().toString() : v.toStringAsFixed(2);
+
+  Future<void> _resolveComponentName() async {
+    try {
+      final all = await _fetchAllProductsForPicker();
+      final match = all.where((p) => p.id == widget.product.componentProductId);
+      if (match.isNotEmpty && mounted) {
+        setState(() => _componentName = match.first.name);
+      }
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
@@ -2374,6 +2394,9 @@ class _AdjustStockDialogState extends ConsumerState<_AdjustStockDialog> {
   @override
   Widget build(BuildContext context) {
     final current = widget.product.stock ?? 0;
+    final qty = double.tryParse(_qtyCtrl.text.replaceAll('+', '').trim());
+    final componentQty = widget.product.componentQuantity;
+    final showConversion = widget.product.isComposite && qty != null && qty != 0 && componentQty != null;
     return AlertDialog(
       title: Text('Ajuster stock — ${widget.product.name}'),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
@@ -2385,6 +2408,14 @@ class _AdjustStockDialogState extends ConsumerState<_AdjustStockDialog> {
           children: [
             Text('Stock actuel : $current',
                 style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            if (widget.product.isComposite) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Produit composé — le stock réel sera ajusté sur '
+                '${_componentName ?? "le produit composant"}.',
+                style: const TextStyle(color: AppColors.warning, fontSize: 12),
+              ),
+            ],
             const SizedBox(height: 16),
             TextField(
               controller: _qtyCtrl,
@@ -2394,6 +2425,31 @@ class _AdjustStockDialogState extends ConsumerState<_AdjustStockDialog> {
                 hintText: 'ex: +10 ou -5',
               ),
             ),
+            if (showConversion) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.sync_alt_rounded, size: 16, color: AppColors.warning),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '${qty > 0 ? "+" : ""}${_fmtQty(qty)} ${widget.product.name} '
+                        '→ ${qty > 0 ? "+" : ""}${_fmtQty(qty * componentQty)} '
+                        '${_componentName ?? "produit composant"}',
+                        style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.warning),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             TextField(
               controller: _reasonCtrl,
