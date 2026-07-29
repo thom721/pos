@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/data/api/local_https.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -335,12 +336,12 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
     final cfg = ref.read(_configProvider);
     final isClient = cfg.mode == InstallMode.client;
     _urlCtrl = TextEditingController(
-      // Client : utilise l'URL runtime (compilée ou sauvegardée)
+      // Client : IP saisie/sauvegardée précédemment (aucun défaut sensé sinon)
       // Serveur/Both : localhost en attendant la détection de l'IP locale
       text: cfg.serverUrl.isNotEmpty
           ? cfg.serverUrl
           : isClient
-              ? dio.options.baseUrl
+              ? ''
               : 'http://127.0.0.1:9003',
     );
     _detectLocalIps();
@@ -376,10 +377,58 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
     } catch (_) {}
   }
 
+  /// Accepte soit une IP nue ("192.168.1.100") soit une ancienne URL complète
+  /// ("http://192.168.1.100:9003", pour compatibilité) et renvoie juste l'hôte.
+  String? _extractIp(String input) {
+    final trimmed = input.trim();
+    if (trimmed.isEmpty) return null;
+    if (trimmed.contains('://')) {
+      return Uri.tryParse(trimmed)?.host.isNotEmpty == true
+          ? Uri.parse(trimmed).host
+          : null;
+    }
+    return trimmed.split(':').first.split('/').first;
+  }
+
   Future<void> _test() async {
+    final cfg = ref.read(_configProvider);
+    final isClient = cfg.mode == InstallMode.client;
+    final previousUrl = dio.options.baseUrl;
+
+    if (isClient) {
+      // Poste client : connexion HTTPS avec épinglage du certificat serveur
+      // (voir local_https_native.dart) — jamais de HTTP en clair sur le réseau.
+      final ip = _extractIp(_urlCtrl.text);
+      if (ip == null) {
+        setState(() => _error = 'Adresse IP invalide');
+        return;
+      }
+      setState(() { _testing = true; _error = null; _ok = false; });
+      try {
+        configureLocalHttps(dio, ip);
+        dio.options.baseUrl = 'https://infini-post.local';
+        final res = await dio.get('/api/setup/health');
+        final data = res.data as Map<String, dynamic>;
+        if (data['status'] == 'ok') {
+          final c = ref.read(_configProvider);
+          ref.read(_configProvider.notifier).state = c..serverUrl = ip;
+          setState(() => _ok = true);
+        }
+      } catch (e) {
+        resetLocalHttps(dio);
+        dio.options.baseUrl = previousUrl;
+        final msg = extractAnyError(e);
+        setState(() => _error = 'Impossible de joindre le serveur: $msg');
+      } finally {
+        setState(() => _testing = false);
+      }
+      return;
+    }
+
+    // Mode serveur/both : auto-test sur cette même machine (127.0.0.1), pas
+    // de trajet réseau — HTTP direct reste correct ici.
     final url = _urlCtrl.text.trim().replaceAll(RegExp(r'/+$'), '');
     if (url.isEmpty) return;
-    final previousUrl = dio.options.baseUrl;
     setState(() { _testing = true; _error = null; _ok = false; });
     try {
       // Mise à jour en mémoire uniquement — SharedPreferences écrit à la fin du wizard
@@ -435,7 +484,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
                   child: Row(children: [
                     const Icon(Icons.lan_rounded, color: AppColors.primary, size: 18),
                     const SizedBox(width: 10),
-                    Text('http://$ip:9003',
+                    Text(ip,
                         style: const TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 14,
@@ -457,8 +506,8 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
             const SizedBox(height: 24),
             _Field(
               ctrl: _urlCtrl,
-              label: 'URL du serveur',
-              hint: 'http://192.168.1.100:9003',
+              label: 'Adresse IP du serveur',
+              hint: '192.168.1.100',
               keyboardType: TextInputType.url,
             ),
             const SizedBox(height: 16),
@@ -2006,8 +2055,14 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
     }
 
     if (!_failed) {
-      // Persiste l'URL du serveur dans SharedPreferences une seule fois, à la fin
-      await saveServerUrl(cfg.serverUrl.isNotEmpty ? cfg.serverUrl : dio.options.baseUrl);
+      // Persiste l'adresse du serveur dans SharedPreferences une seule fois, à la fin.
+      // Poste client : HTTPS + épinglage de certificat (cfg.serverUrl = IP nue).
+      // Serveur/both : connexion directe à soi-même, HTTP suffit (pas de trajet réseau).
+      if (cfg.mode == InstallMode.client && cfg.serverUrl.isNotEmpty) {
+        await saveLocalServer(cfg.serverUrl);
+      } else {
+        await saveServerUrl(cfg.serverUrl.isNotEmpty ? cfg.serverUrl : dio.options.baseUrl);
+      }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(AppConstants.clientSetupDoneKey, true);
       setState(() { _done = true; _running = false; });
