@@ -98,6 +98,7 @@ class LicenseService {
     final validUntil  = _dt(payload['valid_until']);
     final trialEndsAt = _dt(payload['trial_ends_at']);
     final subEndsAt   = _dt(payload['subscription_ends_at']);
+    final registers    = payload['registers'] as List<dynamic>? ?? [];
 
     // Helper to attach tenant/caisse fields to any LicenseStatus
     LicenseStatus withMeta({
@@ -143,7 +144,22 @@ class LicenseService {
 
     // 6. License still valid (server-stamped valid_until not reached)
     if (validUntil != null && now.isBefore(validUntil)) {
-      if (tenantStatus == 'expired' && !isOffline) {
+      // Le statut tenant (trial/expired) est un champ hérité, plus tenu à
+      // jour depuis le passage à la facturation par caisse — il peut dire
+      // "expired" alors qu'une caisse a encore des jours d'essai valides.
+      // On préfère donc le détail par caisse (registers) quand disponible :
+      // message précis (caisse concernée, essai ou abonnement, avertissement
+      // ou erreur) au lieu d'un message générique et parfois faux.
+      final registerMessage = !isOffline ? _registerIssueMessage(registers, now) : null;
+      if (registerMessage != null) {
+        return withMeta(
+          access: LicenseAccess.warning,
+          status: tenantStatus,
+          daysLeft: daysLeft,
+          message: registerMessage,
+        );
+      }
+      if (tenantStatus == 'expired' && !isOffline && registers.isEmpty) {
         return withMeta(
           access: LicenseAccess.warning,
           status: tenantStatus,
@@ -269,6 +285,56 @@ class LicenseService {
     } catch (_) {
       return false;
     }
+  }
+
+  // Nombre de jours avant expiration à partir duquel on avertit — aligné
+  // sur WARN_DAYS côté backend (api/core/tenant.py).
+  static const int _kWarnDays = 5;
+
+  /// Construit un message précis à partir du détail par caisse (`registers`),
+  /// nommant la ou les caisses concernées et précisant s'il s'agit d'un
+  /// avertissement (bientôt expiré) ou d'une erreur (déjà sans abonnement).
+  /// Retourne null si aucune caisse n'a de problème.
+  static String? _registerIssueMessage(List<dynamic> registers, DateTime now) {
+    final expired = <String>[];
+    final expiringSoon = <String>[];
+
+    for (final r in registers) {
+      if (r is! Map) continue;
+      final name = (r['warehouse_name'] as String?) ??
+          (r['name'] as String?) ??
+          'Caisse';
+      final status = r['status'] as String? ?? '';
+
+      if (status == 'expired' || status == 'no_subscription') {
+        expired.add(name);
+        continue;
+      }
+
+      final endRaw = (r['subscription_ends_at'] as String?) ??
+          (r['trial_ends_at'] as String?);
+      final end = endRaw != null ? DateTime.tryParse(endRaw) : null;
+      if (end != null) {
+        final daysLeft = end.difference(now).inDays;
+        if (daysLeft >= 0 && daysLeft <= _kWarnDays) {
+          final kind = status == 'active' ? 'abonnement' : 'période d\'essai';
+          expiringSoon.add('$name ($kind, $daysLeft j)');
+        }
+      }
+    }
+
+    if (expired.isEmpty && expiringSoon.isEmpty) return null;
+
+    final parts = <String>[];
+    if (expired.isNotEmpty) {
+      final label = expired.length > 1 ? 'Caisses' : 'Caisse';
+      parts.add('Erreur : $label ${expired.join(', ')} sans abonnement actif.');
+    }
+    if (expiringSoon.isNotEmpty) {
+      final label = expiringSoon.length > 1 ? 'Caisses' : 'Caisse';
+      parts.add('Avertissement : $label ${expiringSoon.join(', ')} bientôt expiré(e)s.');
+    }
+    return '${parts.join(' ')} Gérez vos caisses dans Abonnement.';
   }
 
   static Map<String, dynamic>? _decode(String dataB64) {

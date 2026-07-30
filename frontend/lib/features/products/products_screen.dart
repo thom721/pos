@@ -1236,12 +1236,15 @@ class _ProductTable extends ConsumerWidget {
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      // SizedBox force la carte (et sa bordure/fond) à occuper toute la
-      // largeur disponible — sans lui, Card se limite à la largeur
-      // intrinsèque du DataTable, laissant un grand vide à droite.
-      child: SizedBox(width: double.infinity, child: Card(
+      child: LayoutBuilder(builder: (context, constraints) {
+        return Card(
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
+          // ConstrainedBox étire le tableau sur toute la largeur disponible —
+          // DataTable se limite sinon à la largeur intrinsèque de ses colonnes,
+          // laissant un grand vide à droite sur les fenêtres larges.
+          child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: constraints.maxWidth - 32),
           child: DataTable(
             // columnSpacing par défaut (56) pousse la colonne d'actions
             // (verrou + crayon) hors de la zone visible sur une fenêtre de
@@ -1349,8 +1352,10 @@ class _ProductTable extends ConsumerWidget {
               ]);
             }).toList(),
           ),
+          ),
         ),
-      )),
+        );
+      }),
     );
   }
 
