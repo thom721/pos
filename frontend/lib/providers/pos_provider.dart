@@ -55,6 +55,9 @@ class PosState {
   final String? error;
   // Non-null when editing an existing sale
   final SaleModel? editingSale;
+  // Montant du solde de fidélité du client utilisé sur cette vente — réduit
+  // ce qu'il reste à payer par paymentMethod, ne le remplace pas.
+  final double loyaltyRedeemed;
 
   const PosState({
     this.items = const [],
@@ -67,6 +70,7 @@ class PosState {
     this.successMessage,
     this.error,
     this.editingSale,
+    this.loyaltyRedeemed = 0,
   });
 
   bool get isEditMode => editingSale != null;
@@ -97,7 +101,7 @@ class PosState {
   // Final total = catalog - per-item discounts (prix + catalogue) - rabais ticket
   double get total => _baseForReceiptDiscount - receiptDiscountAmount;
 
-  double get balance => total - paidAmount;
+  double get balance => total - paidAmount - loyaltyRedeemed;
 
   PosState copyWith({
     List<CartItem>? items,
@@ -111,6 +115,7 @@ class PosState {
     String? successMessage,
     String? error,
     SaleModel? editingSale,
+    double? loyaltyRedeemed,
   }) =>
       PosState(
         items: items ?? this.items,
@@ -124,6 +129,7 @@ class PosState {
         successMessage: successMessage,
         error: error,
         editingSale: editingSale ?? this.editingSale,
+        loyaltyRedeemed: loyaltyRedeemed ?? this.loyaltyRedeemed,
       );
 }
 
@@ -201,9 +207,21 @@ class PosNotifier extends StateNotifier<PosState> {
       state = state.copyWith(discount: d, clearSelectedDiscount: true);
   void setPaidAmount(double a) => state = state.copyWith(paidAmount: a);
   void setPaymentMethod(String m) => state = state.copyWith(paymentMethod: m);
-  void setCustomer(String? id) => state = state.copyWith(customerId: id);
+  void setCustomer(String? id) =>
+      // Le solde fidélité utilisé était lié à l'ancien client — le retirer
+      // évite d'appliquer par erreur le solde d'un autre client.
+      state = state.copyWith(customerId: id, loyaltyRedeemed: 0);
 
-  void payFull() => state = state.copyWith(paidAmount: state.total);
+  /// Clampé côté client (défense en profondeur — le serveur revalide et
+  /// clamp de toute façon contre le solde réel et le montant de la vente).
+  void setLoyaltyRedeemed(double amount) {
+    final maxRedeemable = state.total;
+    state = state.copyWith(
+      loyaltyRedeemed: amount.clamp(0, maxRedeemable < 0 ? 0 : maxRedeemable).toDouble(),
+    );
+  }
+
+  void payFull() => state = state.copyWith(paidAmount: state.total - state.loyaltyRedeemed);
 
   void clearCart() => state = const PosState();
 
@@ -225,6 +243,7 @@ class PosNotifier extends StateNotifier<PosState> {
           if (state.selectedDiscount != null) 'discount_id': state.selectedDiscount!.id,
           'paid_amount': state.paidAmount,
           'payment_method': state.paymentMethod,
+          if (state.loyaltyRedeemed > 0) 'loyalty_redeemed': state.loyaltyRedeemed,
           if (approvalCode != null && approvalCode.isNotEmpty)
             'approval_code': approvalCode,
           if (warehouseId != null) 'warehouse_id': warehouseId,

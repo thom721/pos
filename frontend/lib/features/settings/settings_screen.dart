@@ -29,6 +29,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late final TextEditingController _footerCtrl;
   late final TextEditingController _rateUsdCtrl;
   late final TextEditingController _rateEurCtrl;
+  late final TextEditingController _loyaltyCtrl;
 
   @override
   void initState() {
@@ -38,6 +39,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _footerCtrl = TextEditingController(text: s.receiptFooter);
     _rateUsdCtrl = TextEditingController(text: s.rateUsd.toString());
     _rateEurCtrl = TextEditingController(text: s.rateEur.toString());
+    _loyaltyCtrl = TextEditingController(text: s.loyaltyPercent.toString());
   }
 
   @override
@@ -46,6 +48,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _footerCtrl.dispose();
     _rateUsdCtrl.dispose();
     _rateEurCtrl.dispose();
+    _loyaltyCtrl.dispose();
     super.dispose();
   }
 
@@ -58,6 +61,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             receiptFooter: _footerCtrl.text.trim(),
             rateUsd: double.tryParse(_rateUsdCtrl.text) ?? 130.0,
             rateEur: double.tryParse(_rateEurCtrl.text) ?? 140.0,
+            loyaltyPercent: double.tryParse(_loyaltyCtrl.text) ?? 0,
           ),
         );
     if (mounted) {
@@ -315,6 +319,63 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             decimal: true),
                         decoration: const InputDecoration(
                           labelText: 'Taux de taxe (%)',
+                          prefixIcon: Icon(Icons.percent_rounded),
+                          suffixText: '%',
+                        ),
+                        validator: (v) {
+                          final d = double.tryParse(v ?? '');
+                          if (d == null || d < 0 || d > 100) {
+                            return 'Valeur invalide (0-100)';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // ── Fidélisation ─────────────────────────────────────────────
+            _SectionHeader(icon: Icons.stars_rounded, title: 'Fidélisation'),
+            const SizedBox(height: 16),
+            _Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    title: const Text('Activer la fidélisation',
+                        style: TextStyle(fontSize: 14)),
+                    subtitle: const Text(
+                        'Crédite un % du montant de chaque vente sur un solde client, '
+                        'utilisable comme moyen de paiement sur une vente future',
+                        style: TextStyle(fontSize: 12)),
+                    trailing: Switch(
+                      value: settings.loyaltyEnabled,
+                      thumbColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? Colors.white
+                            : null,
+                      ),
+                      trackColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? AppColors.primary
+                            : null,
+                      ),
+                      onChanged: (v) =>
+                          notifier.save(settings.copyWith(loyaltyEnabled: v)),
+                    ),
+                  ),
+                  if (settings.loyaltyEnabled) ...[
+                    const Divider(height: 1),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      child: TextFormField(
+                        controller: _loyaltyCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Taux de fidélisation (%)',
                           prefixIcon: Icon(Icons.percent_rounded),
                           suffixText: '%',
                         ),

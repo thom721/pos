@@ -36,6 +36,7 @@ Future<Uint8List> buildPaymentPdf({
       case 'BANK':   return 'Virement bancaire';
       case 'MOBILE': return 'Mobile Money';
       case 'CARD':   return 'Carte bancaire';
+      case 'LOYALTY': return 'Fidélité';
       default:       return m;
     }
   }

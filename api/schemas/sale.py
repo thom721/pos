@@ -32,6 +32,10 @@ class SaleCreate(BaseModel):
     total_amount: float = 0
     payment_method: Optional[str] = None
     approval_code: Optional[str] = None
+    # Montant du solde de fidélité du client à utiliser sur cette vente —
+    # réduit ce qui reste à payer par payment_method, ne le remplace pas
+    # (voir sale_service.create_sale). Revalidé/clampé serveur-side.
+    loyalty_redeemed: float = 0
     items: List[SaleItemInput]
 
 
@@ -118,6 +122,8 @@ class SaleRead(BaseModel):
     discount_catalog: Optional[DiscountRef] = None
     final_amount: Decimal
     paid_amount: Decimal
+    loyalty_earned: Decimal = Decimal(0)
+    loyalty_redeemed: Decimal = Decimal(0)
     status: str
     created_at: datetime
     warehouse_id: Optional[str] = None

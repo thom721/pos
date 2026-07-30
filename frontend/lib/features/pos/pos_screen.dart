@@ -1593,6 +1593,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _CustomerDropdown(),
+              const _LoyaltyRedeemRow(),
               const SizedBox(height: 12),
 
               // Remise caisse — rabais catalogue (prioritaire) ou saisie libre
@@ -2537,6 +2538,64 @@ class _CustomerDropdown extends ConsumerWidget {
       label: 'Client (optionnel)',
       emptyLabel: 'Client comptoir',
       onChanged: (id, _) => ref.read(posProvider.notifier).setCustomer(id),
+    );
+  }
+}
+
+// ── Rédemption du solde fidélité ──────────────────────────────────────────
+// Visible uniquement si la fidélisation est active et que le client
+// sélectionné a un solde disponible. Simple bascule oui/non plutôt qu'un
+// montant libre — plus rapide pour le caissier, et le client peut de toute
+// façon choisir de ne pas l'utiliser en laissant la case décochée.
+
+class _LoyaltyRedeemRow extends ConsumerWidget {
+  const _LoyaltyRedeemRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+    if (!settings.loyaltyEnabled) return const SizedBox.shrink();
+
+    final pos = ref.watch(posProvider);
+    final customerId = pos.customerId;
+    if (customerId == null) return const SizedBox.shrink();
+
+    final customersAsync = ref.watch(customersProvider);
+    final customer = customersAsync.asData?.value.data
+        .cast<CustomerModel?>()
+        .firstWhere((c) => c?.id == customerId, orElse: () => null);
+    final balance = customer?.loyaltyBalance ?? 0;
+    if (balance <= 0) return const SizedBox.shrink();
+
+    final maxUsable = balance < pos.total ? balance : pos.total;
+    final isUsed = pos.loyaltyRedeemed > 0;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: CheckboxListTile(
+          value: isUsed,
+          onChanged: (v) => ref.read(posProvider.notifier).setLoyaltyRedeemed(
+                (v ?? false) ? maxUsable : 0,
+              ),
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          dense: true,
+          title: Text(
+            'Utiliser le solde fidélité (${_fmt.format(balance)} disponible)',
+            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
+          ),
+          subtitle: isUsed
+              ? Text('${_fmt.format(pos.loyaltyRedeemed)} appliqué sur cette vente',
+                  style: const TextStyle(fontSize: 11, color: AppColors.primary))
+              : null,
+        ),
+      ),
     );
   }
 }

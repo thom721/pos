@@ -126,6 +126,12 @@ class _CustomerCard extends ConsumerWidget {
             Text('Limite: ${_fmt.format(customer.creditLimit)}',
                 style: const TextStyle(
                     fontSize: 12, color: AppColors.textSecondary)),
+            if (customer.loyaltyBalance > 0)
+              Text('Fidélité: ${_fmt.format(customer.loyaltyBalance)}',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600)),
           ],
         ),
         onTap: () {

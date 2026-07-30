@@ -27,6 +27,8 @@ class ConfigRead(BaseModel):
     report_columns: Optional[list] = None
     composite_stock_trigger: str = 'manual'
     client_sabotage_fields: Optional[list] = None
+    loyalty_enabled: bool = False
+    loyalty_percent: float = 0.0
 
     @field_validator('hotel_checkin_fields', 'report_columns', 'client_sabotage_fields', mode='before')
     @classmethod
@@ -66,3 +68,5 @@ class ConfigUpdate(BaseModel):
     report_columns: Optional[list] = None
     composite_stock_trigger: Optional[str] = None
     client_sabotage_fields: Optional[list] = None
+    loyalty_enabled: Optional[bool] = None
+    loyalty_percent: Optional[float] = None

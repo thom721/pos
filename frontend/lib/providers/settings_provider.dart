@@ -73,6 +73,10 @@ class AppSettings {
   // Système de Sabotage — champs additionnels du client [{label, required}]
   // (nom/prenom/telephone/adresse sont toujours obligatoires, jamais ici)
   final List<Map<String, dynamic>> clientSabotageFields;
+  // Fidélisation — crédit en % du montant de la vente sur un solde client
+  // utilisable comme moyen de paiement sur une vente future.
+  final bool loyaltyEnabled;
+  final double loyaltyPercent;
 
   const AppSettings({
     this.businessName = 'Mon Commerce',
@@ -102,6 +106,8 @@ class AppSettings {
     this.reportColumns = kDefaultReportColumns,
     this.compositeStockTrigger = 'manual',
     this.clientSabotageFields = const [],
+    this.loyaltyEnabled = false,
+    this.loyaltyPercent = 0.0,
   });
 
   AppSettings copyWith({
@@ -132,6 +138,8 @@ class AppSettings {
     List<String>? reportColumns,
     String? compositeStockTrigger,
     List<Map<String, dynamic>>? clientSabotageFields,
+    bool? loyaltyEnabled,
+    double? loyaltyPercent,
   }) =>
       AppSettings(
         businessName: businessName ?? this.businessName,
@@ -161,6 +169,8 @@ class AppSettings {
         reportColumns: reportColumns ?? this.reportColumns,
         compositeStockTrigger: compositeStockTrigger ?? this.compositeStockTrigger,
         clientSabotageFields: clientSabotageFields ?? this.clientSabotageFields,
+        loyaltyEnabled: loyaltyEnabled ?? this.loyaltyEnabled,
+        loyaltyPercent: loyaltyPercent ?? this.loyaltyPercent,
       );
 
   // Serialize to API (snake_case)
@@ -200,6 +210,8 @@ class AppSettings {
           'client_sabotage_fields': clientSabotageFields
               .map((f) => {'label': f['label'] ?? '', 'required': f['required'] ?? false})
               .toList(),
+        'loyalty_enabled': loyaltyEnabled,
+        'loyalty_percent': loyaltyPercent,
       };
 
   // Parse from API response (snake_case)
@@ -229,6 +241,8 @@ class AppSettings {
         reportColumns: _parseReportColumns(j['report_columns']),
         compositeStockTrigger: _parseCompositeStockTrigger(j['composite_stock_trigger']),
         clientSabotageFields: _parseSabotageFields(j['client_sabotage_fields']),
+        loyaltyEnabled: j['loyalty_enabled'] as bool? ?? false,
+        loyaltyPercent: (j['loyalty_percent'] as num?)?.toDouble() ?? 0.0,
       );
 
   /// Une chaîne vide (pas seulement null) doit retomber sur 'manual' — sinon
@@ -294,6 +308,8 @@ class AppSettings {
         'reportColumns': reportColumns,
         'compositeStockTrigger': compositeStockTrigger,
         'clientSabotageFields': clientSabotageFields,
+        'loyaltyEnabled': loyaltyEnabled,
+        'loyaltyPercent': loyaltyPercent,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -324,6 +340,8 @@ class AppSettings {
         reportColumns: _parseReportColumns(j['reportColumns']),
         compositeStockTrigger: _parseCompositeStockTrigger(j['compositeStockTrigger']),
         clientSabotageFields: _parseSabotageFields(j['clientSabotageFields']),
+        loyaltyEnabled: j['loyaltyEnabled'] as bool? ?? false,
+        loyaltyPercent: (j['loyaltyPercent'] as num?)?.toDouble() ?? 0.0,
       );
 }
 

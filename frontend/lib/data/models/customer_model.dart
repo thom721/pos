@@ -6,6 +6,9 @@ class CustomerModel {
   final String? email;
   final String address;
   final double creditLimit;
+  // Solde de fidélisation — lecture seule, géré uniquement par le serveur
+  // (jamais inclus dans toJson(), jamais éditable dans le formulaire client).
+  final double loyaltyBalance;
 
   CustomerModel({
     required this.id,
@@ -15,6 +18,7 @@ class CustomerModel {
     this.email,
     required this.address,
     required this.creditLimit,
+    this.loyaltyBalance = 0,
   });
 
   factory CustomerModel.fromJson(Map<String, dynamic> json) => CustomerModel(
@@ -26,6 +30,8 @@ class CustomerModel {
         address: json['address']?.toString() ?? '',
         creditLimit:
             double.tryParse(json['credit_limit']?.toString() ?? '0') ?? 0,
+        loyaltyBalance:
+            double.tryParse(json['loyalty_balance']?.toString() ?? '0') ?? 0,
       );
 
   Map<String, dynamic> toJson() => {

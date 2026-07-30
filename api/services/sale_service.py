@@ -409,9 +409,42 @@ def create_sale(
 
     discount = float(receipt_discount)
     total_after_discount = float(net_before_receipt_discount - receipt_discount)
+
+    # Fidélisation — rédemption : le client utilise son solde pour réduire ce
+    # qu'il reste à payer par le moyen de paiement choisi (ne le remplace pas).
+    # Clampé silencieusement (comme resolve_discount/compute_amount) plutôt que
+    # rejeté — un solde qui a changé entre l'affichage et la soumission ne doit
+    # pas faire échouer toute la vente.
+    loyalty_redeemed = Decimal(0)
+    customer = None
+    requested_redeem = Decimal(str(getattr(data, "loyalty_redeemed", 0) or 0))
+    if data.customer_id:
+        customer = db.query(Customer).filter(Customer.id == str(data.customer_id)).first()
+    if requested_redeem > 0 and customer:
+        loyalty_redeemed = min(
+            requested_redeem,
+            Decimal(customer.loyalty_balance or 0),
+            Decimal(str(total_after_discount)),
+        )
+
+    remaining_after_loyalty = total_after_discount - float(loyalty_redeemed)
     paid = data.paid_amount or 0
     # The register keeps at most the sale amount; excess cash is given back as change.
-    collected = min(paid, total_after_discount) if paid > 0 else 0
+    collected = min(paid, remaining_after_loyalty) if paid > 0 else 0
+
+    # Fidélisation — gain : crédite un % du montant de la vente sur le solde
+    # du client, HORS portion payée en fidélité (sinon un client gagnerait de
+    # la fidélité en dépensant de la fidélité — boucle infinie évitée).
+    loyalty_earned = Decimal(0)
+    if customer:
+        from api.services import config_service as _config_service
+        cfg = _config_service.get_or_create(db, tenant_id=tenant_id)
+        if cfg.loyalty_enabled:
+            earn_base = Decimal(str(total_after_discount)) - loyalty_redeemed
+            loyalty_earned = (earn_base * Decimal(cfg.loyalty_percent or 0) / 100).quantize(Decimal("0.01"))
+            customer.loyalty_balance = Decimal(customer.loyalty_balance or 0) + loyalty_earned
+    if loyalty_redeemed > 0 and customer:
+        customer.loyalty_balance = Decimal(customer.loyalty_balance or 0) - loyalty_redeemed
 
     # 2️⃣ Création vente
     # Warehouse : paramètre > payload > dépôt installer du serveur > défaut
@@ -433,6 +466,8 @@ def create_sale(
         discount_id=receipt_discount_id,
         final_amount=total_after_discount,
         paid_amount=collected,
+        loyalty_earned=loyalty_earned,
+        loyalty_redeemed=loyalty_redeemed,
         status="UNPAID"
     )
     if tenant_id:
@@ -504,11 +539,25 @@ def create_sale(
             pmt.tenant_id = tenant_id
         db.add(pmt)
 
-    balance = total_after_discount - paid
+    if loyalty_redeemed > 0:
+        loyalty_pmt = Payment(
+            reference_type="SALE",
+            reference_id=sale.id,
+            amount=loyalty_redeemed,
+            method="LOYALTY",
+            user_id=user_id,
+        )
+        if tenant_id:
+            loyalty_pmt.tenant_id = tenant_id
+        db.add(loyalty_pmt)
+
+    # La portion payée en fidélité compte comme "payé" pour le solde/statut/dette.
+    total_paid = paid + float(loyalty_redeemed)
+    balance = total_after_discount - total_paid
 
     if balance <= 0:
         sale.status = "PAID"
-    elif paid == 0:
+    elif total_paid == 0:
         sale.status = "UNPAID"
     else:
         sale.status = "PARTIAL"
@@ -520,9 +569,9 @@ def create_sale(
             partner_type="CUSTOMER",
             partner_id=str(data.customer_id),
             total_amount=total_after_discount,
-            paid_amount=paid,
+            paid_amount=total_paid,
             balance=balance,
-            status="PARTIAL" if paid > 0 else "UNPAID"
+            status="PARTIAL" if total_paid > 0 else "UNPAID"
         )
         if tenant_id:
             debt.tenant_id = tenant_id
@@ -560,6 +609,21 @@ def cancel_sale(db: Session, sale_id: str, user_id: str, tenant_id: str | None =
             source_id=sale.id,
             note="Annulation vente",
         )
+
+    # Fidélisation — annulation symétrique : reprend le crédit gagné par
+    # cette vente, rembourse ce qui avait été utilisé. Se base sur les
+    # montants figés sur la vente (pas le taux courant, qui peut avoir changé
+    # depuis). N'ajuste rien pour un retour partiel (return_service.py) —
+    # limitation assumée, seule l'annulation complète reprend la fidélité.
+    if sale.customer_id and (sale.loyalty_earned or sale.loyalty_redeemed):
+        customer = db.query(Customer).filter(Customer.id == sale.customer_id).first()
+        if customer:
+            new_balance = (
+                Decimal(customer.loyalty_balance or 0)
+                - Decimal(sale.loyalty_earned or 0)
+                + Decimal(sale.loyalty_redeemed or 0)
+            )
+            customer.loyalty_balance = max(new_balance, Decimal(0))
 
     sale.status = "CANCELLED"
     db.commit()

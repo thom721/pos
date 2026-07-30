@@ -27,6 +27,12 @@ class Sale(UUIDBase):
     discount_id  = Column(String(36), ForeignKey("discounts.id"), nullable=True)
     final_amount = Column(Numeric(12, 2), default=0)
     paid_amount  = Column(Numeric(12, 2), default=0)
+    # Montants de fidélisation réellement appliqués à CETTE vente (figés à la
+    # création, indépendants du taux courant) — permettent une annulation
+    # symétrique exacte dans cancel_sale, même si AppConfig.loyalty_percent
+    # change entre-temps.
+    loyalty_earned   = Column(Numeric(12, 2), nullable=False, default=0)
+    loyalty_redeemed = Column(Numeric(12, 2), nullable=False, default=0)
     status       = Column(
         Enum(SaleStatus, values_callable=lambda obj: [e.value for e in obj]),
         default=SaleStatus.unpaid,

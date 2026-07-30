@@ -18,6 +18,9 @@ class CustomerCreate(CustomerBase):
 class CustomerRead(CustomerBase):
     id: str
     credit_limit: float = 0
+    # Lecture seule — géré uniquement par sale_service (jamais accepté en
+    # entrée sur CustomerCreate/CustomerUpdate).
+    loyalty_balance: float = 0
 
     model_config = {"from_attributes": True}
 

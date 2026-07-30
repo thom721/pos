@@ -726,6 +726,8 @@ class _PaymentHistoryDialog extends ConsumerWidget {
         return Icons.account_balance_rounded;
       case 'MOBILE':
         return Icons.phone_android_rounded;
+      case 'LOYALTY':
+        return Icons.stars_rounded;
       default:
         return Icons.payment_rounded;
     }

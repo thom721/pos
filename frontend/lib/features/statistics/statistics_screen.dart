@@ -1188,6 +1188,7 @@ class _PaymentPieChartState extends State<_PaymentPieChart> {
       case 'CASH':   return 'Espèces';
       case 'BANK':   return 'Banque';
       case 'MOBILE': return 'Mobile';
+      case 'LOYALTY': return 'Fidélité';
       default:       return m;
     }
   }

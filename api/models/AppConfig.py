@@ -53,3 +53,8 @@ class AppConfig(UUIDBase):
     # JSON list [{label, required}, ...]. Ne contient jamais nom/prenom/telephone/
     # adresse : ces champs sont toujours obligatoires, codés en dur côté modèle.
     client_sabotage_fields = Column(Text, nullable=True, default=None)
+
+    # Fidélisation — crédit en pourcentage du montant de la vente, utilisable
+    # comme moyen de paiement sur une vente future (voir Customer.loyalty_balance).
+    loyalty_enabled = Column(Boolean, nullable=False, default=False)
+    loyalty_percent = Column(Numeric(5, 2), nullable=False, default=0)

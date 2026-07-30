@@ -42,6 +42,8 @@ class PaymentModel {
         return 'Virement';
       case 'MOBILE':
         return 'Mobile';
+      case 'LOYALTY':
+        return 'Fidélité';
       default:
         return method;
     }

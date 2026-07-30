@@ -14,6 +14,11 @@ class Customer(UUIDBase):
     address = Column(Text, nullable=False)
     credit_limit = Column(Numeric(12, 2), default=0)
 
+    # Solde de fidélisation — crédit accumulé (% du montant des ventes,
+    # voir AppConfig.loyalty_percent), utilisable comme moyen de paiement sur
+    # une vente future. Distinct de credit_limit (plafond de dette autorisée).
+    loyalty_balance = Column(Numeric(12, 2), nullable=False, default=0)
+
     sales = relationship("Sale", back_populates="customer")
 
     # debt = relationship("Debt", back_populates="customer")
