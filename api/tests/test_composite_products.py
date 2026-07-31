@@ -119,6 +119,24 @@ def test_composite_stock_is_derived_from_component(db, category):
     assert caisse.stock == 8
 
 
+def test_composite_available_quantity_is_not_floored(db, category):
+    """available_quantity (utilisé pour valider une vente fractionnaire) ne
+    doit PAS arrondir à l'unité entière, contrairement à `stock` (affichage)."""
+    boite = _make_product(db, category, name="Boîte lait")
+    caisse = _make_product(
+        db, category, name="Caisse lait",
+        component_product_id=boite.id, component_quantity=Decimal("12"),
+    )
+
+    db.add(StockMovement(product_id=boite.id, type=StockType.in_, quantity=20))
+    db.commit()
+    db.refresh(boite)
+    db.refresh(caisse)
+
+    assert caisse.stock == 1  # affichage : arrondi à l'unité inférieure
+    assert caisse.available_quantity == Decimal("20") / Decimal("12")  # ≈ 1.666...
+
+
 def test_composite_adjust_stock_via_endpoint_helper(db, category):
     """L'ajustement manuel de stock (page Produits) convertit aussi correctement."""
     boite = _make_product(db, category, name="Boîte lait")

@@ -9,6 +9,9 @@ import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 
+String _fmtQty(double q) =>
+    q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
+
 /// Generates a thermal receipt PDF for [sale].
 /// Page width adapts to [AppSettings.paperWidth] (80 mm or 58 mm).
 Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
@@ -37,10 +40,13 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
   final pageWidth = settings.paperWidth == 58 ? 164.0
                   : settings.paperWidth == 48 ? 136.0
                   : 226.0;
-  // 3 colonnes : ARTICLE (flex) | QTÉ (fixe) | TOTAL (fixe)
+  // 4 colonnes : ARTICLE (flex) | QTÉ (fixe) | P.U. (fixe) | TOTAL (fixe)
   final qtyColW   = settings.paperWidth == 58 ? 18.0
                   : settings.paperWidth == 48 ? 14.0
                   : 24.0;
+  final puColW    = settings.paperWidth == 58 ? 32.0
+                  : settings.paperWidth == 48 ? 26.0
+                  : 44.0;
   final totalColW = settings.paperWidth == 58 ? 46.0
                   : settings.paperWidth == 48 ? 36.0
                   : 62.0;
@@ -66,12 +72,13 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
             pw.Text(value, style: isBold ? bold : base),
           ]);
 
-      // 3 colonnes : ARTICLE (flex) | QTÉ (fixe) | TOTAL (fixe)
+      // 4 colonnes : ARTICLE (flex) | QTÉ (fixe) | P.U. (fixe) | TOTAL (fixe)
       pw.Widget itemsTable() => pw.Table(
             columnWidths: {
               0: pw.FlexColumnWidth(),
               1: pw.FixedColumnWidth(qtyColW),
-              2: pw.FixedColumnWidth(totalColW),
+              2: pw.FixedColumnWidth(puColW),
+              3: pw.FixedColumnWidth(totalColW),
             },
             children: [
               pw.TableRow(children: [
@@ -79,9 +86,13 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
                 pw.Center(child: pw.Text('QTÉ', style: bold)),
                 pw.Align(
                     alignment: pw.Alignment.centerRight,
+                    child: pw.Text('P.U.', style: bold)),
+                pw.Align(
+                    alignment: pw.Alignment.centerRight,
                     child: pw.Text('TOTAL', style: bold)),
               ]),
               pw.TableRow(children: [
+                pw.SizedBox(height: 3),
                 pw.SizedBox(height: 3),
                 pw.SizedBox(height: 3),
                 pw.SizedBox(height: 3),
@@ -94,7 +105,14 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
                     pw.Center(
                       child: pw.Padding(
                         padding: const pw.EdgeInsets.symmetric(vertical: 1),
-                        child: pw.Text('${item.quantity.toInt()}', style: base),
+                        child: pw.Text(_fmtQty(item.quantity), style: base),
+                      ),
+                    ),
+                    pw.Align(
+                      alignment: pw.Alignment.centerRight,
+                      child: pw.Padding(
+                        padding: const pw.EdgeInsets.symmetric(vertical: 1),
+                        child: pw.Text(numFmt.format(item.unitPrice), style: base),
                       ),
                     ),
                     pw.Align(
@@ -170,12 +188,32 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
           totalRow('TOTAL', '$sym${numFmt.format(sale.finalAmount)}',
               isBold: true),
           pw.SizedBox(height: 2),
-          totalRow('Montant reçu', '$sym${numFmt.format(sale.paidAmount)}'),
-          if (sale.balance.abs() > 0.001)
-            totalRow(
-              sale.balance > 0 ? 'Reste à payer' : 'Monnaie',
-              '$sym${numFmt.format(sale.balance.abs())}',
-            ),
+          ...() {
+            // change_due (create_sale) plafonne paidAmount au montant dû et
+            // stocke l'excédent séparément ; les ventes modifiées (update_sale)
+            // peuvent encore rendre paidAmount > finalAmount directement.
+            final change = sale.changeDue > 0.001
+                ? sale.changeDue
+                : (sale.balance < -0.001 ? -sale.balance : 0.0);
+            final tendered =
+                sale.changeDue > 0.001 ? sale.paidAmount + sale.changeDue : sale.paidAmount;
+            return [
+              totalRow('Montant reçu', '$sym${numFmt.format(tendered)}'),
+              if (sale.balance > 0.001)
+                totalRow('Reste à payer', '$sym${numFmt.format(sale.balance)}'),
+              if (change > 0.001)
+                totalRow('Monnaie', '$sym${numFmt.format(change)}'),
+            ];
+          }(),
+          if (sale.loyaltyEarned > 0.001 || sale.loyaltyRedeemed > 0.001) ...[
+            pw.SizedBox(height: 2),
+            if (sale.loyaltyRedeemed > 0.001)
+              totalRow('Fidélité utilisée',
+                  '-$sym${numFmt.format(sale.loyaltyRedeemed)}'),
+            if (sale.loyaltyEarned > 0.001)
+              totalRow('Fidélité gagnée',
+                  '+$sym${numFmt.format(sale.loyaltyEarned)}'),
+          ],
           divider(),
 
           // ── Statut ─────────────────────────────────────────────────────

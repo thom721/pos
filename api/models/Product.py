@@ -50,3 +50,19 @@ class Product(UUIDBase):
             comp_stock = sum(m.quantity for m in self.component.stock_movements) if self.component else 0
             return int(comp_stock // self.component_quantity)
         return sum(m.quantity for m in self.stock_movements)
+
+    @hybrid_property
+    def available_quantity(self):
+        """Quantité réellement vendable, sans arrondi à l'unité entière.
+
+        `stock` arrondit à l'unité inférieure (ex: 20 boîtes / 12 = "1" caisse
+        affichée), ce qui bloquerait à tort une vente fractionnaire comme
+        1.5 caisse alors que le composant en a assez. Utilisé pour valider
+        les ventes en quantité décimale (create_sale), pas pour l'affichage.
+        """
+        if self.is_composite:
+            if not self.component_quantity:
+                return 0
+            comp_stock = sum(m.quantity for m in self.component.stock_movements) if self.component else 0
+            return comp_stock / self.component_quantity
+        return sum(m.quantity for m in self.stock_movements)

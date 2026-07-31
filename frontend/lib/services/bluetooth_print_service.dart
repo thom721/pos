@@ -12,6 +12,20 @@ import 'package:pos_connect/data/models/return_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 
+// Les imprimantes ESC/POS ne supportent que le Latin-1 (ISO-8859-1) — au-delà,
+// chaque caractère devient un octet 0x3F ('?'). NumberFormat('fr') utilise une
+// espace fine insécable (U+202F) comme séparateur de milliers, ce qui produisait
+// un "?" entre les chiffres (ex: "1?250,00" au lieu de "1 250,00") — normalisée
+// ici en espace ASCII avant l'encodage.
+String _fmtQty(double q) =>
+    q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
+
+int _escposByte(int codeUnit) {
+  const nonBreakingSpaces = {0x00A0, 0x2007, 0x2009, 0x200A, 0x202F};
+  if (nonBreakingSpaces.contains(codeUnit)) return 0x20;
+  return codeUnit <= 0xFF ? codeUnit : 0x3F;
+}
+
 class BluetoothPrintService {
   BluetoothPrintService._();
   static final BluetoothPrintService instance = BluetoothPrintService._();
@@ -191,16 +205,16 @@ class BluetoothPrintService {
 
     // Column counts for each paper width
     final cols = settings.paperWidth == 80 ? 48 : 32;
-    final nameW = settings.paperWidth == 80 ? 24 : 16;
+    final nameW = settings.paperWidth == 80 ? 20 : 14;
     final qtyW = settings.paperWidth == 80 ? 6 : 4;
-    final totW = cols - nameW - qtyW;
+    final puW = settings.paperWidth == 80 ? 8 : 6;
+    final totW = cols - nameW - qtyW - puW;
     final labelW = cols - 16;
 
     void esc(List<int> cmd) => buf.addAll(cmd);
     // WPC1252 : les caractères français (U+00C0–U+00FF) ont le même octet que
     // leur code point Unicode. Les chars hors Latin-1 sont remplacés par '?'.
-    void text(String t) =>
-        buf.addAll(t.codeUnits.map((c) => c <= 0xFF ? c : 0x3F));
+    void text(String t) => buf.addAll(t.codeUnits.map(_escposByte));
     void nl([int n = 1]) {
       for (var i = 0; i < n; i++) {
         buf.add(10);
@@ -263,9 +277,10 @@ class BluetoothPrintService {
     for (final item in sale.items) {
       final name =
           (item.productName ?? 'Article').padRight(nameW).substring(0, nameW);
-      final qty = '${item.quantity.toInt()}x'.padLeft(qtyW);
+      final qty = '${_fmtQty(item.quantity)}x'.padLeft(qtyW);
+      final pu = numFmt.format(item.unitPrice).padLeft(puW);
       final total = '$sym ${numFmt.format(item.subtotal)}'.padLeft(totW);
-      text('$name$qty$total');
+      text('$name$qty$pu$total');
       nl();
     }
     dash();
@@ -301,13 +316,35 @@ class BluetoothPrintService {
         '$sym ${numFmt.format(sale.finalAmount)}'.padLeft(16));
     nl();
     esc([0x1B, 0x45, 0x00]);
+    // change_due (create_sale) plafonne paidAmount au montant dû et stocke
+    // l'excédent séparément ; les ventes modifiées (update_sale) peuvent
+    // encore rendre paidAmount > finalAmount directement.
+    final change = sale.changeDue > 0.001
+        ? sale.changeDue
+        : (sale.balance < -0.001 ? -sale.balance : 0.0);
+    final tendered =
+        sale.changeDue > 0.001 ? sale.paidAmount + sale.changeDue : sale.paidAmount;
     text('Payé'.padRight(labelW) +
-        '$sym ${numFmt.format(sale.paidAmount)}'.padLeft(16));
+        '$sym ${numFmt.format(tendered)}'.padLeft(16));
     nl();
-    if (sale.balance.abs() > 0.01) {
-      final label = sale.balance > 0 ? 'Reste' : 'Monnaie';
-      text(label.padRight(labelW) +
-          '$sym ${numFmt.format(sale.balance.abs())}'.padLeft(16));
+    if (sale.balance > 0.01) {
+      text('Reste'.padRight(labelW) +
+          '$sym ${numFmt.format(sale.balance)}'.padLeft(16));
+      nl();
+    }
+    if (change > 0.01) {
+      text('Monnaie'.padRight(labelW) +
+          '$sym ${numFmt.format(change)}'.padLeft(16));
+      nl();
+    }
+    if (sale.loyaltyRedeemed > 0.01) {
+      text('Fidélité utilisée'.padRight(labelW) +
+          '-$sym ${numFmt.format(sale.loyaltyRedeemed)}'.padLeft(16));
+      nl();
+    }
+    if (sale.loyaltyEarned > 0.01) {
+      text('Fidélité gagnée'.padRight(labelW) +
+          '+$sym ${numFmt.format(sale.loyaltyEarned)}'.padLeft(16));
       nl();
     }
     dash();
@@ -352,8 +389,7 @@ class BluetoothPrintService {
     final labelW = cols - 16;
 
     void esc(List<int> cmd) => buf.addAll(cmd);
-    void text(String t) =>
-        buf.addAll(t.codeUnits.map((c) => c <= 0xFF ? c : 0x3F));
+    void text(String t) => buf.addAll(t.codeUnits.map(_escposByte));
     void nl([int n = 1]) {
       for (var i = 0; i < n; i++) {
         buf.add(10);
@@ -473,8 +509,7 @@ class BluetoothPrintService {
     final labelW = cols - 16;
 
     void esc(List<int> cmd) => buf.addAll(cmd);
-    void text(String t) =>
-        buf.addAll(t.codeUnits.map((c) => c <= 0xFF ? c : 0x3F));
+    void text(String t) => buf.addAll(t.codeUnits.map(_escposByte));
     void nl([int n = 1]) { for (var i = 0; i < n; i++) { buf.add(10); } }
     void dash() { text('-' * cols); nl(); }
 

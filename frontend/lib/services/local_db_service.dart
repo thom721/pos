@@ -48,7 +48,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 21,
+      version: 22,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -185,6 +185,11 @@ class LocalDbService {
     }
     if (oldVersion < 21) {
       await _createSabotageTables(db);
+    }
+    if (oldVersion < 22) {
+      try { await db.execute('ALTER TABLE sales ADD COLUMN change_due REAL NOT NULL DEFAULT 0'); } catch (_) {}
+      try { await db.execute('ALTER TABLE sales ADD COLUMN loyalty_earned REAL NOT NULL DEFAULT 0'); } catch (_) {}
+      try { await db.execute('ALTER TABLE sales ADD COLUMN loyalty_redeemed REAL NOT NULL DEFAULT 0'); } catch (_) {}
     }
   }
 
@@ -344,6 +349,9 @@ class LocalDbService {
         discount_id    TEXT,
         final_amount   REAL NOT NULL DEFAULT 0,
         paid_amount    REAL NOT NULL DEFAULT 0,
+        change_due       REAL NOT NULL DEFAULT 0,
+        loyalty_earned   REAL NOT NULL DEFAULT 0,
+        loyalty_redeemed REAL NOT NULL DEFAULT 0,
         payment_method TEXT NOT NULL DEFAULT 'CASH',
         status         TEXT NOT NULL DEFAULT 'UNPAID',
         cashier_name   TEXT,
@@ -1376,6 +1384,9 @@ class LocalDbService {
         'discount_id':    s.discountId,
         'final_amount':   s.finalAmount,
         'paid_amount':    s.paidAmount,
+        'change_due':       s.changeDue,
+        'loyalty_earned':   s.loyaltyEarned,
+        'loyalty_redeemed': s.loyaltyRedeemed,
         'payment_method': s.payments.isNotEmpty ? s.payments.first.method : 'CASH',
         'status':         s.status,
         'cashier_name':   s.userFullName,
@@ -1606,6 +1617,9 @@ class LocalDbService {
       discountId:   row['discount_id'] as String?,
       finalAmount:  (row['final_amount'] as num).toDouble(),
       paidAmount:   (row['paid_amount'] as num).toDouble(),
+      changeDue:       (row['change_due'] as num?)?.toDouble() ?? 0,
+      loyaltyEarned:   (row['loyalty_earned'] as num?)?.toDouble() ?? 0,
+      loyaltyRedeemed: (row['loyalty_redeemed'] as num?)?.toDouble() ?? 0,
       status:       row['status'] as String,
       createdAt:    parseApiDate(row['created_at'] as String),
       customerName:  row['customer_name'] as String?,

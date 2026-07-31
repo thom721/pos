@@ -44,7 +44,10 @@ def store_sale(
     _plan: None = Depends(require_active_plan),
 ):
     _check_discount_permission(payload, current_user)
-    sale = create_sale(db, payload, current_user.id, tenant_id=current_user.tenant_id)
+    sale = create_sale(
+        db, payload, current_user.id, tenant_id=current_user.tenant_id,
+        current_user=current_user,
+    )
     audit_service.log(
         db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         action="CREATE", resource_type="sale", resource_id=sale.id,

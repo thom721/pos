@@ -33,6 +33,10 @@ class Sale(UUIDBase):
     # change entre-temps.
     loyalty_earned   = Column(Numeric(12, 2), nullable=False, default=0)
     loyalty_redeemed = Column(Numeric(12, 2), nullable=False, default=0)
+    # Monnaie rendue au client (paid_amount reste plafonné au montant dû —
+    # voir create_sale — donc l'excédent remis en espèces serait sinon perdu
+    # et absent du reçu).
+    change_due       = Column(Numeric(12, 2), nullable=False, default=0)
     status       = Column(
         Enum(SaleStatus, values_callable=lambda obj: [e.value for e in obj]),
         default=SaleStatus.unpaid,

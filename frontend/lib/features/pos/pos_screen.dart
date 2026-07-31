@@ -316,18 +316,42 @@ class _ReceiptPreview extends StatelessWidget {
           ],
           _total('Total', _fmt.format(sale.finalAmount), lbl, big),
           const SizedBox(height: 4),
-          _total('Montant reçu', _fmt.format(sale.paidAmount), lbl, val),
-          if (sale.balance.abs() > 0.001)
-            _total(
-              sale.balance > 0 ? 'Reste à payer' : 'Monnaie',
-              _fmt.format(sale.balance.abs()),
-              lbl,
-              TextStyle(
-                fontSize: 12,
-                color: sale.balance > 0 ? AppColors.error : AppColors.accent,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+          ...() {
+            // change_due (create_sale) plafonne paidAmount au montant dû et
+            // stocke l'excédent séparément ; les ventes modifiées
+            // (update_sale) peuvent encore rendre paidAmount > finalAmount.
+            final change = sale.changeDue > 0.001
+                ? sale.changeDue
+                : (sale.balance < -0.001 ? -sale.balance : 0.0);
+            final tendered = sale.changeDue > 0.001
+                ? sale.paidAmount + sale.changeDue
+                : sale.paidAmount;
+            return [
+              _total('Montant reçu', _fmt.format(tendered), lbl, val),
+              if (sale.balance > 0.001)
+                _total(
+                  'Reste à payer',
+                  _fmt.format(sale.balance),
+                  lbl,
+                  const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              if (change > 0.001)
+                _total(
+                  'Monnaie',
+                  _fmt.format(change),
+                  lbl,
+                  const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ];
+          }(),
           const SizedBox(height: 10),
           Container(
             padding:
@@ -889,7 +913,7 @@ class _CartPanel extends ConsumerStatefulWidget {
 
 class _CartPanelState extends ConsumerState<_CartPanel> {
   final _discountCtrl = TextEditingController(text: '0');
-  final _paidCtrl = TextEditingController(text: '0');
+  final _paidCtrl = TextEditingController();
   bool _discountUnlocked = false;
   bool _autoPrinting = false;
 
@@ -1139,7 +1163,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
 
   void _resetFields() {
     _discountCtrl.text = '0';
-    _paidCtrl.text = '0';
+    _paidCtrl.text = '';
     setState(() => _discountUnlocked = false);
   }
 
@@ -1194,7 +1218,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   void _syncFields(PosState pos) {
     final disc = pos.discount > 0 ? pos.discount.toStringAsFixed(2) : '0';
     if (_discountCtrl.text != disc) _discountCtrl.text = disc;
-    if (_paidCtrl.text != '0') _paidCtrl.text = '0';
+    if (_paidCtrl.text.isNotEmpty) _paidCtrl.text = '';
   }
 
   void _saveAsDraft() {
@@ -1820,6 +1844,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           keyboardType: TextInputType.number,
                           style: const TextStyle(fontSize: 13),
                           decoration: const InputDecoration(
+                            hintText: '0',
                             contentPadding: EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 8),
                             isDense: true,
@@ -1884,6 +1909,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                         keyboardType: TextInputType.number,
                         style: const TextStyle(fontSize: 13),
                         decoration: const InputDecoration(
+                          hintText: '0',
                           contentPadding: EdgeInsets.symmetric(
                               horizontal: 10, vertical: 8),
                           isDense: true,
@@ -2282,6 +2308,73 @@ class _CartItemTile extends StatelessWidget {
     );
   }
 
+  // Applique une fraction (0 = entier) à la partie entière déjà saisie dans
+  // [ctrl] — ex: champ à "3", appui sur "¾" → "3.75" ; champ à "3.75", appui
+  // sur "½" → "3.5" (remplace la fraction, ne s'additionne pas dessus).
+  void _applyFraction(TextEditingController ctrl, double fraction) {
+    final current = double.tryParse(ctrl.text.replaceAll(',', '.')) ?? 0;
+    final whole = current.truncateToDouble();
+    ctrl.text = _fmtQty(whole + fraction);
+    ctrl.selection = TextSelection.collapsed(offset: ctrl.text.length);
+  }
+
+  void _editQuantity(BuildContext context) {
+    final ctrl = TextEditingController(text: _fmtQty(item.quantity));
+    const fractions = [
+      (0.0, 'Entier'),
+      (0.25, '¼'),
+      (0.5, '½'),
+      (0.75, '¾'),
+    ];
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(item.product.name, style: const TextStyle(fontSize: 15)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextFormField(
+              controller: ctrl,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Quantité (ex: 1.5 pour 1 et demie)',
+                prefixIcon: Icon(Icons.numbers_rounded),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              children: fractions
+                  .map((f) => ActionChip(
+                        label: Text(f.$2),
+                        onPressed: () => _applyFraction(ctrl, f.$1),
+                      ))
+                  .toList(),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final val = double.tryParse(ctrl.text.replaceAll(',', '.'));
+              if (val != null && val > 0) {
+                notifier.updateQuantity(item.product.id, val);
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text('Appliquer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -2437,11 +2530,15 @@ class _CartItemTile extends StatelessWidget {
                   onTap: () => notifier.updateQuantity(
                       item.product.id, item.quantity - 1),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(_fmtQty(item.quantity),
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 13)),
+                InkWell(
+                  onTap: () => _editQuantity(context),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    child: Text(_fmtQty(item.quantity),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 13)),
+                  ),
                 ),
                 _QtyBtn(
                   icon: Icons.add,

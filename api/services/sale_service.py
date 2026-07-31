@@ -341,6 +341,7 @@ def create_sale(
     user_id: str,
     tenant_id: str | None = None,
     warehouse_id: str | None = None,
+    current_user=None,
 ):
     from api.models.Debt import Debt
     from api.models.StockMovement import StockType
@@ -369,7 +370,7 @@ def create_sale(
         if not product:
             raise HTTPException(404, "Produit introuvable")
 
-        if product.stock < item.quantity:
+        if float(product.available_quantity) < item.quantity:
             raise HTTPException(
                 400,
                 f"Stock insuffisant pour {product.name}"
@@ -429,16 +430,40 @@ def create_sale(
 
     remaining_after_loyalty = total_after_discount - float(loyalty_redeemed)
     paid = data.paid_amount or 0
-    # The register keeps at most the sale amount; excess cash is given back as change.
+    # The register keeps at most the sale amount; excess cash is given back as
+    # change. That excess is stored on the sale (change_due) so the receipt
+    # can display it — it would otherwise be silently discarded here.
     collected = min(paid, remaining_after_loyalty) if paid > 0 else 0
+    change_due = Decimal(str(paid - collected)) if paid > collected else Decimal(0)
+
+    from api.services import config_service as _config_service
+    cfg = _config_service.get_or_create(db, tenant_id=tenant_id)
+
+    # Crédit — refuse une vente sous-payée si le poste n'y est pas autorisé.
+    # Le frontend bloque déjà ce cas (pos_screen.dart) mais un contrôle
+    # uniquement côté app est contournable (appel API direct) ; revérifié ici,
+    # seule source de vérité fiable. Même dérogation que le frontend :
+    # sales.discount outrepasse la restriction (ex: superviseur). Sans
+    # current_user (appel interne, ex: tests), la vérification est ignorée —
+    # elle n'a de sens que pour un appel HTTP authentifié.
+    if (
+        current_user is not None
+        and remaining_after_loyalty - collected > 0.005
+        and not cfg.allow_cashier_credit
+    ):
+        from api.core.permissions import has_permission as _has_perm, P
+        perms = getattr(current_user, "permissions", None) or []
+        roles = getattr(current_user, "roles", None) or []
+        if not _has_perm(perms, roles, P.SALES_DISCOUNT):
+            raise HTTPException(
+                400, "Les ventes à crédit ne sont pas autorisées pour ce poste."
+            )
 
     # Fidélisation — gain : crédite un % du montant de la vente sur le solde
     # du client, HORS portion payée en fidélité (sinon un client gagnerait de
     # la fidélité en dépensant de la fidélité — boucle infinie évitée).
     loyalty_earned = Decimal(0)
     if customer:
-        from api.services import config_service as _config_service
-        cfg = _config_service.get_or_create(db, tenant_id=tenant_id)
         if cfg.loyalty_enabled:
             earn_base = Decimal(str(total_after_discount)) - loyalty_redeemed
             loyalty_earned = (earn_base * Decimal(cfg.loyalty_percent or 0) / 100).quantize(Decimal("0.01"))
@@ -466,6 +491,7 @@ def create_sale(
         discount_id=receipt_discount_id,
         final_amount=total_after_discount,
         paid_amount=collected,
+        change_due=change_due,
         loyalty_earned=loyalty_earned,
         loyalty_redeemed=loyalty_redeemed,
         status="UNPAID"
