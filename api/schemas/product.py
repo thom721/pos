@@ -58,6 +58,16 @@ class ProductSaleItem(BaseModel):
     alert_stock: int
     category: Optional[CategoryRead] = None
 
+class WarehousePriceRead(BaseModel):
+    warehouse_id: str
+    warehouse_name: str
+    sale_price: Optional[float] = None  # None = utilise le prix par défaut du produit
+
+
+class WarehousePriceSet(BaseModel):
+    sale_price: float
+
+
 class CategoryResponse(BaseModel):
     # id: str
     name: str

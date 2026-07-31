@@ -15,6 +15,7 @@ from api.models.Customer import Customer
 from api.models.User import User as UserModel
 from api.models.Discount import DiscountScope
 from api.services.warehouse_helper import resolve_warehouse_id
+from api.services.product_service import resolve_price as _resolve_price
 from api.services.discount_service import resolve_discount, get_active_automatic_receipt_discount
 from api.services.stock_service import record_stock_movement
 
@@ -178,6 +179,7 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
             product_id=old_item.product_id,
             user_id=user_id,
             tenant_id=tenant_id,
+            warehouse_id=sale.warehouse_id,
             type=StockType.in_,
             quantity=float(old_item.quantity),
             source_type="sale_edit_revert",
@@ -197,7 +199,7 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
         product = new_products.get(str(item.product_id))
         if not product:
             raise HTTPException(404, f"Produit introuvable: {item.product_id}")
-        unit_price = item.unit_price if item.unit_price else product.sale_price
+        unit_price = item.unit_price if item.unit_price else _resolve_price(db, product, sale.warehouse_id)
         subtotal = unit_price * item.quantity
         new_total += subtotal
 
@@ -228,6 +230,7 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
             product_id=product.id,
             user_id=user_id,
             tenant_id=tenant_id,
+            warehouse_id=sale.warehouse_id,
             type=StockType.out,
             quantity=-item.quantity,
             source_type="SALE",
@@ -359,6 +362,18 @@ def create_sale(
         .all()
     }
 
+    # Warehouse : paramètre > payload > dépôt installer du serveur > défaut.
+    # Résolu ici (avant la vérification de stock) car le stock disponible est
+    # désormais vérifié PAR DÉPÔT — une caisse ne peut vendre que ce qui a été
+    # distribué à SON dépôt, pas le total du tenant (voir Product.available_quantity_at).
+    from api.core.config import settings as _cfg
+    payload_wh   = getattr(data, 'warehouse_id', None)
+    server_wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
+    wh_id = resolve_warehouse_id(
+        db, tenant_id,
+        warehouse_id or payload_wh or server_wh_id,
+    ) if tenant_id else None
+
     total = 0
     item_discounts: list[tuple[Decimal, str | None]] = []
     item_discount_total = Decimal(0)
@@ -370,13 +385,25 @@ def create_sale(
         if not product:
             raise HTTPException(404, "Produit introuvable")
 
-        if float(product.available_quantity) < item.quantity:
+        # wh_id absent (tenant sans aucun Warehouse — install mono-dépôt/local)
+        # → repli sur le total global, comportement inchangé pour ces cas.
+        if wh_id:
+            if float(product.available_quantity_at(wh_id)) < item.quantity:
+                raise HTTPException(
+                    400,
+                    f"Stock insuffisant pour {product.name} dans ce dépôt"
+                )
+        elif float(product.available_quantity) < item.quantity:
             raise HTTPException(
                 400,
                 f"Stock insuffisant pour {product.name}"
             )
 
-        unit_price = item.unit_price if item.unit_price else product.sale_price
+        # Prix par dépôt si défini pour ce produit à ce dépôt (sinon prix par
+        # défaut) — ne s'applique que si le client n'a pas déjà envoyé un
+        # unit_price explicite (cas normal : le prix affiché en caisse vient
+        # déjà de ProductService.list(warehouse_id=...)).
+        unit_price = item.unit_price if item.unit_price else _resolve_price(db, product, wh_id)
         subtotal = unit_price * item.quantity
         total += subtotal
 
@@ -471,16 +498,7 @@ def create_sale(
     if loyalty_redeemed > 0 and customer:
         customer.loyalty_balance = Decimal(customer.loyalty_balance or 0) - loyalty_redeemed
 
-    # 2️⃣ Création vente
-    # Warehouse : paramètre > payload > dépôt installer du serveur > défaut
-    from api.core.config import settings as _cfg
-    payload_wh   = getattr(data, 'warehouse_id', None)
-    server_wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
-    wh_id = resolve_warehouse_id(
-        db, tenant_id,
-        warehouse_id or payload_wh or server_wh_id,
-    ) if tenant_id else None
-
+    # 2️⃣ Création vente (wh_id déjà résolu plus haut, avant la vérification de stock)
     sale = Sale(
         customer_id=str(data.customer_id) if data.customer_id else None,
         user_id=user_id,
@@ -520,7 +538,7 @@ def create_sale(
     # 3️⃣ Items + mouvements stock OUT (réutilise le dict déjà chargé)
     for idx, item in enumerate(data.items):
         product = products[str(item.product_id)]
-        applied_price = item.unit_price if item.unit_price else product.sale_price
+        applied_price = item.unit_price if item.unit_price else _resolve_price(db, product, wh_id)
         item_amount, item_disc_id = item_discounts[idx]
 
         db.add(SaleItem(
@@ -629,6 +647,7 @@ def cancel_sale(db: Session, sale_id: str, user_id: str, tenant_id: str | None =
             product_id=item.product_id,
             user_id=user_id,
             tenant_id=tenant_id,
+            warehouse_id=sale.warehouse_id,
             type=StockType.in_,
             quantity=item.quantity,
             source_type="sale_cancel",

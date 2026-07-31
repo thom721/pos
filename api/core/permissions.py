@@ -141,6 +141,10 @@ class P:
     RETRAITS_CREATE = "retraits.create"
     RETRAITS_READ   = "retraits.read"
 
+    # Entrepôt (stock central — réception, distribution vers les dépôts)
+    ENTREPOT_CREATE = "entrepot.create"
+    ENTREPOT_READ   = "entrepot.read"
+
 
 # ---------------------------------------------------------------------------
 # Role → permissions mapping
@@ -177,6 +181,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.CLIENTS_SABOTAGE_CREATE, P.CLIENTS_SABOTAGE_READ, P.CLIENTS_SABOTAGE_UPDATE, P.CLIENTS_SABOTAGE_DELETE,
         P.DEPOTS_CREATE, P.DEPOTS_READ,
         P.RETRAITS_CREATE, P.RETRAITS_READ,
+        P.ENTREPOT_CREATE, P.ENTREPOT_READ,
     },
 
     "cashier": {
@@ -210,6 +215,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.INVENTORY_CREATE, P.INVENTORY_READ,
         P.CONFIG_READ,
         P.WAREHOUSES_READ, P.WAREHOUSES_UPDATE,
+        P.ENTREPOT_CREATE, P.ENTREPOT_READ,
     },
 
     # Serveur restaurant : gère les tables et commandes, encaisse, pas de backoffice

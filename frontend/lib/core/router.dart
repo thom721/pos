@@ -21,6 +21,7 @@ import 'package:pos_connect/features/reports/mobile_report_screen.dart';
 import 'package:pos_connect/features/statistics/statistics_screen.dart';
 import 'package:pos_connect/features/profile/profile_screen.dart';
 import 'package:pos_connect/features/inventory/inventory_screen.dart';
+import 'package:pos_connect/features/entrepot/entrepot_screen.dart';
 import 'package:pos_connect/features/returns/returns_screen.dart';
 import 'package:pos_connect/features/settings/settings_screen.dart';
 import 'package:pos_connect/features/splash/splash_screen.dart';
@@ -221,6 +222,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/inventory',
             builder: (context, state) => const InventoryScreen(),
+          ),
+          GoRoute(
+            path: '/entrepot',
+            builder: (context, state) => const EntrepotScreen(),
           ),
           GoRoute(
             path: '/events',

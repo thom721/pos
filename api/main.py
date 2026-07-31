@@ -33,6 +33,7 @@ from api.routes import restaurant as restaurant_router
 from api.routes import client_sabotage as client_sabotage_router
 from api.routes import depot as depot_router
 from api.routes import retrait as retrait_router
+from api.routes import entrepot as entrepot_router
 from api.ws_manager import manager as _ws_manager
 from api.core.security import verify_token as _verify_token
 # Import models so create_all picks them up
@@ -140,6 +141,7 @@ app.include_router(ws_router.router)
 app.include_router(client_sabotage_router.router)
 app.include_router(depot_router.router)
 app.include_router(retrait_router.router)
+app.include_router(entrepot_router.router)
 
 # ── Built-in role definitions ─────────────────────────────────────────────────
 _BUILTIN_ROLES = [
@@ -882,6 +884,71 @@ def _repair_annual_discount_default(active_engine=None) -> None:
             _log.warning("annual-discount: échec de la correction: %s", exc)
 
 
+def _backfill_stock_movement_warehouse(active_engine=None) -> None:
+    """
+    Migration ponctuelle : jusqu'ici, `Product.stock` additionnait TOUS les
+    stock_movements du tenant sans filtrer par dépôt (stock effectivement
+    global) — de nombreux mouvements historiques (ajustements manuels, entre
+    autres) ont donc `warehouse_id = NULL`. Le stock devient maintenant
+    réellement PAR DÉPÔT (une caisse ne vend que ce qui est tracé pour SON
+    dépôt — voir Product.available_quantity_at / create_sale) : sans ce
+    correctif, tout le stock historique d'un tenant multi-dépôts deviendrait
+    invisible à la vente du jour au lendemain.
+
+    Rattache les mouvements orphelins (warehouse_id NULL) au dépôt par défaut
+    de leur tenant — préserve exactement le total actuel pour les tenants
+    mono-dépôt (aucun changement visible) ; les tenants multi-dépôts devront
+    ensuite utiliser Distribuer (Entrepôt) pour répartir correctement si la
+    réalité diffère (aucun moyen fiable de deviner rétroactivement où se
+    trouvait physiquement chaque mouvement). Les tenants sans AUCUN Warehouse
+    (mono-dépôt local) ne sont pas concernés — create_sale se rabat alors sur
+    le total global, donc aucune régression possible pour eux.
+
+    Idempotente (ne touche que warehouse_id IS NULL), s'exécute à chaque
+    démarrage.
+    """
+    from sqlalchemy import inspect as _inspect
+
+    import api.database as _db_mod
+    _eng = active_engine or _db_mod.engine
+
+    try:
+        inspector = _inspect(_eng)
+        tables = inspector.get_table_names()
+        if "stock_movements" not in tables or "warehouses" not in tables:
+            return
+    except Exception as exc:
+        _log.warning("backfill-stock-warehouse: impossible d'inspecter le schéma: %s", exc)
+        return
+
+    with _eng.connect() as conn:
+        try:
+            default_warehouses = conn.execute(text(
+                "SELECT tenant_id, id FROM warehouses WHERE is_default = 1 AND is_active = 1"
+            )).fetchall()
+        except Exception as exc:
+            _log.warning("backfill-stock-warehouse: lecture des dépôts par défaut impossible: %s", exc)
+            return
+
+        for tenant_id, default_wh_id in default_warehouses:
+            if not tenant_id:
+                continue
+            try:
+                result = conn.execute(text(
+                    "UPDATE stock_movements SET warehouse_id = :wh "
+                    "WHERE warehouse_id IS NULL AND tenant_id = :tid"
+                ), {"wh": default_wh_id, "tid": tenant_id})
+                conn.commit()
+                if result.rowcount:
+                    _log.warning(
+                        "backfill-stock-warehouse: tenant %s — %d mouvement(s) rattaché(s) au dépôt par défaut %s",
+                        tenant_id, result.rowcount, default_wh_id,
+                    )
+            except Exception as exc:
+                conn.rollback()
+                _log.warning("backfill-stock-warehouse: échec pour le tenant %s: %s", tenant_id, exc)
+
+
 def _repair_cross_tenant_app_config(active_engine=None) -> None:
     """
     Migration ponctuelle : `config.py::_wh_id()` acceptait un warehouse_id
@@ -1316,6 +1383,10 @@ def on_startup():
         _repair_duplicate_registers(_active_engine)
         # 2j. Corrige platform_config.annual_discount_pct si resté à 0 (one-shot)
         _repair_annual_discount_default(_active_engine)
+        # 2k. Rattache les stock_movements orphelins (warehouse_id NULL) au
+        # dépôt par défaut de leur tenant — le stock devient réellement par
+        # dépôt (one-shot, voir docstring de la fonction)
+        _backfill_stock_movement_warehouse(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
 

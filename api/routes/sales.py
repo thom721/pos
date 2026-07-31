@@ -83,11 +83,13 @@ def search_products_for_sale(
     search: str | None = Query(None, min_length=1),
     page: int = Query(1, ge=1),
     per_page: int = Query(10, ge=1, le=20),
+    warehouse_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_CREATE)),
 ):
     return ProductService(db, tenant_id=current_user.tenant_id).list(
         page=page, per_page=per_page, search=search, exclude_locked=True,
+        warehouse_id=warehouse_id,
     )
 
 

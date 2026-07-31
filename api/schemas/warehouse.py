@@ -22,6 +22,7 @@ class WarehouseRead(BaseModel):
     is_active: bool
     is_default: bool
     is_claimed: bool = False
+    is_entrepot: bool = False
     created_at: Optional[datetime] = None
 
     class Config:

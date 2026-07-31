@@ -18,6 +18,7 @@ import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
 import 'package:pos_connect/data/repositories/warehouse_repository.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 
 final _fmt =
     NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
@@ -1747,6 +1748,10 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                     ),
                   ],
                 ),
+                if (isEdit) ...[
+                  const SizedBox(height: 12),
+                  _WarehousePricesSection(productId: widget.product!.id),
+                ],
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _alertCtrl,
@@ -1899,6 +1904,151 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
 
     ref.invalidate(productsProvider);
     if (mounted) Navigator.pop(context);
+  }
+}
+
+// ─── Prix par dépôt ───────────────────────────────────────────────────────
+
+class _WarehousePricesSection extends StatefulWidget {
+  final String productId;
+  const _WarehousePricesSection({required this.productId});
+
+  @override
+  State<_WarehousePricesSection> createState() => _WarehousePricesSectionState();
+}
+
+class _WarehousePricesSectionState extends State<_WarehousePricesSection> {
+  List<WarehousePriceModel>? _prices;
+  final Map<String, TextEditingController> _ctrls = {};
+  bool _loading = true;
+  final Set<String> _saving = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final prices = await ProductRepository().getWarehousePrices(widget.productId);
+      if (!mounted) return;
+      setState(() {
+        _prices = prices;
+        for (final p in prices) {
+          _ctrls[p.warehouseId] =
+              TextEditingController(text: p.salePrice?.toStringAsFixed(2) ?? '');
+        }
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _ctrls.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save(String warehouseId) async {
+    final text = _ctrls[warehouseId]!.text.trim();
+    setState(() => _saving.add(warehouseId));
+    try {
+      if (text.isEmpty) {
+        await ProductRepository().deleteWarehousePrice(widget.productId, warehouseId);
+      } else {
+        final price = double.tryParse(text.replaceAll(',', '.'));
+        if (price == null || price <= 0) {
+          if (mounted) setState(() => _saving.remove(warehouseId));
+          return;
+        }
+        await ProductRepository().setWarehousePrice(widget.productId, warehouseId, price);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Prix mis à jour'),
+          duration: Duration(seconds: 2),
+        ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Erreur lors de la mise à jour du prix'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _saving.remove(warehouseId));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Center(
+          child: SizedBox(
+            width: 16, height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    final prices = _prices ?? [];
+    if (prices.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Prix par dépôt',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        const Text(
+          'Laissez vide pour utiliser le prix de vente par défaut.',
+          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 8),
+        ...prices.map((p) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                      child: Text(p.warehouseName,
+                          style: const TextStyle(fontSize: 13))),
+                  SizedBox(
+                    width: 110,
+                    child: TextFormField(
+                      controller: _ctrls[p.warehouseId],
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        hintText: 'défaut',
+                        isDense: true,
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _saving.contains(p.warehouseId)
+                      ? const SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : IconButton(
+                          icon: const Icon(Icons.check_circle_outline_rounded, size: 20),
+                          tooltip: 'Enregistrer',
+                          onPressed: () => _save(p.warehouseId),
+                        ),
+                ],
+              ),
+            )),
+      ],
+    );
   }
 }
 
@@ -2503,6 +2653,7 @@ class _AdjustStockDialogState extends ConsumerState<_AdjustStockDialog> {
     try {
       await ProductRepository().adjustStock(
         widget.product.id, qty, reason: _reasonCtrl.text.trim(),
+        warehouseId: ref.read(activeWarehouseProvider)?.id,
       );
       ref.invalidate(productsProvider);
       if (mounted) Navigator.pop(context);

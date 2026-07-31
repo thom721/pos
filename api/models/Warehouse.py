@@ -12,6 +12,12 @@ class Warehouse(UUIDBase):
     is_active   = Column(Boolean, nullable=False, default=True)
     is_default  = Column(Boolean, nullable=False, default=False)
     is_claimed  = Column(Boolean, nullable=False, default=False)
+    # Entrepôt central (stock de transit, distribué vers les dépôts de vente) —
+    # un seul par tenant. Exclu du décompte de facturation des dépôts
+    # (api/routes/billing.py::_compute_plan_usage) mais volontairement PAS
+    # exclu de la liste générale des dépôts (sert de destination de réception
+    # d'achat comme n'importe quel dépôt).
+    is_entrepot = Column(Boolean, nullable=False, default=False)
 
     stock_movements    = relationship("StockMovement",    back_populates="warehouse")
     purchases          = relationship("Purchase",         back_populates="warehouse")

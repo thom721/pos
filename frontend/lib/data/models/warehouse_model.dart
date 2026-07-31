@@ -6,6 +6,9 @@ class WarehouseModel {
   final bool isDefault;
   /// True sur le serveur local qui a revendiqué ce dépôt lors de l'installation.
   final bool isClaimed;
+  /// Entrepôt central (stock de transit) — n'est pas un dépôt de vente,
+  /// masqué du sélecteur "Tous les business" (voir app_shell.dart).
+  final bool isEntrepot;
 
   const WarehouseModel({
     required this.id,
@@ -14,6 +17,7 @@ class WarehouseModel {
     required this.isActive,
     required this.isDefault,
     this.isClaimed = false,
+    this.isEntrepot = false,
   });
 
   factory WarehouseModel.fromJson(Map<String, dynamic> json) => WarehouseModel(
@@ -23,6 +27,7 @@ class WarehouseModel {
         isActive: json['is_active'] as bool? ?? true,
         isDefault: json['is_default'] as bool? ?? false,
         isClaimed: json['is_claimed'] as bool? ?? false,
+        isEntrepot: json['is_entrepot'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -32,6 +37,7 @@ class WarehouseModel {
         'is_active': isActive,
         'is_default': isDefault,
         'is_claimed': isClaimed,
+        'is_entrepot': isEntrepot,
       };
 
   @override

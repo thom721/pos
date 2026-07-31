@@ -9,6 +9,7 @@ from api.models.Category import Category
 from api.models.Discount import Discount
 from api.models.Supplier import Supplier
 from api.models.Product import Product
+from api.models.ProductWarehousePrice import ProductWarehousePrice
 from api.models.Customer import Customer
 from api.models.Sale import Sale
 from api.models.SaleItem import SaleItem

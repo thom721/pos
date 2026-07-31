@@ -132,6 +132,10 @@ abstract class Perm {
 
   static const retraitsCreate = 'retraits.create';
   static const retraitsRead   = 'retraits.read';
+
+  // Entrepôt (stock central)
+  static const entrepotCreate = 'entrepot.create';
+  static const entrepotRead   = 'entrepot.read';
 }
 
 /// Permissions regroupées par rôle — miroir de ROLE_PERMISSIONS en Python.
@@ -164,6 +168,7 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.clientsSabotageCreate, Perm.clientsSabotageRead, Perm.clientsSabotageUpdate, Perm.clientsSabotageDelete,
     Perm.depotsCreate, Perm.depotsRead,
     Perm.retraitsCreate, Perm.retraitsRead,
+    Perm.entrepotCreate, Perm.entrepotRead,
   },
   'cashier': {
     Perm.salesCreate, Perm.salesRead, Perm.salesUpdate, Perm.salesCancel,
@@ -200,5 +205,6 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.stockRead, Perm.stockAdjust,
     Perm.inventoryCreate, Perm.inventoryRead,
     Perm.configRead,
+    Perm.entrepotCreate, Perm.entrepotRead,
   },
 };

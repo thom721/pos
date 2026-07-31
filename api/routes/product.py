@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional, Union
 from pydantic import BaseModel
 from api.services.product_service import ProductService
-from api.schemas.product import ProductCreate, ProductRead, ProductUpdate
+from api.schemas.product import ProductCreate, ProductRead, ProductUpdate, WarehousePriceRead, WarehousePriceSet
 from api.database import get_db
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
@@ -14,15 +14,18 @@ from api.core.PaginateHelper import PaginatedResponse
 from api.core.dt_coerce import now_local
 from api.models.Product import Product
 from api.models.User import User
+from api.models.Warehouse import Warehouse
 from api.models.StockMovement import StockType
 from api.services import audit_service
 from api.services.stock_service import record_stock_movement
+from api.services.warehouse_helper import resolve_warehouse_id
 from api.ws_manager import manager
 
 
 class StockAdjustRequest(BaseModel):
     quantity: float
     reason: Optional[str] = None
+    warehouse_id: Optional[str] = None
 
 router = APIRouter(prefix="/api", tags=["Products"])
 
@@ -50,11 +53,13 @@ def list_products(
     per_page: int = Query(5, ge=1, le=100),
     search: str | None = None,
     category_id: str | None = None,
+    warehouse_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_READ)),
 ):
     return ProductService(db, tenant_id=current_user.tenant_id).list(
-        page=page, per_page=per_page, search=search, category_id=category_id
+        page=page, per_page=per_page, search=search, category_id=category_id,
+        warehouse_id=warehouse_id,
     )
 
 
@@ -127,11 +132,15 @@ def adjust_stock(
     if qty == 0:
         raise HTTPException(status_code=400, detail="La quantité doit être non nulle")
 
+    wh_id = resolve_warehouse_id(db, current_user.tenant_id, payload.warehouse_id) \
+        if current_user.tenant_id else None
+
     record_stock_movement(
         db,
         product_id=product_id,
         user_id=current_user.id,
         tenant_id=current_user.tenant_id,
+        warehouse_id=wh_id,
         type=StockType.in_ if qty > 0 else StockType.out,
         quantity=qty,  # positif pour IN, négatif pour OUT (convention globale)
         source_type="adjustment",
@@ -145,6 +154,76 @@ def adjust_stock(
     db.refresh(product)
     background_tasks.add_task(manager.notify, current_user.tenant_id)
     return product
+
+
+@router.get("/products/{product_id}/warehouse-prices", response_model=List[WarehousePriceRead])
+def read_product_warehouse_prices(
+    product_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.PRODUCTS_READ)),
+):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product or product.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    depots = db.query(Warehouse).filter(
+        Warehouse.tenant_id == current_user.tenant_id,
+        Warehouse.is_active == True,  # noqa: E712
+        Warehouse.is_entrepot == False,  # noqa: E712
+    ).order_by(Warehouse.name).all()
+
+    svc = ProductService(db, tenant_id=current_user.tenant_id)
+    overrides = {p.warehouse_id: float(p.sale_price) for p in svc.get_warehouse_prices(product_id)}
+
+    return [
+        WarehousePriceRead(
+            warehouse_id=d.id, warehouse_name=d.name,
+            sale_price=overrides.get(d.id),
+        )
+        for d in depots
+    ]
+
+
+@router.put("/products/{product_id}/warehouse-prices/{warehouse_id}", response_model=WarehousePriceRead)
+def set_product_warehouse_price(
+    product_id: str,
+    warehouse_id: str,
+    payload: WarehousePriceSet,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
+):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product or product.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Product not found")
+    depot = db.query(Warehouse).filter(
+        Warehouse.id == warehouse_id, Warehouse.tenant_id == current_user.tenant_id,
+    ).first()
+    if not depot:
+        raise HTTPException(status_code=404, detail="Dépôt introuvable")
+    if payload.sale_price <= 0:
+        raise HTTPException(status_code=400, detail="Le prix doit être positif")
+
+    svc = ProductService(db, tenant_id=current_user.tenant_id)
+    svc.set_warehouse_price(product_id, warehouse_id, payload.sale_price)
+    return WarehousePriceRead(
+        warehouse_id=depot.id, warehouse_name=depot.name, sale_price=payload.sale_price,
+    )
+
+
+@router.delete("/products/{product_id}/warehouse-prices/{warehouse_id}")
+def delete_product_warehouse_price(
+    product_id: str,
+    warehouse_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
+):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product or product.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    svc = ProductService(db, tenant_id=current_user.tenant_id)
+    svc.delete_warehouse_price(product_id, warehouse_id)
+    return {"message": "Prix par dépôt supprimé — retour au prix par défaut"}
 
 
 _ALLOWED_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}

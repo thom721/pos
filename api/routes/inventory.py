@@ -16,10 +16,11 @@ router = APIRouter(prefix="/api/inventory", tags=["Inventory"])
 @router.get("/preview")
 def preview_inventory(
     category_ids: Optional[List[str]] = Query(None),
+    warehouse_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.INVENTORY_READ)),
 ):
-    return {"data": get_preview(db, category_ids, tenant_id=current_user.tenant_id)}
+    return {"data": get_preview(db, category_ids, tenant_id=current_user.tenant_id, warehouse_id=warehouse_id)}
 
 
 @router.get("/")

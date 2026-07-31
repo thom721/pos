@@ -1,42 +1,22 @@
 import json
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from fastapi import HTTPException
 
 from api.models.Product import Product
 from api.models.Category import Category
-from api.models.StockMovement import StockMovement, StockType
+from api.models.StockMovement import StockType
 from api.models.InventoryRecord import InventoryRecord
 from api.services.warehouse_helper import resolve_warehouse_id
-from api.services.stock_service import record_stock_movement
+from api.services.stock_service import record_stock_movement, stock_map as _stock_map
 
 
-def _stock_map(
+def get_preview(
     db: Session,
-    product_ids: list[str],
+    category_ids: list[str] | None = None,
     tenant_id: str | None = None,
     warehouse_id: str | None = None,
-) -> dict[str, float]:
-    """Return {product_id: current_stock} computed via SQL aggregate."""
-    if not product_ids:
-        return {}
-    query = (
-        db.query(
-            StockMovement.product_id,
-            func.coalesce(func.sum(StockMovement.quantity), 0).label("stock"),
-        )
-        .filter(StockMovement.product_id.in_(product_ids))
-    )
-    if tenant_id:
-        query = query.filter(StockMovement.tenant_id == tenant_id)
-    if warehouse_id:
-        query = query.filter(StockMovement.warehouse_id == warehouse_id)
-    rows = query.group_by(StockMovement.product_id).all()
-    return {r.product_id: float(r.stock) for r in rows}
-
-
-def get_preview(db: Session, category_ids: list[str] | None = None, tenant_id: str | None = None) -> list[dict]:
+) -> list[dict]:
     """Return all active products with their current (system) stock for counting."""
     query = (
         db.query(Product)
@@ -53,7 +33,10 @@ def get_preview(db: Session, category_ids: list[str] | None = None, tenant_id: s
         return []
 
     pids = [p.id for p in products]
-    stocks = _stock_map(db, pids, tenant_id=tenant_id)
+    # Même résolution que create_inventory — l'aperçu doit porter sur le même
+    # dépôt que le comptage réel, sinon les deux affichent des totaux différents.
+    wh_id = resolve_warehouse_id(db, tenant_id, warehouse_id) if tenant_id else None
+    stocks = _stock_map(db, pids, tenant_id=tenant_id, warehouse_id=wh_id)
 
     return [
         {

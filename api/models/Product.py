@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, Numeric, Boolean, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
-from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 from .base import UUIDBase
 
 class Product(UUIDBase):
@@ -66,3 +66,39 @@ class Product(UUIDBase):
             comp_stock = sum(m.quantity for m in self.component.stock_movements) if self.component else 0
             return comp_stock / self.component_quantity
         return sum(m.quantity for m in self.stock_movements)
+
+    @hybrid_method
+    def stock_at(self, warehouse_id):
+        """Équivalent de `stock` (arrondi, pour affichage) mais limité à un
+        dépôt précis — voir `available_quantity_at` pour la version non
+        arrondie utilisée à la vente."""
+        if self.is_composite:
+            if not self.component_quantity:
+                return 0
+            comp_stock = sum(
+                m.quantity for m in self.component.stock_movements
+                if m.warehouse_id == warehouse_id
+            ) if self.component else 0
+            return int(comp_stock // self.component_quantity)
+        return sum(
+            m.quantity for m in self.stock_movements
+            if m.warehouse_id == warehouse_id
+        )
+
+    @hybrid_method
+    def available_quantity_at(self, warehouse_id):
+        """Équivalent de `available_quantity` (non arrondi) mais limité à un
+        dépôt précis — utilisé par create_sale pour vérifier que LE DÉPÔT de
+        la vente a bien le stock, pas seulement le total tenant."""
+        if self.is_composite:
+            if not self.component_quantity:
+                return 0
+            comp_stock = sum(
+                m.quantity for m in self.component.stock_movements
+                if m.warehouse_id == warehouse_id
+            ) if self.component else 0
+            return comp_stock / self.component_quantity
+        return sum(
+            m.quantity for m in self.stock_movements
+            if m.warehouse_id == warehouse_id
+        )

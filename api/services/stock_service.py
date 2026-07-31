@@ -1,11 +1,38 @@
 from decimal import Decimal
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from datetime import datetime
 
 from api.models.StockMovement import StockMovement, StockType
 from api.models.Product import Product
+
+
+def stock_map(
+    db: Session,
+    product_ids: list[str],
+    tenant_id: str | None = None,
+    warehouse_id: str | None = None,
+) -> dict[str, float]:
+    """Retourne {product_id: stock} via agrégat SQL, filtré par dépôt si
+    fourni. Partagé entre inventory_service (aperçu/comptage) et
+    product_service (liste produits par dépôt) — évite de charger tous les
+    stock_movements en mémoire pour chaque produit."""
+    if not product_ids:
+        return {}
+    query = (
+        db.query(
+            StockMovement.product_id,
+            func.coalesce(func.sum(StockMovement.quantity), 0).label("stock"),
+        )
+        .filter(StockMovement.product_id.in_(product_ids))
+    )
+    if tenant_id:
+        query = query.filter(StockMovement.tenant_id == tenant_id)
+    if warehouse_id:
+        query = query.filter(StockMovement.warehouse_id == warehouse_id)
+    rows = query.group_by(StockMovement.product_id).all()
+    return {r.product_id: float(r.stock) for r in rows}
 
 
 def record_stock_movement(

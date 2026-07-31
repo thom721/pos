@@ -18,6 +18,27 @@ class CategoryModel {
       };
 }
 
+class WarehousePriceModel {
+  final String warehouseId;
+  final String warehouseName;
+  final double? salePrice; // null = utilise le prix par défaut du produit
+
+  WarehousePriceModel({
+    required this.warehouseId,
+    required this.warehouseName,
+    this.salePrice,
+  });
+
+  factory WarehousePriceModel.fromJson(Map<String, dynamic> json) =>
+      WarehousePriceModel(
+        warehouseId: json['warehouse_id']?.toString() ?? '',
+        warehouseName: json['warehouse_name']?.toString() ?? '',
+        salePrice: json['sale_price'] != null
+            ? (json['sale_price'] as num?)?.toDouble()
+            : null,
+      );
+}
+
 class ProductModel {
   final String id;
   final String name;

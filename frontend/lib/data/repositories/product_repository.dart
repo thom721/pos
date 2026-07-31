@@ -14,7 +14,11 @@ class ProductRepository {
     int limit = 20,
     String? search,
     String? categoryId,
+    String? warehouseId,
   }) async {
+    // Le cache local (offline Android) ne connaît pas encore le stock par
+    // dépôt — non affecté par warehouseId, reste sur le stock global comme
+    // avant. Seul le chemin API (web/desktop) reflète le dépôt actif.
     if (_isAndroid) {
       final cached = await LocalDbService.instance.getProducts(
         search: search, page: page, limit: limit, categoryId: categoryId,
@@ -51,6 +55,7 @@ class ProductRepository {
       'per_page': limit,
       if (search != null && search.isNotEmpty) 'search': search,
       if (categoryId != null) 'category_id': categoryId,
+      if (warehouseId != null) 'warehouse_id': warehouseId,
     };
     final res = await dio.get('/api/products/', queryParameters: params);
     return PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
@@ -125,20 +130,40 @@ class ProductRepository {
     };
   }
 
-  Future<ProductModel> adjustStock(String id, double quantity, {String? reason}) async {
+  Future<ProductModel> adjustStock(String id, double quantity, {String? reason, String? warehouseId}) async {
     final res = await dio.post('/api/products/$id/adjust-stock', data: {
       'quantity': quantity,
       if (reason != null && reason.isNotEmpty) 'reason': reason,
+      if (warehouseId != null) 'warehouse_id': warehouseId,
     });
     return ProductModel.fromJson(res.data);
+  }
+
+  Future<List<WarehousePriceModel>> getWarehousePrices(String productId) async {
+    final res = await dio.get('/api/products/$productId/warehouse-prices');
+    return (res.data as List)
+        .map((e) => WarehousePriceModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> setWarehousePrice(String productId, String warehouseId, double salePrice) async {
+    await dio.put('/api/products/$productId/warehouse-prices/$warehouseId',
+        data: {'sale_price': salePrice});
+  }
+
+  Future<void> deleteWarehousePrice(String productId, String warehouseId) async {
+    await dio.delete('/api/products/$productId/warehouse-prices/$warehouseId');
   }
 
   Future<PaginatedResponse<ProductModel>> searchForSale({
     String? search,
     int page = 1,
     int perPage = 20,
+    String? warehouseId,
   }) async {
     if (_isAndroid) {
+      // Cache local (offline) : pas encore de prix par dépôt — reste sur le
+      // prix par défaut, comme pour le stock (voir getProducts ci-dessus).
       return LocalDbService.instance.searchForSale(
         search: search, page: page, perPage: perPage,
       );
@@ -148,6 +173,7 @@ class ProductRepository {
       'page': page,
       'per_page': perPage,
       if (search != null && search.isNotEmpty) 'search': search,
+      if (warehouseId != null) 'warehouse_id': warehouseId,
     };
     final res = await dio.get('/api/sales/products/search', queryParameters: params);
     return PaginatedResponse.fromJson(res.data, ProductModel.fromJson);

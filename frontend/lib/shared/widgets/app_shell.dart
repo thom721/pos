@@ -48,6 +48,7 @@ const _mainNavItems = [
   _NavItem('Dettes', Icons.account_balance_wallet_rounded, '/debts'),
   _NavItem('Retours', Icons.assignment_return_rounded, '/returns'),
   _NavItem('Inventaire',      Icons.warehouse_rounded, '/inventory'),
+  _NavItem('Entrepôt', Icons.warehouse, '/entrepot'),
   _NavItem('Business', Icons.apartment_rounded,  '/warehouses'),
 ];
 
@@ -190,6 +191,7 @@ const Map<String, String> _routePermission = {
   '/discounts':  Perm.discountsCreate,
   '/returns':    Perm.returnsRead,
   '/inventory':  Perm.inventoryRead,
+  '/entrepot':   Perm.entrepotRead,
   '/events':          Perm.invoicesRead,
   '/reports/depots':  Perm.reportsReadAll,
   '/statistics':      Perm.reportsReadAll,
@@ -641,7 +643,11 @@ class _WarehouseSelector extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final warehouses = ref.watch(warehouseListProvider).valueOrNull ?? [];
+    // L'entrepôt central n'est pas un dépôt de vente — on ne "travaille" pas
+    // dedans comme un business, il a son propre onglet dédié.
+    final warehouses = (ref.watch(warehouseListProvider).valueOrNull ?? [])
+        .where((w) => !w.isEntrepot)
+        .toList();
     final active    = ref.watch(activeWarehouseProvider);
     final canSwitch = ref.watch(hasPermissionProvider(Perm.configUpdate));
     final user      = ref.watch(authProvider).user;

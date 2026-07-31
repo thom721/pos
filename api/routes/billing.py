@@ -76,10 +76,12 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
 
     extra_caisse_count = max(0, caisse_count - initial_count)
 
-    # Dépôts = warehouses actifs (illimités, sans surcharge)
+    # Dépôts = warehouses actifs (illimités, sans surcharge). L'entrepôt
+    # central n'est pas un dépôt de vente — exclu du décompte facturé.
     depot_count = db.query(Warehouse).filter(
         Warehouse.tenant_id == tenant.id,
         Warehouse.is_active == True,  # noqa: E712
+        Warehouse.is_entrepot == False,  # noqa: E712
     ).count()
 
     # Toutes les caisses (initiales et supplémentaires) sont facturées au même prix.
