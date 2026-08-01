@@ -464,7 +464,7 @@ def create_sale(
     change_due = Decimal(str(paid - collected)) if paid > collected else Decimal(0)
 
     from api.services import config_service as _config_service
-    cfg = _config_service.get_or_create(db, tenant_id=tenant_id)
+    cfg = _config_service.get_or_create(db, tenant_id=tenant_id, warehouse_id=wh_id)
 
     # Crédit — refuse une vente sous-payée si le poste n'y est pas autorisé.
     # Le frontend bloque déjà ce cas (pos_screen.dart) mais un contrôle

@@ -1355,7 +1355,10 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
     } else if (!_isEdit) {
       // Création : pré-sélectionner le dépôt de cette installation (is_claimed=true)
       ref.read(warehouseListProvider.future).then((whs) {
-        final claimed = whs.where((w) => w.isClaimed).map((w) => w.id).toList();
+        final claimed = whs
+            .where((w) => w.isClaimed && !w.isEntrepot)
+            .map((w) => w.id)
+            .toList();
         if (claimed.isNotEmpty && mounted) {
           setState(() => _selectedWarehouseIds = claimed);
         }

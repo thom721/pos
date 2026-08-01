@@ -230,7 +230,8 @@ class BluetoothPrintService {
     esc([0x1B, 0x37, 0x07, 0x96, 0x02]);   // ESC 7: heating max dots=7, time=150µs×10, interval=2 → encre plus foncée
     esc([0x1B, 0x74, 0x10]);               // Code page 16 = WPC1252 (é=0xE9, à=0xE0, ç=0xE7…)
     esc([0x1B, 0x47, 0x01]);               // Double-strike ON
-    esc([0x1B, 0x45, 0x01]);               // Bold ON global
+    esc([0x1B, 0x45, 0x01]);               // Bold ON global — retiré puis restauré : sans lui, certaines
+                                            // imprimantes (dont celle testée) impriment trop pâle même avec double-strike
 
     // ── Logo (si disponible) ───────────────────────────────────────────────
     if (logoBytes.isNotEmpty) {
@@ -272,6 +273,7 @@ class BluetoothPrintService {
       nl();
     }
     dash();
+    nl();
 
     // ── Articles ───────────────────────────────────────────────────────────
     text('ARTICLE'.padRight(nameW) +
@@ -289,6 +291,7 @@ class BluetoothPrintService {
       nl();
     }
     dash();
+    nl();
 
     // ── Totaux ─────────────────────────────────────────────────────────────
     final itemsDisc = sale.totalItemsDiscount;
@@ -353,6 +356,7 @@ class BluetoothPrintService {
       nl();
     }
     dash();
+    nl();
 
     // ── Statut ─────────────────────────────────────────────────────────────
     esc([0x1B, 0x61, 0x01]);
@@ -368,6 +372,7 @@ class BluetoothPrintService {
 
     if (settings.receiptFooter.isNotEmpty) {
       nl();
+      dash();
       text(settings.receiptFooter);
       nl();
     }
@@ -434,6 +439,7 @@ class BluetoothPrintService {
     esc([0x1B, 0x61, 0x00]);
     nl();
     dash();
+    nl();
 
     esc([0x1B, 0x61, 0x01]);
     esc([0x1D, 0x21, 0x10]);
@@ -453,6 +459,7 @@ class BluetoothPrintService {
       nl();
     }
     dash();
+    nl();
 
     text('ARTICLE'.padRight(nameW) +
         'QTE'.padLeft(qtyW) +
@@ -466,6 +473,7 @@ class BluetoothPrintService {
       nl();
     }
     dash();
+    nl();
 
     text('Total retourné'.padRight(labelW) +
         '$sym ${numFmt.format(ret.totalReturned)}'.padLeft(16));
@@ -476,6 +484,7 @@ class BluetoothPrintService {
     nl();
     esc([0x1B, 0x45, 0x00]);
     dash();
+    nl();
 
     esc([0x1B, 0x61, 0x01]);
     text('*** RETOUR ACCEPTÉ ***');
@@ -484,6 +493,7 @@ class BluetoothPrintService {
 
     if (settings.receiptFooter.isNotEmpty) {
       nl();
+      dash();
       text(settings.receiptFooter);
       nl();
     }
@@ -550,6 +560,7 @@ class BluetoothPrintService {
     esc([0x1B, 0x45, 0x00]);
     esc([0x1B, 0x61, 0x00]);
     dash();
+    nl();
 
     // Order info
     if (reference != null) { text('Ref: $reference'); nl(); }
@@ -558,6 +569,7 @@ class BluetoothPrintService {
     if (order.waiterName != null) { text('Serveur: ${order.waiterName}'); nl(); }
     text('Couverts: ${order.covers}'); nl();
     dash();
+    nl();
 
     // Items
     text('ARTICLE'.padRight(nameW) +
@@ -577,6 +589,7 @@ class BluetoothPrintService {
       }
     }
     dash();
+    nl();
 
     // Totals
     final finalTotal = order.total - discount;
@@ -614,6 +627,7 @@ class BluetoothPrintService {
       }
     }
     dash();
+    nl();
 
     esc([0x1B, 0x61, 0x01]);
     esc([0x1B, 0x45, 0x01]);
@@ -623,6 +637,7 @@ class BluetoothPrintService {
 
     if (settings.receiptFooter.isNotEmpty) {
       nl();
+      dash();
       text(settings.receiptFooter); nl();
     }
 

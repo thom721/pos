@@ -77,12 +77,14 @@ class SaleRepository {
   Future<Map<String, dynamic>> createSale(
     Map<String, dynamic> data, {
     String? customerName,
+    double estimatedLoyaltyEarned = 0,
   }) async {
     if (_isAndroid) {
       // 1. Écriture locale immédiate
       final localId = await LocalDbService.instance.insertLocalSale(
         payload: data,
         customerName: customerName,
+        estimatedLoyaltyEarned: estimatedLoyaltyEarned,
       );
 
       // 2. Déduction stock local pour éviter la survente

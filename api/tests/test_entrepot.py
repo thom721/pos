@@ -71,6 +71,14 @@ def test_create_entrepot_is_idempotent(db, tenant):
     assert e1.is_default is False
 
 
+def test_create_entrepot_is_claimed_to_prevent_installation(db, tenant):
+    """L'entrepôt n'est pas un poste de vente installable — is_claimed=True
+    dès la création empêche GET/POST install-code et redeem-code de lui
+    générer/valider un code (voir api/routes/warehouse.py, api/routes/sync.py)."""
+    entrepot = entrepot_service.create_entrepot(db, tenant.id)
+    assert entrepot.is_claimed is True
+
+
 def test_entrepot_excluded_from_billing_depot_count(db, tenant, depots):
     from api.routes.billing import _compute_plan_usage
 

@@ -2113,7 +2113,8 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           final result = await notifier.checkout(
                               approvalCode: approvalCode,
                               warehouseId: warehouseId,
-                              customerName: customerName);
+                              customerName: customerName,
+                              settings: ref.read(settingsProvider));
                           if (!context.mounted || result.saleId == null) return;
                           ref.read(syncEpochProvider.notifier).state++;
                           if (result.offline && context.mounted) {

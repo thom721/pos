@@ -18,6 +18,7 @@ from api.models.AppConfig import AppConfig
 from api.models.Sale import Sale
 from api.models.Payment import Payment
 from api.models.StockMovement import StockMovement, StockType
+from api.models.Warehouse import Warehouse
 from api.schemas.sale import SaleCreate, SaleItemInput
 from api.services import sale_service
 
@@ -102,6 +103,36 @@ def test_loyalty_disabled_earns_nothing(db, tenant, product, customer):
     db.refresh(customer)
     assert sale.loyalty_earned == 0
     assert customer.loyalty_balance == 0
+
+
+def test_loyalty_enabled_only_at_depot_level_still_earns(db, tenant, product, customer):
+    """Régression : AppConfig (donc loyalty_enabled/loyalty_percent) est
+    configurable par dépôt (voir api/routes/config.py) — create_sale doit lire
+    la config DU DÉPÔT de la vente, pas seulement la config globale du tenant
+    (warehouse_id=NULL). Avant le fix, create_sale appelait
+    config_service.get_or_create(db, tenant_id=tenant_id) sans warehouse_id :
+    une fidélisation activée uniquement au niveau d'un dépôt (cas courant —
+    réglages ouverts depuis ce poste) n'était donc jamais prise en compte."""
+    wh = Warehouse(tenant_id=tenant.id, name="Dépôt A", is_active=True, is_default=True)
+    db.add(wh)
+    db.flush()
+    db.add(StockMovement(
+        product_id=product.id, type=StockType.in_, quantity=100,
+        tenant_id=tenant.id, warehouse_id=wh.id,
+    ))
+    # Config globale (warehouse_id=NULL) : fidélisation désactivée.
+    db.add(AppConfig(tenant_id=tenant.id, loyalty_enabled=False))
+    # Config du dépôt : fidélisation activée à 2%.
+    db.add(AppConfig(tenant_id=tenant.id, warehouse_id=wh.id, loyalty_enabled=True, loyalty_percent=2))
+    db.flush()
+
+    data = _sale_data(product, customer_id=customer.id)
+    data.warehouse_id = wh.id
+    sale = sale_service.create_sale(db, data, user_id="u1", tenant_id=tenant.id)
+
+    db.refresh(customer)
+    assert sale.loyalty_earned == Decimal("20.00")
+    assert customer.loyalty_balance == Decimal("20.00")
 
 
 def test_no_customer_no_earning(db, tenant, product):

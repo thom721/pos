@@ -1305,6 +1305,7 @@ class LocalDbService {
   Future<String> insertLocalSale({
     required Map<String, dynamic> payload,
     required String? customerName,
+    double estimatedLoyaltyEarned = 0,
   }) async {
     final db = _safeDb;
     if (db == null) throw StateError('SQLite non disponible');
@@ -1315,22 +1316,30 @@ class LocalDbService {
       0, (s, i) => s + (i['subtotal'] as num).toDouble());
     final discount = (payload['discount'] as num?)?.toDouble() ?? 0;
     final paid     = (payload['paid_amount'] as num?)?.toDouble() ?? 0;
+    // loyalty_redeemed est saisi par le caissier (connu exactement côté client) ;
+    // loyalty_earned est calculé côté serveur — seulement estimé ici (même formule,
+    // voir sale_service.py::create_sale) pour que le reçu imprimé immédiatement
+    // après une vente hors-ligne l'affiche déjà. Écrasé par la vraie valeur au
+    // prochain sync (upsertSales).
+    final loyaltyRedeemed = (payload['loyalty_redeemed'] as num?)?.toDouble() ?? 0;
 
     await db.insert('sales', {
-      'id':             saleId,
-      'reference':      'HL-${const Uuid().v4().substring(0, 8).toUpperCase()}',
-      'customer_id':    payload['customer_id'],
-      'customer_name':  customerName,
-      'warehouse_id':   payload['warehouse_id'],
-      'total_amount':   total,
-      'discount':       discount,
-      'discount_id':    payload['discount_id'],
-      'final_amount':   total - discount,
-      'paid_amount':    paid,
-      'payment_method': payload['payment_method'] ?? 'CASH',
-      'status':         paid >= (total - discount) ? 'PAID' : 'UNPAID',
-      'created_at':     now,
-      'synced':         0,
+      'id':               saleId,
+      'reference':        'HL-${const Uuid().v4().substring(0, 8).toUpperCase()}',
+      'customer_id':      payload['customer_id'],
+      'customer_name':    customerName,
+      'warehouse_id':     payload['warehouse_id'],
+      'total_amount':     total,
+      'discount':         discount,
+      'discount_id':      payload['discount_id'],
+      'final_amount':     total - discount,
+      'paid_amount':      paid,
+      'payment_method':   payload['payment_method'] ?? 'CASH',
+      'status':           paid >= (total - discount) ? 'PAID' : 'UNPAID',
+      'created_at':       now,
+      'synced':           0,
+      'loyalty_redeemed': loyaltyRedeemed,
+      'loyalty_earned':   estimatedLoyaltyEarned,
     });
 
     final batch = db.batch();

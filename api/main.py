@@ -949,6 +949,56 @@ def _backfill_stock_movement_warehouse(active_engine=None) -> None:
                 _log.warning("backfill-stock-warehouse: échec pour le tenant %s: %s", tenant_id, exc)
 
 
+def _repair_entrepot_is_claimed(active_engine=None) -> None:
+    """
+    Migration ponctuelle : avant ce correctif, l'entrepôt était créé avec
+    is_claimed=False comme un dépôt normal — l'écran Dépôts (qui ne filtre
+    pas is_entrepot) et GET /warehouses/{id}/install-code (qui génère un
+    code à la volée pour tout dépôt non réclamé) l'affichaient donc comme un
+    business installable, avec son propre code d'installation.
+
+    Force is_claimed=1 pour tout warehouse is_entrepot=1 déjà créé, et
+    supprime les InstallationCode déjà générés pour eux (sinon un code
+    généré avant ce correctif resterait valide/rachetable).
+
+    Idempotente, s'exécute à chaque démarrage.
+    """
+    from sqlalchemy import inspect as _inspect
+
+    import api.database as _db_mod
+    _eng = active_engine or _db_mod.engine
+
+    try:
+        inspector = _inspect(_eng)
+        tables = inspector.get_table_names()
+        if "warehouses" not in tables:
+            return
+    except Exception as exc:
+        _log.warning("repair-entrepot-claimed: impossible d'inspecter le schéma: %s", exc)
+        return
+
+    with _eng.connect() as conn:
+        try:
+            if "installation_codes" in tables:
+                conn.execute(text(
+                    "DELETE FROM installation_codes WHERE warehouse_id IN "
+                    "(SELECT id FROM warehouses WHERE is_entrepot = 1)"
+                ))
+            result = conn.execute(text(
+                "UPDATE warehouses SET is_claimed = 1 "
+                "WHERE is_entrepot = 1 AND is_claimed = 0"
+            ))
+            conn.commit()
+            if result.rowcount:
+                _log.warning(
+                    "repair-entrepot-claimed: %d entrepôt(s) marqué(s) is_claimed=1",
+                    result.rowcount,
+                )
+        except Exception as exc:
+            conn.rollback()
+            _log.warning("repair-entrepot-claimed: échec: %s", exc)
+
+
 def _repair_cross_tenant_app_config(active_engine=None) -> None:
     """
     Migration ponctuelle : `config.py::_wh_id()` acceptait un warehouse_id
@@ -1387,6 +1437,10 @@ def on_startup():
         # dépôt par défaut de leur tenant — le stock devient réellement par
         # dépôt (one-shot, voir docstring de la fonction)
         _backfill_stock_movement_warehouse(_active_engine)
+        # 2l. Marque les entrepôts déjà créés comme is_claimed=1 et supprime
+        # leurs codes d'installation existants — l'entrepôt n'est pas un
+        # poste de vente installable (one-shot, voir docstring de la fonction)
+        _repair_entrepot_is_claimed(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
 

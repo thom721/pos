@@ -20,7 +20,10 @@ def get_entrepot(db: Session, tenant_id: str) -> Warehouse | None:
 def create_entrepot(db: Session, tenant_id: str, name: str = "Entrepôt") -> Warehouse:
     """Idempotent — un seul entrepôt par tenant. Ne crée PAS de PosRegister ni
     d'InstallationCode (ce n'est pas un dépôt de vente) et ne compte pas dans
-    la facturation (voir billing.py::_compute_plan_usage)."""
+    la facturation (voir billing.py::_compute_plan_usage). is_claimed=True dès
+    la création : l'entrepôt n'est jamais installable comme un poste de vente
+    (empêche la génération/le rachat d'un code d'installation — voir
+    api/routes/warehouse.py::get_install_code et api/routes/sync.py::redeem_installation_code)."""
     existing = get_entrepot(db, tenant_id)
     if existing:
         return existing
@@ -31,6 +34,7 @@ def create_entrepot(db: Session, tenant_id: str, name: str = "Entrepôt") -> War
         is_active=True,
         is_default=False,
         is_entrepot=True,
+        is_claimed=True,
     )
     db.add(entrepot)
     db.commit()

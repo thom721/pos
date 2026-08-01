@@ -5,6 +5,7 @@ import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
 import 'package:pos_connect/providers/draft_provider.dart';
+import 'package:pos_connect/providers/settings_provider.dart' show AppSettings;
 
 double _computeDiscountAmount(DiscountModel discount, double base) {
   if (base <= 0) return 0;
@@ -232,10 +233,22 @@ class PosNotifier extends StateNotifier<PosState> {
     String? approvalCode,
     String? warehouseId,
     String? customerName,
+    AppSettings? settings,
   }) async {
     if (state.items.isEmpty || state.isProcessing) return (saleId: null, offline: false);
     state = state.copyWith(isProcessing: true, error: null);
     try {
+      // Estimation locale de la fidélité gagnée (même formule que
+      // sale_service.py::create_sale) — utilisée uniquement si la vente est
+      // écrite hors-ligne (voir LocalDbService.insertLocalSale) : le reçu
+      // imprimé immédiatement après une vente hors-ligne n'a alors pas à
+      // attendre la synchronisation pour afficher un montant correct.
+      double estimatedLoyaltyEarned = 0;
+      if (settings != null && settings.loyaltyEnabled && state.customerId != null) {
+        final earnBase = state.total - state.loyaltyRedeemed;
+        estimatedLoyaltyEarned =
+            ((earnBase * settings.loyaltyPercent / 100) * 100).round() / 100;
+      }
       final data = await _repo.createSale(
         {
           'customer_id': state.customerId,
@@ -261,6 +274,7 @@ class PosNotifier extends StateNotifier<PosState> {
               .toList(),
         },
         customerName: customerName,
+        estimatedLoyaltyEarned: estimatedLoyaltyEarned,
       );
       state = state.copyWith(isProcessing: false, error: null);
       return (
