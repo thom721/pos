@@ -175,3 +175,50 @@ def test_warehouse_price_endpoints_excludes_entrepot(db, tenant, product, two_de
         Warehouse.is_entrepot == False,  # noqa: E712
     ).all()
     assert len(depots) == 2  # Dépôt A + Dépôt B, pas l'entrepôt
+
+
+def test_warehouse_price_is_a_registered_sync_entity(db, tenant, product, two_depots, monkeypatch):
+    """product_warehouse_price doit être synchronisé local↔cloud comme
+    n'importe quelle autre donnée de référence (product, discount, etc.) —
+    sinon un prix fixé sur un serveur self-hosted ne remonterait jamais."""
+    import api.services.local_sync_service as lss
+    from api.models.ProductWarehousePrice import ProductWarehousePrice
+
+    depot_a, _ = two_depots
+
+    class _FakeResponse:
+        def __init__(self, data):
+            self._data = data
+
+        def json(self):
+            return self._data
+
+    cloud_record = {
+        "id": "9c1e2b2a-2222-4a11-9a11-000000000002",
+        "tenant_id": tenant.id,
+        "product_id": product.id,
+        "warehouse_id": depot_a.id,
+        "sale_price": 135.0,
+        "created_at": "2026-07-31T10:00:00",
+        "updated_at": "2026-07-31T10:00:00",
+    }
+
+    monkeypatch.setattr(lss, "SYNC_ENTITIES", [
+        {"type": "product_warehouse_price", "model": ProductWarehousePrice, "direction": "both"},
+    ])
+    monkeypatch.setattr(lss, "_load_sync_credentials", lambda: ("https://cloud.example", "fake-token", True))
+
+    def fake_http_post(url, json, headers, timeout=30):
+        assert url.endswith("/api/sync/pull-batch")
+        return _FakeResponse({"results": {
+            "product_warehouse_price": {"records": [cloud_record], "has_more": False, "next_since": None},
+        }})
+
+    monkeypatch.setattr(lss, "_http_post", fake_http_post)
+
+    result = lss.run_sync(db)
+    assert result["ok"] is not False, result
+
+    local = db.query(ProductWarehousePrice).filter(ProductWarehousePrice.id == cloud_record["id"]).first()
+    assert local is not None
+    assert float(local.sale_price) == 135.0

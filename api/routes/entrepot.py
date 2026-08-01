@@ -6,7 +6,7 @@ from api.database import get_db
 from api.models.User import User
 from api.schemas.warehouse import WarehouseRead
 from api.schemas.product import ProductRead
-from api.schemas.common import PaginatedResponse
+from api.core.PaginateHelper import PaginatedResponse
 from api.schemas.entrepot import EntrepotCreate, StockAdjustRequest, DistributeRequest
 from api.services.product_service import ProductService
 from api.services import entrepot_service
@@ -46,6 +46,9 @@ def read_entrepot_products(
         raise HTTPException(404, "Entrepôt introuvable — créez-le d'abord")
     return ProductService(db, tenant_id=current_user.tenant_id).list(
         page=page, per_page=per_page, search=search, warehouse_id=entrepot.id,
+        # L'entrepôt doit voir TOUS les produits pour pouvoir les distribuer,
+        # même ceux rattachés à un dépôt précis (Product.warehouse_id).
+        restrict_to_warehouse=False,
     )
 
 

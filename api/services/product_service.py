@@ -91,7 +91,7 @@ class ProductService(TenantService):
 
     def list(self, page: int = 1, per_page: int = 5, search: Optional[str] = None,
              category_id: Optional[str] = None, exclude_locked: bool = False,
-             warehouse_id: Optional[str] = None):
+             warehouse_id: Optional[str] = None, restrict_to_warehouse: bool = True):
         # selectinload pour les collections (évite le problème joinedload + pagination)
         query = self._q(Product).options(
             joinedload(Product.category),
@@ -111,6 +111,15 @@ class ProductService(TenantService):
 
         if exclude_locked:
             query = query.filter(Product.is_locked == False)  # noqa: E712
+
+        if warehouse_id and restrict_to_warehouse:
+            # Un produit rattaché à UN dépôt précis (Product.warehouse_id) est
+            # masqué des autres dépôts — produits sans dépôt (NULL) restent
+            # visibles partout. Désactivé pour l'Entrepôt (restrict_to_warehouse
+            # =False) qui doit voir tous les produits pour pouvoir les distribuer.
+            query = query.filter(
+                or_(Product.warehouse_id.is_(None), Product.warehouse_id == warehouse_id)
+            )
 
         total = query.count()
         items = query.offset((page - 1) * per_page).limit(per_page).all()

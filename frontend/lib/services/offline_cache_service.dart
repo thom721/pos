@@ -76,7 +76,7 @@ class OfflineCacheService {
       }
       // ── Base commune — tous les types ──────────────────────────────────
       await Future.wait([
-        _syncProducts(),
+        _syncProducts(warehouseId: warehouseId),
         _syncCustomers(),
         _syncCategories(),
         _syncDiscounts(),
@@ -126,14 +126,22 @@ class OfflineCacheService {
 
   // ── Produits ──────────────────────────────────────────────────────────────
 
-  Future<void> _syncProducts() async {
+  Future<void> _syncProducts({String? warehouseId}) async {
     try {
       final all = <ProductModel>[];
       int page = 1;
       while (true) {
         if (page > 200) break;
         final res = await dio.get('/api/products/',
-            queryParameters: {'page': page, 'per_page': 100},
+            queryParameters: {
+              'page': page,
+              'per_page': 100,
+              // Stock/prix mis en cache reflètent le dépôt actif de l'appareil
+              // (une caisse Android est dédiée à un seul dépôt) — sans ça, le
+              // cache hors-ligne afficherait le stock/prix global au lieu de
+              // celui du dépôt, une fois déconnecté.
+              if (warehouseId != null) 'warehouse_id': warehouseId,
+            },
             options: kBackgroundOptions);
         final data = res.data as Map<String, dynamic>;
         final items = (data['data'] as List)

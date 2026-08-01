@@ -92,9 +92,18 @@ Future<List<SaleModel>> _fetchAllSales(DateTime from, DateTime to, {String? ware
   return all;
 }
 
-Future<List<Map<String, dynamic>>> _fetchAllProducts({String? categoryId}) async {
+Future<List<Map<String, dynamic>>> _fetchAllProducts({String? categoryId, String? warehouseId}) async {
   const perPage = 100;
-  final params = <String, dynamic>{'per_page': perPage, 'page': 1, if (categoryId != null) 'category_id': categoryId};
+  final params = <String, dynamic>{
+    'per_page': perPage,
+    'page': 1,
+    if (categoryId != null) 'category_id': categoryId,
+    // Dépôt sélectionné dans l'entête ("Tous les business" = null → vue
+    // globale, inchangée) — un produit rattaché à un autre dépôt est alors
+    // masqué, cohérent avec Produits/Caisse et le reste de cet écran
+    // (_statsProvider/_revenueChartProvider utilisent déjà ce même filtre).
+    if (warehouseId != null) 'warehouse_id': warehouseId,
+  };
   final first = await dio.get('/api/products/', queryParameters: params);
   final meta  = first.data['meta'] as Map<String, dynamic>? ?? {};
   final pages = (meta['pages'] as num?)?.toInt() ?? 1;
@@ -327,7 +336,7 @@ final _prodChartProvider = FutureProvider.family
   // If category filter active, resolve product names in that category
   Set<String>? categoryProductNames;
   if (params.categoryId != null) {
-    final items = await _fetchAllProducts(categoryId: params.categoryId);
+    final items = await _fetchAllProducts(categoryId: params.categoryId, warehouseId: warehouseId);
     categoryProductNames = {
       for (final p in items)
         if (p['name'] != null) p['name'] as String,
@@ -500,7 +509,7 @@ final _catChartProvider = FutureProvider.family
 
   // Lancer les 3 requêtes en parallèle
   final salesF = _fetchAllSales(from, toDate, warehouseId: warehouseId);
-  final prodsF = _fetchAllProducts();
+  final prodsF = _fetchAllProducts(warehouseId: warehouseId);
   final catsF  = dio.get('/api/categories/');
 
   final sales    = await salesF;

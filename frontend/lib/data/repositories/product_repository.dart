@@ -16,9 +16,10 @@ class ProductRepository {
     String? categoryId,
     String? warehouseId,
   }) async {
-    // Le cache local (offline Android) ne connaît pas encore le stock par
-    // dépôt — non affecté par warehouseId, reste sur le stock global comme
-    // avant. Seul le chemin API (web/desktop) reflète le dépôt actif.
+    // Le cache local (offline Android) stocke stock/prix déjà scopés au dépôt
+    // actif — c'est offline_cache_service.dart::_syncProducts qui les peuple
+    // ainsi en arrière-plan (une caisse Android est dédiée à un seul dépôt).
+    // Le repli ci-dessous (cache vide, premier lancement) fait pareil.
     if (_isAndroid) {
       final cached = await LocalDbService.instance.getProducts(
         search: search, page: page, limit: limit, categoryId: categoryId,
@@ -30,8 +31,11 @@ class ProductRepository {
           int p = 1;
           while (true) {
             if (p > 200) break;
-            final res = await dio.get('/api/products/',
-                queryParameters: {'page': p, 'per_page': 100});
+            final res = await dio.get('/api/products/', queryParameters: {
+              'page': p,
+              'per_page': 100,
+              if (warehouseId != null) 'warehouse_id': warehouseId,
+            });
             final data = res.data as Map<String, dynamic>;
             final raw = (data['data'] as List? ?? []);
             all.addAll(raw.map((e) => ProductModel.fromJson(e as Map<String, dynamic>)));

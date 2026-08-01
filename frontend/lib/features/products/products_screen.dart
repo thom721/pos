@@ -101,7 +101,12 @@ class _ProductsBody extends ConsumerWidget {
       data: (products) {
         final isWide = MediaQuery.sizeOf(context).width >= 700;
         Future<void> onRefresh() async {
-          await OfflineCacheService.instance.syncAll();
+          // Sans warehouseId, syncAll recacherait le stock/prix GLOBAL — ce
+          // qui écraserait le cache déjà scopé au dépôt actif (voir
+          // offline_cache_service.dart::_syncProducts).
+          await OfflineCacheService.instance.syncAll(
+            warehouseId: ref.read(activeWarehouseProvider)?.id,
+          );
           ref.invalidate(productsProvider);
         }
 
@@ -1600,7 +1605,11 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
       if (mounted) {
         setState(() {
           _categories = results[0] as List<CategoryModel>;
-          _warehouses = results[1] as List<WarehouseModel>;
+          // L'entrepôt n'est pas un dépôt de vente — on ne peut pas y
+          // restreindre un produit.
+          _warehouses = (results[1] as List<WarehouseModel>)
+              .where((w) => !w.isEntrepot)
+              .toList();
         });
       }
     } catch (_) {}
@@ -1722,6 +1731,14 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                           )),
                     ],
                     onChanged: (v) => setState(() => _warehouseId = v),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4, left: 4),
+                    child: Text(
+                      'Si choisi, ce produit est masqué des autres dépôts '
+                      '(Produits et Caisse) — reste visible à l\'Entrepôt.',
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                    ),
                   ),
                 ],
                 const SizedBox(height: 12),

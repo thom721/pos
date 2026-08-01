@@ -48,7 +48,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 22,
+      version: 24,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -191,6 +191,19 @@ class LocalDbService {
       try { await db.execute('ALTER TABLE sales ADD COLUMN loyalty_earned REAL NOT NULL DEFAULT 0'); } catch (_) {}
       try { await db.execute('ALTER TABLE sales ADD COLUMN loyalty_redeemed REAL NOT NULL DEFAULT 0'); } catch (_) {}
     }
+    if (oldVersion < 23) {
+      try { await db.execute('ALTER TABLE warehouses ADD COLUMN is_entrepot INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+    }
+    if (oldVersion < 24) {
+      // Bug pré-existant : la table debts a pu être créée par l'ancien schéma
+      // (oldVersion < 14, ligne ~149 : reference/partner_id) sans jamais être
+      // migrée vers le schéma courant (reference_type/reference_id/partner_type,
+      // voir upsertDebts) — provoquait "table debts has no column named
+      // reference_type" dès qu'une vraie dette existait à synchroniser.
+      try { await db.execute("ALTER TABLE debts ADD COLUMN reference_type TEXT NOT NULL DEFAULT ''"); } catch (_) {}
+      try { await db.execute("ALTER TABLE debts ADD COLUMN reference_id TEXT NOT NULL DEFAULT ''"); } catch (_) {}
+      try { await db.execute("ALTER TABLE debts ADD COLUMN partner_type TEXT NOT NULL DEFAULT 'CUSTOMER'"); } catch (_) {}
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -262,7 +275,8 @@ class LocalDbService {
         description TEXT,
         is_default  INTEGER NOT NULL DEFAULT 0,
         is_active   INTEGER NOT NULL DEFAULT 1,
-        is_claimed  INTEGER NOT NULL DEFAULT 0
+        is_claimed  INTEGER NOT NULL DEFAULT 0,
+        is_entrepot INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -1173,6 +1187,7 @@ class LocalDbService {
           'is_default': w.isDefault ? 1 : 0,
           'is_active': w.isActive ? 1 : 0,
           'is_claimed': w.isClaimed ? 1 : 0,
+          'is_entrepot': w.isEntrepot ? 1 : 0,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -1195,6 +1210,7 @@ class LocalDbService {
           isDefault: (r['is_default'] as int) == 1,
           isActive: (r['is_active'] as int) == 1,
           isClaimed: (r['is_claimed'] as int? ?? 0) == 1,
+          isEntrepot: (r['is_entrepot'] as int? ?? 0) == 1,
         )).toList();
   }
 

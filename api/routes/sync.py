@@ -31,6 +31,7 @@ from api.models.Category import Category
 from api.models.Customer import Customer
 from api.models.Payment import Payment
 from api.models.Product import Product
+from api.models.ProductWarehousePrice import ProductWarehousePrice
 from api.models.Purchase import Purchase
 from api.models.PurchaseItem import PurchaseItem
 from api.models.ReturnRecord import ReturnRecord
@@ -80,6 +81,7 @@ _MODEL_MAP: dict[str, Any] = {
     "category":               Category,
     "supplier":               Supplier,
     "product":                Product,
+    "product_warehouse_price": ProductWarehousePrice,
     "customer":               Customer,
     "user":                   User,
     "pos_register":           PosRegister,
