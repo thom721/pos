@@ -590,7 +590,7 @@ class _ReceiveDialogState extends ConsumerState<_ReceiveDialog> {
   Future<void> _submit() async {
     setState(() { _loading = true; _error = null; });
     try {
-      await dio.post('/receive/', data: {
+      await dio.post('/api/receive/', data: {
         'purchase_id': widget.purchase.id,
         'items': _items.map((i) => {
           'purchase_item_id':    i['purchase_item_id'],

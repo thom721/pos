@@ -350,6 +350,28 @@ class _ReceiptPreview extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+              if (sale.loyaltyRedeemed > 0.001)
+                _total(
+                  'Fidélité utilisée',
+                  '-${_fmt.format(sale.loyaltyRedeemed)}',
+                  lbl,
+                  const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.error,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              if (sale.loyaltyEarned > 0.001)
+                _total(
+                  'Fidélité gagnée',
+                  '+${_fmt.format(sale.loyaltyEarned)}',
+                  lbl,
+                  const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.success,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
             ];
           }(),
           const SizedBox(height: 10),
@@ -2271,43 +2293,6 @@ class _CartItemTile extends StatelessWidget {
     }
   }
 
-  void _editPrice(BuildContext context) {
-    final ctrl =
-        TextEditingController(text: item.unitPrice.toStringAsFixed(2));
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(item.product.name, style: const TextStyle(fontSize: 15)),
-        content: TextFormField(
-          controller: ctrl,
-          autofocus: true,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Prix unitaire (HTG)',
-            prefixIcon: Icon(Icons.sell_outlined),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final val = double.tryParse(ctrl.text);
-              if (val != null && val > 0) {
-                notifier.updateItemPrice(item.product.id, val);
-              }
-              Navigator.pop(ctx);
-            },
-            child: const Text('Appliquer'),
-          ),
-        ],
-      ),
-    );
-  }
-
   // Applique une fraction (0 = entier) à la partie entière déjà saisie dans
   // [ctrl] — ex: champ à "3", appui sur "¾" → "3.75" ; champ à "3.75", appui
   // sur "½" → "3.5" (remplace la fraction, ne s'additionne pas dessus).
@@ -2393,44 +2378,33 @@ class _CartItemTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                GestureDetector(
-                  onTap: () => _editPrice(context),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (item.isPriceModified) ...[
-                        Text(
-                          _fmt.format(item.product.salePrice),
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 10,
-                            decoration: TextDecoration.lineThrough,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                      ],
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (item.isPriceModified) ...[
                       Text(
-                        _fmt.format(item.unitPrice),
-                        style: TextStyle(
-                          color: item.isPriceModified
-                              ? AppColors.warning
-                              : AppColors.textSecondary,
-                          fontSize: 12,
-                          fontWeight: item.isPriceModified
-                              ? FontWeight.w600
-                              : FontWeight.w400,
+                        _fmt.format(item.product.salePrice),
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 10,
+                          decoration: TextDecoration.lineThrough,
                         ),
                       ),
-                      const SizedBox(width: 3),
-                      Icon(
-                        Icons.edit_rounded,
-                        size: 10,
+                      const SizedBox(width: 4),
+                    ],
+                    Text(
+                      _fmt.format(item.unitPrice),
+                      style: TextStyle(
                         color: item.isPriceModified
                             ? AppColors.warning
                             : AppColors.textSecondary,
+                        fontSize: 12,
+                        fontWeight: item.isPriceModified
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Builder(builder: (context) {

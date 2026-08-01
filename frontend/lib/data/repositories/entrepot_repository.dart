@@ -51,7 +51,7 @@ class EntrepotRepository {
     int page = 1,
     int limit = 20,
   }) async {
-    final res = await dio.get('/stock-movements/', queryParameters: {
+    final res = await dio.get('/api/stock-movements/', queryParameters: {
       'warehouse_id': warehouseId,
       'page': page,
       'limit': limit,

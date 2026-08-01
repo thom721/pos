@@ -521,7 +521,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              'Rabais: -${_fmt.format(item.itemDiscount)}',
+                              'Rabais: -${_fmt.format(item.itemDiscount + item.catalogDiscount)}',
                               style: const TextStyle(
                                   color: AppColors.warning,
                                   fontSize: 11,
@@ -689,6 +689,22 @@ class _SaleSummaryRow extends StatelessWidget {
             style: const TextStyle(
                 color: AppColors.error,
                 fontWeight: FontWeight.w600,
+                fontSize: 12),
+          ),
+        if (sale.loyaltyRedeemed > 0.001)
+          Text(
+            'Fidélité utilisée: -${_fmt.format(sale.loyaltyRedeemed)}',
+            style: const TextStyle(
+                color: AppColors.error,
+                fontWeight: FontWeight.w500,
+                fontSize: 12),
+          ),
+        if (sale.loyaltyEarned > 0.001)
+          Text(
+            'Fidélité gagnée: +${_fmt.format(sale.loyaltyEarned)}',
+            style: const TextStyle(
+                color: AppColors.success,
+                fontWeight: FontWeight.w500,
                 fontSize: 12),
           ),
       ],

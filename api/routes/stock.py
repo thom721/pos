@@ -11,7 +11,7 @@ from api.services.stock_service import list_stock_movements
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
 
-router = APIRouter(prefix="/stock-movements", tags=["Stock"])
+router = APIRouter(prefix="/api/stock-movements", tags=["Stock"])
 
 
 @router.get("/", response_model=PaginatedResponse[StockMovementRead])

@@ -7,7 +7,7 @@ from api.dependencies.auth import require_permission
 from api.core.permissions import P
 from api.schemas.purchase_receipt import PurchaseReceiptCreate
 
-router = APIRouter(prefix="/receive", tags=["Receive"])
+router = APIRouter(prefix="/api/receive", tags=["Receive"])
 
 
 @router.post("/", status_code=201)

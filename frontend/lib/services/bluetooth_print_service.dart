@@ -274,6 +274,11 @@ class BluetoothPrintService {
     dash();
 
     // ── Articles ───────────────────────────────────────────────────────────
+    text('ARTICLE'.padRight(nameW) +
+        'QTE'.padLeft(qtyW) +
+        'P.U.'.padLeft(puW) +
+        'TOTAL'.padLeft(totW));
+    nl();
     for (final item in sale.items) {
       final name =
           (item.productName ?? 'Article').padRight(nameW).substring(0, nameW);
@@ -449,6 +454,10 @@ class BluetoothPrintService {
     }
     dash();
 
+    text('ARTICLE'.padRight(nameW) +
+        'QTE'.padLeft(qtyW) +
+        'TOTAL'.padLeft(totW));
+    nl();
     for (final item in ret.items) {
       final name = item.productName.padRight(nameW).substring(0, nameW);
       final qty = '${item.quantity.toStringAsFixed(item.quantity % 1 == 0 ? 0 : 2)}x'.padLeft(qtyW);
@@ -551,6 +560,10 @@ class BluetoothPrintService {
     dash();
 
     // Items
+    text('ARTICLE'.padRight(nameW) +
+        'QTE'.padLeft(qtyW) +
+        'TOTAL'.padLeft(totW));
+    nl();
     for (final item in order.items) {
       final name = item.productName.padRight(nameW).substring(0, nameW);
       final qtyStr = item.quantity == item.quantity.truncateToDouble()

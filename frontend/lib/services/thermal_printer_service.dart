@@ -166,6 +166,7 @@ class ThermalPrinterService {
       ]);
     }
     await SunmiPrinter.line();
+    await SunmiPrinter.lineWrap(1);
 
     // Totaux (col widths: 20 + 12 = 32)
     final itemsDisc = sale.totalItemsDiscount;
@@ -260,6 +261,7 @@ class ThermalPrinterService {
       ]);
     }
     await SunmiPrinter.line();
+    await SunmiPrinter.lineWrap(1);
 
     // Statut
     final statusText = switch (sale.status) {
@@ -274,6 +276,7 @@ class ThermalPrinterService {
 
     // Pied de page
     if (settings.receiptFooter.isNotEmpty) {
+      await SunmiPrinter.lineWrap(1);
       await SunmiPrinter.line();
       await SunmiPrinter.printText(
         '${settings.receiptFooter}\n',
@@ -365,6 +368,7 @@ class ThermalPrinterService {
       }
     }
     await SunmiPrinter.line();
+    await SunmiPrinter.lineWrap(1);
 
     await SunmiPrinter.printRow(cols: [
       SunmiColumn(text: 'Sous-total', width: 20,
@@ -428,12 +432,14 @@ class ThermalPrinterService {
       }
     }
     await SunmiPrinter.line();
+    await SunmiPrinter.lineWrap(1);
 
     if (isPaid) {
       await SunmiPrinter.printText('*** PAYÉ ***\n',
           style: SunmiTextStyle(fontSize: 28, bold: true, align: SunmiPrintAlign.CENTER));
     }
     if (settings.receiptFooter.isNotEmpty) {
+      await SunmiPrinter.lineWrap(1);
       await SunmiPrinter.line();
       await SunmiPrinter.printText('${settings.receiptFooter}\n',
           style: SunmiTextStyle(fontSize: 24, align: SunmiPrintAlign.CENTER));
