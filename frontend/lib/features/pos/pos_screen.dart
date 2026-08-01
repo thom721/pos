@@ -372,6 +372,17 @@ class _ReceiptPreview extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
+              if ((sale.customerLoyaltyBalance ?? 0) > 0.001)
+                _total(
+                  'Solde fidélité',
+                  _fmt.format(sale.customerLoyaltyBalance!),
+                  lbl,
+                  const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
             ];
           }(),
           const SizedBox(height: 10),

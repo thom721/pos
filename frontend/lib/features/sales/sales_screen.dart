@@ -707,6 +707,14 @@ class _SaleSummaryRow extends StatelessWidget {
                 fontWeight: FontWeight.w500,
                 fontSize: 12),
           ),
+        if ((sale.customerLoyaltyBalance ?? 0) > 0.001)
+          Text(
+            'Solde fidélité: ${_fmt.format(sale.customerLoyaltyBalance!)}',
+            style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+                fontSize: 12),
+          ),
       ],
     );
   }

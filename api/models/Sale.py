@@ -33,6 +33,11 @@ class Sale(UUIDBase):
     # change entre-temps.
     loyalty_earned   = Column(Numeric(12, 2), nullable=False, default=0)
     loyalty_redeemed = Column(Numeric(12, 2), nullable=False, default=0)
+    # Solde de fidélité du client APRÈS cette vente (figé à la création) —
+    # permet d'afficher "Solde fidélité: X" sur le reçu (cumul, pas seulement
+    # le gain/usage de cette vente) même en cas de réimpression ultérieure,
+    # sans dépendre du solde courant du client qui continue d'évoluer.
+    customer_loyalty_balance = Column(Numeric(12, 2), nullable=True)
     # Monnaie rendue au client (paid_amount reste plafonné au montant dû —
     # voir create_sale — donc l'excédent remis en espèces serait sinon perdu
     # et absent du reçu).

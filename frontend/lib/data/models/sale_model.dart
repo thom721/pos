@@ -105,6 +105,7 @@ class SaleModel {
   final double changeDue;
   final double loyaltyEarned;
   final double loyaltyRedeemed;
+  final double? customerLoyaltyBalance;
   final String status;
   final DateTime createdAt;
   final String? customerName;
@@ -128,6 +129,7 @@ class SaleModel {
     this.changeDue = 0,
     this.loyaltyEarned = 0,
     this.loyaltyRedeemed = 0,
+    this.customerLoyaltyBalance,
     required this.status,
     required this.createdAt,
     this.customerName,
@@ -181,6 +183,9 @@ class SaleModel {
             double.tryParse(json['loyalty_earned']?.toString() ?? '0') ?? 0,
         loyaltyRedeemed:
             double.tryParse(json['loyalty_redeemed']?.toString() ?? '0') ?? 0,
+        customerLoyaltyBalance: json['customer_loyalty_balance'] != null
+            ? double.tryParse(json['customer_loyalty_balance'].toString())
+            : null,
         status: json['status']?.toString() ?? 'UNPAID',
         createdAt: parseApiDate(json['created_at']?.toString()),
         customerName: json['customer']?['name']?.toString(),

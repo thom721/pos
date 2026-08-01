@@ -93,6 +93,32 @@ def test_loyalty_earned_credited_on_sale(db, tenant, product, customer):
     db.refresh(customer)
     assert sale.loyalty_earned == Decimal("20.00")
     assert customer.loyalty_balance == Decimal("20.00")
+    assert sale.customer_loyalty_balance == Decimal("20.00")
+
+
+def test_customer_loyalty_balance_snapshot_accumulates_across_sales(db, tenant, product, customer):
+    """Le reçu affiche le solde CUMULÉ (pas seulement le gain de cette vente) —
+    figé à la création de chaque vente pour rester correct en cas de réimpression,
+    même si le solde courant du client a bougé depuis (voir Sale.customer_loyalty_balance)."""
+    import time
+
+    _enable_loyalty(db, tenant, percent=2)
+
+    sale1 = sale_service.create_sale(
+        db, _sale_data(product, customer_id=customer.id), user_id="u1", tenant_id=tenant.id,
+    )
+    time.sleep(1.1)  # reference = VNT-<timestamp seconde> — évite la collision d'unicité
+    sale2 = sale_service.create_sale(
+        db, _sale_data(product, customer_id=customer.id), user_id="u1", tenant_id=tenant.id,
+    )
+
+    db.refresh(customer)
+    assert sale1.customer_loyalty_balance == Decimal("20.00")
+    assert sale2.customer_loyalty_balance == Decimal("40.00")
+    assert customer.loyalty_balance == Decimal("40.00")
+    # La 1ère vente garde son solde figé même après la 2ème.
+    db.refresh(sale1)
+    assert sale1.customer_loyalty_balance == Decimal("20.00")
 
 
 def test_loyalty_disabled_earns_nothing(db, tenant, product, customer):

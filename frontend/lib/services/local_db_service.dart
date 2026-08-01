@@ -48,7 +48,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 24,
+      version: 26,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -204,6 +204,16 @@ class LocalDbService {
       try { await db.execute("ALTER TABLE debts ADD COLUMN reference_id TEXT NOT NULL DEFAULT ''"); } catch (_) {}
       try { await db.execute("ALTER TABLE debts ADD COLUMN partner_type TEXT NOT NULL DEFAULT 'CUSTOMER'"); } catch (_) {}
     }
+    if (oldVersion < 25) {
+      try { await db.execute('ALTER TABLE sales ADD COLUMN customer_loyalty_balance REAL'); } catch (_) {}
+    }
+    if (oldVersion < 26) {
+      // Bug : la fidélisation en caisse (case "Utiliser le solde fidélité")
+      // ne s'affichait jamais sur mobile — getCustomers() lit toujours le
+      // cache local sur Android (pas seulement en fallback hors-ligne comme
+      // pour les ventes), et loyalty_balance n'existait pas dans ce cache.
+      try { await db.execute('ALTER TABLE customers ADD COLUMN loyalty_balance REAL NOT NULL DEFAULT 0'); } catch (_) {}
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -247,6 +257,7 @@ class LocalDbService {
         email         TEXT,
         address       TEXT NOT NULL DEFAULT '',
         credit_limit  REAL NOT NULL DEFAULT 0,
+        loyalty_balance REAL NOT NULL DEFAULT 0,
         synced        INTEGER NOT NULL DEFAULT 1
       )
     ''');
@@ -366,6 +377,7 @@ class LocalDbService {
         change_due       REAL NOT NULL DEFAULT 0,
         loyalty_earned   REAL NOT NULL DEFAULT 0,
         loyalty_redeemed REAL NOT NULL DEFAULT 0,
+        customer_loyalty_balance REAL,
         payment_method TEXT NOT NULL DEFAULT 'CASH',
         status         TEXT NOT NULL DEFAULT 'UNPAID',
         cashier_name   TEXT,
@@ -841,6 +853,7 @@ class LocalDbService {
           'email': c.email,
           'address': c.address,
           'credit_limit': c.creditLimit,
+          'loyalty_balance': c.loyaltyBalance,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -912,6 +925,7 @@ class LocalDbService {
         email: row['email'] as String?,
         address: row['address'] as String,
         creditLimit: (row['credit_limit'] as num).toDouble(),
+        loyaltyBalance: (row['loyalty_balance'] as num?)?.toDouble() ?? 0,
       );
 
   // ── Catégories ────────────────────────────────────────────────────────────
@@ -1412,6 +1426,7 @@ class LocalDbService {
         'change_due':       s.changeDue,
         'loyalty_earned':   s.loyaltyEarned,
         'loyalty_redeemed': s.loyaltyRedeemed,
+        'customer_loyalty_balance': s.customerLoyaltyBalance,
         'payment_method': s.payments.isNotEmpty ? s.payments.first.method : 'CASH',
         'status':         s.status,
         'cashier_name':   s.userFullName,
@@ -1645,6 +1660,7 @@ class LocalDbService {
       changeDue:       (row['change_due'] as num?)?.toDouble() ?? 0,
       loyaltyEarned:   (row['loyalty_earned'] as num?)?.toDouble() ?? 0,
       loyaltyRedeemed: (row['loyalty_redeemed'] as num?)?.toDouble() ?? 0,
+      customerLoyaltyBalance: (row['customer_loyalty_balance'] as num?)?.toDouble(),
       status:       row['status'] as String,
       createdAt:    parseApiDate(row['created_at'] as String),
       customerName:  row['customer_name'] as String?,

@@ -205,7 +205,9 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
                 totalRow('Monnaie', '$sym${numFmt.format(change)}'),
             ];
           }(),
-          if (sale.loyaltyEarned > 0.001 || sale.loyaltyRedeemed > 0.001) ...[
+          if (sale.loyaltyEarned > 0.001 ||
+              sale.loyaltyRedeemed > 0.001 ||
+              (sale.customerLoyaltyBalance ?? 0) > 0.001) ...[
             pw.SizedBox(height: 2),
             if (sale.loyaltyRedeemed > 0.001)
               totalRow('Fidélité utilisée',
@@ -213,6 +215,9 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
             if (sale.loyaltyEarned > 0.001)
               totalRow('Fidélité gagnée',
                   '+$sym${numFmt.format(sale.loyaltyEarned)}'),
+            if ((sale.customerLoyaltyBalance ?? 0) > 0.001)
+              totalRow('Solde fidélité',
+                  '$sym${numFmt.format(sale.customerLoyaltyBalance!)}'),
           ],
           divider(),
 

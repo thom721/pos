@@ -124,6 +124,7 @@ class SaleRead(BaseModel):
     paid_amount: Decimal
     loyalty_earned: Decimal = Decimal(0)
     loyalty_redeemed: Decimal = Decimal(0)
+    customer_loyalty_balance: Optional[Decimal] = None
     change_due: Decimal = Decimal(0)
     status: str
     created_at: datetime

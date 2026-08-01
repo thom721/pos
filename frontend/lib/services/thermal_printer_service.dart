@@ -260,6 +260,14 @@ class ThermalPrinterService {
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
     }
+    if ((sale.customerLoyaltyBalance ?? 0) > 0.001) {
+      await SunmiPrinter.printRow(cols: [
+        SunmiColumn(text: 'Solde fidélité', width: 20,
+            style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
+        SunmiColumn(text: '$sym${fmt.format(sale.customerLoyaltyBalance!)}', width: 12,
+            style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
+      ]);
+    }
     await SunmiPrinter.line();
     await SunmiPrinter.lineWrap(1);
 

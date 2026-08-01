@@ -355,6 +355,11 @@ class BluetoothPrintService {
           '+$sym ${numFmt.format(sale.loyaltyEarned)}'.padLeft(16));
       nl();
     }
+    if ((sale.customerLoyaltyBalance ?? 0) > 0.01) {
+      text('Solde fidélité'.padRight(labelW) +
+          '$sym ${numFmt.format(sale.customerLoyaltyBalance!)}'.padLeft(16));
+      nl();
+    }
     dash();
     nl();
 

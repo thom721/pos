@@ -512,6 +512,7 @@ def create_sale(
         change_due=change_due,
         loyalty_earned=loyalty_earned,
         loyalty_redeemed=loyalty_redeemed,
+        customer_loyalty_balance=customer.loyalty_balance if customer else None,
         status="UNPAID"
     )
     if tenant_id:
