@@ -675,7 +675,11 @@ class _WarehouseSelector extends ConsumerWidget {
     final label = current?.name ?? 'Tous les business';
     final isDefault = current?.isDefault ?? false;
 
-    final canChange = canSwitch && warehouses.length > 1;
+    // `warehouses.length > 1` bloquait à tort le sélecteur en lecture seule
+    // pour un tenant à un seul dépôt (+ entrepôt, exclu de cette liste) —
+    // s'il était resté sur "Tous les business" (choix persistant), impossible
+    // de revenir sur son unique dépôt via l'UI (aucun dropdown affiché).
+    final canChange = canSwitch && warehouses.isNotEmpty;
 
     final decoration = BoxDecoration(
       border: Border.all(color: AppColors.divider),
