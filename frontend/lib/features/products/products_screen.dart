@@ -1694,7 +1694,7 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                       .toList(),
                   onChanged: (v) => setState(() => _categoryId = v),
                 ),
-                if (_warehouses.length > 1) ...[
+                if (_warehouses.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String?>(
                     initialValue: _warehouseId,

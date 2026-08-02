@@ -1761,6 +1761,18 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                 ),
               const Divider(height: 16),
               _TotalRow('Total', _fmt.format(pos.total), bold: true),
+              if (pos.loyaltyRedeemed > 0) ...[
+                _TotalRow(
+                  'Fidélité utilisée',
+                  '-${_fmt.format(pos.loyaltyRedeemed)}',
+                  color: AppColors.primary,
+                ),
+                _TotalRow(
+                  'Net à payer',
+                  _fmt.format(pos.total - pos.loyaltyRedeemed),
+                  bold: true,
+                ),
+              ],
               const SizedBox(height: 12),
 
               // Payment method — une seule ligne
@@ -1959,7 +1971,8 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                   child: TextButton(
                     onPressed: () {
                       notifier.payFull();
-                      _paidCtrl.text = pos.total.toStringAsFixed(2);
+                      _paidCtrl.text =
+                          (pos.total - pos.loyaltyRedeemed).toStringAsFixed(2);
                     },
                     style: TextButton.styleFrom(
                         padding: EdgeInsets.zero,

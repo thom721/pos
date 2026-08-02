@@ -9,10 +9,23 @@ import 'package:pos_connect/data/models/stock_movement_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/entrepot_provider.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
+import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/services/offline_cache_service.dart';
 
 final _fmt = NumberFormat('#,##0.##', 'fr');
 final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+
+// Après un ajustement/une distribution à l'entrepôt, la page Produits (et le
+// cache local Android, qui ne se resynchronise pas tout seul avant le prochain
+// cycle périodique) doivent refléter le nouveau stock par dépôt immédiatement —
+// sans ça, l'écran Produits continue d'afficher l'ancien stock (voire un total
+// global au lieu du stock réel du dépôt actif) jusqu'à la prochaine synchro.
+Future<void> _refreshProductsAfterEntrepotChange(WidgetRef ref) async {
+  final warehouseId = ref.read(activeWarehouseProvider)?.id;
+  await OfflineCacheService.instance.syncAll(warehouseId: warehouseId);
+  ref.invalidate(productsProvider);
+}
 
 class EntrepotScreen extends ConsumerWidget {
   const EntrepotScreen({super.key});
@@ -285,6 +298,7 @@ class _ProductRow extends ConsumerWidget {
                     );
                 ref.invalidate(entrepotProductsProvider);
                 ref.invalidate(entrepotMovementsProvider);
+                await _refreshProductsAfterEntrepotChange(ref);
                 if (ctx.mounted) Navigator.pop(ctx);
               } catch (_) {
                 if (ctx.mounted) {
@@ -356,6 +370,7 @@ class _DistributeDialogState extends ConsumerState<_DistributeDialog> {
       await ref.read(entrepotRepositoryProvider).distribute(widget.product.id, allocations);
       ref.invalidate(entrepotProductsProvider);
       ref.invalidate(entrepotMovementsProvider);
+      await _refreshProductsAfterEntrepotChange(ref);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
