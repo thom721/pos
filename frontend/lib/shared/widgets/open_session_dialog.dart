@@ -169,6 +169,8 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
           msg = message ?? 'Aucun appareil enregistré comme caisse. Enregistrez d\'abord un appareil dans Business → Caisses.';
         } else if (detail == 'device_pending_approval') {
           msg = message ?? 'Cet appareil doit être approuvé par un administrateur avant de pouvoir ouvrir une caisse.';
+        } else if (detail == 'device_bound_elsewhere') {
+          msg = message ?? 'Cet appareil est déjà enregistré pour un autre dépôt.';
         } else {
           msg = message ?? detail ?? 'Erreur réseau';
         }

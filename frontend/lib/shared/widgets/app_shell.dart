@@ -475,8 +475,47 @@ class _DesktopShell extends ConsumerWidget {
             child: Column(
               children: [
                 _TopBar(),
+                const _DevicePendingApprovalBanner(),
                 Expanded(child: child),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Bannière globale : appareil en attente d'approbation ────────────────────
+// Visible sur TOUS les écrans (pas seulement Caisse) — l'utilisateur doit
+// être informé même s'il ne visite jamais cet onglet. Alimentée par
+// checkDevicePendingApproval (providers/sync_provider.dart), rafraîchie dans
+// le même cycle que la synchro périodique (app.dart::_triggerSync).
+
+class _DevicePendingApprovalBanner extends ConsumerWidget {
+  const _DevicePendingApprovalBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pending = ref.watch(devicePendingApprovalProvider);
+    if (!pending) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: AppColors.warning.withValues(alpha: 0.12),
+      child: Row(
+        children: [
+          const Icon(Icons.hourglass_top_rounded,
+              color: AppColors.warning, size: 16),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              '⏳ Cet appareil est en attente d\'approbation par un administrateur — '
+              'l\'ouverture de caisse restera bloquée jusqu\'à approbation.',
+              style: TextStyle(
+                  color: AppColors.warning,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12),
             ),
           ),
         ],
@@ -1014,7 +1053,12 @@ class _MobileShellState extends ConsumerState<_MobileShell>
           child: Divider(height: 1, color: AppColors.divider),
         ),
       ),
-      body: widget.child,
+      body: Column(
+        children: [
+          const _DevicePendingApprovalBanner(),
+          Expanded(child: widget.child),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: currentIndex < 0 ? 0 : currentIndex,
         backgroundColor: AppColors.surface,

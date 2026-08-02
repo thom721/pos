@@ -18,6 +18,8 @@ from api.models.Tenant import Tenant
 from api.models.User import User
 from api.models.PosRegister import PosRegister
 from api.models.Warehouse import Warehouse
+from api.models.Category import Category
+from api.models.Product import Product
 from api.core.security import create_access_token
 from api.core.dt_coerce import now_local
 from api.services.warehouse_helper import bind_register_device
@@ -104,10 +106,11 @@ def tenant(db):
     return t
 
 
-def _make_user(db, tenant, *, roles):
+def _make_user(db, tenant, *, roles, suffix=""):
+    tag = f"{'_'.join(roles)}{suffix}"
     user = User(
-        fname="U", lname="Test", username=f"user_{'_'.join(roles)}",
-        email=f"{'_'.join(roles)}@t.com", password="x", tenant_id=tenant.id,
+        fname="U", lname="Test", username=f"user_{tag}",
+        email=f"{tag}@t.com", password="x", tenant_id=tenant.id,
         roles=roles, permissions=[], is_active=True,
     )
     db.add(user)
@@ -238,3 +241,103 @@ def test_preexisting_register_unaffected_by_migration_default(db):
     # Le même appareil se reconnecte (comportement normal, aucun changement).
     bind_register_device(reg, "already-known")
     assert reg.is_device_approved is True
+
+
+# ── POST /api/sales/ exige une session ouverte (contournement de l'écran) ──
+
+@pytest.fixture()
+def product(db, tenant):
+    from api.models.StockMovement import StockMovement, StockType
+
+    cat = Category(name="Cat", tenant_id=tenant.id)
+    db.add(cat)
+    db.flush()
+    p = Product(name="Produit", category_id=cat.id, sale_price=100,
+                purchase_price=50, tenant_id=tenant.id)
+    db.add(p)
+    db.flush()
+    wh = db.query(Warehouse).filter_by(tenant_id=tenant.id).first()
+    db.add(StockMovement(product_id=p.id, type=StockType.in_, quantity=10,
+                          tenant_id=tenant.id, warehouse_id=wh.id))
+    db.commit()
+    return p
+
+
+def _sale_payload(product):
+    return {
+        "paid_amount": 100,
+        "payment_method": "CASH",
+        "items": [{
+            "product_id": product.id, "quantity": 1,
+            "unit_price": 100, "subtotal": 100,
+        }],
+    }
+
+
+def test_create_sale_rejects_direct_api_call_without_open_session(db, client, tenant, product):
+    """Un appel API direct (pas via l'écran Caisse, qui exige déjà une
+    session) ne doit pas pouvoir créer de vente — sinon l'approbation
+    d'appareil serait contournable en sautant simplement open_session."""
+    cashier = _make_user(db, tenant, roles=["cashier"])
+    headers = {"Authorization": f"Bearer {_token(cashier)}"}
+
+    res = client.post("/api/sales/", json=_sale_payload(product), headers=headers)
+    assert res.status_code == 403, res.text
+    # HTTPException est ré-enveloppée en {"message": ...} par le handler
+    # global (api/main.py::http_exception_handler), pas {"detail": ...}.
+    assert "session" in res.json()["message"].lower()
+
+
+def test_create_sale_succeeds_with_open_session(db, client, tenant, product):
+    cashier = _make_user(db, tenant, roles=["cashier"])
+    headers = {"Authorization": f"Bearer {_token(cashier)}"}
+
+    # Simule un appareil déjà connu/approuvé (cas normal après la 1ère
+    # approbation admin) plutôt que de retester tout le flux d'approbation.
+    reg = db.query(PosRegister).filter_by(tenant_id=tenant.id).first()
+    reg.device_id = "known-device"
+    reg.is_device_approved = True
+    db.commit()
+
+    opened = client.post("/api/sessions/open", json={
+        "device_id": "known-device", "register_name": "Caisse",
+    }, headers=headers)
+    assert opened.status_code == 201, opened.text
+
+    res = client.post("/api/sales/", json=_sale_payload(product), headers=headers)
+    assert res.status_code == 201, res.text
+
+
+# ── Même appareil, dépôt différent (bug pré-existant, non lié à cette
+#    fonctionnalité, mis au jour en concevant l'approbation) ────────────────
+
+def test_reusing_device_on_different_warehouse_rejected_not_crashed(db, client, tenant):
+    """device_id est unique par tenant (uq_register_tenant_device) — avant ce
+    correctif, réutiliser un appareil déjà lié à un dépôt sur un AUTRE dépôt
+    provoquait une IntegrityError (500) en tentant de réclamer un 2e
+    PosRegister avec le même device_id. Doit maintenant échouer proprement
+    (409) avec un message clair, sans toucher la base."""
+    admin1 = _make_user(db, tenant, roles=["admin"], suffix="1")
+    admin2 = _make_user(db, tenant, roles=["admin"], suffix="2")
+    headers1 = {"Authorization": f"Bearer {_token(admin1)}"}
+    headers2 = {"Authorization": f"Bearer {_token(admin2)}"}
+
+    wh_a = db.query(Warehouse).filter_by(tenant_id=tenant.id).first()
+    wh_b = Warehouse(tenant_id=tenant.id, name="Dépôt B", is_active=True)
+    db.add(wh_b)
+    db.commit()
+
+    # admin1 réclame l'appareil pour le dépôt A et garde sa session ouverte.
+    opened = client.post("/api/sessions/open", json={
+        "device_id": "shared-tablet", "register_name": "Caisse",
+        "warehouse_id": wh_a.id,
+    }, headers=headers1)
+    assert opened.status_code == 201, opened.text
+
+    # admin2 essaie d'utiliser le MÊME appareil physique pour le dépôt B.
+    res = client.post("/api/sessions/open", json={
+        "device_id": "shared-tablet", "register_name": "Caisse",
+        "warehouse_id": wh_b.id,
+    }, headers=headers2)
+    assert res.status_code == 409, res.text
+    assert res.json()["detail"] == "device_bound_elsewhere"

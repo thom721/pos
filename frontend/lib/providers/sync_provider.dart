@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
 
 // ── Status ────────────────────────────────────────────────────────────────────
@@ -140,3 +141,24 @@ final pendingOfflineCountProvider = FutureProvider.autoDispose<int>(
 /// Incrémenté après chaque sync SQLite réussie (Android uniquement).
 /// Les providers Android le surveillent pour se rafraîchir automatiquement.
 final syncEpochProvider = StateProvider<int>((ref) => 0);
+
+/// True si cet appareil est en attente d'approbation admin (voir
+/// cashier_sessions.open_session) — vérifié app-wide (pas seulement sur
+/// l'écran Caisse) pour que la bannière s'affiche même si l'utilisateur ne
+/// visite jamais cet onglet. Mis à jour par checkDevicePendingApproval,
+/// appelé depuis le même cycle que la synchro périodique (app.dart).
+final devicePendingApprovalProvider = StateProvider<bool>((ref) => false);
+
+Future<void> checkDevicePendingApproval(WidgetRef ref, {String? warehouseId}) async {
+  try {
+    final deviceId = await AuthRepository().getOrCreateDeviceId();
+    final res = await dio.get('/api/sessions/current', queryParameters: {
+      'device_id': deviceId,
+      if (warehouseId != null) 'warehouse_id': warehouseId,
+    });
+    ref.read(devicePendingApprovalProvider.notifier).state =
+        res.data['device_pending_approval'] == true;
+  } catch (_) {
+    // Silencieux — ne doit jamais interrompre le cycle de synchro principal.
+  }
+}

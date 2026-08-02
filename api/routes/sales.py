@@ -14,6 +14,7 @@ from api.core.permissions import P, has_permission as _has_perm
 from api.core.tenant import require_active_plan
 from api.core.PaginateHelper import PaginatedResponse as LegacyPaginatedResponse
 from api.services import audit_service
+from api.models.CashierSession import CashierSession
 
 router = APIRouter(prefix="/api/sales", tags=["Sales"])
 
@@ -36,6 +37,30 @@ def _check_discount_permission(payload, current_user: User) -> None:
         raise HTTPException(status_code=403, detail="Permission refusée : remise non autorisée")
 
 
+def _require_open_session(db: Session, current_user: User) -> None:
+    """
+    L'écran Caisse exige déjà une session ouverte avant d'afficher le panier
+    (voir pos_screen.dart) — mais rien ne l'imposait côté serveur : un appel
+    API direct avec un token valide + permission sales.create pouvait créer
+    une vente sans jamais passer par POST /api/sessions/open, contournant
+    l'approbation d'appareil (voir cashier_sessions.open_session). Exempté
+    pour les installs sans tenant (mode local, même repli que
+    require_active_plan).
+    """
+    if not current_user.tenant_id:
+        return
+    has_open = db.query(CashierSession).filter(
+        CashierSession.tenant_id == current_user.tenant_id,
+        CashierSession.cashier_id == current_user.id,
+        CashierSession.status == "open",
+    ).first()
+    if not has_open:
+        raise HTTPException(
+            status_code=403,
+            detail="Aucune session de caisse ouverte. Ouvrez une caisse avant d'enregistrer une vente.",
+        )
+
+
 @router.post("/", status_code=201)
 def store_sale(
     payload: SaleCreate,
@@ -43,6 +68,7 @@ def store_sale(
     current_user: User = Depends(require_permission(P.SALES_CREATE)),
     _plan: None = Depends(require_active_plan),
 ):
+    _require_open_session(db, current_user)
     _check_discount_permission(payload, current_user)
     sale = create_sale(
         db, payload, current_user.id, tenant_id=current_user.tenant_id,

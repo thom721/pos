@@ -132,7 +132,21 @@ def _get_or_create_register(
             reg = None
         elif not warehouse_id or reg.warehouse_id == warehouse_id:
             return reg
-        # else: appareil dans un autre dépôt → chercher un slot dans le bon dépôt
+        else:
+            # Appareil déjà lié à un AUTRE dépôt (reg.warehouse_id != warehouse_id).
+            # device_id est unique par tenant (contrainte uq_register_tenant_device) —
+            # continuer vers l'étape 2 réclamerait un slot libre dans le nouveau
+            # dépôt avec ce même device_id, ce qui violerait cette contrainte
+            # (IntegrityError) puisque `reg` le porte déjà. Un admin doit
+            # explicitement libérer l'appareil (reset_device) avant de le
+            # réutiliser ailleurs.
+            return JSONResponse(status_code=409, content={
+                "detail": "device_bound_elsewhere",
+                "message": f"Cet appareil est déjà enregistré pour le dépôt « "
+                           f"{reg.warehouse.name if reg.warehouse else '?'} » (caisse « {reg.name} »). "
+                           "Un administrateur doit le libérer (Business → Dépôts → Caisses → "
+                           "Réinitialiser l'appareil) avant de l'utiliser sur un autre dépôt.",
+            })
 
     # 2. Chercher une caisse libre NON dédiée dans le dépôt demandé.
     # Libre = pas de session ouverte dessus (plus de logique last_seen/slot).
@@ -238,11 +252,16 @@ def get_current_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SESSIONS_OPEN)),
 ):
+    _is_manager = any(r in (current_user.roles or []) for r in ("admin", "manager"))
     reg = db.query(PosRegister).filter_by(
         tenant_id=current_user.tenant_id, device_id=device_id
     ).first()
     if not reg or not reg.is_active:
-        return {"session": None, "has_register": False, "disabled": not reg.is_active if reg else False}
+        return {
+            "session": None, "has_register": False,
+            "disabled": not reg.is_active if reg else False,
+            "device_pending_approval": bool(reg and not reg.is_device_approved and not _is_manager),
+        }
 
     # Chercher la session ouverte de cet utilisateur sur ce registre.
     # On ne filtre PAS sur warehouse_id ici : si la session est ouverte
@@ -276,6 +295,7 @@ def get_current_session(
             "register_trial_ends_at":   reg_trial_ends_at,
             "register_sub_ends_at":     reg_sub_ends_at,
             "register_dedicated_user":  reg_dedicated_user,
+            "device_pending_approval":  not reg.is_device_approved and not _is_manager,
         }
 
     return {

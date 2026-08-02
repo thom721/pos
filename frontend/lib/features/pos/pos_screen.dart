@@ -955,6 +955,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   bool _sessionChecked = false;
   bool _noSessionPermission = false; // true si 403 permission sessions.open
   bool _caisseDisabled = false;      // true si caisse/dépôt désactivé
+  bool _devicePendingApproval = false; // true si appareil en attente d'approbation admin
   bool _offlineSession = false;      // true si session créée/chargée hors-ligne
   String? _deviceId;
 
@@ -1077,6 +1078,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       final res = await dio.get('/api/sessions/current', queryParameters: _sessionQueryParams);
       final session = res.data['session'];
       final disabled = res.data['disabled'] == true;
+      final pendingApproval = res.data['device_pending_approval'] == true;
       final hasRegister = res.data['has_register'] == true || session != null;
       if (session != null) await _cacheSession(session as Map<String, dynamic>);
       await _saveRegisterFlag(
@@ -1090,11 +1092,12 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         _session = session as Map<String, dynamic>?;
         _sessionChecked = true;
         _caisseDisabled = disabled;
+        _devicePendingApproval = pendingApproval;
         _offlineSession = false;
       });
       _syncSessionProvider();
       // Session fermée ou appartenant à un autre business → proposer de rouvrir
-      if (_session == null && !disabled && mounted) _promptOpenSession();
+      if (_session == null && !disabled && !pendingApproval && mounted) _promptOpenSession();
     } catch (_) {
       // Réseau KO → garder la session affichée depuis le cache, rien à faire
     }
@@ -1106,6 +1109,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
       final res = await dio.get('/api/sessions/current', queryParameters: _sessionQueryParams);
       final session = res.data['session'];
       final disabled = res.data['disabled'] == true;
+      final pendingApproval = res.data['device_pending_approval'] == true;
       final hasRegister = res.data['has_register'] == true || session != null;
       if (session != null) await _cacheSession(session as Map<String, dynamic>);
       await _saveRegisterFlag(
@@ -1119,10 +1123,11 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         _session = session as Map<String, dynamic>?;
         _sessionChecked = true;
         _caisseDisabled = disabled;
+        _devicePendingApproval = pendingApproval;
         _offlineSession = false;
       });
       _syncSessionProvider();
-      if (promptIfMissing && _session == null && !disabled && mounted) {
+      if (promptIfMissing && _session == null && !disabled && !pendingApproval && mounted) {
         _promptOpenSession();
       }
     } catch (e) {
@@ -1480,31 +1485,36 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-            color: AppColors.error.withValues(alpha: 0.08),
+            color: (_devicePendingApproval ? AppColors.warning : AppColors.error)
+                .withValues(alpha: 0.08),
             child: Row(
               children: [
                 Icon(
-                  (_noSessionPermission || _caisseDisabled)
-                      ? Icons.no_accounts_rounded
-                      : Icons.lock_rounded,
-                  color: AppColors.error,
+                  _devicePendingApproval
+                      ? Icons.hourglass_top_rounded
+                      : (_noSessionPermission || _caisseDisabled)
+                          ? Icons.no_accounts_rounded
+                          : Icons.lock_rounded,
+                  color: _devicePendingApproval ? AppColors.warning : AppColors.error,
                   size: 14,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    _noSessionPermission
-                        ? 'Votre rôle ne permet pas d\'ouvrir une session caisse'
-                        : _caisseDisabled
-                            ? 'Cette caisse est désactivée — contactez votre administrateur'
-                            : 'Caisse non ouverte — les encaissements sont désactivés',
-                    style: const TextStyle(
-                        color: AppColors.error,
+                    _devicePendingApproval
+                        ? '⏳ Appareil en attente d\'approbation — contactez votre administrateur'
+                        : _noSessionPermission
+                            ? 'Votre rôle ne permet pas d\'ouvrir une session caisse'
+                            : _caisseDisabled
+                                ? 'Cette caisse est désactivée — contactez votre administrateur'
+                                : 'Caisse non ouverte — les encaissements sont désactivés',
+                    style: TextStyle(
+                        color: _devicePendingApproval ? AppColors.warning : AppColors.error,
                         fontWeight: FontWeight.w500,
                         fontSize: 11),
                   ),
                 ),
-                if (!_noSessionPermission && !_caisseDisabled)
+                if (!_noSessionPermission && !_caisseDisabled && !_devicePendingApproval)
                   TextButton(
                     onPressed: _promptOpenSession,
                     style: TextButton.styleFrom(
@@ -1517,6 +1527,20 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           fontSize: 11, fontWeight: FontWeight.w600),
                     ),
                     child: const Text('Ouvrir la caisse'),
+                  ),
+                if (_devicePendingApproval)
+                  TextButton(
+                    onPressed: () => _fetchSessionFromServer(promptIfMissing: true),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      foregroundColor: AppColors.warning,
+                      textStyle: const TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                    child: const Text('Réessayer'),
                   ),
               ],
             ),

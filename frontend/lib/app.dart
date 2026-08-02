@@ -153,6 +153,12 @@ class _PosAppState extends ConsumerState<PosApp> {
     final tenant = ref.read(tenantProvider).valueOrNull;
     final tenantId = tenant?['id'] as String?;
     final businessType = ref.read(settingsProvider).businessType;
+    // Vérifié app-wide, pas seulement sur l'écran Caisse — l'utilisateur doit
+    // voir la bannière même s'il ne visite jamais cet onglet (fire-and-forget,
+    // ne doit jamais bloquer le reste du cycle de synchro).
+    if (tenantId != null) {
+      checkDevicePendingApproval(ref, warehouseId: warehouseId).ignore();
+    }
     if (_isAndroid) {
       // Android : attendre la fin de la sync SQLite avant de notifier les providers
       // (les repos lisent depuis SQLite, il faut que le cache soit à jour)
