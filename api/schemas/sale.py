@@ -51,6 +51,8 @@ class SaleUpdate(BaseModel):
 class CustomerRead(BaseModel):
     id: str
     name: str
+    fname: str = ''
+    full_name: str = ''
     phone: str
 
     class Config:

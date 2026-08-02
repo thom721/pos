@@ -115,7 +115,7 @@ class _CustomerPickerDialogState
       ? _all
       : _all
           .where((c) =>
-              c.name.toLowerCase().contains(_query) ||
+              c.fullName.toLowerCase().contains(_query) ||
               c.phone.toLowerCase().contains(_query))
           .toList();
 
@@ -132,7 +132,7 @@ class _CustomerPickerDialogState
     );
     if (created != null && mounted) {
       ref.invalidate(customersProvider);
-      _select(created.id, created.name);
+      _select(created.id, created.fullName);
     }
   }
 
@@ -193,10 +193,10 @@ class _CustomerPickerDialogState
                     )
                   else
                     ...filtered.map((c) => _CustomerTile(
-                          name: c.name,
+                          name: c.fullName,
                           subtitle: c.phone.isNotEmpty ? c.phone : null,
                           selected: c.id == widget.selectedId,
-                          onTap: () => _select(c.id, c.name),
+                          onTap: () => _select(c.id, c.fullName),
                         )),
                 ],
               ),
@@ -285,6 +285,7 @@ class _QuickCreateCustomerDialog extends ConsumerStatefulWidget {
 class _QuickCreateCustomerDialogState
     extends ConsumerState<_QuickCreateCustomerDialog> {
   final _formKey = GlobalKey<FormState>();
+  final _fnameCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   bool _loading = false;
@@ -292,6 +293,7 @@ class _QuickCreateCustomerDialogState
 
   @override
   void dispose() {
+    _fnameCtrl.dispose();
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     super.dispose();
@@ -306,6 +308,7 @@ class _QuickCreateCustomerDialogState
     try {
       final created = await CustomerRepository().createCustomer({
         'name': _nameCtrl.text.trim(),
+        'fname': _fnameCtrl.text.trim(),
         'phone': _phoneCtrl.text.trim(),
         'address': '',
         'credit_limit': 0,
@@ -337,8 +340,16 @@ class _QuickCreateCustomerDialogState
                       style: const TextStyle(color: Colors.red, fontSize: 12)),
                 ),
               TextFormField(
-                controller: _nameCtrl,
+                controller: _fnameCtrl,
                 autofocus: true,
+                decoration: const InputDecoration(
+                    labelText: 'Prénom *', isDense: true),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Champ requis' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _nameCtrl,
                 decoration: const InputDecoration(
                     labelText: 'Nom *', isDense: true),
                 validator: (v) =>

@@ -96,12 +96,12 @@ class _CustomerCard extends ConsumerWidget {
         leading: CircleAvatar(
           backgroundColor: AppColors.primary.withOpacity(0.1),
           child: Text(
-            customer.name.substring(0, 1).toUpperCase(),
+            customer.fullName.substring(0, 1).toUpperCase(),
             style: const TextStyle(
                 color: AppColors.primary, fontWeight: FontWeight.w700),
           ),
         ),
-        title: Text(customer.name,
+        title: Text(customer.fullName,
             style: const TextStyle(
                 fontWeight: FontWeight.w600, fontSize: 14)),
         subtitle: Column(
@@ -158,6 +158,7 @@ class CustomerFormDialog extends ConsumerStatefulWidget {
 class CustomerFormDialogState
     extends ConsumerState<CustomerFormDialog> {
   final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _fnameCtrl;
   late final TextEditingController _nameCtrl;
   late final TextEditingController _nifCtrl;
   late final TextEditingController _phoneCtrl;
@@ -172,6 +173,7 @@ class CustomerFormDialogState
   @override
   void initState() {
     super.initState();
+    _fnameCtrl = TextEditingController(text: widget.customer?.fname ?? '');
     _nameCtrl = TextEditingController(text: widget.customer?.name ?? '');
     _nifCtrl = TextEditingController(text: widget.customer?.nif ?? '');
     _phoneCtrl =
@@ -186,6 +188,7 @@ class CustomerFormDialogState
 
   @override
   void dispose() {
+    _fnameCtrl.dispose();
     _nameCtrl.dispose();
     _nifCtrl.dispose();
     _phoneCtrl.dispose();
@@ -208,6 +211,12 @@ class CustomerFormDialogState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                TextFormField(
+                  controller: _fnameCtrl,
+                  decoration: const InputDecoration(labelText: 'Prénom *'),
+                  validator: (v) => v!.isEmpty ? 'Requis' : null,
+                ),
+                const SizedBox(height: 12),
                 TextFormField(
                   controller: _nameCtrl,
                   decoration: const InputDecoration(labelText: 'Nom *'),
@@ -281,6 +290,7 @@ class CustomerFormDialogState
     try {
       final data = {
         'name': _nameCtrl.text.trim(),
+        'fname': _fnameCtrl.text.trim(),
         'nif': _nifCtrl.text.trim().isEmpty ? null : _nifCtrl.text.trim(),
         'phone': _phoneCtrl.text.trim(),
         'email': _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),

@@ -2035,7 +2035,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           }
 
                           // Cashier credit restriction
-                          if ((pos.total - pos.paidAmount) > 0.005) {
+                          if (pos.balance > 0.005) {
                             final settings = ref.read(settingsProvider);
                             final canCredit = settings.allowCashierCredit ||
                                 ref.read(hasPermissionProvider(Perm.salesDiscount));
@@ -2053,7 +2053,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           }
 
                           // Crédit → client obligatoire
-                          if ((pos.total - pos.paidAmount) > 0.005 &&
+                          if (pos.balance > 0.005 &&
                               pos.customerId == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
@@ -2067,7 +2067,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           }
 
                           // Crédit → compte client doit avoir NIF/CIN et Adresse
-                          if ((pos.total - pos.paidAmount) > 0.005 &&
+                          if (pos.balance > 0.005 &&
                               pos.customerId != null) {
                             CustomerModel? customer;
                             ref.read(customersProvider).whenData((c) {
@@ -2626,7 +2626,7 @@ class _CustomerDropdown extends ConsumerWidget {
     final selectedName = customersAsync.asData?.value.data
         .cast<dynamic>()
         .firstWhere((c) => c.id == selectedId, orElse: () => null)
-        ?.name as String?;
+        ?.fullName as String?;
 
     return CustomerPickerField(
       selectedId: selectedId,

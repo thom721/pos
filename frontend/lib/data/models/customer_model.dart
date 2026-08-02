@@ -1,6 +1,7 @@
 class CustomerModel {
   final String id;
   final String name;
+  final String fname;
   final String? nif;
   final String phone;
   final String? email;
@@ -13,6 +14,7 @@ class CustomerModel {
   CustomerModel({
     required this.id,
     required this.name,
+    this.fname = '',
     this.nif,
     required this.phone,
     this.email,
@@ -21,9 +23,14 @@ class CustomerModel {
     this.loyaltyBalance = 0,
   });
 
+  // Prénom + Nom si le prénom est renseigné, sinon juste Nom (clients créés
+  // avant l'ajout du champ prénom — aucun découpage rétroactif tenté).
+  String get fullName => fname.isEmpty ? name : '$fname $name';
+
   factory CustomerModel.fromJson(Map<String, dynamic> json) => CustomerModel(
         id: json['id']?.toString() ?? '',
         name: json['name']?.toString() ?? '',
+        fname: json['fname']?.toString() ?? '',
         nif: json['nif']?.toString(),
         phone: json['phone']?.toString() ?? '',
         email: json['email']?.toString(),
@@ -36,6 +43,7 @@ class CustomerModel {
 
   Map<String, dynamic> toJson() => {
         'name': name,
+        'fname': fname,
         'nif': nif,
         'phone': phone,
         'email': email,

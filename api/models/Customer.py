@@ -7,6 +7,10 @@ class Customer(UUIDBase):
     __tablename__ = "customers"
     tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
 
+    # name = nom de famille seul depuis l'ajout de fname (avant : nom complet
+    # en un seul champ) — les clients existants gardent leur valeur telle
+    # quelle dans name, fname vide (aucun découpage rétroactif tenté).
+    fname = Column(String(255), nullable=True, default='')
     name = Column(String(255), nullable=False)
     nif = Column(String(50), nullable=True)   # NIF ou CIN — évite les conflits de nom
     phone = Column(String(50), nullable=False)
@@ -38,3 +42,7 @@ class Customer(UUIDBase):
     @hybrid_property
     def balance(self):
         return sum((s.final_amount or s.total_amount) - (s.paid_amount or 0) for s in self.sales)
+
+    @hybrid_property
+    def full_name(self):
+        return f"{self.fname} {self.name}".strip() if self.fname else self.name

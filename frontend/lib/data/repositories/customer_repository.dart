@@ -65,6 +65,7 @@ class CustomerRepository {
         if (_isOffline(e)) {
           final localId = await LocalDbService.instance.insertLocalCustomer(
             name:        data['name'] as String,
+            fname:       data['fname'] as String? ?? '',
             phone:       data['phone'] as String? ?? '',
             nif:         data['nif'] as String?,
             email:       data['email'] as String?,
@@ -81,6 +82,7 @@ class CustomerRepository {
           return CustomerModel(
             id:          localId,
             name:        data['name'] as String,
+            fname:       data['fname'] as String? ?? '',
             phone:       data['phone'] as String? ?? '',
             nif:         data['nif'] as String?,
             email:       data['email'] as String?,

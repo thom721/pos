@@ -48,7 +48,7 @@ class LocalDbService {
     final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
-      version: 26,
+      version: 27,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -214,6 +214,9 @@ class LocalDbService {
       // pour les ventes), et loyalty_balance n'existait pas dans ce cache.
       try { await db.execute('ALTER TABLE customers ADD COLUMN loyalty_balance REAL NOT NULL DEFAULT 0'); } catch (_) {}
     }
+    if (oldVersion < 27) {
+      try { await db.execute("ALTER TABLE customers ADD COLUMN fname TEXT NOT NULL DEFAULT ''"); } catch (_) {}
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -252,6 +255,7 @@ class LocalDbService {
         id            TEXT PRIMARY KEY,
         local_id      TEXT,
         name          TEXT NOT NULL,
+        fname         TEXT NOT NULL DEFAULT '',
         phone         TEXT NOT NULL DEFAULT '',
         nif           TEXT,
         email         TEXT,
@@ -848,6 +852,7 @@ class LocalDbService {
         {
           'id': c.id,
           'name': c.name,
+          'fname': c.fname,
           'phone': c.phone,
           'nif': c.nif,
           'email': c.email,
@@ -885,8 +890,8 @@ class LocalDbService {
     final where = <String>[];
     final args = <dynamic>[];
     if (search != null && search.isNotEmpty) {
-      where.add('(name LIKE ? OR phone LIKE ?)');
-      args.addAll(['%$search%', '%$search%']);
+      where.add('(name LIKE ? OR fname LIKE ? OR phone LIKE ?)');
+      args.addAll(['%$search%', '%$search%', '%$search%']);
     }
     final whereStr = where.isEmpty ? null : where.join(' AND ');
     final total = Sqflite.firstIntValue(
@@ -920,6 +925,7 @@ class LocalDbService {
   CustomerModel _customerFromRow(Map<String, dynamic> row) => CustomerModel(
         id: row['id'] as String,
         name: row['name'] as String,
+        fname: row['fname'] as String? ?? '',
         phone: row['phone'] as String,
         nif: row['nif'] as String?,
         email: row['email'] as String?,
@@ -1584,6 +1590,7 @@ class LocalDbService {
   Future<String> insertLocalCustomer({
     required String name,
     required String phone,
+    String fname = '',
     String? nif,
     String? email,
     String? address,
@@ -1596,6 +1603,7 @@ class LocalDbService {
       'id':           localId,
       'local_id':     localId,
       'name':         name,
+      'fname':        fname,
       'phone':        phone,
       'nif':          nif,
       'email':        email,

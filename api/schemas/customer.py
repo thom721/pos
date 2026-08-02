@@ -4,6 +4,7 @@ from typing import Optional
 
 class CustomerBase(BaseModel):
     name: str
+    fname: Optional[str] = ''
     nif: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
@@ -21,12 +22,14 @@ class CustomerRead(CustomerBase):
     # Lecture seule — géré uniquement par sale_service (jamais accepté en
     # entrée sur CustomerCreate/CustomerUpdate).
     loyalty_balance: float = 0
+    full_name: str = ''
 
     model_config = {"from_attributes": True}
 
 
 class CustomerUpdate(BaseModel):
     name: Optional[str] = None
+    fname: Optional[str] = None
     nif: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None

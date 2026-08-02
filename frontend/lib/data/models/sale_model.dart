@@ -188,7 +188,9 @@ class SaleModel {
             : null,
         status: json['status']?.toString() ?? 'UNPAID',
         createdAt: parseApiDate(json['created_at']?.toString()),
-        customerName: json['customer']?['name']?.toString(),
+        customerName: (json['customer']?['full_name']?.toString().isNotEmpty ?? false)
+            ? json['customer']!['full_name'].toString()
+            : json['customer']?['name']?.toString(),
         customerPhone: json['customer']?['phone']?.toString(),
         customerId: json['customer']?['id']?.toString(),
         userId: json['user']?['id']?.toString(),
