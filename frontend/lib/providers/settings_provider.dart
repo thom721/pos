@@ -9,6 +9,7 @@ import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/license_provider.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/services/logo_cache_service.dart';
 
 const _kKeyPrefix = 'pos_app_settings';
 
@@ -476,6 +477,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
           posAutoPrint:         deviceAutoPrint          ?? local?.posAutoPrint         ?? state.posAutoPrint,
         );
         await _storage.write(key: key, value: jsonEncode(state.toJson()));
+        // Rafraîchit le cache local du logo dès qu'on est en ligne — les
+        // impressions (PDF, Bluetooth) l'utilisent en priorité et restent
+        // ainsi disponibles hors ligne (voir LogoCacheService).
+        if (state.logoPath.isNotEmpty) {
+          unawaited(LogoCacheService.instance.getLogoBytes(state.logoPath));
+        }
       }
     } catch (_) {
       // Network unavailable — local cache already applied above

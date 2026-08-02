@@ -18,6 +18,7 @@ from api.models.Role import Role
 from api.models.InstallationCode import InstallationCode, generate_installation_code
 from api.services.auth import Auth
 from api.core.security import create_access_token
+from api.services.warehouse_helper import bind_register_device
 
 
 
@@ -201,7 +202,7 @@ def cloud_login(db: Session, email: str, password: str,
             ).first()
 
             if register:
-                register.device_id = device_id
+                bind_register_device(register, device_id)
 
         if register:
             # Rotate session token and stamp last_seen on every login

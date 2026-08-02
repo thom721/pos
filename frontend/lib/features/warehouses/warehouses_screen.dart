@@ -655,6 +655,13 @@ class _RegisterTile extends ConsumerWidget {
           children: [
             if (!register.isActive)
               _Badge(label: 'Inactif', color: AppColors.textSecondary),
+            if (!register.isDeviceApproved)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: _Badge(
+                    label: '⏳ Appareil en attente',
+                    color: AppColors.warning),
+              ),
             if (register.dedicatedUserId != null)
               Padding(
                 padding: const EdgeInsets.only(right: 4),
@@ -698,6 +705,22 @@ class _RegisterTile extends ConsumerWidget {
                       child: Text(register.isActive
                           ? 'Désactiver'
                           : 'Activer'),
+                    ),
+                  if (canUpdate && !register.isDeviceApproved)
+                    const PopupMenuItem(
+                      value: 'approve_device',
+                      child: Row(children: [
+                        Icon(Icons.verified_user_outlined,
+                            size: 16, color: AppColors.success),
+                        SizedBox(width: 8),
+                        Text('Approuver l\'appareil',
+                            style: TextStyle(color: AppColors.success)),
+                      ]),
+                    ),
+                  if (canUpdate && register.deviceId.isNotEmpty)
+                    const PopupMenuItem(
+                      value: 'reset_device',
+                      child: Text('Réinitialiser l\'appareil'),
                     ),
                   if (canDelete)
                     const PopupMenuItem(
@@ -751,6 +774,34 @@ class _RegisterTile extends ConsumerWidget {
           await repo.updateRegister(warehouseId, register.id,
               isActive: !register.isActive);
           onRefresh();
+        case 'approve_device':
+          await repo.updateRegister(warehouseId, register.id,
+              isDeviceApproved: true);
+          onRefresh();
+        case 'reset_device':
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (dialogCtx) => AlertDialog(
+              title: const Text('Réinitialiser l\'appareil'),
+              content: Text(
+                  'Libère « ${register.name} » — le prochain appareil qui s\'y connectera '
+                  'devra à nouveau être approuvé avant de pouvoir ouvrir une caisse.'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(dialogCtx, false),
+                    child: const Text('Annuler')),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogCtx, true),
+                  child: const Text('Réinitialiser'),
+                ),
+              ],
+            ),
+          );
+          if (confirm == true) {
+            await repo.updateRegister(warehouseId, register.id,
+                resetDevice: true);
+            onRefresh();
+          }
         case 'delete':
           final confirm = await showDialog<bool>(
             context: context,

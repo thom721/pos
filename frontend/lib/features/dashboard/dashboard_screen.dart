@@ -111,7 +111,7 @@ class DashboardScreen extends ConsumerWidget {
               final totalRevenue =
                   sales.data.fold(0.0, (s, e) => s + e.finalAmount);
               final totalPaid =
-                  sales.data.fold(0.0, (s, e) => s + e.paidAmount);
+                  sales.data.fold(0.0, (s, e) => s + e.paidAmount + e.loyaltyRedeemed);
               final totalDiscount = sales.data.fold(0.0,
                   (s, e) => s + e.discount + e.totalItemsDiscount + e.totalCatalogItemDiscount);
               final countSales = sales.meta.total;

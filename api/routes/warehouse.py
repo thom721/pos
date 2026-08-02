@@ -52,6 +52,7 @@ class RegisterRead(BaseModel):
     name: str
     device_id: Optional[str] = None
     is_active: bool
+    is_device_approved: bool = True
     is_initial: bool = False
     warehouse_id: Optional[str] = None
     trial_ends_at: Optional[datetime] = None
@@ -74,6 +75,8 @@ class RegisterUpdate(BaseModel):
     name: Optional[str] = None
     is_active: Optional[bool] = None
     dedicated_user_id: Optional[str] = None  # None = garder, "" = retirer le caissier dédié
+    is_device_approved: Optional[bool] = None  # admin approuve l'appareil actuel
+    reset_device: bool = False  # libère la caisse (device_id=None) pour un nouvel appareil
 
 router = APIRouter(prefix="/api/warehouses", tags=["Warehouses"])
 
@@ -418,19 +421,16 @@ def create_register(
 
     device_id = data.device_id or str(_uuid.uuid4())
 
-    # Période d'essai individuelle pour chaque caisse supplémentaire.
-    # La durée d'essai provient de PlatformConfig.trial_days (défaut 30 j).
-    cfg = db.query(PlatformConfig).first()
-    trial_days = int(cfg.trial_days) if cfg and cfg.trial_days else 30
-    now = now_local()
-
+    # Pas de période d'essai pour une caisse supplémentaire (is_initial=False) —
+    # seule la toute première caisse d'un dépôt (is_initial=True, créée par
+    # register_tenant/create_warehouse) en bénéficie. Celle-ci doit être payée
+    # immédiatement pour être utilisée (voir open_session::register_no_subscription).
     reg = PosRegister(
         tenant_id=current_user.tenant_id,
         warehouse_id=warehouse_id,
         name=data.name,
         device_id=device_id,
         is_active=True,
-        trial_ends_at=now + timedelta(days=trial_days),
     )
     db.add(reg)
     db.commit()
@@ -467,6 +467,11 @@ def update_register(
             if not target:
                 raise HTTPException(404, "Utilisateur introuvable")
             reg.dedicated_user_id = data.dedicated_user_id
+    if data.reset_device:
+        reg.device_id = None
+        reg.is_device_approved = False
+    elif data.is_device_approved is not None:
+        reg.is_device_approved = data.is_device_approved
     db.commit()
     db.refresh(reg)
     d = RegisterRead.model_validate(reg)

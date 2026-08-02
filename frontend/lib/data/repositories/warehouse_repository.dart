@@ -97,6 +97,8 @@ class WarehouseRepository {
     String? name,
     bool? isActive,
     String? dedicatedUserId, // "" pour retirer, null pour ne pas toucher
+    bool? isDeviceApproved,
+    bool resetDevice = false,
   }) async {
     try {
       final res = await dio.put(
@@ -105,6 +107,8 @@ class WarehouseRepository {
             if (name != null) 'name': name,
             if (isActive != null) 'is_active': isActive,
             if (dedicatedUserId != null) 'dedicated_user_id': dedicatedUserId,
+            if (isDeviceApproved != null) 'is_device_approved': isDeviceApproved,
+            if (resetDevice) 'reset_device': true,
           });
       return PosRegisterModel.fromJson(res.data);
     } catch (e) {

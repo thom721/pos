@@ -18,7 +18,7 @@ from api.core.permissions import P, has_permission as _has_perm
 from api.core.tenant import require_active_plan
 from api.core.dt_coerce import now_local
 from api.services import audit_service
-from api.services.warehouse_helper import resolve_warehouse_id
+from api.services.warehouse_helper import resolve_warehouse_id, bind_register_device
 from api.services import billing_extra_service as _billing
 
 router = APIRouter(prefix="/api/sessions", tags=["Cashier Sessions"])
@@ -118,7 +118,7 @@ def _get_or_create_register(
         dedicated = ded_q.first()
         if dedicated:
             if dedicated.device_id != device_id:
-                dedicated.device_id = device_id
+                bind_register_device(dedicated, device_id)
                 db.flush()
             return dedicated
 
@@ -158,7 +158,7 @@ def _get_or_create_register(
     ).first()
 
     if free_slot:
-        free_slot.device_id = device_id
+        bind_register_device(free_slot, device_id)
         db.flush()
         return free_slot
 
@@ -329,6 +329,21 @@ def open_session(
     # Propagate 402 limit_exceeded, 403 caisse_disabled, or 409 no_registers
     if isinstance(reg, JSONResponse):
         return reg
+
+    # Appareil différent de celui déjà connu pour cette caisse → un admin
+    # doit l'approuver avant qu'on puisse transiger dessus (voir
+    # bind_register_device). Les admins/managers restent exemptés.
+    if not reg.is_device_approved and not _is_manager:
+        # Committer la réclamation (device_id + is_device_approved=False)
+        # même si la session est refusée : l'appareil doit rester visible en
+        # attente d'approbation (Business → Dépôts → Caisses), pas perdu au
+        # rollback implicite de la session DB à la fermeture de la requête.
+        db.commit()
+        return JSONResponse(status_code=403, content={
+            "detail": "device_pending_approval",
+            "message": "Cet appareil doit être approuvé par un administrateur "
+                       "avant de pouvoir ouvrir une caisse.",
+        })
 
     # Vérifier l'abonnement de la caisse — chaque caisse (initiale ou non)
     # a sa propre ligne de facturation (trial_ends_at / subscription_ends_at).

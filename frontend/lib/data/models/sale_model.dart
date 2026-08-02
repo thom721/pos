@@ -142,7 +142,11 @@ class SaleModel {
     required this.payments,
   });
 
-  double get balance => finalAmount - paidAmount;
+  // La fidélité utilisée réduit réellement ce qui reste dû (voir
+  // sale_service.py::create_sale) — paidAmount seul ne couvre que la partie
+  // encaissée en espèces/carte, donc l'ignorer ferait apparaître le montant
+  // payé par fidélité comme un crédit/reste à encaisser encore dû.
+  double get balance => finalAmount - paidAmount - loyaltyRedeemed;
 
   // Remises par article (original_price > unit_price)
   double get totalItemsDiscount => items.fold(0.0, (s, i) => s + i.itemDiscount);

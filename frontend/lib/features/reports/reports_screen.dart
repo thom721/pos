@@ -390,7 +390,7 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
         : widget.allSales;
 
     final totalRevenue = sales.fold(0.0, (s, e) => s + e.finalAmount);
-    final totalPaid = sales.fold(0.0, (s, e) => s + e.paidAmount);
+    final totalPaid = sales.fold(0.0, (s, e) => s + e.paidAmount + e.loyaltyRedeemed);
     final totalDiscount = sales.fold(0.0,
         (s, e) => s + e.discount + e.totalItemsDiscount + e.totalCatalogItemDiscount);
     final totalBalance = totalRevenue - totalPaid;
@@ -1111,7 +1111,7 @@ Future<void> generateSalesReportPdf(
   }
 
   final rev = sales.fold(0.0, (s, e) => s + e.finalAmount);
-  final paid = sales.fold(0.0, (s, e) => s + e.paidAmount);
+  final paid = sales.fold(0.0, (s, e) => s + e.paidAmount + e.loyaltyRedeemed);
   final disc = sales.fold(0.0,
       (s, e) => s + e.discount + e.totalItemsDiscount + e.totalCatalogItemDiscount);
   final paidCnt = sales.where((s) => s.status == 'PAID').length;

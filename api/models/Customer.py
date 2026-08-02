@@ -41,7 +41,13 @@ class Customer(UUIDBase):
 
     @hybrid_property
     def balance(self):
-        return sum((s.final_amount or s.total_amount) - (s.paid_amount or 0) for s in self.sales)
+        # loyalty_redeemed compte comme payé (voir sale_service.create_sale) —
+        # l'ignorer ferait apparaître la portion réglée en fidélité comme
+        # encore due.
+        return sum(
+            (s.final_amount or s.total_amount) - (s.paid_amount or 0) - (s.loyalty_redeemed or 0)
+            for s in self.sales
+        )
 
     @hybrid_property
     def full_name(self):

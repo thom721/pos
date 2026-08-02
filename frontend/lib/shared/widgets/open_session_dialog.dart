@@ -167,6 +167,8 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
           msg = message ?? 'Aucune caisse configurée. Contactez l\'administrateur.';
         } else if (detail == 'no_registered_devices') {
           msg = message ?? 'Aucun appareil enregistré comme caisse. Enregistrez d\'abord un appareil dans Business → Caisses.';
+        } else if (detail == 'device_pending_approval') {
+          msg = message ?? 'Cet appareil doit être approuvé par un administrateur avant de pouvoir ouvrir une caisse.';
         } else {
           msg = message ?? detail ?? 'Erreur réseau';
         }

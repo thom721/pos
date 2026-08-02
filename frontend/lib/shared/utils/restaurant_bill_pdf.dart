@@ -1,14 +1,13 @@
 import 'dart:typed_data';
 
-import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
-import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/services/logo_cache_service.dart';
 
 /// Génère un PDF addition/reçu pour une commande restaurant.
 ///
@@ -29,15 +28,9 @@ Future<Uint8List> buildRestaurantBillPdf(
   final fontBold = pw.Font.helveticaBold();
 
   pw.MemoryImage? logoImage;
-  if (settings.logoPath.isNotEmpty) {
-    try {
-      final res = await dio
-          .get(settings.logoPath,
-              options: Options(responseType: ResponseType.bytes))
-          .timeout(const Duration(seconds: 5));
-      logoImage =
-          pw.MemoryImage(Uint8List.fromList(res.data as List<int>));
-    } catch (_) {}
+  final logoBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
+  if (logoBytes != null) {
+    logoImage = pw.MemoryImage(logoBytes);
   }
 
   final numFmt =

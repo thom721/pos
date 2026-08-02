@@ -1,16 +1,15 @@
 import 'dart:typed_data';
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
-import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/return_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/services/logo_cache_service.dart';
 
 // Les imprimantes ESC/POS ne supportent que le Latin-1 (ISO-8859-1) — au-delà,
 // chaque caractère devient un octet 0x3F ('?'). NumberFormat('fr') utilise une
@@ -134,11 +133,8 @@ class BluetoothPrintService {
   Future<List<int>> _logoToEscPos(AppSettings settings) async {
     if (settings.logoPath.isEmpty) return [];
     try {
-      final res = await dio.get(
-        settings.logoPath,
-        options: Options(responseType: ResponseType.bytes),
-      ).timeout(const Duration(seconds: 5));
-      final rawBytes = Uint8List.fromList(res.data as List<int>);
+      final rawBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
+      if (rawBytes == null) return [];
 
       final decoded = img.decodeImage(rawBytes);
       if (decoded == null) return [];

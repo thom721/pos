@@ -1,13 +1,12 @@
 import 'dart:typed_data';
 
-import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
-import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/services/logo_cache_service.dart';
 
 String _fmtQty(double q) =>
     q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
@@ -21,15 +20,12 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
   final font     = pw.Font.helvetica();
   final fontBold = pw.Font.helveticaBold();
 
-  // Fetch logo bytes (ignore errors — logo is optional)
+  // Logo mis en cache localement — évite un aller-retour réseau à chaque
+  // impression et reste disponible hors ligne (voir LogoCacheService).
   pw.MemoryImage? logoImage;
-  if (settings.logoPath.isNotEmpty) {
-    try {
-      final res = await dio
-          .get(settings.logoPath, options: Options(responseType: ResponseType.bytes))
-          .timeout(const Duration(seconds: 5));
-      logoImage = pw.MemoryImage(Uint8List.fromList(res.data as List<int>));
-    } catch (_) {}
+  final logoBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
+  if (logoBytes != null) {
+    logoImage = pw.MemoryImage(logoBytes);
   }
 
   final numFmt =

@@ -5,6 +5,7 @@ class PosRegisterModel {
   final String name;
   final String deviceId;
   final bool isActive;
+  final bool isDeviceApproved;
   final bool isInitial;
   final String? warehouseId;
   final DateTime? trialEndsAt;
@@ -18,6 +19,7 @@ class PosRegisterModel {
     required this.name,
     required this.deviceId,
     required this.isActive,
+    this.isDeviceApproved = true,
     this.isInitial = false,
     this.warehouseId,
     this.trialEndsAt,
@@ -33,6 +35,7 @@ class PosRegisterModel {
         name: json['name']?.toString() ?? '',
         deviceId: json['device_id']?.toString() ?? '',
         isActive: json['is_active'] as bool? ?? true,
+        isDeviceApproved: json['is_device_approved'] as bool? ?? true,
         isInitial: json['is_initial'] as bool? ?? false,
         warehouseId: json['warehouse_id']?.toString(),
         trialEndsAt: json['trial_ends_at'] != null

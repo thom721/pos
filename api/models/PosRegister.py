@@ -11,6 +11,12 @@ class PosRegister(UUIDBase):
     warehouse_id  = Column(String(36), ForeignKey('warehouses.id'), nullable=True, index=True)
     name          = Column(String(100), nullable=False)
     device_id     = Column(String(36),  nullable=True)   # NULL until a device claims this slot
+    # True par défaut (n'affecte pas rétroactivement les caisses déjà en usage) —
+    # repassé à False dès qu'un device_id différent est assigné (voir
+    # warehouse_helper.bind_register_device) ; un admin doit ré-approuver
+    # explicitement avant que ce nouvel appareil puisse ouvrir une session
+    # (voir cashier_sessions.open_session).
+    is_device_approved = Column(Boolean, nullable=False, default=True)
     is_active     = Column(Boolean, nullable=False, default=True)
     # Session tracking
     session_token = Column(String(36), nullable=True)

@@ -1,5 +1,16 @@
 from sqlalchemy.orm import Session
 from api.models.Warehouse import Warehouse
+from api.models.PosRegister import PosRegister
+
+
+def bind_register_device(reg: PosRegister, new_device_id: str) -> None:
+    """Assigne new_device_id à reg. Si l'appareil change réellement, révoque
+    l'approbation — un appareil différent doit être ré-approuvé par un admin
+    avant de pouvoir ouvrir une caisse (voir cashier_sessions.open_session).
+    Ne rien faire si c'est le même appareil (préserve l'approbation)."""
+    if reg.device_id != new_device_id:
+        reg.is_device_approved = False
+    reg.device_id = new_device_id
 
 
 def resolve_warehouse_id(db: Session, tenant_id: str, warehouse_id: str | None = None) -> str | None:
