@@ -33,6 +33,10 @@ _SALES_BLOCKED_MSG = (
     "La création de ventes est bloquée : votre abonnement est expiré. "
     "Renouvelez sur posconnect.ht pour continuer."
 )
+_REGISTER_NO_SUBSCRIPTION_MSG = (
+    "Cette caisse n'a pas d'abonnement actif. Renouvelez l'abonnement "
+    "depuis la page Abonnement pour continuer à vendre."
+)
 
 
 def _decode_token(token: str) -> dict:
@@ -179,12 +183,24 @@ async def require_active_plan(
     if not reg:
         return  # pas de caisse trouvée pour ce device → no-op
 
-    # La caisse initiale sans dates peut être réparée par open_session (héritage
-    # du trial tenant). Ne pas bloquer ici — laisser open_session faire la réparation.
-    if getattr(reg, "is_initial", False) and not reg.subscription_ends_at and not reg.trial_ends_at:
-        return
-
     now = now_local()
+
+    # La caisse initiale sans dates peut être réparée par héritage du trial
+    # tenant (voir open_session, même logique) — mais si le trial du TENANT
+    # est lui-même absent/expiré, la réparation ne peut jamais réussir : ce
+    # cas laissait cette caisse vendre indéfiniment sans jamais être bloquée
+    # (le garde-fou ci-dessous ne s'exécutait jamais). On tente la réparation
+    # ici aussi, et on bloque si elle échoue, plutôt que de laisser passer.
+    if getattr(reg, "is_initial", False) and not reg.subscription_ends_at and not reg.trial_ends_at:
+        tenant = db.get(Tenant, tenant_id)
+        if tenant and tenant.trial_ends_at and tenant.trial_ends_at > now:
+            reg.trial_ends_at = tenant.trial_ends_at
+            db.commit()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=_REGISTER_NO_SUBSCRIPTION_MSG,
+            )
     sub_end   = reg.subscription_ends_at
     trial_end = reg.trial_ends_at
 
@@ -194,5 +210,5 @@ async def require_active_plan(
     if not has_sub and not has_trial:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="register_no_subscription",
+            detail=_REGISTER_NO_SUBSCRIPTION_MSG,
         )

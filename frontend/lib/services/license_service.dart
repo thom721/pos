@@ -301,9 +301,14 @@ class LicenseService {
 
     for (final r in registers) {
       if (r is! Map) continue;
-      final name = (r['warehouse_name'] as String?) ??
-          (r['name'] as String?) ??
-          'Caisse';
+      // Le nom de la CAISSE d'abord (r['name']) — warehouse_name n'est que le
+      // dépôt auquel elle appartient, pas un nom de caisse. Les inverser
+      // affichait le nom du dépôt à la place du nom de la caisse concernée.
+      final registerName = (r['name'] as String?) ?? 'Caisse';
+      final warehouseName = r['warehouse_name'] as String?;
+      final name = (warehouseName != null && warehouseName != registerName)
+          ? '$registerName ($warehouseName)'
+          : registerName;
       final status = r['status'] as String? ?? '';
 
       if (status == 'expired' || status == 'no_subscription') {
@@ -327,12 +332,14 @@ class LicenseService {
 
     final parts = <String>[];
     if (expired.isNotEmpty) {
+      // "Erreur" évoque un problème technique/système et inquiète inutilement
+      // le client — il s'agit d'un abonnement à payer, pas d'un dysfonctionnement.
       final label = expired.length > 1 ? 'Caisses' : 'Caisse';
-      parts.add('Erreur : $label ${expired.join(', ')} sans abonnement actif.');
+      parts.add('Abonnement requis : $label ${expired.join(', ')} sans abonnement actif.');
     }
     if (expiringSoon.isNotEmpty) {
       final label = expiringSoon.length > 1 ? 'Caisses' : 'Caisse';
-      parts.add('Avertissement : $label ${expiringSoon.join(', ')} bientôt expiré(e)s.');
+      parts.add('Bientôt à renouveler : $label ${expiringSoon.join(', ')} bientôt expiré(e)s.');
     }
     return '${parts.join(' ')} Gérez vos caisses dans Abonnement.';
   }
