@@ -14,6 +14,7 @@ from api.core.dt_coerce import now_local
 from api.models.User import User
 from api.models.Warehouse import Warehouse
 from api.models.PosRegister import PosRegister
+from api.models.CashierSession import CashierSession
 from api.models.Tenant import Tenant
 from api.models.PlatformConfig import PlatformConfig
 from api.schemas.warehouse import WarehouseCreate, WarehouseUpdate, WarehouseRead
@@ -489,6 +490,18 @@ def delete_register(
     current_user: User = Depends(require_permission(P.WAREHOUSES_DELETE)),
 ):
     reg = _get_register_or_404(db, warehouse_id, register_id, current_user.tenant_id)
+    # CashierSession.register_id est une FK NOT NULL — un hard-delete plante
+    # (IntegrityError → 500) dès que cette caisse a un historique de sessions,
+    # ce que le message de confirmation frontend ("l'historique reste
+    # conservé") suppose à tort possible. Refuser proprement plutôt que de
+    # laisser planter.
+    has_history = db.query(CashierSession).filter_by(register_id=register_id).first()
+    if has_history:
+        raise HTTPException(
+            409,
+            "Cette caisse a un historique de sessions — impossible de la supprimer "
+            "définitivement sans perdre cet historique. Désactivez-la à la place.",
+        )
     _billing.close_extra(db, reg.id)
     db.delete(reg)
     db.commit()

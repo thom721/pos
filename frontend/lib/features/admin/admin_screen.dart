@@ -2949,6 +2949,17 @@ class _RegistersDialogState extends ConsumerState<_RegistersDialog> {
                           final isActive = r['is_active'] as bool? ?? true;
                           final hasSession = r['has_session'] as bool? ?? false;
                           final lastSeen = _formatDate(r['last_seen'] as String?);
+                          final warehouseName = r['warehouse_name'] as String?;
+                          final warehouseIsActive = r['warehouse_is_active'] as bool?;
+                          // Un warehouse_id NULL (dépôt introuvable) ou pointant
+                          // vers un dépôt désactivé rend cette caisse invisible
+                          // sur l'écran Dépôts du tenant, même si elle est
+                          // active ici (list_registers y filtre par dépôt).
+                          final depotLabel = warehouseName == null
+                              ? '⚠ Aucun dépôt associé'
+                              : warehouseIsActive == false
+                                  ? '⚠ Dépôt « $warehouseName » désactivé'
+                                  : 'Dépôt : $warehouseName';
                           return ListTile(
                             dense: true,
                             leading: Icon(
@@ -2959,9 +2970,15 @@ class _RegistersDialogState extends ConsumerState<_RegistersDialog> {
                             title: Text(r['name'] as String? ?? id,
                                 style: const TextStyle(fontSize: 13)),
                             subtitle: Text(
+                              '$depotLabel\n'
                               'Dernière activité : $lastSeen'
                               '${hasSession ? '  •  Session ouverte' : ''}',
-                              style: const TextStyle(fontSize: 11),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: (warehouseName == null || warehouseIsActive == false)
+                                    ? AppColors.warning
+                                    : null,
+                              ),
                             ),
                             trailing: (_toggling.contains(id) || _deleting.contains(id))
                                 ? const SizedBox(

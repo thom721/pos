@@ -21,6 +21,7 @@ from api.models.BillingPayment import BillingPayment
 from api.models.PlatformConfig import PlatformConfig
 from api.models.Tenant import Tenant
 from api.models.PosRegister import PosRegister
+from api.models.CashierSession import CashierSession
 from api.models.Warehouse import Warehouse
 from api.models.InstallationCode import InstallationCode, generate_installation_code
 
@@ -880,6 +881,12 @@ def list_tenant_registers(
             "name":         r.name,
             "device_id":    r.device_id,
             "warehouse_id": r.warehouse_id,
+            # Un warehouse_id NULL ou pointant vers un dépôt inactif rend la
+            # caisse invisible sur l'écran Dépôts du tenant (list_registers
+            # y filtre par warehouse ET is_active) même si is_active=True ici
+            # — utile pour diagnostiquer "pourquoi cette caisse n'apparaît pas".
+            "warehouse_name":      r.warehouse.name if r.warehouse else None,
+            "warehouse_is_active": r.warehouse.is_active if r.warehouse else None,
             "is_active":    r.is_active,
             "is_initial":   bool(r.is_initial),
             "last_seen":    r.last_seen.isoformat() if r.last_seen else None,
@@ -919,6 +926,17 @@ def delete_tenant_register(
     reg = db.query(PosRegister).filter_by(id=register_id, tenant_id=tenant_id).first()
     if not reg:
         raise HTTPException(status_code=404, detail="Caisse introuvable")
+    # CashierSession.register_id est une FK NOT NULL — un hard-delete plante
+    # (IntegrityError → 500) dès que cette caisse a un historique de sessions.
+    # Refuser proprement plutôt que de laisser planter, en suggérant la
+    # désactivation (qui préserve l'historique, contrairement à la suppression).
+    has_history = db.query(CashierSession).filter_by(register_id=register_id).first()
+    if has_history:
+        raise HTTPException(
+            status_code=409,
+            detail="Cette caisse a un historique de sessions — impossible de la supprimer "
+                   "définitivement sans perdre cet historique. Désactivez-la à la place.",
+        )
     db.delete(reg)
     db.commit()
     _log.info("Caisse supprimée définitivement: %s (tenant=%s)", register_id, tenant_id)

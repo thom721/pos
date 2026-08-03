@@ -808,7 +808,8 @@ class _RegisterTile extends ConsumerWidget {
             builder: (dialogCtx) => AlertDialog(
               title: const Text('Supprimer la caisse'),
               content: Text(
-                  'Supprimer « ${register.name} » ? L\'historique des sessions reste conservé.'),
+                  'Supprimer « ${register.name} » ? Impossible si elle a un historique de '
+                  'sessions — désactivez-la dans ce cas plutôt que de la supprimer.'),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(dialogCtx, false),
