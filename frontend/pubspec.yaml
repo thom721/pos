@@ -1,7 +1,7 @@
 name: pos_connect
 description: POS Connect — Système de caisse moderne inspiré de QuickBooks.
 publish_to: 'none'
-version: 2.0.0+16
+version: 2.0.0+25
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -88,6 +88,9 @@ dependencies:
   # Splash natif — preserve/remove API utilisée au runtime
   flutter_native_splash: ^2.4.3
   timezone: ^0.11.1
+
+  # Scan de code-barres par caméra (Android/iOS/macOS/Web — pas de support Windows/Linux)
+  mobile_scanner: ^7.4.0
 
 dev_dependencies:
   flutter_test:

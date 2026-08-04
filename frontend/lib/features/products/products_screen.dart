@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/core/responsive.dart';
@@ -18,6 +19,8 @@ import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/repositories/restaurant_repository.dart';
 import 'package:pos_connect/data/repositories/warehouse_repository.dart';
+import 'package:pos_connect/providers/entrepot_provider.dart';
+import 'package:pos_connect/shared/widgets/barcode_scanner_sheet.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 
 final _fmt =
@@ -1229,6 +1232,14 @@ class _ProductThumb extends StatelessWidget {
       );
 }
 
+// Ouvre l'historique des mouvements de l'Entrepôt filtré sur ce produit —
+// réutilise l'onglet Historique existant plutôt que de dupliquer une vue.
+void _openStockHistory(BuildContext context, WidgetRef ref, ProductModel p) {
+  ref.read(entrepotMovementProductFilterProvider.notifier).state = p;
+  ref.read(entrepotInitialTabProvider.notifier).state = 1;
+  context.push('/entrepot');
+}
+
 // ─── Table ────────────────────────────────────────────────────────────────────
 
 class _ProductTable extends ConsumerWidget {
@@ -1239,6 +1250,7 @@ class _ProductTable extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(hasPermissionProvider(Perm.productsUpdate));
     final canAdjustStock = ref.watch(hasPermissionProvider(Perm.stockAdjust));
+    final canViewHistory = ref.watch(hasPermissionProvider(Perm.stockRead));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -1283,7 +1295,7 @@ class _ProductTable extends ConsumerWidget {
               ),
               const DataColumn(label: Text('Stock')),
               const DataColumn(label: Text('Seuil alerte'), numeric: true),
-              if (canEdit || canAdjustStock) const DataColumn(label: Text(''), numeric: true),
+              if (canEdit || canAdjustStock || canViewHistory) const DataColumn(label: Text(''), numeric: true),
             ],
             rows: products.map((p) {
               return DataRow(cells: [
@@ -1315,10 +1327,17 @@ class _ProductTable extends ConsumerWidget {
                 DataCell(_StockChip(product: p)),
                 DataCell(Text('${p.alertStock}',
                     style: const TextStyle(fontSize: 13))),
-                if (canEdit || canAdjustStock)
+                if (canEdit || canAdjustStock || canViewHistory)
                   DataCell(Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (canViewHistory)
+                        IconButton(
+                          icon: const Icon(Icons.history_rounded,
+                              size: 18, color: AppColors.textSecondary),
+                          tooltip: 'Historique des mouvements',
+                          onPressed: () => _openStockHistory(context, ref, p),
+                        ),
                       if (canAdjustStock)
                         IconButton(
                           icon: const Icon(Icons.add_box_outlined,
@@ -1448,6 +1467,7 @@ class _ProductCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(hasPermissionProvider(Perm.productsUpdate));
     final canAdjust = ref.watch(hasPermissionProvider(Perm.stockAdjust));
+    final canViewHistory = ref.watch(hasPermissionProvider(Perm.stockRead));
 
     return Card(
       child: ListTile(
@@ -1459,46 +1479,61 @@ class _ProductCard extends ConsumerWidget {
         subtitle: Text(product.category?.name ?? 'Sans catégorie',
             style: const TextStyle(
                 color: AppColors.textSecondary, fontSize: 12)),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_fmt.format(product.salePrice),
-                style: const TextStyle(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14)),
-            if (product.stock != null)
-              canAdjust
-                  ? GestureDetector(
-                      onTap: () => showDialog(
-                        context: context,
-                        builder: (_) => _AdjustStockDialog(product: product),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.edit_rounded,
-                              size: 10,
-                              color: product.isLowStock
-                                  ? AppColors.error
-                                  : AppColors.textSecondary),
-                          const SizedBox(width: 3),
-                          Text('Stock: ${product.stock}',
-                              style: TextStyle(
-                                  fontSize: 12,
+            if (canViewHistory)
+              IconButton(
+                icon: const Icon(Icons.history_rounded,
+                    size: 18, color: AppColors.textSecondary),
+                tooltip: 'Historique des mouvements',
+                onPressed: () => _openStockHistory(context, ref, product),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(_fmt.format(product.salePrice),
+                    style: const TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14)),
+                if (product.stock != null)
+                  canAdjust
+                      ? GestureDetector(
+                          onTap: () => showDialog(
+                            context: context,
+                            builder: (_) =>
+                                _AdjustStockDialog(product: product),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.edit_rounded,
+                                  size: 10,
                                   color: product.isLowStock
                                       ? AppColors.error
-                                      : AppColors.textSecondary)),
-                        ],
-                      ),
-                    )
-                  : Text('Stock: ${product.stock}',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: product.isLowStock
-                              ? AppColors.error
-                              : AppColors.textSecondary)),
+                                      : AppColors.textSecondary),
+                              const SizedBox(width: 3),
+                              Text('Stock: ${product.stock}',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: product.isLowStock
+                                          ? AppColors.error
+                                          : AppColors.textSecondary)),
+                            ],
+                          ),
+                        )
+                      : Text('Stock: ${product.stock}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: product.isLowStock
+                                  ? AppColors.error
+                                  : AppColors.textSecondary)),
+              ],
+            ),
           ],
         ),
         onTap: canEdit
@@ -1630,6 +1665,18 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
     });
   }
 
+  Future<void> _scanBarcode() async {
+    final code = await Navigator.of(context).push<String>(MaterialPageRoute(
+      builder: (_) => BarcodeScannerSheet(
+        continuous: false,
+        onCode: (_) async => null,
+      ),
+    ));
+    if (code != null && mounted) {
+      setState(() => _barcodeCtrl.text = code);
+    }
+  }
+
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -1674,7 +1721,16 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _barcodeCtrl,
-                  decoration: const InputDecoration(labelText: 'Code-barres'),
+                  decoration: InputDecoration(
+                    labelText: 'Code-barres',
+                    suffixIcon: cameraScanSupported
+                        ? IconButton(
+                            icon: const Icon(Icons.qr_code_scanner_rounded),
+                            tooltip: 'Scanner un code-barres',
+                            onPressed: _scanBarcode,
+                          )
+                        : null,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(

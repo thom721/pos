@@ -22,6 +22,7 @@ import 'package:pos_connect/providers/discount_provider.dart';
 import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
+import 'package:pos_connect/shared/widgets/barcode_scanner_sheet.dart';
 import 'package:pos_connect/shared/widgets/open_session_dialog.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/features/customers/customers_screen.dart' show CustomerFormDialog;
@@ -691,11 +692,73 @@ class _ProductPanel extends ConsumerStatefulWidget {
 
 class _ProductPanelState extends ConsumerState<_ProductPanel> {
   final _searchCtrl = TextEditingController();
+  final _searchFocus = FocusNode();
+  bool _lookingUp = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Prêt à scanner (douchette USB/Bluetooth) dès l'arrivée sur l'écran caisse.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _searchFocus.requestFocus();
+    });
+  }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _searchFocus.dispose();
     super.dispose();
+  }
+
+  /// Résout un code (saisi/scanné par douchette, ou remonté par la caméra)
+  /// vers un produit exact et l'ajoute au panier. Retourne un message
+  /// d'erreur si non trouvé, null si succès — utilisé aussi bien par la
+  /// soumission clavier (douchette) que par l'écran caméra.
+  Future<String?> _lookupAndAdd(String code) async {
+    final trimmed = code.trim();
+    if (trimmed.isEmpty) return null;
+    if (ref.read(_posSessionOpenProvider) == false) {
+      return 'Ouvrez une session caisse avant de scanner';
+    }
+    setState(() => _lookingUp = true);
+    try {
+      final warehouseId = ref.read(activeWarehouseProvider)?.id;
+      final product = await ref
+          .read(productRepositoryProvider)
+          .findByBarcode(trimmed, warehouseId: warehouseId);
+      if (product == null) {
+        return 'Aucun produit pour ce code';
+      }
+      ref.read(posProvider.notifier).addProduct(product);
+      return null;
+    } catch (e) {
+      return 'Erreur de recherche';
+    } finally {
+      if (mounted) setState(() => _lookingUp = false);
+    }
+  }
+
+  Future<void> _handleScanSubmit(String code) async {
+    final error = await _lookupAndAdd(code);
+    _searchCtrl.clear();
+    ref.read(posProductSearchProvider.notifier).state = '';
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(error ?? 'Produit ajouté au panier'),
+      backgroundColor: error == null ? AppColors.success : AppColors.error,
+      duration: const Duration(seconds: 2),
+    ));
+    // Reprend le focus pour enchaîner le scan suivant sans re-cliquer.
+    _searchFocus.requestFocus();
+  }
+
+  void _openCameraScanner() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => BarcodeScannerSheet(onCode: _lookupAndAdd),
+    )).then((_) {
+      if (mounted) _searchFocus.requestFocus();
+    });
   }
 
   @override
@@ -708,11 +771,30 @@ class _ProductPanelState extends ConsumerState<_ProductPanel> {
           padding: const EdgeInsets.all(16),
           child: TextField(
             controller: _searchCtrl,
-            decoration: const InputDecoration(
+            focusNode: _searchFocus,
+            decoration: InputDecoration(
               hintText: 'Rechercher un produit (nom ou code-barres)...',
-              prefixIcon: Icon(Icons.search_rounded),
-              border: OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.search_rounded),
+              border: const OutlineInputBorder(),
+              suffixIcon: _lookingUp
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : cameraScanSupported
+                      ? IconButton(
+                          icon: const Icon(Icons.qr_code_scanner_rounded),
+                          tooltip: 'Scanner un code-barres',
+                          onPressed: _openCameraScanner,
+                        )
+                      : null,
             ),
+            // Une douchette code-barres tape le code puis envoie "Entrée" —
+            // on tente l'ajout direct au panier avant la recherche floue.
+            onSubmitted: _handleScanSubmit,
             onChanged: (v) =>
                 ref.read(posProductSearchProvider.notifier).state = v,
           ),

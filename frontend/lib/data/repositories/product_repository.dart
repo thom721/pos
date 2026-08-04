@@ -182,4 +182,20 @@ class ProductRepository {
     final res = await dio.get('/api/sales/products/search', queryParameters: params);
     return PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
   }
+
+  /// Résout un code scanné (douchette ou caméra) vers le produit exact.
+  /// Réutilise la recherche existante (name OR barcode ilike) puis ne
+  /// retient que la correspondance exacte du code-barres — évite un faux
+  /// positif si le code scanné apparaît comme sous-chaîne d'un nom produit.
+  Future<ProductModel?> findByBarcode(String code, {String? warehouseId}) async {
+    final trimmed = code.trim();
+    if (trimmed.isEmpty) return null;
+    final res = await searchForSale(
+      search: trimmed, perPage: 20, warehouseId: warehouseId,
+    );
+    for (final p in res.data) {
+      if (p.barcode != null && p.barcode!.trim() == trimmed) return p;
+    }
+    return null;
+  }
 }

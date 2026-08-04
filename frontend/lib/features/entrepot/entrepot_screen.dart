@@ -124,14 +124,35 @@ class _SetupViewState extends ConsumerState<_SetupView> {
   }
 }
 
-class _EntrepotContent extends StatelessWidget {
+class _EntrepotContent extends ConsumerStatefulWidget {
   final WarehouseModel entrepot;
   const _EntrepotContent({required this.entrepot});
 
   @override
+  ConsumerState<_EntrepotContent> createState() => _EntrepotContentState();
+}
+
+class _EntrepotContentState extends ConsumerState<_EntrepotContent> {
+  late final int _initialTab;
+
+  @override
+  void initState() {
+    super.initState();
+    // Capturé une seule fois (DefaultTabController.initialIndex n'est lu
+    // qu'à la création) puis remis à 0 pour ne pas rester coincé sur
+    // l'onglet Historique lors d'un prochain accès normal à l'écran.
+    _initialTab = ref.read(entrepotInitialTabProvider);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(entrepotInitialTabProvider.notifier).state = 0;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final entrepot = widget.entrepot;
     return DefaultTabController(
       length: 2,
+      initialIndex: _initialTab,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -454,21 +475,44 @@ class _HistoryTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final movementsAsync = ref.watch(entrepotMovementsProvider);
+    final productFilter = ref.watch(entrepotMovementProductFilterProvider);
 
-    return movementsAsync.when(
-      data: (result) {
-        if (result.data.isEmpty) {
-          return const Center(
-              child: Text('Aucun mouvement', style: TextStyle(color: AppColors.textSecondary)));
-        }
-        return ListView.separated(
-          itemCount: result.data.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (context, i) => _MovementRow(mv: result.data[i]),
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Erreur: $e')),
+    return Column(
+      children: [
+        if (productFilter != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: InputChip(
+                avatar: const Icon(Icons.inventory_2_outlined, size: 16),
+                label: Text('Produit : ${productFilter.name}',
+                    style: const TextStyle(fontSize: 12)),
+                onDeleted: () => ref
+                    .read(entrepotMovementProductFilterProvider.notifier)
+                    .state = null,
+              ),
+            ),
+          ),
+        Expanded(
+          child: movementsAsync.when(
+            data: (result) {
+              if (result.data.isEmpty) {
+                return const Center(
+                    child: Text('Aucun mouvement',
+                        style: TextStyle(color: AppColors.textSecondary)));
+              }
+              return ListView.separated(
+                itemCount: result.data.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, i) => _MovementRow(mv: result.data[i]),
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text('Erreur: $e')),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -488,7 +532,8 @@ class _MovementRow extends StatelessWidget {
       ),
       title: Text(mv.productName ?? 'Produit', style: const TextStyle(fontSize: 13)),
       subtitle: Text(
-        '${mv.sourceLabel}${mv.note != null && mv.note!.isNotEmpty ? ' — ${mv.note}' : ''}',
+        '${mv.sourceLabel}${mv.note != null && mv.note!.isNotEmpty ? ' — ${mv.note}' : ''}'
+        '${mv.userFullName != null && mv.userFullName!.isNotEmpty ? ' — par ${mv.userFullName}' : ''}',
         style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
       ),
       trailing: Column(
