@@ -470,30 +470,10 @@ class ThermalPrinterService {
     final bytes = await buildRestaurantBillPdf(order, settings,
         reference: reference, discount: discount,
         paidAmount: paidAmount, paymentMethod: paymentMethod);
-
-    // Sur Windows/macOS : directPrintPdf sans usePrinterSettings scale le PDF sur
-    // le format par défaut du driver (ex: A4) → coupe le reçu et le rend pâle.
-    // usePrinterSettings: true force le driver à utiliser son format roll configuré.
-    if (printerUrl != null && printerUrl.isNotEmpty) {
-      final printers = await Printing.listPrinters();
-      final printer = printers.cast<Printer?>().firstWhere(
-        (p) => p?.url == printerUrl,
-        orElse: () => null,
-      );
-      if (printer != null) {
-        await Printing.directPrintPdf(
-          printer: printer,
-          onLayout: (_) => bytes,
-          name: reference != null ? 'Recu_$reference' : 'Addition',
-          usePrinterSettings: Platform.isWindows || Platform.isMacOS,
-        );
-        return;
-      }
-    }
-    await Printing.layoutPdf(
-      onLayout: (_) => bytes,
+    await printPdfBytes(
+      bytes,
       name: reference != null ? 'Recu_$reference' : 'Addition',
-      usePrinterSettings: true,
+      printerUrl: printerUrl,
     );
   }
 
@@ -505,29 +485,56 @@ class ThermalPrinterService {
     String? printerUrl,
   }) async {
     final bytes = await buildReceiptPdf(sale, settings);
+    await printPdfBytes(
+      bytes,
+      name: 'Recu_${sale.reference}',
+      printerUrl: printerUrl,
+    );
+  }
 
-    // Sur Windows/macOS : directPrintPdf sans usePrinterSettings scale le PDF sur
-    // le format par défaut du driver (ex: A4) → coupe le reçu et le rend pâle.
-    // usePrinterSettings: true force le driver à utiliser son format roll configuré.
-    if (printerUrl != null && printerUrl.isNotEmpty) {
-      final printers = await Printing.listPrinters();
-      final printer = printers.cast<Printer?>().firstWhere(
-        (p) => p?.url == printerUrl,
-        orElse: () => null,
-      );
-      if (printer != null) {
-        await Printing.directPrintPdf(
-          printer: printer,
-          onLayout: (_) => bytes,
-          name: 'Recu_${sale.reference}',
-          usePrinterSettings: Platform.isWindows || Platform.isMacOS,
-        );
-        return;
-      }
+  /// Imprime un PDF directement sur une imprimante résolue (celle configurée,
+  /// sinon l'imprimante par défaut du système, sinon la première disponible)
+  /// — sans jamais ouvrir la boîte de dialogue "Print Setup" du système.
+  ///
+  /// Sur Windows/macOS : directPrintPdf sans usePrinterSettings scale le PDF sur
+  /// le format par défaut du driver (ex: A4) → coupe le reçu et le rend pâle.
+  /// usePrinterSettings: true force le driver à utiliser son format roll configuré.
+  Future<void> printPdfBytes(
+    Uint8List bytes, {
+    required String name,
+    String? printerUrl,
+  }) async {
+    if (kIsWeb) {
+      await Printing.layoutPdf(onLayout: (_) => bytes, name: name);
+      return;
     }
+    final printers = await Printing.listPrinters();
+    Printer? printer;
+    if (printerUrl != null && printerUrl.isNotEmpty) {
+      printer = printers.cast<Printer?>().firstWhere(
+            (p) => p?.url == printerUrl,
+            orElse: () => null,
+          );
+    }
+    printer ??= printers.cast<Printer?>().firstWhere(
+          (p) => p?.isDefault ?? false,
+          orElse: () => null,
+        );
+    printer ??= printers.isNotEmpty ? printers.first : null;
+
+    if (printer != null) {
+      await Printing.directPrintPdf(
+        printer: printer,
+        onLayout: (_) => bytes,
+        name: name,
+        usePrinterSettings: Platform.isWindows || Platform.isMacOS,
+      );
+      return;
+    }
+    // Aucune imprimante détectée — dernier recours, ouvre le sélecteur système.
     await Printing.layoutPdf(
       onLayout: (_) => bytes,
-      name: 'Recu_${sale.reference}',
+      name: name,
       usePrinterSettings: true,
     );
   }

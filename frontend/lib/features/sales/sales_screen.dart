@@ -1256,9 +1256,12 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
       if (!mounted) return;
       Navigator.pop(context);
       widget.onDone();
-      await Printing.layoutPdf(
-        onLayout: (_) => bytes,
+      // Imprime directement sur l'imprimante configurée/par défaut — évite
+      // la boîte de dialogue "Print Setup" du système sur Windows/macOS.
+      await ThermalPrinterService.instance.printPdfBytes(
+        bytes,
         name: 'Recu_${widget.sale.reference}',
+        printerUrl: settings.posPrinterName,
       );
     } catch (e) {
       if (mounted) setState(() { _printing = false; _error = extractAnyError(e); });
