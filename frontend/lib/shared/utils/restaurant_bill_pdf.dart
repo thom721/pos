@@ -39,10 +39,12 @@ Future<Uint8List> buildRestaurantBillPdf(
   final sym = settings.currencySymbol;
   final isPaid = reference != null;
 
-  // 80 mm ≈ 226 pt  |  58 mm ≈ 164 pt  |  48 mm ≈ 136 pt
+  // Largeur RÉELLEMENT imprimable, pas la largeur nominale du rouleau — voir
+  // le commentaire équivalent dans receipt_pdf.dart.
+  // 80 mm rouleau ≈ 72 mm imprimable ≈ 204 pt | 58 mm ≈ 164 pt | 48 mm ≈ 136 pt
   final pageWidth = settings.paperWidth == 58 ? 164.0
                   : settings.paperWidth == 48 ? 136.0
-                  : 226.0;
+                  : 204.0;
   final qtyW   = settings.paperWidth == 58 ? 18.0
                : settings.paperWidth == 48 ? 14.0
                : 24.0;

@@ -28,7 +28,10 @@ Future<Uint8List> buildPaymentPdf({
       NumberFormat.currency(locale: 'fr_HT', symbol: '', decimalDigits: 2);
   final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
 
-  const pageWidth = 226.0; // ~80 mm
+  // Largeur RÉELLEMENT imprimable, pas la largeur nominale du rouleau — voir
+  // le commentaire équivalent dans receipt_pdf.dart (~72mm imprimable sur un
+  // rouleau 80mm, sinon les montants à droite sont coupés par l'imprimante).
+  const pageWidth = 204.0; // ~80 mm rouleau, ~72 mm imprimable
 
   String methodLabel(String m) {
     switch (m.toUpperCase()) {

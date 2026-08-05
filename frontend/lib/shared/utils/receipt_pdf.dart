@@ -32,10 +32,15 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
       NumberFormat.currency(locale: 'fr_HT', symbol: '', decimalDigits: 2);
   final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
 
-  // 80 mm ≈ 226 pt  |  58 mm ≈ 164 pt  |  48 mm ≈ 136 pt
+  // Largeur RÉELLEMENT imprimable, pas la largeur nominale du rouleau — un
+  // rouleau "80mm" n'a qu'environ 72mm imprimables (le reste est une marge
+  // mécanique de chaque côté de la tête d'impression) ; composer le PDF pour
+  // les 80mm nominaux fait déborder la colonne TOTAL hors de la zone
+  // imprimable, qui est alors coupée par l'imprimante.
+  // 80 mm rouleau ≈ 72 mm imprimable ≈ 204 pt | 58 mm ≈ 164 pt | 48 mm ≈ 136 pt
   final pageWidth = settings.paperWidth == 58 ? 164.0
                   : settings.paperWidth == 48 ? 136.0
-                  : 226.0;
+                  : 204.0;
   // 4 colonnes : ARTICLE (flex) | QTÉ (fixe) | P.U. (fixe) | TOTAL (fixe)
   final qtyColW   = settings.paperWidth == 58 ? 18.0
                   : settings.paperWidth == 48 ? 14.0
