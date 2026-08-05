@@ -204,7 +204,15 @@ class BluetoothPrintService {
     final nameW = settings.paperWidth == 80 ? 20 : 14;
     final qtyW = settings.paperWidth == 80 ? 6 : 4;
     final puW = settings.paperWidth == 80 ? 8 : 6;
-    final totW = cols - nameW - qtyW - puW;
+    // Marge de sécurité : gras+double-strike restent actifs pendant le
+    // tableau d'articles (pour l'assombrissement, voir plus bas) et élargissent
+    // légèrement chaque caractère sur certaines imprimantes — une ligne à 48/32
+    // colonnes pleines déborde alors physiquement et perd ses derniers
+    // caractères (ex: "TOTAL" → "TO", "9,60" → "9"). On réserve 2 colonnes de
+    // marge à droite pour absorber ce débordement sans toucher au réglage
+    // d'assombrissement.
+    final rowMargin = 2;
+    final totW = cols - nameW - qtyW - puW - rowMargin;
     final labelW = cols - 16;
 
     void esc(List<int> cmd) => buf.addAll(cmd);
@@ -396,7 +404,10 @@ class BluetoothPrintService {
     final cols = settings.paperWidth == 80 ? 48 : 32;
     final nameW = settings.paperWidth == 80 ? 24 : 16;
     final qtyW = settings.paperWidth == 80 ? 6 : 4;
-    final totW = cols - nameW - qtyW;
+    // Marge de sécurité contre le débordement physique gras+double-strike —
+    // voir le commentaire équivalent dans le reçu de vente ci-dessus.
+    final rowMargin = 2;
+    final totW = cols - nameW - qtyW - rowMargin;
     final labelW = cols - 16;
 
     void esc(List<int> cmd) => buf.addAll(cmd);
@@ -525,7 +536,10 @@ class BluetoothPrintService {
     final cols = settings.paperWidth == 80 ? 48 : 32;
     final nameW = settings.paperWidth == 80 ? 26 : 18;
     final qtyW = settings.paperWidth == 80 ? 6 : 4;
-    final totW = cols - nameW - qtyW;
+    // Marge de sécurité contre le débordement physique gras+double-strike —
+    // voir le commentaire équivalent dans le reçu de vente.
+    final rowMargin = 2;
+    final totW = cols - nameW - qtyW - rowMargin;
     final labelW = cols - 16;
 
     void esc(List<int> cmd) => buf.addAll(cmd);
