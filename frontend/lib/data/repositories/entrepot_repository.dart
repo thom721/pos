@@ -3,6 +3,7 @@ import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/models/stock_movement_model.dart';
+import 'package:pos_connect/data/models/transfer_receipt_model.dart';
 
 class EntrepotRepository {
   Future<List<WarehouseModel>> listEntrepots() async {
@@ -58,6 +59,26 @@ class EntrepotRepository {
     await dio.post('/api/entrepot/$entrepotId/products/$productId/distribute', data: {
       'allocations': allocations,
     });
+  }
+
+  /// Envoie du stock VERS un entrepôt, depuis un dépôt classique
+  /// (« retourner à l'entrepôt ») ou un autre entrepôt (transfert).
+  Future<TransferReceiptModel> transferIn(
+    String entrepotId,
+    String productId,
+    String sourceWarehouseId,
+    double quantity, {
+    String? reason,
+  }) async {
+    final res = await dio.post(
+      '/api/entrepot/$entrepotId/products/$productId/transfer-in',
+      data: {
+        'source_warehouse_id': sourceWarehouseId,
+        'quantity': quantity,
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      },
+    );
+    return TransferReceiptModel.fromJson(res.data as Map<String, dynamic>);
   }
 
   Future<PaginatedResponse<StockMovementModel>> getMovements({

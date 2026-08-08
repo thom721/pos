@@ -191,3 +191,104 @@ def distribute(
     except Exception:
         db.rollback()
         raise
+
+
+def transfer_to_entrepot(
+    db: Session,
+    tenant_id: str,
+    entrepot_id: str,
+    source_warehouse_id: str,
+    product_id: str,
+    quantity: float,
+    user_id: str,
+    reason: str | None = None,
+) -> dict:
+    """Envoie du stock VERS un entrepôt, depuis n'importe quel autre
+    emplacement du tenant — un dépôt de vente classique (« retourner à
+    l'entrepôt » depuis la fiche produit) ou un autre entrepôt (transfert
+    entrepôt à entrepôt). Mécanisme séparé de distribute() (qui va dans
+    l'autre sens, entrepôt → dépôts) — même schéma transactionnel tout-ou-rien.
+
+    Si la source est elle-même un entrepôt non payé, le transfert est bloqué
+    (402) — en faire sortir du stock équivaut à une distribution. Recevoir
+    dans l'entrepôt cible n'est jamais bloqué (comme adjust_entrepot_stock).
+    Retourne un dict exploitable pour un reçu imprimable (audit)."""
+    if quantity <= 0:
+        raise HTTPException(400, "La quantité doit être positive")
+
+    entrepot = get_entrepot_by_id(db, tenant_id, entrepot_id)
+
+    if source_warehouse_id == entrepot.id:
+        raise HTTPException(400, "La source et la destination doivent être différentes")
+
+    source = db.query(Warehouse).filter(
+        Warehouse.id == source_warehouse_id,
+        Warehouse.tenant_id == tenant_id,
+        Warehouse.is_active == True,  # noqa: E712
+    ).first()
+    if not source:
+        raise HTTPException(404, "Emplacement source introuvable")
+    if source.is_entrepot:
+        _assert_paid(source)
+
+    product = (
+        db.query(Product)
+        .options(joinedload(Product.stock_movements))
+        .filter(Product.id == product_id, Product.tenant_id == tenant_id)
+        .first()
+    )
+    if not product:
+        raise HTTPException(404, "Produit introuvable")
+
+    requested = Decimal(str(quantity))
+    available = Decimal(str(product.available_quantity_at(source.id)))
+    if requested > available:
+        raise HTTPException(
+            400,
+            f"Stock insuffisant à « {source.name} » pour {product.name} "
+            f"(disponible: {available}, demandé: {requested})",
+        )
+
+    try:
+        with db.begin_nested():
+            out_mv = record_stock_movement(
+                db,
+                product_id=product_id,
+                user_id=user_id,
+                tenant_id=tenant_id,
+                warehouse_id=source.id,
+                type=StockType.out,
+                quantity=-float(requested),
+                source_type="entrepot_transfer",
+                note=reason or f"Transfert vers l'entrepôt « {entrepot.name} »",
+            )
+            db.flush()
+            in_mv = record_stock_movement(
+                db,
+                product_id=product_id,
+                user_id=user_id,
+                tenant_id=tenant_id,
+                warehouse_id=entrepot.id,
+                type=StockType.in_,
+                quantity=requested,
+                source_type="entrepot_transfer",
+                source_id=out_mv.id,
+                note=reason or f"Reçu de « {source.name} »",
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(in_mv)
+    return {
+        "movement_id":  in_mv.id,
+        "product_name": product.name,
+        "quantity":     float(requested),
+        "source_name":    source.name,
+        "source_address": source.address,
+        "target_name":    entrepot.name,
+        "target_address": entrepot.address,
+        "reason":       reason,
+        "created_at":   in_mv.created_at,
+    }

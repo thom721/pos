@@ -12,6 +12,7 @@ import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/offline_cache_service.dart';
+import 'package:pos_connect/shared/widgets/transfer_to_entrepot_dialog.dart';
 
 final _fmt = NumberFormat('#,##0.##', 'fr');
 final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
@@ -420,6 +421,8 @@ class _ProductRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final stock = product.stock ?? 0;
     final canDistribute = entrepot.isSubscriptionActive;
+    final hasOtherEntrepots =
+        (ref.watch(entrepotsProvider).valueOrNull?.length ?? 0) > 1;
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -460,6 +463,29 @@ class _ProductRow extends ConsumerWidget {
                   label: const Text('Distribuer'),
                 ),
               ),
+              if (hasOtherEntrepots)
+                Tooltip(
+                  message: canDistribute
+                      ? 'Transférer vers un autre entrepôt'
+                      : 'Entrepôt non payé — réglez l\'abonnement pour transférer',
+                  child: IconButton(
+                    icon: const Icon(Icons.swap_horiz_rounded, color: AppColors.textSecondary),
+                    onPressed: stock > 0 && canDistribute
+                        ? () => showTransferToEntrepotDialog(
+                              context, ref,
+                              productId: product.id,
+                              productName: product.name,
+                              sourceWarehouseId: entrepot.id,
+                              excludeEntrepotId: entrepot.id,
+                              onDone: () {
+                                ref.invalidate(entrepotProductsProvider);
+                                ref.invalidate(entrepotMovementsProvider);
+                                _refreshProductsAfterEntrepotChange(ref);
+                              },
+                            )
+                        : null,
+                  ),
+                ),
             ],
           ],
         ),

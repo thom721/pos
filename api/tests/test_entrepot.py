@@ -291,3 +291,73 @@ def test_confirm_payment_extends_entrepot_subscription(db, tenant, depots):
 
     # La distribution est maintenant débloquée.
     entrepot_service._assert_paid(entrepot)  # ne lève pas
+
+
+def test_transfer_from_depot_to_entrepot_never_requires_payment(db, tenant, product, depots):
+    """« Retourner à l'entrepôt » depuis un dépôt classique — recevoir dans
+    l'entrepôt n'est jamais bloqué par l'abonnement (contrairement à
+    distribute(), qui fait sortir du stock DE l'entrepôt)."""
+    depot_a, _ = depots
+    entrepot = entrepot_service.create_entrepot(db, tenant.id, address="1 rue A")
+    from api.services.stock_service import record_stock_movement
+    from api.models.StockMovement import StockType
+    record_stock_movement(
+        db, product_id=product.id, user_id="u1", tenant_id=tenant.id,
+        warehouse_id=depot_a.id, type=StockType.in_, quantity=20,
+        source_type="test_seed",
+    )
+    db.commit()
+
+    receipt = entrepot_service.transfer_to_entrepot(
+        db, tenant.id, entrepot.id, depot_a.id, product.id, 12, "u1", reason="Retour surplus",
+    )
+
+    assert receipt["quantity"] == 12
+    assert receipt["source_name"] == "Dépôt A"
+    assert receipt["target_name"] == entrepot.name
+    assert receipt["target_address"] == "1 rue A"
+    db.refresh(product)
+    assert product.stock_at(depot_a.id) == 8   # 20 - 12
+    assert product.stock_at(entrepot.id) == 12
+
+
+def test_transfer_between_entrepots_requires_source_paid(db, tenant, product):
+    """Transfert entrepôt → entrepôt : bloqué (402) si la source (celle qui
+    perd du stock) n'a pas d'abonnement actif, comme pour distribute()."""
+    ent_a = entrepot_service.create_entrepot(db, tenant.id, "Entrepôt A")
+    ent_b = entrepot_service.create_entrepot(db, tenant.id, "Entrepôt B")
+    entrepot_service.adjust_entrepot_stock(db, tenant.id, ent_a.id, product.id, 30, None, "u1")
+
+    with pytest.raises(HTTPException) as exc:
+        entrepot_service.transfer_to_entrepot(
+            db, tenant.id, ent_b.id, ent_a.id, product.id, 10, "u1",
+        )
+    assert exc.value.status_code == 402
+
+    _mark_paid(db, ent_a)
+    entrepot_service.transfer_to_entrepot(
+        db, tenant.id, ent_b.id, ent_a.id, product.id, 10, "u1",
+    )
+    db.refresh(product)
+    assert product.stock_at(ent_a.id) == 20
+    assert product.stock_at(ent_b.id) == 10
+
+
+def test_transfer_rejects_same_source_and_target(db, tenant, product):
+    entrepot = entrepot_service.create_entrepot(db, tenant.id)
+    with pytest.raises(HTTPException) as exc:
+        entrepot_service.transfer_to_entrepot(
+            db, tenant.id, entrepot.id, entrepot.id, product.id, 5, "u1",
+        )
+    assert exc.value.status_code == 400
+
+
+def test_transfer_rejects_insufficient_source_stock(db, tenant, product, depots):
+    depot_a, _ = depots
+    entrepot = entrepot_service.create_entrepot(db, tenant.id)
+
+    with pytest.raises(HTTPException) as exc:
+        entrepot_service.transfer_to_entrepot(
+            db, tenant.id, entrepot.id, depot_a.id, product.id, 5, "u1",
+        )
+    assert exc.value.status_code == 400

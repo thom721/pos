@@ -21,6 +21,7 @@ import 'package:pos_connect/data/repositories/restaurant_repository.dart';
 import 'package:pos_connect/data/repositories/warehouse_repository.dart';
 import 'package:pos_connect/providers/entrepot_provider.dart';
 import 'package:pos_connect/shared/widgets/barcode_scanner_sheet.dart';
+import 'package:pos_connect/shared/widgets/transfer_to_entrepot_dialog.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 
 final _fmt =
@@ -1251,6 +1252,11 @@ class _ProductTable extends ConsumerWidget {
     final canEdit = ref.watch(hasPermissionProvider(Perm.productsUpdate));
     final canAdjustStock = ref.watch(hasPermissionProvider(Perm.stockAdjust));
     final canViewHistory = ref.watch(hasPermissionProvider(Perm.stockRead));
+    final activeWarehouse = ref.watch(activeWarehouseProvider);
+    final hasEntrepots =
+        (ref.watch(entrepotsProvider).valueOrNull?.isNotEmpty) ?? false;
+    final canReturnToEntrepot =
+        canAdjustStock && hasEntrepots && activeWarehouse != null;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -1346,6 +1352,25 @@ class _ProductTable extends ConsumerWidget {
                           onPressed: () => showDialog(
                             context: context,
                             builder: (_) => _AdjustStockDialog(product: p),
+                          ),
+                        ),
+                      if (hasEntrepots)
+                        Tooltip(
+                          message: canReturnToEntrepot
+                              ? 'Retourner à l\'entrepôt'
+                              : 'Sélectionnez un dépôt précis (pas "Tous les business") pour retourner du stock',
+                          child: IconButton(
+                            icon: const Icon(Icons.undo_rounded,
+                                size: 18, color: AppColors.textSecondary),
+                            onPressed: canReturnToEntrepot
+                                ? () => showTransferToEntrepotDialog(
+                                      context, ref,
+                                      productId: p.id,
+                                      productName: p.name,
+                                      sourceWarehouseId: activeWarehouse.id,
+                                      onDone: () => ref.invalidate(productsProvider),
+                                    )
+                                : null,
                           ),
                         ),
                       if (canEdit)
@@ -1468,6 +1493,11 @@ class _ProductCard extends ConsumerWidget {
     final canEdit = ref.watch(hasPermissionProvider(Perm.productsUpdate));
     final canAdjust = ref.watch(hasPermissionProvider(Perm.stockAdjust));
     final canViewHistory = ref.watch(hasPermissionProvider(Perm.stockRead));
+    final activeWarehouse = ref.watch(activeWarehouseProvider);
+    final hasEntrepots =
+        (ref.watch(entrepotsProvider).valueOrNull?.isNotEmpty) ?? false;
+    final canReturnToEntrepot =
+        canAdjust && hasEntrepots && activeWarehouse != null;
 
     return Card(
       child: ListTile(
@@ -1488,6 +1518,25 @@ class _ProductCard extends ConsumerWidget {
                     size: 18, color: AppColors.textSecondary),
                 tooltip: 'Historique des mouvements',
                 onPressed: () => _openStockHistory(context, ref, product),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            if (hasEntrepots)
+              IconButton(
+                icon: const Icon(Icons.undo_rounded,
+                    size: 18, color: AppColors.textSecondary),
+                tooltip: canReturnToEntrepot
+                    ? 'Retourner à l\'entrepôt'
+                    : 'Sélectionnez un dépôt précis pour retourner du stock',
+                onPressed: canReturnToEntrepot
+                    ? () => showTransferToEntrepotDialog(
+                          context, ref,
+                          productId: product.id,
+                          productName: product.name,
+                          sourceWarehouseId: activeWarehouse.id,
+                          onDone: () => ref.invalidate(productsProvider),
+                        )
+                    : null,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               ),

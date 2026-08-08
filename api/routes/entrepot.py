@@ -6,7 +6,10 @@ from api.database import get_db
 from api.models.User import User
 from api.schemas.product import ProductRead
 from api.core.PaginateHelper import PaginatedResponse
-from api.schemas.entrepot import EntrepotCreate, EntrepotRead, StockAdjustRequest, DistributeRequest
+from api.schemas.entrepot import (
+    EntrepotCreate, EntrepotRead, StockAdjustRequest, DistributeRequest,
+    TransferInRequest, TransferReceipt,
+)
 from api.services.product_service import ProductService
 from api.services import entrepot_service
 from api.dependencies.auth import require_permission
@@ -80,3 +83,23 @@ def distribute_entrepot_product(
         current_user.id,
     )
     return {"message": "Distribution effectuée avec succès"}
+
+
+@router.post(
+    "/{entrepot_id}/products/{product_id}/transfer-in",
+    response_model=TransferReceipt,
+)
+def transfer_in_entrepot_product(
+    entrepot_id: str,
+    product_id: str,
+    payload: TransferInRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.ENTREPOT_CREATE)),
+):
+    """Envoie du stock vers cet entrepôt — depuis un dépôt classique
+    (« retourner à l'entrepôt » sur la fiche produit) ou un autre entrepôt."""
+    return entrepot_service.transfer_to_entrepot(
+        db, current_user.tenant_id, entrepot_id,
+        payload.source_warehouse_id, product_id, payload.quantity,
+        current_user.id, payload.reason,
+    )

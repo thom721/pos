@@ -46,6 +46,8 @@ class StockMovementModel {
         return 'Ajustement manuel';
       case 'entrepot_distribution':
         return 'Distribution';
+      case 'entrepot_transfer':
+        return 'Transfert';
       case 'purchase_receipt':
         return 'Réception d\'achat';
       default:
