@@ -90,6 +90,12 @@ class _PosAppState extends ConsumerState<PosApp> {
 
   void _startAutoSync() {
     _syncTimer?.cancel();
+    // Immédiat, indépendant du reste du cycle de sync — _triggerSync()
+    // attend que tenantProvider soit résolu avant de vérifier l'approbation
+    // (voir plus bas), ce qui n'est presque jamais le cas juste après une
+    // connexion : le tout premier appel se retrouvait silencieusement sauté,
+    // repoussant la détection au prochain cycle (jusqu'à 2 min sur Android).
+    checkDevicePendingApproval(ref).ignore();
     _triggerSync();
     if (_isAndroid) {
       WebSocketService.instance.start(
@@ -155,10 +161,12 @@ class _PosAppState extends ConsumerState<PosApp> {
     final businessType = ref.read(settingsProvider).businessType;
     // Vérifié app-wide, pas seulement sur l'écran Caisse — l'utilisateur doit
     // voir la bannière même s'il ne visite jamais cet onglet (fire-and-forget,
-    // ne doit jamais bloquer le reste du cycle de synchro).
-    if (tenantId != null) {
-      checkDevicePendingApproval(ref, warehouseId: warehouseId).ignore();
-    }
+    // ne doit jamais bloquer le reste du cycle de synchro). Pas de garde sur
+    // tenantId : l'appel (/api/sessions/current) n'en a pas besoin — le
+    // tenant est résolu côté serveur via le JWT — et ce garde faisait sauter
+    // silencieusement le tout premier appel juste après connexion (voir
+    // _startAutoSync, qui appelle déjà cette même fonction immédiatement).
+    checkDevicePendingApproval(ref, warehouseId: warehouseId).ignore();
     if (_isAndroid) {
       // Android : attendre la fin de la sync SQLite avant de notifier les providers
       // (les repos lisent depuis SQLite, il faut que le cache soit à jour)

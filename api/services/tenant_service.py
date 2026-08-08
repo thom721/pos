@@ -190,16 +190,41 @@ def cloud_login(db: Session, email: str, password: str,
         ).first()
 
         if not register:
-            # 2. Prendre n'importe quelle caisse active sans session ouverte.
-            # Le login n'est JAMAIS bloqué par la limite de caisses.
-            register = db.query(PosRegister).filter(
+            # 2. Prendre une caisse active sans session ouverte — restreinte
+            # au(x) dépôt(s) auquel l'utilisateur est rattaché (user.warehouse_id ;
+            # vide = accès à tous), SANS repli sur le reste du tenant : un
+            # utilisateur restreint à un dépôt ne doit jamais se retrouver lié
+            # à une caisse d'un autre dépôt. S'il n'y a aucune caisse libre
+            # dans son/ses dépôt(s), register reste None — la connexion reste
+            # autorisée (jamais bloquée par la limite de caisses), mais sans
+            # caisse pré-assignée ; open_session s'en chargera plus tard
+            # (et peut au besoin en créer une dans le bon dépôt).
+            # Parmi les candidates, priorité à une caisse encore utilisable
+            # (trial/abonnement actif) plutôt qu'une caisse bloquée, pour ne
+            # pas atterrir sur un slot mort alors qu'un autre fonctionne.
+            base_q = db.query(PosRegister).filter(
                 PosRegister.tenant_id == tenant.id,
                 PosRegister.is_active == True,   # noqa: E712
                 PosRegister.id.not_in(open_reg_ids),
-            ).order_by(
-                PosRegister.last_seen.is_(None).desc(),
-                PosRegister.last_seen.asc(),
-            ).first()
+            )
+            user_warehouse_ids = user.warehouse_id or []
+            candidates = (
+                base_q.filter(PosRegister.warehouse_id.in_(user_warehouse_ids)).all()
+                if user_warehouse_ids else base_q.all()
+            )
+
+            def _is_usable(r: PosRegister) -> bool:
+                now = now_local()
+                sub_ok   = r.subscription_ends_at is not None and r.subscription_ends_at > now
+                trial_ok = r.trial_ends_at        is not None and r.trial_ends_at        > now
+                return sub_ok or trial_ok
+
+            candidates.sort(key=lambda r: (
+                not _is_usable(r),
+                r.last_seen is not None,
+                r.last_seen or now_local(),
+            ))
+            register = candidates[0] if candidates else None
 
             if register:
                 bind_register_device(register, device_id)
