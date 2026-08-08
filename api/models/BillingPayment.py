@@ -26,3 +26,4 @@ class BillingPayment(UUIDBase):
     #                     NULL = paiement pour l'abonnement tenant entier (comportement historique)
     plan_type         = Column(String(10), nullable=False, default='monthly')
     register_ids_json = Column(Text, nullable=True)   # JSON array : ["uuid1","uuid2"]
+    entrepot_ids_json = Column(Text, nullable=True)   # JSON array : ["uuid1","uuid2"]

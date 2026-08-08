@@ -15,6 +15,7 @@ import 'package:pos_connect/services/offline_cache_service.dart';
 
 final _fmt = NumberFormat('#,##0.##', 'fr');
 final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+final _dayFmt = DateFormat('dd/MM/yyyy');
 
 // Après un ajustement/une distribution à l'entrepôt, la page Produits (et le
 // cache local Android, qui ne se resynchronise pas tout seul avant le prochain
@@ -32,7 +33,7 @@ class EntrepotScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final entrepotAsync = ref.watch(entrepotProvider);
+    final entrepotsAsync = ref.watch(entrepotsProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -41,19 +42,42 @@ class EntrepotScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Entrepôt',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            const Text(
-              'Stock central — réceptionnez la marchandise puis distribuez-la vers vos dépôts.',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Entrepôt',
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Stock central — réceptionnez la marchandise puis distribuez-la vers vos dépôts.',
+                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                entrepotsAsync.maybeWhen(
+                  data: (list) => list.isNotEmpty
+                      ? TextButton.icon(
+                          onPressed: () => _showCreateEntrepotDialog(context, ref),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Nouvel entrepôt'),
+                        )
+                      : const SizedBox.shrink(),
+                  orElse: () => const SizedBox.shrink(),
+                ),
+              ],
             ),
             const SizedBox(height: 20),
             Expanded(
-              child: entrepotAsync.when(
-                data: (entrepot) => entrepot == null
-                    ? const _SetupView()
-                    : _EntrepotContent(entrepot: entrepot),
+              child: entrepotsAsync.when(
+                data: (entrepots) {
+                  if (entrepots.isEmpty) return const _SetupView();
+                  return _EntrepotSwitcher(entrepots: entrepots);
+                },
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Center(child: Text('Erreur: $e')),
               ),
@@ -65,34 +89,78 @@ class EntrepotScreen extends ConsumerWidget {
   }
 }
 
-class _SetupView extends ConsumerStatefulWidget {
-  const _SetupView();
-  @override
-  ConsumerState<_SetupView> createState() => _SetupViewState();
+// ── Création (nom + adresse) ─────────────────────────────────────────────
+
+Future<void> _showCreateEntrepotDialog(BuildContext context, WidgetRef ref) {
+  final nameCtrl = TextEditingController(text: 'Entrepôt');
+  final addressCtrl = TextEditingController();
+  var loading = false;
+  String? error;
+
+  return showDialog(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => AlertDialog(
+        title: const Text('Nouvel entrepôt'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: nameCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Nom *'),
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: addressCtrl,
+              decoration: const InputDecoration(labelText: 'Adresse'),
+            ),
+            if (error != null) ...[
+              const SizedBox(height: 8),
+              Text(error!, style: const TextStyle(color: AppColors.error, fontSize: 12)),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          FilledButton(
+            onPressed: loading
+                ? null
+                : () async {
+                    final name = nameCtrl.text.trim();
+                    if (name.isEmpty) {
+                      setState(() => error = 'Le nom est requis');
+                      return;
+                    }
+                    setState(() { loading = true; error = null; });
+                    try {
+                      final created = await ref.read(entrepotRepositoryProvider).createEntrepot(
+                            name: name,
+                            address: addressCtrl.text.trim(),
+                          );
+                      ref.invalidate(entrepotsProvider);
+                      ref.read(activeEntrepotProvider.notifier).state = created;
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    } catch (_) {
+                      setState(() { loading = false; error = 'Erreur lors de la création'; });
+                    }
+                  },
+            child: loading
+                ? const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('Créer'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
-class _SetupViewState extends ConsumerState<_SetupView> {
-  bool _loading = false;
-
-  Future<void> _create() async {
-    setState(() => _loading = true);
-    try {
-      await ref.read(entrepotRepositoryProvider).createEntrepot();
-      ref.invalidate(entrepotProvider);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Erreur lors de la création de l\'entrepôt'),
-          backgroundColor: AppColors.error,
-        ));
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
+class _SetupView extends ConsumerWidget {
+  const _SetupView();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final canCreate = ref.watch(hasPermissionProvider(Perm.entrepotCreate));
     return Center(
       child: Column(
@@ -111,15 +179,127 @@ class _SetupViewState extends ConsumerState<_SetupView> {
           const SizedBox(height: 16),
           if (canCreate)
             ElevatedButton.icon(
-              onPressed: _loading ? null : _create,
-              icon: _loading
-                  ? const SizedBox(width: 16, height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.add),
+              onPressed: () => _showCreateEntrepotDialog(context, ref),
+              icon: const Icon(Icons.add),
               label: const Text('Créer l\'entrepôt'),
             ),
         ],
       ),
+    );
+  }
+}
+
+// ── Sélecteur multi-entrepôt ──────────────────────────────────────────────
+
+class _EntrepotSwitcher extends ConsumerWidget {
+  final List<WarehouseModel> entrepots;
+  const _EntrepotSwitcher({required this.entrepots});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final active = ref.watch(activeEntrepotProvider);
+
+    // Sélectionne le premier entrepôt par défaut (pas de persistance —
+    // repart toujours du premier à l'ouverture de l'écran).
+    final current = entrepots.any((e) => e.id == active?.id)
+        ? entrepots.firstWhere((e) => e.id == active!.id)
+        : entrepots.first;
+    if (active?.id != current.id) {
+      Future.microtask(() => ref.read(activeEntrepotProvider.notifier).state = current);
+    }
+
+    final isPaid = current.isSubscriptionActive;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            if (entrepots.length > 1)
+              Container(
+                height: 36,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.divider),
+                  borderRadius: BorderRadius.circular(8),
+                  color: AppColors.background,
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<WarehouseModel>(
+                    value: current,
+                    isDense: true,
+                    icon: const Icon(Icons.expand_more, size: 16, color: AppColors.textSecondary),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textPrimary,
+                    ),
+                    items: entrepots.map((e) => DropdownMenuItem(
+                          value: e,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.warehouse_outlined,
+                                  size: 14, color: AppColors.textSecondary),
+                              const SizedBox(width: 6),
+                              Text(e.name),
+                            ],
+                          ),
+                        )).toList(),
+                    onChanged: (e) {
+                      if (e != null) {
+                        ref.read(activeEntrepotProvider.notifier).state = e;
+                      }
+                    },
+                  ),
+                ),
+              )
+            else
+              Text(current.name,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 10),
+            _SubscriptionBadge(entrepot: current),
+          ],
+        ),
+        if (current.address != null && current.address!.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(current.address!,
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ],
+        if (!isPaid) ...[
+          const SizedBox(height: 6),
+          const Text(
+            'Distribution bloquée tant que cet entrepôt n\'est pas payé — réglez '
+            'l\'abonnement depuis Facturation pour débloquer la distribution.',
+            style: TextStyle(fontSize: 12, color: AppColors.error),
+          ),
+        ],
+        const SizedBox(height: 16),
+        Expanded(child: _EntrepotContent(entrepot: current)),
+      ],
+    );
+  }
+}
+
+class _SubscriptionBadge extends StatelessWidget {
+  final WarehouseModel entrepot;
+  const _SubscriptionBadge({required this.entrepot});
+
+  @override
+  Widget build(BuildContext context) {
+    final paid = entrepot.isSubscriptionActive;
+    final color = paid ? AppColors.success : AppColors.error;
+    final label = paid
+        ? 'Payé jusqu\'au ${_dayFmt.format(entrepot.subscriptionEndsAt!)}'
+        : 'Non payé';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -239,6 +419,7 @@ class _ProductRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final stock = product.stock ?? 0;
+    final canDistribute = entrepot.isSubscriptionActive;
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -267,12 +448,17 @@ class _ProductRow extends ConsumerWidget {
                 icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.textSecondary),
                 onPressed: () => _showAdjustDialog(context, ref, product),
               ),
-              FilledButton.icon(
-                onPressed: stock > 0
-                    ? () => _showDistributeDialog(context, ref, product, stock)
-                    : null,
-                icon: const Icon(Icons.call_split_rounded, size: 16),
-                label: const Text('Distribuer'),
+              Tooltip(
+                message: canDistribute
+                    ? ''
+                    : 'Entrepôt non payé — réglez l\'abonnement pour distribuer',
+                child: FilledButton.icon(
+                  onPressed: stock > 0 && canDistribute
+                      ? () => _showDistributeDialog(context, ref, product, stock)
+                      : null,
+                  icon: const Icon(Icons.call_split_rounded, size: 16),
+                  label: const Text('Distribuer'),
+                ),
               ),
             ],
           ],
@@ -315,7 +501,7 @@ class _ProductRow extends ConsumerWidget {
               if (qty == null || qty == 0) return;
               try {
                 await ref.read(entrepotRepositoryProvider).adjustStock(
-                      product.id, qty, reason: reasonCtrl.text.trim(),
+                      entrepot.id, product.id, qty, reason: reasonCtrl.text.trim(),
                     );
                 ref.invalidate(entrepotProductsProvider);
                 ref.invalidate(entrepotMovementsProvider);
@@ -341,15 +527,16 @@ class _ProductRow extends ConsumerWidget {
       BuildContext context, WidgetRef ref, ProductModel product, int available) {
     showDialog(
       context: context,
-      builder: (_) => _DistributeDialog(product: product, available: available),
+      builder: (_) => _DistributeDialog(entrepot: entrepot, product: product, available: available),
     );
   }
 }
 
 class _DistributeDialog extends ConsumerStatefulWidget {
+  final WarehouseModel entrepot;
   final ProductModel product;
   final int available;
-  const _DistributeDialog({required this.product, required this.available});
+  const _DistributeDialog({required this.entrepot, required this.product, required this.available});
 
   @override
   ConsumerState<_DistributeDialog> createState() => _DistributeDialogState();
@@ -388,7 +575,9 @@ class _DistributeDialogState extends ConsumerState<_DistributeDialog> {
 
     setState(() => _loading = true);
     try {
-      await ref.read(entrepotRepositoryProvider).distribute(widget.product.id, allocations);
+      await ref.read(entrepotRepositoryProvider).distribute(
+            widget.entrepot.id, widget.product.id, allocations,
+          );
       ref.invalidate(entrepotProductsProvider);
       ref.invalidate(entrepotMovementsProvider);
       await _refreshProductsAfterEntrepotChange(ref);

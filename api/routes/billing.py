@@ -36,6 +36,15 @@ class SubmitRegisterPaymentRequest(BaseModel):
     reference: str | None = None
     plan_type: str = "monthly"
 
+
+class SubmitEntrepotPaymentRequest(BaseModel):
+    """Paiement pour un ou plusieurs entrepôts spécifiques."""
+    entrepot_ids: list[str]        # UUIDs de Warehouse (is_entrepot=True) à payer
+    method: str = "manual"
+    months: int = 1                # ignoré si plan_type='annual'
+    reference: str | None = None
+    plan_type: str = "monthly"
+
 router = APIRouter(prefix="/api/billing", tags=["Billing"])
 
 
@@ -129,6 +138,28 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
             "status":                  reg_status,
         })
 
+    # Entrepôts — pas d'essai gratuit (contrairement aux caisses), prix
+    # réutilisé de price_per_extra_depot_htg/usd (jusqu'ici jamais branché).
+    xd_htg = float(cfg.price_per_extra_depot_htg) if cfg else 500.0
+    xd_usd = float(cfg.price_per_extra_depot_usd) if cfg else 4.0
+    entrepots_q = db.query(Warehouse).filter(
+        Warehouse.tenant_id == tenant.id,
+        Warehouse.is_entrepot == True,  # noqa: E712
+    ).all()
+
+    entrepots_detail = []
+    for wh in entrepots_q:
+        sub_end = wh.subscription_ends_at
+        ent_status = "active" if sub_end and sub_end > now else "unpaid"
+        entrepots_detail.append({
+            "id":                   wh.id,
+            "name":                 wh.name,
+            "address":              wh.address,
+            "subscription_ends_at": sub_end.isoformat() if sub_end else None,
+            "monthly_htg":          xd_htg,
+            "status":               ent_status,
+        })
+
     return {
         "current_caisses":            caisse_count,
         "extra_caisses":              extra_caisse_count,
@@ -142,6 +173,9 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
         "total_monthly_htg":          total_htg,
         "total_monthly_usd":          total_usd,
         "registers":                  registers_detail,
+        "price_per_entrepot_htg":     xd_htg,
+        "price_per_entrepot_usd":     xd_usd,
+        "entrepots":                  entrepots_detail,
     }
 
 
@@ -724,3 +758,135 @@ def submit_register_payment_sync_proxy(
         raise HTTPException(404, "Tenant introuvable")
 
     return _submit_register_payment_for_tenant(db, tenant, body)
+
+
+def _submit_entrepot_payment_for_tenant(
+    db: Session, tenant: Tenant, body: "SubmitEntrepotPaymentRequest",
+) -> dict:
+    """
+    Tenant soumet un paiement pour un ou plusieurs entrepôts spécifiques.
+    Le superadmin confirme via PATCH /api/admin/payments/{id}/confirm, qui
+    étend Warehouse.subscription_ends_at (pas d'essai gratuit — voir
+    entrepot_service._assert_paid).
+    """
+    if not body.entrepot_ids:
+        raise HTTPException(status_code=400, detail="Aucun entrepôt spécifié")
+
+    plan_type = body.plan_type if body.plan_type in ("monthly", "annual") else "monthly"
+    months = 12 if plan_type == "annual" else max(1, min(body.months, 12))
+
+    entrepots = db.query(Warehouse).filter(
+        Warehouse.id.in_(body.entrepot_ids),
+        Warehouse.tenant_id == tenant.id,
+        Warehouse.is_entrepot == True,  # noqa: E712
+    ).all()
+    if len(entrepots) != len(body.entrepot_ids):
+        raise HTTPException(status_code=404, detail="Un ou plusieurs entrepôts introuvables")
+
+    cfg = db.query(PlatformConfig).first()
+    price_per_entrepot_htg = float(getattr(cfg, "price_per_extra_depot_htg", 500) if cfg else 500)
+    discount_pct = float(getattr(cfg, "annual_discount_pct", 20) if cfg else 20)
+
+    import json as _json
+
+    plan_label   = "Annuel" if plan_type == "annual" else f"{months} mois"
+    method_label = {"cash": "Espèces", "moncash": "MonCash", "natcash": "NatCash"}.get(body.method, "Manuel")
+    days = 365 if plan_type == "annual" else 30 * months
+    now  = now_local()
+    year = now.year
+    prefix = f"ENT-{year}-"
+
+    if plan_type == "annual":
+        amount = price_per_entrepot_htg * 12 * len(entrepots) * (1 - discount_pct / 100)
+    else:
+        amount = price_per_entrepot_htg * months * len(entrepots)
+
+    # invoice_number est unique globalement (tous tenants confondus) — même
+    # raisonnement que pour submit_payment/submit_register_payment.
+    count = db.query(BillingPayment).filter(
+        BillingPayment.invoice_number.like(f"{prefix}%"),
+    ).count()
+    invoice_number = f"{prefix}{count + 1:04d}"
+    ent_names = ", ".join(e.name for e in entrepots)
+
+    payment = BillingPayment(
+        tenant_id=tenant.id,
+        invoice_number=invoice_number,
+        method=body.method,
+        amount=amount,
+        currency="HTG",
+        months=months,
+        status="pending",
+        reference=body.reference,
+        plan_type=plan_type,
+        entrepot_ids_json=_json.dumps([e.id for e in entrepots]),
+        description=f"{ent_names} - {method_label} - {plan_label} ({amount:.0f} HTG)",
+        paid_at=None,
+        period_start=encrypt_date(now, tenant.id),
+        period_end=encrypt_date(now + timedelta(days=days), tenant.id),
+    )
+    db.add(payment)
+    db.commit()
+    db.refresh(payment)
+
+    return {
+        "status":          "pending",
+        "invoice_number":  payment.invoice_number,
+        "payment_id":      payment.id,
+        "plan_type":       plan_type,
+        "entrepot_count":  len(entrepots),
+        "amount_htg":      round(amount, 2),
+        "message":         "Paiement soumis. Un administrateur le validera sous peu.",
+    }
+
+
+@router.post("/submit-entrepot-payment", status_code=201)
+def submit_entrepot_payment(
+    body: SubmitEntrepotPaymentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.CONFIG_READ)),
+):
+    """Point d'entrée appelé par l'app — même principe de proxy que
+    submit_register_payment (voir ce commentaire)."""
+    billing_url = (settings.BILLING_URL or "").rstrip("/")
+    sync_token  = settings.CLOUD_SYNC_TOKEN or ""
+
+    if billing_url and sync_token:
+        import httpx as _httpx
+        try:
+            r = _httpx.post(
+                f"{billing_url}/api/billing/submit-entrepot-payment-sync-proxy",
+                json=body.model_dump(),
+                headers={"Authorization": f"Bearer {sync_token}"},
+                timeout=15,
+            )
+            r.raise_for_status()
+            return r.json()
+        except _httpx.HTTPStatusError as exc:
+            raise HTTPException(exc.response.status_code,
+                                f"Erreur billing proxy: {exc.response.text[:200]}")
+        except Exception as exc:
+            raise HTTPException(503, f"Serveur de billing inaccessible: {exc}")
+
+    tenant = _get_tenant(db, current_user)
+    return _submit_entrepot_payment_for_tenant(db, tenant, body)
+
+
+@router.post("/submit-entrepot-payment-sync-proxy", status_code=201)
+def submit_entrepot_payment_sync_proxy(
+    body: SubmitEntrepotPaymentRequest, request: Request, db: Session = Depends(get_db),
+):
+    """Cloud-side counterpart, authentifié par sync token (voir
+    submit-register-payment-sync-proxy pour le même principe)."""
+    from api.routes.sync import _decode_sync_token
+
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(401, "Token de synchronisation requis")
+
+    claims = _decode_sync_token(auth_header[7:])
+    tenant = db.query(Tenant).filter(Tenant.id == claims["tenant_id"]).first()
+    if not tenant:
+        raise HTTPException(404, "Tenant introuvable")
+
+    return _submit_entrepot_payment_for_tenant(db, tenant, body)

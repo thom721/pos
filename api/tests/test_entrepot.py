@@ -1,7 +1,9 @@
 """Entrepôt central : reçoit du stock (manuellement ou via réception d'achat),
 distribue vers les dépôts du tenant selon une quantité choisie par dépôt, et
-n'est jamais compté comme un dépôt de vente facturable."""
-from decimal import Decimal
+n'est jamais compté comme un dépôt de vente facturable. Un tenant peut créer
+plusieurs entrepôts ; chacun a son propre abonnement (pas d'essai gratuit) et
+la distribution est bloquée tant qu'il n'est pas payé."""
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -10,11 +12,12 @@ from fastapi import HTTPException
 
 import api.models  # noqa: F401
 from api.database import Base
+from api.core.dt_coerce import now_local
 from api.models.Tenant import Tenant
 from api.models.Category import Category
 from api.models.Product import Product
 from api.models.Warehouse import Warehouse
-from api.models.StockMovement import StockMovement, StockType
+from api.models.BillingPayment import BillingPayment
 from api.models.Purchase import Purchase, PurchaseStatus
 from api.models.PurchaseItem import PurchaseItem
 from api.services import entrepot_service
@@ -63,12 +66,32 @@ def product(db, tenant, category):
     return p
 
 
-def test_create_entrepot_is_idempotent(db, tenant):
-    e1 = entrepot_service.create_entrepot(db, tenant.id, "Entrepôt")
-    e2 = entrepot_service.create_entrepot(db, tenant.id, "Entrepôt")
-    assert e1.id == e2.id
-    assert e1.is_entrepot is True
-    assert e1.is_default is False
+def _mark_paid(db, entrepot, days=30):
+    """Simule une confirmation de paiement admin (voir test dédié plus bas
+    pour le vrai chemin admin.confirm_payment)."""
+    entrepot.subscription_ends_at = now_local() + timedelta(days=days)
+    db.flush()
+
+
+def test_create_multiple_entrepots_for_same_tenant(db, tenant):
+    """Un tenant peut créer plusieurs entrepôts — plus d'idempotence, chacun
+    est une ligne distincte avec sa propre facturation."""
+    e1 = entrepot_service.create_entrepot(db, tenant.id, "Entrepôt Nord", "1 rue A")
+    e2 = entrepot_service.create_entrepot(db, tenant.id, "Entrepôt Sud", "2 rue B")
+    assert e1.id != e2.id
+    assert e1.address == "1 rue A"
+    assert e2.address == "2 rue B"
+    assert e1.is_entrepot is True and e2.is_entrepot is True
+
+    all_entrepots = entrepot_service.list_entrepots(db, tenant.id)
+    assert {e.id for e in all_entrepots} == {e1.id, e2.id}
+
+
+def test_new_entrepot_has_no_free_trial(db, tenant):
+    """Contrairement aux caisses, pas d'essai gratuit — subscription_ends_at
+    est NULL à la création."""
+    entrepot = entrepot_service.create_entrepot(db, tenant.id)
+    assert entrepot.subscription_ends_at is None
 
 
 def test_create_entrepot_is_claimed_to_prevent_installation(db, tenant):
@@ -86,12 +109,13 @@ def test_entrepot_excluded_from_billing_depot_count(db, tenant, depots):
     usage = _compute_plan_usage(tenant, db, None)
     # depots = 2 (Dépôt A, Dépôt B) — l'entrepôt n'est pas compté
     assert usage["current_depots"] == 2
+    assert len(usage["entrepots"]) == 1
 
 
 def test_manual_adjustment_increases_entrepot_stock(db, tenant, product):
     entrepot = entrepot_service.create_entrepot(db, tenant.id)
     entrepot_service.adjust_entrepot_stock(
-        db, tenant.id, product.id, 20, "Réception manuelle", "u1",
+        db, tenant.id, entrepot.id, product.id, 20, "Réception manuelle", "u1",
     )
     db.refresh(product)
     assert product.stock_at(entrepot.id) == 20
@@ -134,13 +158,48 @@ def test_purchase_receipt_targeting_entrepot_increases_its_stock(db, tenant, pro
     assert product.stock_at(entrepot.id) == 10
 
 
+def test_distribute_rejected_when_entrepot_unpaid(db, tenant, product, depots):
+    """Pas d'essai gratuit : distribuer est bloqué (402) tant que l'entrepôt
+    n'a pas d'abonnement actif — recevoir du stock reste libre."""
+    depot_a, _ = depots
+    entrepot = entrepot_service.create_entrepot(db, tenant.id)
+    entrepot_service.adjust_entrepot_stock(db, tenant.id, entrepot.id, product.id, 30, None, "u1")
+
+    with pytest.raises(HTTPException) as exc:
+        entrepot_service.distribute(
+            db, tenant.id, entrepot.id, product.id,
+            [{"warehouse_id": depot_a.id, "quantity": 12}],
+            "u1",
+        )
+    assert exc.value.status_code == 402
+
+    db.refresh(product)
+    assert product.stock_at(entrepot.id) == 30  # rien n'a bougé
+
+
+def test_distribute_rejected_when_entrepot_subscription_expired(db, tenant, product, depots):
+    depot_a, _ = depots
+    entrepot = entrepot_service.create_entrepot(db, tenant.id)
+    entrepot_service.adjust_entrepot_stock(db, tenant.id, entrepot.id, product.id, 30, None, "u1")
+    _mark_paid(db, entrepot, days=-1)  # abonnement déjà expiré
+
+    with pytest.raises(HTTPException) as exc:
+        entrepot_service.distribute(
+            db, tenant.id, entrepot.id, product.id,
+            [{"warehouse_id": depot_a.id, "quantity": 12}],
+            "u1",
+        )
+    assert exc.value.status_code == 402
+
+
 def test_distribute_moves_stock_from_entrepot_to_target_depots(db, tenant, product, depots):
     depot_a, depot_b = depots
     entrepot = entrepot_service.create_entrepot(db, tenant.id)
-    entrepot_service.adjust_entrepot_stock(db, tenant.id, product.id, 30, None, "u1")
+    entrepot_service.adjust_entrepot_stock(db, tenant.id, entrepot.id, product.id, 30, None, "u1")
+    _mark_paid(db, entrepot)
 
     entrepot_service.distribute(
-        db, tenant.id, product.id,
+        db, tenant.id, entrepot.id, product.id,
         [
             {"warehouse_id": depot_a.id, "quantity": 12},
             {"warehouse_id": depot_b.id, "quantity": 8},
@@ -157,11 +216,12 @@ def test_distribute_moves_stock_from_entrepot_to_target_depots(db, tenant, produ
 def test_distribute_rejects_insufficient_entrepot_stock(db, tenant, product, depots):
     depot_a, _ = depots
     entrepot = entrepot_service.create_entrepot(db, tenant.id)
-    entrepot_service.adjust_entrepot_stock(db, tenant.id, product.id, 5, None, "u1")
+    entrepot_service.adjust_entrepot_stock(db, tenant.id, entrepot.id, product.id, 5, None, "u1")
+    _mark_paid(db, entrepot)
 
     with pytest.raises(HTTPException) as exc:
         entrepot_service.distribute(
-            db, tenant.id, product.id,
+            db, tenant.id, entrepot.id, product.id,
             [{"warehouse_id": depot_a.id, "quantity": 10}],
             "u1",
         )
@@ -174,11 +234,12 @@ def test_distribute_rejects_insufficient_entrepot_stock(db, tenant, product, dep
 
 def test_distribute_rejects_invalid_target_warehouse(db, tenant, product):
     entrepot = entrepot_service.create_entrepot(db, tenant.id)
-    entrepot_service.adjust_entrepot_stock(db, tenant.id, product.id, 30, None, "u1")
+    entrepot_service.adjust_entrepot_stock(db, tenant.id, entrepot.id, product.id, 30, None, "u1")
+    _mark_paid(db, entrepot)
 
     with pytest.raises(HTTPException) as exc:
         entrepot_service.distribute(
-            db, tenant.id, product.id,
+            db, tenant.id, entrepot.id, product.id,
             [{"warehouse_id": "not-a-real-warehouse", "quantity": 5}],
             "u1",
         )
@@ -187,12 +248,46 @@ def test_distribute_rejects_invalid_target_warehouse(db, tenant, product):
 
 def test_distribute_rejects_targeting_entrepot_itself(db, tenant, product):
     entrepot = entrepot_service.create_entrepot(db, tenant.id)
-    entrepot_service.adjust_entrepot_stock(db, tenant.id, product.id, 30, None, "u1")
+    entrepot_service.adjust_entrepot_stock(db, tenant.id, entrepot.id, product.id, 30, None, "u1")
+    _mark_paid(db, entrepot)
 
     with pytest.raises(HTTPException) as exc:
         entrepot_service.distribute(
-            db, tenant.id, product.id,
+            db, tenant.id, entrepot.id, product.id,
             [{"warehouse_id": entrepot.id, "quantity": 5}],
             "u1",
         )
     assert exc.value.status_code == 400
+
+
+def test_confirm_payment_extends_entrepot_subscription(db, tenant, depots):
+    """Mirroring register_ids_json : confirmer un paiement entrepot_ids_json
+    étend Warehouse.subscription_ends_at et débloque la distribution."""
+    import json as _json
+    from api.routes.admin import confirm_payment, ConfirmPaymentPayload
+
+    entrepot = entrepot_service.create_entrepot(db, tenant.id)
+    payment = BillingPayment(
+        tenant_id=tenant.id,
+        invoice_number="ENT-2026-0001",
+        method="cash",
+        amount=500,
+        currency="HTG",
+        months=1,
+        status="pending",
+        plan_type="monthly",
+        entrepot_ids_json=_json.dumps([entrepot.id]),
+    )
+    db.add(payment)
+    db.commit()
+
+    result = confirm_payment(payment.id, ConfirmPaymentPayload(), db, {})
+
+    assert result["status"] == "ok"
+    assert result["entrepots"][0]["entrepot_id"] == entrepot.id
+    db.refresh(entrepot)
+    assert entrepot.subscription_ends_at is not None
+    assert entrepot.subscription_ends_at > now_local()
+
+    # La distribution est maintenant débloquée.
+    entrepot_service._assert_paid(entrepot)  # ne lève pas

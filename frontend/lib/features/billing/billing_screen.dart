@@ -13,6 +13,7 @@ import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/models/pos_register_model.dart';
 import 'package:pos_connect/data/repositories/warehouse_repository.dart';
+import 'package:pos_connect/providers/entrepot_provider.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -465,6 +466,23 @@ class _BillingContent extends ConsumerWidget {
                 moncashEnabled: cfg['moncash_enabled'] as bool? ?? true,
                 natcashEnabled: cfg['natcash_enabled'] as bool? ?? true,
                 cardEnabled: cfg['card_enabled'] as bool? ?? true);
+          },
+        ),
+        const SizedBox(height: 24),
+
+        // ── Paiement par entrepôt ────────────────────────────────────────────
+        ref.watch(_billingConfigProvider).when(
+          loading: () => const SizedBox.shrink(),
+          error:   (_, __) => const SizedBox.shrink(),
+          data: (cfg) {
+            final pricePerEntrepot = (cfg['price_per_extra_depot_htg'] as num? ?? 500).toDouble();
+            final discountPct      = (cfg['annual_discount_pct']       as num? ??  20).toDouble();
+            return _EntrepotPaymentSection(
+                pricePerEntrepot: pricePerEntrepot,
+                annualDiscountPct: discountPct,
+                cashEnabled: cfg['cash_enabled'] as bool? ?? true,
+                moncashEnabled: cfg['moncash_enabled'] as bool? ?? true,
+                natcashEnabled: cfg['natcash_enabled'] as bool? ?? true);
           },
         ),
         const SizedBox(height: 24),
@@ -1504,6 +1522,326 @@ class _RegisterPaymentSectionState
 }
 
 // ── Groupe de caisses par dépôt ───────────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  Section paiement par entrepôt (pas d'essai gratuit, contrairement aux caisses)
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _EntrepotPaymentSection extends ConsumerStatefulWidget {
+  final double pricePerEntrepot;
+  final double annualDiscountPct;
+  final bool cashEnabled;
+  final bool moncashEnabled;
+  final bool natcashEnabled;
+
+  const _EntrepotPaymentSection({
+    required this.pricePerEntrepot,
+    required this.annualDiscountPct,
+    this.cashEnabled = true,
+    this.moncashEnabled = true,
+    this.natcashEnabled = true,
+  });
+
+  @override
+  ConsumerState<_EntrepotPaymentSection> createState() =>
+      _EntrepotPaymentSectionState();
+}
+
+class _EntrepotPaymentSectionState
+    extends ConsumerState<_EntrepotPaymentSection> {
+  Set<String> _selected = {};
+  String _planType = 'monthly';
+  int _months = 1;
+  late String _method;
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _method = widget.cashEnabled
+        ? 'cash'
+        : widget.moncashEnabled
+            ? 'moncash'
+            : widget.natcashEnabled
+                ? 'natcash'
+                : 'cash';
+  }
+
+  double get _totalAmount {
+    final n = _selected.length.toDouble();
+    if (_planType == 'annual') {
+      return widget.pricePerEntrepot * 12 * n *
+          (1 - widget.annualDiscountPct / 100);
+    }
+    return widget.pricePerEntrepot * _months * n;
+  }
+
+  Future<void> _submit() async {
+    if (_selected.isEmpty) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await dio.post('/api/billing/submit-entrepot-payment', data: {
+        'entrepot_ids': _selected.toList(),
+        'method': _method,
+        'months': _months,
+        'plan_type': _planType,
+      });
+      ref.invalidate(_billingPaymentsProvider);
+      ref.invalidate(entrepotsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Demande de paiement soumise — en attente de confirmation admin.'),
+          backgroundColor: AppColors.success,
+        ));
+        setState(() => _selected = {});
+      }
+    } catch (e) {
+      setState(() {
+        _error = e is DioException
+            ? extractErrorMessage(e)
+            : e.toString();
+      });
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entrepotsAsync = ref.watch(entrepotsProvider);
+
+    return entrepotsAsync.maybeWhen(
+      data: (list) => list.isEmpty,
+      orElse: () => false,
+    )
+        ? const SizedBox.shrink() // pas d'entrepôt configuré — rien à payer
+        : _Card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── En-tête section ────────────────────────────────────────
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.warehouse_rounded,
+                        color: AppColors.primary, size: 18),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Payer vos entrepôts',
+                            style: TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600)),
+                        Text(
+                            'Pas d\'essai gratuit — la distribution est bloquée tant que non payé.',
+                            style: TextStyle(
+                                fontSize: 11, color: AppColors.textSecondary)),
+                      ],
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 16),
+
+                // ── Plan type ─────────────────────────────────────────────
+                SegmentedButton<String>(
+                  segments: [
+                    const ButtonSegment(
+                        value: 'monthly',
+                        label: Text('Mensuel'),
+                        icon: Icon(Icons.calendar_today, size: 14)),
+                    ButtonSegment(
+                        value: 'annual',
+                        label: Text(
+                            'Annuel −${widget.annualDiscountPct.toStringAsFixed(0)}%'),
+                        icon: const Icon(Icons.event_available, size: 14)),
+                  ],
+                  selected: {_planType},
+                  onSelectionChanged: (s) =>
+                      setState(() => _planType = s.first),
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+
+                // ── Durée (mensuel) ───────────────────────────────────────
+                if (_planType == 'monthly') ...[
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    const Text('Durée :',
+                        style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    const SizedBox(width: 10),
+                    ...[1, 3, 6].map((m) => Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: FilterChip(
+                            label: Text('$m mois'),
+                            selected: _months == m,
+                            onSelected: (_) => setState(() => _months = m),
+                            showCheckmark: false,
+                            visualDensity: VisualDensity.compact,
+                            selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                            labelStyle: TextStyle(
+                              fontSize: 11,
+                              color: _months == m
+                                  ? AppColors.primary
+                                  : AppColors.textSecondary,
+                              fontWeight: _months == m
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        )),
+                  ]),
+                ],
+
+                // ── Méthode de paiement ───────────────────────────────────
+                const SizedBox(height: 10),
+                Row(children: [
+                  const Text('Méthode :',
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                  const SizedBox(width: 10),
+                  ...[
+                    ('cash', 'Espèces', widget.cashEnabled),
+                    ('moncash', 'MonCash', widget.moncashEnabled),
+                    ('natcash', 'NatCash', widget.natcashEnabled),
+                  ].map((m) {
+                    final (value, label, enabled) = m;
+                    final active = _method == value;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: FilterChip(
+                        label: Text(label),
+                        selected: active,
+                        onSelected: !enabled
+                            ? null
+                            : (_) => setState(() => _method = value),
+                        showCheckmark: false,
+                        visualDensity: VisualDensity.compact,
+                        selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                        labelStyle: TextStyle(
+                          fontSize: 11,
+                          color: !enabled
+                              ? AppColors.textSecondary.withValues(alpha: 0.4)
+                              : (active ? AppColors.primary : AppColors.textSecondary),
+                          fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                    );
+                  }),
+                ]),
+
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+
+                // ── Liste des entrepôts ───────────────────────────────────
+                entrepotsAsync.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Center(
+                        child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2))),
+                  ),
+                  error: (e, _) => Text('Erreur : $e',
+                      style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                  data: (entrepots) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: entrepots.map((e) {
+                      final isSelected = _selected.contains(e.id);
+                      final paid = e.isSubscriptionActive;
+                      final statusStr = paid
+                          ? 'Payé jusqu\'au ${DateFormat('dd/MM/yy').format(e.subscriptionEndsAt!)}'
+                          : 'Non payé';
+                      return CheckboxListTile(
+                        dense: true,
+                        value: isSelected,
+                        onChanged: (v) => setState(() {
+                          if (v ?? false) {
+                            _selected.add(e.id);
+                          } else {
+                            _selected.remove(e.id);
+                          }
+                        }),
+                        title: Text(e.name,
+                            style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w500)),
+                        subtitle: Text(statusStr,
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: paid ? AppColors.success : AppColors.error)),
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        activeColor: AppColors.primary,
+                      );
+                    }).toList(),
+                  ),
+                ),
+
+                // ── Total + bouton soumettre ──────────────────────────────
+                if (_selected.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '${_selected.length} entrepôt${_selected.length > 1 ? 's' : ''}'
+                        ' × ${_planType == 'annual' ? '12 mois −${widget.annualDiscountPct.toStringAsFixed(0)}%' : '$_months mois'}',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                      Text(
+                        '${_totalAmount.toStringAsFixed(0)} HTG',
+                        style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(_error!,
+                          style: const TextStyle(
+                              color: AppColors.error, fontSize: 12)),
+                    ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _submitting ? null : _submit,
+                      style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(42)),
+                      child: _submitting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  color: Colors.white, strokeWidth: 2))
+                          : Text(
+                              'Soumettre le paiement — ${_totalAmount.toStringAsFixed(0)} HTG'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+  }
+}
 
 class _WhRegisterGroup extends StatelessWidget {
   final _WhWithRegs group;

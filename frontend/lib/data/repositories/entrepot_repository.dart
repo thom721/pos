@@ -5,23 +5,31 @@ import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/models/stock_movement_model.dart';
 
 class EntrepotRepository {
-  Future<WarehouseModel?> getEntrepot() async {
+  Future<List<WarehouseModel>> listEntrepots() async {
     final res = await dio.get('/api/entrepot/');
-    if (res.data == null) return null;
-    return WarehouseModel.fromJson(res.data as Map<String, dynamic>);
+    return (res.data as List)
+        .map((e) => WarehouseModel.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<WarehouseModel> createEntrepot({String name = 'Entrepôt'}) async {
-    final res = await dio.post('/api/entrepot/', data: {'name': name});
+  Future<WarehouseModel> createEntrepot({
+    String name = 'Entrepôt',
+    String? address,
+  }) async {
+    final res = await dio.post('/api/entrepot/', data: {
+      'name': name,
+      if (address != null && address.isNotEmpty) 'address': address,
+    });
     return WarehouseModel.fromJson(res.data as Map<String, dynamic>);
   }
 
   Future<PaginatedResponse<ProductModel>> getProducts({
+    required String entrepotId,
     int page = 1,
     int perPage = 20,
     String? search,
   }) async {
-    final res = await dio.get('/api/entrepot/products', queryParameters: {
+    final res = await dio.get('/api/entrepot/$entrepotId/products', queryParameters: {
       'page': page,
       'per_page': perPage,
       if (search != null && search.isNotEmpty) 'search': search,
@@ -29,8 +37,13 @@ class EntrepotRepository {
     return PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
   }
 
-  Future<ProductModel> adjustStock(String productId, double quantity, {String? reason}) async {
-    final res = await dio.post('/api/entrepot/products/$productId/adjust', data: {
+  Future<ProductModel> adjustStock(
+    String entrepotId,
+    String productId,
+    double quantity, {
+    String? reason,
+  }) async {
+    final res = await dio.post('/api/entrepot/$entrepotId/products/$productId/adjust', data: {
       'quantity': quantity,
       if (reason != null && reason.isNotEmpty) 'reason': reason,
     });
@@ -38,10 +51,11 @@ class EntrepotRepository {
   }
 
   Future<void> distribute(
+    String entrepotId,
     String productId,
     List<Map<String, dynamic>> allocations,
   ) async {
-    await dio.post('/api/entrepot/products/$productId/distribute', data: {
+    await dio.post('/api/entrepot/$entrepotId/products/$productId/distribute', data: {
       'allocations': allocations,
     });
   }

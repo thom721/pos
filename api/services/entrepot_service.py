@@ -3,34 +3,54 @@ from decimal import Decimal
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
 
+from api.core.dt_coerce import now_local
 from api.models.Warehouse import Warehouse
 from api.models.Product import Product
 from api.services.stock_service import record_stock_movement
 from api.models.StockMovement import StockType
 
 
-def get_entrepot(db: Session, tenant_id: str) -> Warehouse | None:
+def list_entrepots(db: Session, tenant_id: str) -> list[Warehouse]:
     return (
         db.query(Warehouse)
         .filter(Warehouse.tenant_id == tenant_id, Warehouse.is_entrepot == True)  # noqa: E712
-        .first()
+        .order_by(Warehouse.created_at)
+        .all()
     )
 
 
-def create_entrepot(db: Session, tenant_id: str, name: str = "Entrepôt") -> Warehouse:
-    """Idempotent — un seul entrepôt par tenant. Ne crée PAS de PosRegister ni
-    d'InstallationCode (ce n'est pas un dépôt de vente) et ne compte pas dans
-    la facturation (voir billing.py::_compute_plan_usage). is_claimed=True dès
-    la création : l'entrepôt n'est jamais installable comme un poste de vente
-    (empêche la génération/le rachat d'un code d'installation — voir
-    api/routes/warehouse.py::get_install_code et api/routes/sync.py::redeem_installation_code)."""
-    existing = get_entrepot(db, tenant_id)
-    if existing:
-        return existing
+def get_entrepot_by_id(db: Session, tenant_id: str, entrepot_id: str) -> Warehouse:
+    entrepot = (
+        db.query(Warehouse)
+        .filter(
+            Warehouse.id == entrepot_id,
+            Warehouse.tenant_id == tenant_id,
+            Warehouse.is_entrepot == True,  # noqa: E712
+        )
+        .first()
+    )
+    if not entrepot:
+        raise HTTPException(404, "Entrepôt introuvable")
+    return entrepot
 
+
+def create_entrepot(
+    db: Session, tenant_id: str, name: str = "Entrepôt", address: str | None = None,
+) -> Warehouse:
+    """Un tenant peut créer plusieurs entrepôts (pas de plafond, comme les
+    caisses). Ne crée PAS de PosRegister ni d'InstallationCode (ce n'est pas
+    un dépôt de vente) et ne compte pas dans la facturation des dépôts (voir
+    billing.py::_compute_plan_usage) — il a sa propre facturation par
+    abonnement (voir _assert_paid ci-dessous). is_claimed=True dès la
+    création : l'entrepôt n'est jamais installable comme un poste de vente
+    (empêche la génération/le rachat d'un code d'installation — voir
+    api/routes/warehouse.py::get_install_code et api/routes/sync.py::redeem_installation_code).
+    Pas d'essai gratuit : subscription_ends_at reste NULL tant qu'aucun
+    paiement n'a été confirmé — voir _assert_paid()."""
     entrepot = Warehouse(
         tenant_id=tenant_id,
         name=name,
+        address=address,
         is_active=True,
         is_default=False,
         is_entrepot=True,
@@ -42,9 +62,22 @@ def create_entrepot(db: Session, tenant_id: str, name: str = "Entrepôt") -> War
     return entrepot
 
 
+def _assert_paid(entrepot: Warehouse) -> None:
+    """Bloque la distribution tant que l'entrepôt n'a pas d'abonnement actif —
+    pas d'essai gratuit, contrairement aux caisses (voir _RegisterPaymentSection
+    côté Flutter et le point équivalent pour les caisses)."""
+    end = entrepot.subscription_ends_at
+    if not end or end <= now_local():
+        raise HTTPException(
+            402,
+            "Entrepôt non payé — réglez l'abonnement avant de distribuer le stock.",
+        )
+
+
 def adjust_entrepot_stock(
     db: Session,
     tenant_id: str,
+    entrepot_id: str,
     product_id: str,
     quantity: float,
     reason: str | None,
@@ -53,9 +86,7 @@ def adjust_entrepot_stock(
     if quantity == 0:
         raise HTTPException(400, "La quantité doit être non nulle")
 
-    entrepot = get_entrepot(db, tenant_id)
-    if not entrepot:
-        raise HTTPException(404, "Entrepôt introuvable — créez-le d'abord")
+    entrepot = get_entrepot_by_id(db, tenant_id, entrepot_id)
 
     product = db.query(Product).filter(
         Product.id == product_id, Product.tenant_id == tenant_id,
@@ -82,15 +113,16 @@ def adjust_entrepot_stock(
 def distribute(
     db: Session,
     tenant_id: str,
+    entrepot_id: str,
     product_id: str,
     allocations: list[dict],
     user_id: str,
 ) -> None:
     """Décrémente l'entrepôt et incrémente chaque dépôt cible d'une quantité
-    choisie manuellement (pas de répartition automatique) — tout ou rien."""
-    entrepot = get_entrepot(db, tenant_id)
-    if not entrepot:
-        raise HTTPException(404, "Entrepôt introuvable — créez-le d'abord")
+    choisie manuellement (pas de répartition automatique) — tout ou rien.
+    Bloqué (402) si l'entrepôt n'a pas d'abonnement actif — voir _assert_paid."""
+    entrepot = get_entrepot_by_id(db, tenant_id, entrepot_id)
+    _assert_paid(entrepot)
 
     allocations = [a for a in allocations if a["quantity"] and a["quantity"] > 0]
     if not allocations:

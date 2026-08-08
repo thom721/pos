@@ -7,16 +7,22 @@ import 'package:pos_connect/data/repositories/entrepot_repository.dart';
 
 final entrepotRepositoryProvider = Provider((ref) => EntrepotRepository());
 
-final entrepotProvider =
-    FutureProvider.autoDispose<WarehouseModel?>((ref) async {
-  return ref.read(entrepotRepositoryProvider).getEntrepot();
+// Un tenant peut avoir plusieurs entrepôts — liste complète.
+final entrepotsProvider =
+    FutureProvider.autoDispose<List<WarehouseModel>>((ref) async {
+  return ref.read(entrepotRepositoryProvider).listEntrepots();
 });
+
+// Entrepôt actuellement sélectionné dans l'écran Entrepôt — pas de
+// persistance (contrairement à activeWarehouseProvider) : chaque ouverture
+// de l'écran repart du premier entrepôt de la liste (voir entrepot_screen.dart).
+final activeEntrepotProvider = StateProvider<WarehouseModel?>((ref) => null);
 
 final entrepotProductSearchProvider = StateProvider<String>((ref) => '');
 
 final entrepotProductsProvider =
     FutureProvider.autoDispose<PaginatedResponse<ProductModel>>((ref) async {
-  final entrepot = await ref.watch(entrepotProvider.future);
+  final entrepot = ref.watch(activeEntrepotProvider);
   if (entrepot == null) {
     return PaginatedResponse<ProductModel>(
       data: const [],
@@ -25,6 +31,7 @@ final entrepotProductsProvider =
   }
   final search = ref.watch(entrepotProductSearchProvider);
   return ref.read(entrepotRepositoryProvider).getProducts(
+        entrepotId: entrepot.id,
         search: search.isEmpty ? null : search,
       );
 });
@@ -45,7 +52,7 @@ final entrepotInitialTabProvider = StateProvider<int>((ref) => 0);
 
 final entrepotMovementsProvider =
     FutureProvider.autoDispose<PaginatedResponse<StockMovementModel>>((ref) async {
-  final entrepot = await ref.watch(entrepotProvider.future);
+  final entrepot = ref.watch(activeEntrepotProvider);
   if (entrepot == null) {
     return PaginatedResponse<StockMovementModel>(
       data: const [],

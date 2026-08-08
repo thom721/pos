@@ -104,8 +104,9 @@ def test_get_entrepot_products_returns_200_with_valid_shape(client, admin_token,
 
     create_res = client.post("/api/entrepot/", json={"name": "Entrepôt"}, headers=headers)
     assert create_res.status_code == 201, create_res.text
+    entrepot_id = create_res.json()["id"]
 
-    res = client.get("/api/entrepot/products", params={"page": 1, "per_page": 20}, headers=headers)
+    res = client.get(f"/api/entrepot/{entrepot_id}/products", params={"page": 1, "per_page": 20}, headers=headers)
     assert res.status_code == 200, res.text
     body = res.json()
     assert body["page"] == 1

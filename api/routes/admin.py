@@ -1019,6 +1019,42 @@ def confirm_payment(
             "registers":        register_results,
         }
 
+    # ── Paiement par entrepôt(s) ──────────────────────────────────────────────
+    entrepot_ids_json = getattr(payment, "entrepot_ids_json", None)
+    if entrepot_ids_json:
+        try:
+            entrepot_ids = _json.loads(entrepot_ids_json)
+        except Exception:
+            entrepot_ids = []
+        entrepot_results = []
+        for ent_id in entrepot_ids:
+            wh = db.query(Warehouse).filter_by(
+                id=ent_id, tenant_id=tenant.id, is_entrepot=True,
+            ).first()
+            if not wh:
+                continue
+            current_end = wh.subscription_ends_at
+            if current_end:
+                remaining = max(0, (current_end - now).days)
+            else:
+                remaining = 0
+            wh.subscription_ends_at = now + timedelta(days=days + remaining)
+            entrepot_results.append({
+                "entrepot_id":              wh.id,
+                "name":                     wh.name,
+                "remaining_days_carried":   remaining,
+                "subscription_ends_at":     wh.subscription_ends_at.isoformat(),
+            })
+        db.commit()
+        return {
+            "status":           "ok",
+            "payment_id":       payment.id,
+            "invoice_number":   payment.invoice_number,
+            "tenant":           tenant.slug,
+            "plan_type":        plan_type,
+            "entrepots":        entrepot_results,
+        }
+
     # ── Paiement abonnement tenant ────────────────────────────────────────────
     _activate_tenant(db, tenant, months=months, plan_type=plan_type)
 
