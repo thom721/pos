@@ -243,6 +243,103 @@ def test_preexisting_register_unaffected_by_migration_default(db):
     assert reg.is_device_approved is True
 
 
+# ── Régression : rebind hors login ne doit plus déconnecter faussement
+#    l'utilisateur courant ("une autre connexion a été ouverte") ────────────
+
+def test_bind_register_device_clears_stale_session_token_on_change():
+    """session_token appartient à l'ancien device_id (posé par cloud_login) —
+    un rebind vers un device_id différent doit le vider, sinon la prochaine
+    requête du véritable utilisateur courant (sid valide mais différent de ce
+    token périmé) échoue à tort avec "une autre connexion a été ouverte"."""
+    reg = PosRegister(tenant_id="t", name="Caisse", device_id="dev-1",
+                       session_token="stale-sid-from-dev-1")
+    bind_register_device(reg, "dev-2")
+    assert reg.session_token is None
+
+
+def test_bind_register_device_same_device_keeps_session_token():
+    reg = PosRegister(tenant_id="t", name="Caisse", device_id="dev-1",
+                       session_token="sid-1")
+    bind_register_device(reg, "dev-1")
+    assert reg.session_token == "sid-1"
+
+
+def test_open_session_rebind_does_not_invalidate_current_admin_session(db, client, tenant):
+    """Reproduit le bug rapporté en prod : login (register R1 lié à
+    device_id="dev-x", session_token="sid-1"), reset_device sur R1, puis
+    open_session relie un AUTRE registre au même device_id="dev-x" — avant le
+    correctif, ce registre gardait un session_token périmé (None ou une
+    autre valeur), et la requête suivante de l'admin (JWT sid="sid-1")
+    échouait avec 401 "une autre connexion a été ouverte" alors qu'aucune
+    autre connexion n'existait."""
+    from api.core.security import create_access_token
+
+    admin = _make_user(db, tenant, roles=["admin"])
+
+    reg1 = db.query(PosRegister).filter_by(tenant_id=tenant.id).first()
+    reg1.device_id = "dev-x"
+    reg1.session_token = "sid-1"
+    db.commit()
+
+    admin_jwt = create_access_token({
+        "sub": admin.id, "perm_v": admin.permissions_version or 0,
+        "tenant_id": tenant.id, "device_id": "dev-x", "sid": "sid-1",
+    })
+    headers = {"Authorization": f"Bearer {admin_jwt}"}
+
+    # Toujours valide juste après le "login".
+    ok = client.get("/api/warehouses/", headers=headers)
+    assert ok.status_code == 200, ok.text
+
+    wh = db.query(Warehouse).filter_by(tenant_id=tenant.id).first()
+    reset = client.put(
+        f"/api/warehouses/{wh.id}/registers/{reg1.id}",
+        json={"reset_device": True},
+        headers=headers,
+    )
+    assert reset.status_code == 200, reset.text
+
+    # Un second registre existant reprend le même device_id (ex: nouvelle
+    # ouverture de caisse depuis le même navigateur/appareil).
+    reg2 = PosRegister(tenant_id=tenant.id, warehouse_id=wh.id, name="Caisse 2",
+                        is_active=True)
+    db.add(reg2)
+    db.commit()
+    from api.services.warehouse_helper import bind_register_device as _bind
+    _bind(reg2, "dev-x")
+    db.commit()
+
+    # La session admin d'origine (sid="sid-1") doit rester valide — ce n'est
+    # PAS une autre connexion, c'est le même utilisateur qui vient d'agir.
+    still_ok = client.get("/api/warehouses/", headers=headers)
+    assert still_ok.status_code == 200, still_ok.text
+
+
+def test_session_token_mismatch_still_rejected_when_set(db, client, tenant):
+    """Le garde-fou anti-vol de session reste actif : si un registre porte un
+    session_token bien défini (posé par un vrai cloud_login) qui ne
+    correspond pas au sid du JWT courant, la requête est toujours refusée."""
+    from api.core.security import create_access_token
+
+    admin = _make_user(db, tenant, roles=["admin"])
+    reg = db.query(PosRegister).filter_by(tenant_id=tenant.id).first()
+    reg.device_id = "dev-y"
+    reg.session_token = "sid-real-current-login"
+    db.commit()
+
+    stale_jwt = create_access_token({
+        "sub": admin.id, "perm_v": admin.permissions_version or 0,
+        "tenant_id": tenant.id, "device_id": "dev-y", "sid": "sid-OLD-STOLEN",
+    })
+    headers = {"Authorization": f"Bearer {stale_jwt}"}
+
+    res = client.get("/api/warehouses/", headers=headers)
+    assert res.status_code == 401, res.text
+    # HTTPException est ré-enveloppée en {"message": ...} par le handler
+    # global (api/main.py::http_exception_handler), pas {"detail": ...}.
+    assert "autre connexion" in res.json()["message"]
+
+
 # ── POST /api/sales/ exige une session ouverte (contournement de l'écran) ──
 
 @pytest.fixture()

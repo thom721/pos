@@ -471,6 +471,7 @@ def update_register(
     if data.reset_device:
         reg.device_id = None
         reg.is_device_approved = False
+        reg.session_token = None
     elif data.is_device_approved is not None:
         reg.is_device_approved = data.is_device_approved
     db.commit()

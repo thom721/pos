@@ -7,9 +7,18 @@ def bind_register_device(reg: PosRegister, new_device_id: str) -> None:
     """Assigne new_device_id à reg. Si l'appareil change réellement, révoque
     l'approbation — un appareil différent doit être ré-approuvé par un admin
     avant de pouvoir ouvrir une caisse (voir cashier_sessions.open_session).
-    Ne rien faire si c'est le même appareil (préserve l'approbation)."""
+    Ne rien faire si c'est le même appareil (préserve l'approbation).
+
+    session_token est aussi remis à None dans ce cas : il appartenait à
+    l'ancien device_id (posé uniquement par cloud_login, voir tenant_service.py)
+    et n'a plus de sens pour le nouveau — le laisser tel quel faisait échouer
+    la vérification anti-vol de session sur la toute prochaine requête du
+    véritable utilisateur courant (get_current_user comparait ce token
+    périmé au sid de son propre JWT, encore valide, et le déconnectait à
+    tort avec "une autre connexion a été ouverte")."""
     if reg.device_id != new_device_id:
         reg.is_device_approved = False
+        reg.session_token = None
     reg.device_id = new_device_id
 
 

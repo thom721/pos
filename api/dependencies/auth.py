@@ -54,7 +54,12 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Validate session token for device-based logins (cloud JWTs include device_id + sid)
+    # Validate session token for device-based logins (cloud JWTs include device_id + sid).
+    # register.session_token n'est comparé que s'il est posé (non NULL) — un
+    # rebind hors login (ouverture de caisse, reset d'appareil, voir
+    # warehouse_helper.bind_register_device) le remet à None précisément pour
+    # ne pas invalider par erreur une session encore valide dont le sid ne
+    # peut, par construction, plus rien avoir à comparer.
     device_id = payload.get("device_id")
     sid = payload.get("sid")
     if device_id and sid:
@@ -63,7 +68,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
             PosRegister.tenant_id == tenant_id,
             PosRegister.device_id == device_id,
         ).first()
-        if register and register.session_token != sid:
+        if register and register.session_token and register.session_token != sid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session expirée — une autre connexion a été ouverte sur ce compte",
