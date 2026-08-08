@@ -125,7 +125,33 @@ class LicenseService {
 
     // 4. Suspended — avertissement seulement, l'app reste accessible
     // Les ventes sont bloquées côté backend (402). On n'affiche plus l'écran de blocage.
+    //
+    // tenant.status est un champ hérité, plus tenu à jour depuis le passage à
+    // la facturation par caisse (voir le commentaire au point 6 ci-dessous) —
+    // il peut rester bloqué sur "suspended" alors que toutes les caisses ont
+    // été payées individuellement depuis. On préfère donc le même détail par
+    // caisse (registers) qu'au point 6, avant de se rabattre sur le message
+    // générique.
     if (tenantStatus == 'suspended') {
+      final registerMessage = !isOffline ? _registerIssueMessage(registers, now) : null;
+      if (registerMessage != null) {
+        return withMeta(
+          access: LicenseAccess.warning,
+          status: tenantStatus,
+          message: registerMessage,
+        );
+      }
+      if (!isOffline && registers.isNotEmpty) {
+        // "suspended" mais aucune caisse n'a de problème actuellement —
+        // champ legacy pas remis à jour, ne pas alarmer inutilement.
+        return withMeta(
+          access: LicenseAccess.allowed,
+          status: tenantStatus,
+          isOfflineVal: isOffline,
+        );
+      }
+      // Fallback générique — pas de détail par caisse disponible (payload
+      // minimal, hors ligne, ou tenant sans caisse du tout).
       return withMeta(
         access: LicenseAccess.warning,
         status: tenantStatus,

@@ -524,6 +524,82 @@ class _DevicePendingApprovalBanner extends ConsumerWidget {
   }
 }
 
+// Écran plein-écran (pas juste une bannière) affiché à la place de tout le
+// shell mobile — barre de nav, tiroir et onglet inclus — tant que l'appareil
+// n'est pas approuvé. Empêche de naviguer vers les autres onglets pendant
+// l'attente ; bouton "Vérifier" pour relancer checkDevicePendingApproval
+// sans redémarrer l'app dès que le tenant a approuvé l'appareil.
+class _DevicePendingApprovalGate extends ConsumerStatefulWidget {
+  const _DevicePendingApprovalGate();
+
+  @override
+  ConsumerState<_DevicePendingApprovalGate> createState() =>
+      _DevicePendingApprovalGateState();
+}
+
+class _DevicePendingApprovalGateState
+    extends ConsumerState<_DevicePendingApprovalGate> {
+  bool _checking = false;
+
+  Future<void> _check() async {
+    setState(() => _checking = true);
+    await checkDevicePendingApproval(ref);
+    if (mounted) setState(() => _checking = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.hourglass_top_rounded,
+                    size: 56, color: AppColors.warning),
+                const SizedBox(height: 16),
+                const Text('Appareil en attente d\'approbation',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                    textAlign: TextAlign.center),
+                const SizedBox(height: 8),
+                const Text(
+                  'Un administrateur doit approuver cet appareil avant que vous '
+                  'puissiez utiliser l\'application. Contactez-le, puis vérifiez '
+                  'à nouveau.',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _checking ? null : _check,
+                    icon: _checking
+                        ? const SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.refresh_rounded),
+                    label: Text(_checking ? 'Vérification...' : 'Vérifier'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => ref.read(authProvider.notifier).logout(),
+                  child: const Text('Se déconnecter'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ── Sidebar widgets ────────────────────────────────────────────────────────
 
 class _SectionDivider extends StatelessWidget {
@@ -928,6 +1004,13 @@ class _MobileShellState extends ConsumerState<_MobileShell>
 
   @override
   Widget build(BuildContext context) {
+    // Appareil non approuvé → écran de blocage plein écran à la place de tout
+    // le shell (nav bar + tiroir inclus), aucun onglet accessible tant que
+    // l'admin n'a pas approuvé. Voir _DevicePendingApprovalGate.
+    if (ref.watch(devicePendingApprovalProvider)) {
+      return const _DevicePendingApprovalGate();
+    }
+
     final location = GoRouterState.of(context).uri.toString();
     final isAdmin = ref.watch(isAdminProvider);
     final user = ref.watch(authProvider).user;
@@ -1053,12 +1136,10 @@ class _MobileShellState extends ConsumerState<_MobileShell>
           child: Divider(height: 1, color: AppColors.divider),
         ),
       ),
-      body: Column(
-        children: [
-          const _DevicePendingApprovalBanner(),
-          Expanded(child: widget.child),
-        ],
-      ),
+      // Pas de _DevicePendingApprovalBanner ici : quand l'appareil est en
+      // attente, le build() plus haut retourne _DevicePendingApprovalGate
+      // avant d'atteindre ce Scaffold — inutile de dupliquer l'avertissement.
+      body: widget.child,
       bottomNavigationBar: NavigationBar(
         selectedIndex: currentIndex < 0 ? 0 : currentIndex,
         backgroundColor: AppColors.surface,
