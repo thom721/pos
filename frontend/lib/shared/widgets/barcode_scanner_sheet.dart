@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback, SystemSound, SystemSoundType;
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:pos_connect/core/theme.dart';
 
@@ -70,6 +71,16 @@ class _BarcodeScannerSheetState extends State<BarcodeScannerSheet> {
     setState(() => _busy = true);
     final error = await widget.onCode(code);
     if (!mounted) return;
+
+    // Bip + vibration au scan réussi — confirmation sans avoir à regarder
+    // l'écran, comme une douchette physique. Vibration seule si erreur
+    // (code inconnu) pour rester distinguable sans être une alarme.
+    if (error == null) {
+      SystemSound.play(SystemSoundType.click);
+      HapticFeedback.mediumImpact();
+    } else {
+      HapticFeedback.vibrate();
+    }
 
     if (!widget.continuous) {
       Navigator.of(context).pop(code);

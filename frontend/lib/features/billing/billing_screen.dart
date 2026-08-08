@@ -431,21 +431,37 @@ class _BillingContent extends ConsumerWidget {
     final hasStripe        = data['has_stripe'] as bool? ?? false;
     final subscriptionEndsAt = data['subscription_ends_at'] as String?;
     final payments         = ref.watch(_billingPaymentsProvider);
+    final planUsageAsync   = ref.watch(_planUsageProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── Status card ────────────────────────────────────────────────────
-        _StatusCard(status: status, daysLeft: daysLeft,
-            business: business, email: email, hasStripe: hasStripe,
-            subscriptionEndsAt: subscriptionEndsAt),
+        // Le statut affiché est dérivé des vraies caisses/entrepôts (ceux qui
+        // bloquent réellement la vente) plutôt que du champ tenant.status —
+        // legacy, jamais reconnecté au modèle de facturation par caisse/
+        // entrepôt, pouvait afficher "Suspendu" alors que des caisses étaient
+        // encore actives (ou l'inverse).
+        planUsageAsync.when(
+          loading: () => _StatusCard(status: status, daysLeft: daysLeft,
+              business: business, email: email, hasStripe: hasStripe,
+              subscriptionEndsAt: subscriptionEndsAt),
+          error:   (_, __) => _StatusCard(status: status, daysLeft: daysLeft,
+              business: business, email: email, hasStripe: hasStripe,
+              subscriptionEndsAt: subscriptionEndsAt),
+          data: (usage) => _StatusCard(
+              status: status, daysLeft: daysLeft,
+              business: business, email: email, hasStripe: hasStripe,
+              subscriptionEndsAt: subscriptionEndsAt,
+              usage: usage),
+        ),
         const SizedBox(height: 24),
 
         // ── Plan usage (caisses + dépôts) ──────────────────────────────────
         const Text('Utilisation du plan',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         const SizedBox(height: 12),
-        ref.watch(_planUsageProvider).when(
+        planUsageAsync.when(
           loading: () => const LinearProgressIndicator(),
           error:   (_, __) => const SizedBox.shrink(),
           data: (usage) => _PlanUsageCard(usage: usage),
@@ -600,6 +616,12 @@ class _StatusCard extends StatelessWidget {
   final String email;
   final bool hasStripe;
   final String? subscriptionEndsAt;
+  /// Réponse de /api/billing/plan-usage — quand disponible, le badge est
+  /// dérivé du statut réel de chaque caisse/entrepôt (ce qui bloque
+  /// effectivement la vente) au lieu du champ tenant.status (legacy, jamais
+  /// reconnecté au modèle de facturation par caisse/entrepôt — pouvait
+  /// afficher "Suspendu" alors que des caisses étaient encore actives).
+  final Map<String, dynamic>? usage;
 
   const _StatusCard({
     required this.status,
@@ -608,21 +630,77 @@ class _StatusCard extends StatelessWidget {
     required this.email,
     required this.hasStripe,
     this.subscriptionEndsAt,
+    this.usage,
   });
+
+  (Color, IconData, String, String) _deriveFromUsage(Map<String, dynamic> usage) {
+    final registers = (usage['registers'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    final entrepots = (usage['entrepots'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+
+    final problemNames = [
+      ...registers
+          .where((r) => r['status'] == 'expired' || r['status'] == 'no_subscription')
+          .map((r) => r['name'] as String? ?? 'Caisse'),
+      ...entrepots
+          .where((e) => e['status'] == 'unpaid')
+          .map((e) => e['name'] as String? ?? 'Entrepôt'),
+    ];
+
+    if (problemNames.isNotEmpty) {
+      final shown = problemNames.take(2).join(', ');
+      final rest = problemNames.length - 2;
+      final subtitle = rest > 0
+          ? '$shown et $rest autre${rest > 1 ? 's' : ''} à renouveler'
+          : '$shown — renouvelez pour continuer';
+      return (AppColors.error, Icons.warning_rounded, 'Action requise', subtitle);
+    }
+
+    final trialRegisters =
+        registers.where((r) => r['status'] == 'trial').toList();
+    if (trialRegisters.isNotEmpty) {
+      final now = haitiNow();
+      final daysLeftList = trialRegisters
+          .map((r) => parseApiDate(r['trial_ends_at'] as String?))
+          .whereType<DateTime>()
+          .map((d) => d.toUtc().difference(now.toUtc()).inDays)
+          .toList();
+      final soonest = daysLeftList.isEmpty
+          ? null
+          : daysLeftList.reduce((a, b) => a < b ? a : b);
+      final subtitle = trialRegisters.length == 1
+          ? (soonest != null
+              ? '${trialRegisters.first['name']} — essai, $soonest jour${soonest == 1 ? '' : 's'} restant${soonest == 1 ? '' : 's'}'
+              : '${trialRegisters.first['name']} — période d\'essai')
+          : '${trialRegisters.length} caisses en essai';
+      return (AppColors.accent, Icons.hourglass_top_rounded, 'Essai gratuit', subtitle);
+    }
+
+    if (registers.isEmpty && entrepots.isEmpty) {
+      return (AppColors.textSecondary, Icons.help_outline_rounded,
+          'Aucune caisse', 'Créez une caisse pour commencer');
+    }
+
+    return (AppColors.success, Icons.check_circle_rounded,
+        'Actif', 'Toutes vos caisses et entrepôts sont à jour');
+  }
 
   @override
   Widget build(BuildContext context) {
-    final (color, icon, label, subtitle) = switch (status) {
-      'active'    => (AppColors.success, Icons.check_circle_rounded,
-                      'Actif', 'Votre abonnement est en cours'),
-      'trial'     => (AppColors.accent, Icons.hourglass_top_rounded,
-                      'Essai gratuit',
-                      daysLeft != null ? '$daysLeft jour${daysLeft == 1 ? '' : 's'} restant${daysLeft == 1 ? '' : 's'}' : 'Période d\'essai'),
-      'suspended' => (AppColors.error, Icons.block_rounded,
-                      'Suspendu', 'Renouvelez pour continuer'),
-      _           => (AppColors.textSecondary, Icons.help_outline_rounded,
-                      status, ''),
-    };
+    final (color, icon, label, subtitle) = usage != null
+        ? _deriveFromUsage(usage!)
+        : switch (status) {
+            'active'    => (AppColors.success, Icons.check_circle_rounded,
+                            'Actif', 'Votre abonnement est en cours'),
+            'trial'     => (AppColors.accent, Icons.hourglass_top_rounded,
+                            'Essai gratuit',
+                            daysLeft != null ? '$daysLeft jour${daysLeft == 1 ? '' : 's'} restant${daysLeft == 1 ? '' : 's'}' : 'Période d\'essai'),
+            'suspended' => (AppColors.error, Icons.block_rounded,
+                            'Suspendu', 'Renouvelez pour continuer'),
+            _           => (AppColors.textSecondary, Icons.help_outline_rounded,
+                            status, ''),
+          };
 
     return _Card(
       child: Column(
@@ -692,6 +770,7 @@ class _PlanUsageCard extends StatefulWidget {
 
 class _PlanUsageCardState extends State<_PlanUsageCard> {
   bool _showRegisters = false;
+  bool _showEntrepots = false;
 
   @override
   Widget build(BuildContext context) {
@@ -703,6 +782,8 @@ class _PlanUsageCardState extends State<_PlanUsageCard> {
     final xCaisseHtg    = (usage['price_per_caisse_htg'] as num? ?? 500).toDouble();
     final totalHtg      = (usage['total_monthly_htg'] as num? ?? 0).toDouble();
     final registers     = (usage['registers'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+    final entrepots     = (usage['entrepots'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
 
     // Grouper par warehouse_name
@@ -808,10 +889,113 @@ class _PlanUsageCardState extends State<_PlanUsageCard> {
                   )),
             ],
           ],
+
+          // ── Détail par entrepôt (accordion) ─────────────────────────────
+          if (entrepots.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () => setState(() => _showEntrepots = !_showEntrepots),
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(children: [
+                  Icon(
+                    _showEntrepots
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    size: 16,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _showEntrepots
+                        ? 'Masquer le détail'
+                        : 'Détail par entrepôt (${entrepots.length})',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                ]),
+              ),
+            ),
+            if (_showEntrepots) ...[
+              const SizedBox(height: 8),
+              ...entrepots.map((e) => _EntrepotUsageRow(entrepot: e)),
+            ],
+          ],
         ],
       ),
     );
   }
+}
+
+// ── Ligne d'entrepôt dans le plan usage ──────────────────────────────────────
+
+class _EntrepotUsageRow extends StatelessWidget {
+  final Map<String, dynamic> entrepot;
+  const _EntrepotUsageRow({required this.entrepot});
+
+  @override
+  Widget build(BuildContext context) {
+    final name  = entrepot['name'] as String? ?? '';
+    final status = entrepot['status'] as String? ?? '';
+    final monthlyHtg = (entrepot['monthly_htg'] as num? ?? 0).toDouble();
+
+    final (statusLabel, statusColor) = switch (status) {
+      'active' => ('Payé', AppColors.success),
+      'unpaid' => ('Non payé', AppColors.error),
+      _        => (status, AppColors.textSecondary),
+    };
+
+    final expiry = _parseDate(entrepot['subscription_ends_at'] as String?);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          const Icon(Icons.warehouse_rounded,
+              size: 13, color: AppColors.textSecondary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name,
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w500)),
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(statusLabel,
+                        style: TextStyle(
+                            fontSize: 10,
+                            color: statusColor,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                  if (expiry != null) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      'jusqu\'au ${DateFormat('dd/MM/yy').format(expiry.toLocal())}',
+                      style: const TextStyle(
+                          fontSize: 10, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ]),
+              ],
+            ),
+          ),
+          Text('${monthlyHtg.toStringAsFixed(0)} HTG/mois',
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        ],
+      ),
+    );
+  }
+
+  DateTime? _parseDate(String? s) => s != null ? DateTime.tryParse(s) : null;
 }
 
 // ── Groupe de caisses dans le plan usage ─────────────────────────────────────
