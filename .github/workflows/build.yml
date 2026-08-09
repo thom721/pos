@@ -670,6 +670,10 @@ jobs:
           body: |
             ## POS Connect v${{ needs.determine-version.outputs.version }}
 
+            **Panneau admin → Mises à jour applicatives** : Dernière version
+            `${{ needs.determine-version.outputs.version }}`, Numéro de build
+            `${{ needs.determine-version.outputs.build_number }}`.
+
             | Plateforme | Fichier |
             |-----------|---------|
             | Windows — Serveur (installeur) | `POSConnect-Setup-${{ needs.determine-version.outputs.version }}.exe` |
@@ -712,6 +716,10 @@ jobs:
           name: POS Connect v${{ needs.determine-version.outputs.version }}
           body: |
             ## POS Connect v${{ needs.determine-version.outputs.version }}
+
+            **Panneau admin → Mises à jour applicatives** : Dernière version
+            `${{ needs.determine-version.outputs.version }}`, Numéro de build
+            `${{ needs.determine-version.outputs.build_number }}`.
 
             | Plateforme | Fichier |
             |-----------|---------|
