@@ -497,8 +497,17 @@ jobs:
           $pass = "${{ secrets.WIN_CODESIGN_PFX_PASSWORD }}"
           $signCmd = "`"$signtool`" sign /fd SHA256 /f `"$pfx`" /p `"$pass`" /tr http://timestamp.digicert.com /td SHA256 `$f"
           Write-Host "Compilation client Inno Setup v$ver"
-          & $iscc "/DMyAppVersion=$ver" "/SPosConnectSignTool=$signCmd" "certificat\pos-client.iss"
-          $exitCode = $LASTEXITCODE
+          # Start-Process -ArgumentList (au lieu de l'opérateur d'appel &) —
+          # nécessaire car $signCmd contient des guillemets imbriqués que &
+          # scinde en plusieurs arguments (ISCC voyait alors "plus d'un nom
+          # de script"). -ArgumentList laisse .NET échapper correctement.
+          $isccArgs = @(
+            "/DMyAppVersion=$ver",
+            "/SPosConnectSignTool=$signCmd",
+            "certificat\pos-client.iss"
+          )
+          $proc = Start-Process -FilePath $iscc -ArgumentList $isccArgs -NoNewWindow -Wait -PassThru
+          $exitCode = $proc.ExitCode
           Remove-Item $pfx -Force -ErrorAction SilentlyContinue
           if ($exitCode -ne 0) { throw "Inno Setup ISCC.exe a échoué (code $exitCode)" }
 
