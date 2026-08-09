@@ -159,6 +159,65 @@ def test_login_never_moves_device_off_its_own_register(db, tenant):
     assert caisse_one.device_id is None
 
 
+def test_login_never_steals_another_devices_register(db, tenant):
+    """Reproduit le trou signalé : une caisse déjà liée à un AUTRE appareil
+    (approuvé, juste sans session ouverte en ce moment — ex: fin de service)
+    ne doit JAMAIS être considérée "libre" pour un nouvel appareil, même si
+    elle a un abonnement actif et serait autrement la "meilleure" candidate.
+    Un nouvel appareil doit atterrir sur une caisse vraiment jamais réclamée
+    (device_id NULL), pas voler celle d'un collègue."""
+    wh = Warehouse(tenant_id=tenant.id, name="Dépôt", is_active=True, is_default=True)
+    db.add(wh)
+    db.flush()
+
+    # Caisse d'un collègue : approuvée, abonnement actif, mais sans session
+    # ouverte en ce moment (il a fermé sa caisse pour une pause).
+    caisse_collegue = PosRegister(
+        tenant_id=tenant.id, warehouse_id=wh.id, name="Caisse Collègue",
+        is_active=True, device_id="dev-collegue", is_device_approved=True,
+        subscription_ends_at=now_local() + timedelta(days=10),
+    )
+    # Caisse vraiment jamais réclamée, sans plan.
+    caisse_libre = PosRegister(
+        tenant_id=tenant.id, warehouse_id=wh.id, name="Caisse Libre",
+        is_active=True,
+    )
+    db.add_all([caisse_collegue, caisse_libre])
+    db.commit()
+
+    user = _make_user(db, tenant)
+
+    result = cloud_login(db, user.email, "secret123", "dev-nouveau", None)
+
+    assert result["register_id"] == caisse_libre.id
+    db.refresh(caisse_collegue)
+    assert caisse_collegue.device_id == "dev-collegue"
+    assert caisse_collegue.is_device_approved is True
+
+
+def test_login_returns_no_register_when_only_claimed_ones_exist(db, tenant):
+    """Si la SEULE caisse existante appartient déjà à un autre appareil
+    (sans session ouverte), un nouvel appareil ne doit ni la voler ni faire
+    échouer la connexion — register_id reste None."""
+    wh = Warehouse(tenant_id=tenant.id, name="Dépôt", is_active=True, is_default=True)
+    db.add(wh)
+    db.flush()
+    caisse_collegue = PosRegister(
+        tenant_id=tenant.id, warehouse_id=wh.id, name="Caisse Collègue",
+        is_active=True, device_id="dev-collegue", is_device_approved=True,
+    )
+    db.add(caisse_collegue)
+    db.commit()
+
+    user = _make_user(db, tenant)
+
+    result = cloud_login(db, user.email, "secret123", "dev-nouveau", None)
+
+    assert result["register_id"] is None
+    db.refresh(caisse_collegue)
+    assert caisse_collegue.device_id == "dev-collegue"
+
+
 def test_login_falls_back_to_unusable_register_when_none_are_active(db, tenant):
     """Si AUCUNE caisse libre n'a de plan actif, le login ne doit pas
     échouer — il prend quand même un slot (comportement historique

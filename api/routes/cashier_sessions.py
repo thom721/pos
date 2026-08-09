@@ -149,7 +149,13 @@ def _get_or_create_register(
             })
 
     # 2. Chercher une caisse libre NON dédiée dans le dépôt demandé.
-    # Libre = pas de session ouverte dessus (plus de logique last_seen/slot).
+    # Libre = pas de session ouverte dessus ET jamais réclamée par un autre
+    # appareil (device_id NULL) — une caisse déjà liée à un AUTRE appareil
+    # ne redevient jamais "libre" simplement parce qu'elle n'a pas de
+    # session ouverte en ce moment (ex: fin de service), sinon n'importe
+    # quel login pourrait la voler à son propriétaire légitime. Seule une
+    # réinitialisation explicite par un admin (reset_device) la remet
+    # vraiment à disposition.
     open_reg_ids = (
         db.query(CashierSession.register_id)
         .filter(CashierSession.status == "open")
@@ -164,7 +170,13 @@ def _get_or_create_register(
     if warehouse_id:
         slot_q = slot_q.filter(PosRegister.warehouse_id == warehouse_id)
     if requires_explicit:
+        # Mode restaurant/hôtel : exige au contraire une caisse déjà
+        # enregistrée manuellement (device_id posé par un admin) — pas une
+        # caisse vierge. Cas particulier distinct, voir le commentaire au
+        # niveau de requires_explicit plus haut.
         slot_q = slot_q.filter(PosRegister.device_id.isnot(None))
+    else:
+        slot_q = slot_q.filter(PosRegister.device_id.is_(None))
 
     free_slot = slot_q.order_by(
         PosRegister.last_seen.is_(None).desc(),

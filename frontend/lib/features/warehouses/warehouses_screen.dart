@@ -655,7 +655,11 @@ class _RegisterTile extends ConsumerWidget {
           children: [
             if (!register.isActive)
               _Badge(label: 'Inactif', color: AppColors.textSecondary),
-            if (!register.isDeviceApproved)
+            // isDeviceApproved passe à false dès la réinitialisation, même
+            // sans aucun appareil — n'afficher "en attente" que s'il y a
+            // réellement un device_id à approuver, sinon la caisse est juste
+            // libre (rien à approuver, pas d'appareil en attente).
+            if (!register.isDeviceApproved && register.deviceId.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(right: 4),
                 child: _Badge(
@@ -706,7 +710,7 @@ class _RegisterTile extends ConsumerWidget {
                           ? 'Désactiver'
                           : 'Activer'),
                     ),
-                  if (canUpdate && !register.isDeviceApproved)
+                  if (canUpdate && !register.isDeviceApproved && register.deviceId.isNotEmpty)
                     const PopupMenuItem(
                       value: 'approve_device',
                       child: Row(children: [

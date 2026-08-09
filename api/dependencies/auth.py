@@ -60,9 +60,18 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     # warehouse_helper.bind_register_device) le remet à None précisément pour
     # ne pas invalider par erreur une session encore valide dont le sid ne
     # peut, par construction, plus rien avoir à comparer.
+    #
+    # Exempté pour admin/manager (même exemption que l'approbation d'appareil
+    # et l'ouverture de caisse, voir open_session/_is_manager) : cloud_login
+    # attribue un slot de caisse à N'IMPORTE QUEL login cloud, y compris une
+    # session web admin qui ne gère jamais de caisse elle-même — cette
+    # session pouvait donc se faire déconnecter à tort dès qu'un autre
+    # appareil réclamait la caisse à laquelle son propre navigateur s'était
+    # retrouvé lié par hasard.
+    is_manager_role = any(r in (user.roles or []) for r in ("admin", "manager"))
     device_id = payload.get("device_id")
     sid = payload.get("sid")
-    if device_id and sid:
+    if device_id and sid and not is_manager_role:
         tenant_id = payload.get("tenant_id")
         register = db.query(PosRegister).filter(
             PosRegister.tenant_id == tenant_id,

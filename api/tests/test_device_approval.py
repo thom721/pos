@@ -187,6 +187,45 @@ def test_admin_approval_unblocks_session_open(db, client, tenant):
     assert allowed.status_code == 201, allowed.text
 
 
+def test_open_session_never_steals_another_devices_register(db, client, tenant):
+    """Reproduit le trou signalé : une caisse déjà liée à un AUTRE appareil
+    (approuvée, juste sans session ouverte en ce moment) ne doit jamais être
+    considérée "libre" par open_session pour un nouvel appareil — seule une
+    caisse vraiment jamais réclamée (device_id NULL) l'est."""
+    admin = _make_user(db, tenant, roles=["admin"])
+    admin_headers = {"Authorization": f"Bearer {_token(admin)}"}
+
+    # Dépôt dédié à ce test — évite toute ambiguïté avec "Caisse principale"
+    # (seedée par le fixture tenant), qui serait sinon une 2e candidate
+    # "libre" à égalité, rendant l'assertion sur l'ID exact non déterministe.
+    wh = Warehouse(tenant_id=tenant.id, name="Dépôt isolé", is_active=True)
+    db.add(wh)
+    db.commit()
+    # Caisse d'un collègue : déjà approuvée, pas de session ouverte en ce moment.
+    caisse_collegue = PosRegister(
+        tenant_id=tenant.id, warehouse_id=wh.id, name="Caisse Collègue",
+        is_active=True, device_id="dev-collegue", is_device_approved=True,
+    )
+    # Caisse vraiment libre — trial actif pour ne pas être bloquée par la
+    # vérification d'abonnement (hors sujet de ce test).
+    caisse_libre = PosRegister(
+        tenant_id=tenant.id, warehouse_id=wh.id, name="Caisse Libre",
+        is_active=True, trial_ends_at=now_local() + timedelta(days=10),
+    )
+    db.add_all([caisse_collegue, caisse_libre])
+    db.commit()
+
+    res = client.post("/api/sessions/open", json={
+        "device_id": "dev-nouveau", "register_name": "Caisse", "warehouse_id": wh.id,
+    }, headers=admin_headers)
+    assert res.status_code == 201, res.text
+    assert res.json()["session"]["register_id"] == caisse_libre.id
+
+    db.refresh(caisse_collegue)
+    assert caisse_collegue.device_id == "dev-collegue"
+    assert caisse_collegue.is_device_approved is True
+
+
 def test_reset_device_clears_and_revokes_approval(db, client, tenant):
     admin = _make_user(db, tenant, roles=["admin"])
     admin_headers = {"Authorization": f"Bearer {_token(admin)}"}
@@ -360,19 +399,20 @@ def test_open_session_rebind_does_not_invalidate_current_admin_session(db, clien
 
 
 def test_session_token_mismatch_still_rejected_when_set(db, client, tenant):
-    """Le garde-fou anti-vol de session reste actif : si un registre porte un
-    session_token bien défini (posé par un vrai cloud_login) qui ne
-    correspond pas au sid du JWT courant, la requête est toujours refusée."""
+    """Le garde-fou anti-vol de session reste actif pour un caissier : si un
+    registre porte un session_token bien défini (posé par un vrai
+    cloud_login) qui ne correspond pas au sid du JWT courant, la requête est
+    toujours refusée."""
     from api.core.security import create_access_token
 
-    admin = _make_user(db, tenant, roles=["admin"])
+    cashier = _make_user(db, tenant, roles=["cashier"])
     reg = db.query(PosRegister).filter_by(tenant_id=tenant.id).first()
     reg.device_id = "dev-y"
     reg.session_token = "sid-real-current-login"
     db.commit()
 
     stale_jwt = create_access_token({
-        "sub": admin.id, "perm_v": admin.permissions_version or 0,
+        "sub": cashier.id, "perm_v": cashier.permissions_version or 0,
         "tenant_id": tenant.id, "device_id": "dev-y", "sid": "sid-OLD-STOLEN",
     })
     headers = {"Authorization": f"Bearer {stale_jwt}"}
@@ -382,6 +422,34 @@ def test_session_token_mismatch_still_rejected_when_set(db, client, tenant):
     # HTTPException est ré-enveloppée en {"message": ...} par le handler
     # global (api/main.py::http_exception_handler), pas {"detail": ...}.
     assert "autre connexion" in res.json()["message"]
+
+
+def test_session_token_mismatch_exempted_for_admin_and_manager(db, client, tenant):
+    """cloud_login attribue un slot de caisse à N'IMPORTE QUEL login cloud,
+    y compris une session web admin/manager qui ne gère jamais de caisse
+    elle-même — un admin/manager ne doit donc jamais être déconnecté par ce
+    garde-fou, même si le registre auquel son navigateur s'est retrouvé lié
+    par hasard se fait réclamer par un autre appareil entre-temps (même
+    exemption que pour l'approbation d'appareil et l'ouverture de caisse)."""
+    from api.core.security import create_access_token
+
+    for role in ("admin", "manager"):
+        user = _make_user(db, tenant, roles=[role], suffix=f"_{role}")
+        reg = PosRegister(
+            tenant_id=tenant.id, name=f"Caisse {role}", is_active=True,
+            device_id=f"dev-{role}", session_token="sid-real-current-login",
+        )
+        db.add(reg)
+        db.commit()
+
+        stale_jwt = create_access_token({
+            "sub": user.id, "perm_v": user.permissions_version or 0,
+            "tenant_id": tenant.id, "device_id": f"dev-{role}", "sid": "sid-OLD-STOLEN",
+        })
+        headers = {"Authorization": f"Bearer {stale_jwt}"}
+
+        res = client.get("/api/warehouses/", headers=headers)
+        assert res.status_code == 200, f"{role}: {res.text}"
 
 
 # ── POST /api/sales/ exige une session ouverte (contournement de l'écran) ──

@@ -209,10 +209,17 @@ def cloud_login(db: Session, email: str, password: str,
             # Parmi les candidates, priorité à une caisse encore utilisable
             # (trial/abonnement actif) plutôt qu'une caisse bloquée, pour ne
             # pas atterrir sur un slot mort alors qu'un autre fonctionne.
+            # device_id IS NULL : une caisse déjà liée à un AUTRE appareil ne
+            # redevient jamais "libre" simplement parce qu'elle n'a pas de
+            # session ouverte en ce moment (ex: fin de service) — sinon
+            # n'importe quel login pourrait la voler à son propriétaire
+            # légitime. Seule une réinitialisation admin (reset_device) la
+            # remet vraiment à disposition.
             base_q = db.query(PosRegister).filter(
                 PosRegister.tenant_id == tenant.id,
                 PosRegister.is_active == True,   # noqa: E712
                 PosRegister.id.not_in(open_reg_ids),
+                PosRegister.device_id.is_(None),
             )
             user_warehouse_ids = user.warehouse_id or []
             candidates = (

@@ -728,7 +728,10 @@ class _ProductPanelState extends ConsumerState<_ProductPanel> {
           .read(productRepositoryProvider)
           .findByBarcode(trimmed, warehouseId: warehouseId);
       if (product == null) {
-        return 'Aucun produit pour ce code';
+        // Le code exact est affiché pour diagnostiquer les cas où le
+        // scanner (douchette/caméra) décode une valeur différente du
+        // code-barres imprimé (tiret manquant, chiffre de contrôle, etc.).
+        return 'Aucun produit pour le code "$trimmed"';
       }
       ref.read(posProvider.notifier).addProduct(product);
       return null;
