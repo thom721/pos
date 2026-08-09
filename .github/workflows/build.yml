@@ -490,6 +490,10 @@ jobs:
 
       - name: Signer l'installeur (Authenticode)
         shell: pwsh
+        # Non-bloquant : si la signature échoue (secrets pas encore corrects,
+        # etc.), le pipeline continue et publie l'exe non signé plutôt que de
+        # faire échouer toute la release pour ça — à corriger plus tard.
+        continue-on-error: true
         run: |
           $bytes = [Convert]::FromBase64String("${{ secrets.WIN_CODESIGN_PFX_BASE64 }}")
           $pfx = "$env:RUNNER_TEMP\posconnect-codesign.pfx"
@@ -509,7 +513,7 @@ jobs:
               /tr http://timestamp.digicert.com /td SHA256 $installer
           $exitCode = $LASTEXITCODE
           Remove-Item $pfx -Force -ErrorAction SilentlyContinue
-          if ($exitCode -ne 0) { throw "signtool.exe a échoué (code $exitCode)" }
+          if ($exitCode -ne 0) { throw "signtool.exe a échoué (code $exitCode) — installeur publié NON SIGNÉ" }
 
       - name: Upload installeur client Windows
         uses: actions/upload-artifact@v4
