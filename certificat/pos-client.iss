@@ -47,10 +47,11 @@ OutputBaseFilename=POSConnect-Client-Setup-{#MyAppVersion}
 SolidCompression=yes
 WizardStyle=modern
 
-; Signature Authenticode — la commande réelle est passée par ISCC en ligne
-; de commande (/SPosConnectSignTool=...) depuis le CI, pas stockée ici (le
-; .pfx/mot de passe restent des secrets GitHub Actions, jamais commités).
-SignTool=PosConnectSignTool
+; Signature Authenticode : appliquée après coup par le CI directement sur
+; l'installeur produit (POSConnect-Client-Setup-*.exe), pas ici via /S —
+; le mécanisme SignTool d'ISCC scinde les arguments contenant des guillemets
+; imbriqués (chemins avec espaces + mot de passe), plus simple de signer
+; l'exe final avec un appel signtool.exe direct.
 
 [Languages]
 Name: "french";  MessagesFile: "compiler:Languages\French.isl"
@@ -62,10 +63,8 @@ Name: "desktopicon"; Description: "Créer une icône sur le Bureau"; \
 
 ; ── Fichiers à copier ─────────────────────────────────────────────────────────
 [Files]
-; Application Flutter Windows — "sign" applique PosConnectSignTool à cet
-; exe précis pendant la compilation (l'exe brut sorti de `flutter build`
-; n'est pas signé).
-Source: "frontend-windows\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion sign
+; Application Flutter Windows
+Source: "frontend-windows\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "frontend-windows\*"; DestDir: "{app}"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
