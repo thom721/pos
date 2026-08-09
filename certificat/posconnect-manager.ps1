@@ -2,7 +2,10 @@
 <#
 .SYNOPSIS
     POS Serveur - Gestionnaire de services
-    Lance depuis l'icone bureau via :
+    Tourne dans la zone de notification (systray) - lance au demarrage de
+    Windows (raccourci Startup) et reste actif en arriere-plan. Cliquer
+    l'icone (ou le raccourci Menu Demarrer) ouvre la fenetre de gestion ;
+    fermer la fenetre la cache seulement, "Quitter" du menu tray arrete l'app.
     powershell.exe -WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -File posconnect-manager.ps1
 #>
 
@@ -748,9 +751,55 @@ $btnToSQLite.Add_Click({
     Set-Free
 })
 
-# -- Statut initial + lancement ------------------------------------------------
+# -- Icone systeme (zone de notification) --------------------------------------
+# L'app demarre cachee dans le systray (lancee au demarrage de Windows via le
+# raccourci Startup) - la fenetre de gestion ne s'affiche que via le menu de
+# l'icone ou le raccourci Menu Demarrer. Fermer la fenetre (X) la cache au
+# lieu de quitter le processus - seul "Quitter" dans le menu arrete l'app.
+try {
+    $exePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    $trayIcon = [System.Drawing.Icon]::ExtractAssociatedIcon($exePath)
+} catch { $trayIcon = [System.Drawing.SystemIcons]::Application }
+
+$notifyIcon = New-Object System.Windows.Forms.NotifyIcon
+$notifyIcon.Icon = $trayIcon
+$notifyIcon.Text = "POS Connect Manager"
+$notifyIcon.Visible = $true
+
+$menuOpen = New-Object System.Windows.Forms.ToolStripMenuItem "Ouvrir le gestionnaire"
+$menuOpen.Add_Click({
+    $form.Show()
+    $form.WindowState = "Normal"
+    $form.Activate()
+})
+$menuSep = New-Object System.Windows.Forms.ToolStripSeparator
+$menuQuit = New-Object System.Windows.Forms.ToolStripMenuItem "Quitter"
+$menuQuit.Add_Click({
+    $notifyIcon.Visible = $false
+    [System.Windows.Forms.Application]::Exit()
+})
+
+$trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
+[void]$trayMenu.Items.Add($menuOpen)
+[void]$trayMenu.Items.Add($menuSep)
+[void]$trayMenu.Items.Add($menuQuit)
+$notifyIcon.ContextMenuStrip = $trayMenu
+$notifyIcon.Add_DoubleClick({
+    $form.Show()
+    $form.WindowState = "Normal"
+    $form.Activate()
+})
+
+$form.Add_FormClosing({
+    if ($_.CloseReason -eq [System.Windows.Forms.CloseReason]::UserClosing) {
+        $_.Cancel = $true
+        $form.Hide()
+    }
+})
+
+# -- Statut initial + lancement (caché — seul le systray/Menu Démarrer l'affiche) --
 Update-Status
-[System.Windows.Forms.Application]::Run($form)
+[System.Windows.Forms.Application]::Run()
 
 } catch {
     $errMsg = "CRASH: $($_.Exception.GetType().Name)`n$($_.Exception.Message)`n`nStack:`n$($_.ScriptStackTrace)"

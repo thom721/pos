@@ -47,10 +47,6 @@ WizardStyle=modern
 Name: "french";  MessagesFile: "compiler:Languages\French.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-[Tasks]
-Name: "desktopicon"; Description: "Créer une icône sur le Bureau"; \
-  GroupDescription: "Icônes supplémentaires"
-
 ; ── Dossiers à créer ──────────────────────────────────────────────────────────
 [Dirs]
 ; Répertoire d'install = {app} = C:\ProgramData\POS_Connect\
@@ -143,9 +139,11 @@ Root: HKLM; \
 Name: "{autoprograms}\{#MyAppName}"; \
   Filename: "{app}\posconnect-manager.exe"; \
   WorkingDir: "{app}"
-Name: "{autodesktop}\{#MyAppName}"; \
+; Lancement automatique au démarrage de Windows — l'app tourne dans la zone
+; de notification (systray), pas de raccourci Bureau (voir posconnect-manager.ps1).
+Name: "{commonstartup}\{#MyAppName}"; \
   Filename: "{app}\posconnect-manager.exe"; \
-  WorkingDir: "{app}"; Tasks: desktopicon
+  WorkingDir: "{app}"
 
 ; ── Commandes après installation ──────────────────────────────────────────────
 [Run]
