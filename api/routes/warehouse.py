@@ -20,6 +20,7 @@ from api.models.PlatformConfig import PlatformConfig
 from api.schemas.warehouse import WarehouseCreate, WarehouseUpdate, WarehouseRead
 from api.services import billing_extra_service as _billing
 from api.services import config_service as _config
+from api.services import audit_service
 from api.models.InstallationCode import InstallationCode, generate_installation_code
 
 
@@ -439,6 +440,49 @@ def create_register(
     return reg
 
 
+def _force_close_open_sessions(db: Session, reg: PosRegister, current_user: User) -> None:
+    """Ferme de force toute session caisse encore ouverte sur ce registre —
+    même logique/calcul que POST /api/sessions/{id}/force-close
+    (api/routes/cashier_sessions.py::force_close_session), réutilisée ici
+    pour que reset_device libère vraiment la caisse plutôt que de laisser
+    une session oubliée la garder indisponible."""
+    from api.routes.cashier_sessions import _compute_reconciliation
+
+    open_sessions = db.query(CashierSession).filter(
+        CashierSession.register_id == reg.id,
+        CashierSession.status == "open",
+    ).all()
+    for session in open_sessions:
+        closed_at = now_local()
+        recon = _compute_reconciliation(db, session, closed_at)
+        session.closed_at                = closed_at
+        session.closing_balance          = 0
+        session.status                   = "closed"
+        session.total_cash_sales         = recon["total_cash_sales"]
+        session.total_card_sales         = recon["total_card_sales"]
+        session.total_mobile_sales       = recon["total_mobile_sales"]
+        session.total_bank_sales         = recon["total_bank_sales"]
+        session.total_refunds_cash       = recon["total_refunds_cash"]
+        session.expected_closing_balance = recon["expected_closing_balance"]
+        session.cash_difference          = 0 - recon["expected_closing_balance"]
+
+        forced_by = f"{current_user.fname} {current_user.lname}".strip() or current_user.username
+        audit_service.log(
+            db,
+            user_id=current_user.id,
+            tenant_id=current_user.tenant_id,
+            action="FORCE_CLOSE",
+            resource_type="cashier_session",
+            resource_id=session.id,
+            detail={
+                "forced_by":           forced_by,
+                "forced_at":           closed_at.isoformat(),
+                "original_cashier_id": session.cashier_id,
+                "reason":              "reset_device",
+            },
+        )
+
+
 @router.put("/{warehouse_id}/registers/{register_id}", response_model=RegisterRead)
 def update_register(
     warehouse_id: str,
@@ -472,6 +516,14 @@ def update_register(
         reg.device_id = None
         reg.is_device_approved = False
         reg.session_token = None
+        # Réinitialiser l'appareil vise à libérer complètement la caisse pour
+        # un nouvel appareil — une session encore ouverte dessus (oubliée,
+        # ou laissée bloquée par une déconnexion prématurée du précédent
+        # appareil) la rendait sinon toujours indisponible malgré la
+        # réinitialisation (exclue par PosRegister.id.not_in(open_reg_ids)
+        # dans _get_or_create_register/cloud_login), obligeant un admin à
+        # la fermer séparément via Journal d'audit → Sessions actives.
+        _force_close_open_sessions(db, reg, current_user)
     elif data.is_device_approved is not None:
         reg.is_device_approved = data.is_device_approved
     db.commit()

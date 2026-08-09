@@ -211,6 +211,50 @@ def test_reset_device_clears_and_revokes_approval(db, client, tenant):
     assert reg.is_device_approved is False
 
 
+def test_reset_device_force_closes_stale_open_session(db, client, tenant):
+    """Reproduit le bug rapporté en prod : réinitialiser l'appareil sur une
+    caisse qui a une session encore ouverte (oubliée, ex: appareil éjecté par
+    le bug de déconnexion en boucle) doit fermer cette session — sinon la
+    caisse reste indisponible (exclue par id.not_in(open_reg_ids)) malgré la
+    réinitialisation, obligeant à passer par Journal d'audit séparément."""
+    from api.models.CashierSession import CashierSession
+
+    admin = _make_user(db, tenant, roles=["admin"])
+    admin_headers = {"Authorization": f"Bearer {_token(admin)}"}
+
+    opened = client.post("/api/sessions/open", json={
+        "device_id": "old-phone", "register_name": "Caisse",
+    }, headers=admin_headers)
+    assert opened.status_code == 201, opened.text
+    session_id = opened.json()["session"]["id"]
+
+    reg = db.query(PosRegister).filter_by(tenant_id=tenant.id, device_id="old-phone").first()
+    assert reg is not None
+    warehouse_id = reg.warehouse_id
+
+    session = db.get(CashierSession, session_id)
+    assert session.status == "open"
+
+    reset = client.put(
+        f"/api/warehouses/{warehouse_id}/registers/{reg.id}",
+        json={"reset_device": True},
+        headers=admin_headers,
+    )
+    assert reset.status_code == 200, reset.text
+
+    db.refresh(session)
+    assert session.status == "closed"
+
+    # La caisse est maintenant réellement libre pour un nouvel appareil —
+    # plus jamais exclue par le filtre "session ouverte" côté login.
+    reopened = client.post("/api/sessions/open", json={
+        "device_id": "new-phone", "register_name": "Caisse",
+    }, headers=admin_headers)
+    assert reopened.status_code == 201, reopened.text
+    db.refresh(reg)
+    assert reg.device_id == "new-phone"
+
+
 def test_create_register_grants_no_trial_period(db, client, tenant):
     """Seule la toute première caisse d'un dépôt (is_initial=True) a droit à
     une période d'essai — une caisse ajoutée ensuite via 'Ajouter une caisse'
