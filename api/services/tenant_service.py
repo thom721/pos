@@ -182,11 +182,18 @@ def cloud_login(db: Session, email: str, password: str,
             .scalar_subquery()
         )
 
-        # 1. Ce device a déjà une caisse avec une session ouverte → réutiliser.
+        # 1. Ce device a déjà une caisse active → la garder, qu'une session y
+        # soit ouverte ou non. Ne JAMAIS faire "flotter" un appareil déjà lié
+        # vers une autre caisse simplement parce qu'elle a un abonnement actif
+        # ou vient de se libérer (bug observé : fermer la session d'une caisse
+        # payante ré-attribuait un appareil déjà approuvé d'une autre caisse
+        # vers elle, révoquant son approbation au passage). Cohérent avec
+        # _get_or_create_register (open_session), qui applique déjà cette
+        # même règle sans exiger de session ouverte.
         register = db.query(PosRegister).filter(
             PosRegister.tenant_id == tenant.id,
             PosRegister.device_id == device_id,
-            PosRegister.id.in_(open_reg_ids),
+            PosRegister.is_active == True,  # noqa: E712
         ).first()
 
         if not register:
