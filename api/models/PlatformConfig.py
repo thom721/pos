@@ -66,7 +66,6 @@ class PlatformConfig(UUIDBase):
     # ── Mises à jour applicatives ────────────────────────────────────────────
     latest_version = Column(String(20),  nullable=False, default='0.9.0')
     latest_build   = Column(Integer,     nullable=False, default=1)
-    min_version    = Column(String(20),  nullable=False, default='0.9.0')
     update_notes   = Column(Text,        nullable=True,  default=None)
     update_url         = Column(String(512), nullable=True,  default=None)
     update_url_android = Column(String(512), nullable=True,  default=None)

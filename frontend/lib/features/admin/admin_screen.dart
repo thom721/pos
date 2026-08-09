@@ -1615,7 +1615,6 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   final _logoUrlCtrl           = TextEditingController();
   final _latestVersionCtrl     = TextEditingController();
   final _latestBuildCtrl       = TextEditingController();
-  final _minVersionCtrl        = TextEditingController();
   final _updateNotesCtrl          = TextEditingController();
   final _updateUrlCtrl            = TextEditingController();
   final _updateUrlAndroidCtrl     = TextEditingController();
@@ -1666,7 +1665,6 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _cardEnabled    = cfg['card_enabled']    as bool? ?? true;
     _latestVersionCtrl.text = cfg['latest_version']?.toString() ?? '0.9.0';
     _latestBuildCtrl.text   = cfg['latest_build']?.toString()   ?? '1';
-    _minVersionCtrl.text    = cfg['min_version']?.toString()    ?? '0.9.0';
     _updateNotesCtrl.text   = cfg['update_notes']?.toString()   ?? '';
     _updateUrlCtrl.text        = cfg['update_url']?.toString()         ?? '';
     _updateUrlAndroidCtrl.text = cfg['update_url_android']?.toString() ?? '';
@@ -1718,7 +1716,6 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _logoUrlCtrl.dispose();
     _latestVersionCtrl.dispose();
     _latestBuildCtrl.dispose();
-    _minVersionCtrl.dispose();
     _updateNotesCtrl.dispose();
     _updateUrlCtrl.dispose();
     _updateUrlAndroidCtrl.dispose();
@@ -1783,7 +1780,6 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
         'logo_url':       _logoUrlCtrl.text.trim().isEmpty ? null : _logoUrlCtrl.text.trim(),
         'latest_version': _latestVersionCtrl.text.trim(),
         'latest_build':   int.tryParse(_latestBuildCtrl.text.trim()) ?? 1,
-        'min_version':    _minVersionCtrl.text.trim(),
         'update_notes':   _updateNotesCtrl.text.trim().isEmpty ? null : _updateNotesCtrl.text.trim(),
         'update_url':         _updateUrlCtrl.text.trim().isEmpty ? null : _updateUrlCtrl.text.trim(),
         'update_url_android': _updateUrlAndroidCtrl.text.trim().isEmpty ? null : _updateUrlAndroidCtrl.text.trim(),
@@ -2286,14 +2282,6 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _minVersionCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Version minimale requise',
-                        hintText: '0.9.0',
-                      ),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(

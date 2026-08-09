@@ -107,7 +107,6 @@ class PlatformConfigUpdate(BaseModel):
     # Mises à jour applicatives
     latest_version: str  | None = None
     latest_build:   int  | None = None
-    min_version:    str  | None = None
     update_notes:   str  | None = None
     update_url:         str  | None = None
     update_url_android: str  | None = None
@@ -1136,7 +1135,6 @@ def get_platform_config(
         "card_enabled":    bool(getattr(cfg, "card_enabled",    True)),
         "latest_version": getattr(cfg, "latest_version", "0.9.0"),
         "latest_build":   getattr(cfg, "latest_build",   1),
-        "min_version":    getattr(cfg, "min_version",    "0.9.0"),
         "update_notes":        getattr(cfg, "update_notes",        None),
         "update_url":          getattr(cfg, "update_url",          None),
         "update_url_android":  getattr(cfg, "update_url_android",  None),
@@ -1197,7 +1195,6 @@ def update_platform_config(
     if body.card_enabled    is not None: cfg.card_enabled    = body.card_enabled
     if body.latest_version  is not None: cfg.latest_version  = body.latest_version
     if body.latest_build    is not None: cfg.latest_build    = body.latest_build
-    if body.min_version     is not None: cfg.min_version     = body.min_version
     if body.update_notes        is not None: cfg.update_notes        = body.update_notes
     if body.update_url          is not None: cfg.update_url          = body.update_url
     if body.update_url_android  is not None: cfg.update_url_android  = body.update_url_android
@@ -1237,7 +1234,6 @@ def update_platform_config(
         "logo_url":              getattr(cfg, "logo_url",              None),
         "latest_version": getattr(cfg, "latest_version", "0.9.0"),
         "latest_build":   getattr(cfg, "latest_build",   1),
-        "min_version":    getattr(cfg, "min_version",    "0.9.0"),
         "update_notes":        getattr(cfg, "update_notes",        None),
         "update_url":          getattr(cfg, "update_url",          None),
         "update_url_android":  getattr(cfg, "update_url_android",  None),

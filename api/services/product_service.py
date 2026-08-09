@@ -55,6 +55,10 @@ class ProductService(TenantService):
             if exists:
                 raise HTTPException(400, f"Un produit nommé '{payload['name']}' existe déjà")
 
+            barcode = payload.get("barcode")
+            if barcode and self._q(Product).filter(Product.barcode == barcode).first():
+                raise HTTPException(400, f"Le code-barres '{barcode}' est déjà utilisé par un autre produit")
+
             # Vérifie que la catégorie existe
             if not self.db.get(Category, str(payload.get("category_id", ""))):
                 raise HTTPException(400, "Catégorie introuvable")
@@ -153,9 +157,32 @@ class ProductService(TenantService):
         product = self.get(product_id)
         if not product:
             return None
-        for field, value in data.dict(exclude_unset=True).items():
+        payload = data.dict(exclude_unset=True)
+
+        new_name = payload.get("name")
+        if new_name and new_name != product.name:
+            exists = self._q(Product).filter(
+                Product.name == new_name, Product.id != product_id,
+            ).first()
+            if exists:
+                raise HTTPException(400, f"Un produit nommé '{new_name}' existe déjà")
+
+        new_barcode = payload.get("barcode")
+        if new_barcode and new_barcode != product.barcode:
+            exists = self._q(Product).filter(
+                Product.barcode == new_barcode, Product.id != product_id,
+            ).first()
+            if exists:
+                raise HTTPException(400, f"Le code-barres '{new_barcode}' est déjà utilisé par un autre produit")
+
+        for field, value in payload.items():
             setattr(product, field, value)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            logger.error("Erreur mise à jour produit: %s", e, exc_info=True)
+            raise HTTPException(500, "Erreur lors de la mise à jour du produit")
         self.db.refresh(product)
         return product
 

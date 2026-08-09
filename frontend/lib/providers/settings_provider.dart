@@ -373,7 +373,10 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     _startSyncTimer();
   }
 
-  /// Refresh settings from server every 5 minutes while authenticated.
+  /// Filet de sécurité si le WebSocket temps-réel (app.dart) est déconnecté —
+  /// sur Android/bureau, reload() est normalement déclenché instantanément
+  /// à chaque mutation serveur (paiement approuvé, permissions modifiées,
+  /// etc.) via le push WebSocket, pas par ce timer.
   void _startSyncTimer() {
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
@@ -388,6 +391,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     await _ref.read(authProvider.notifier).refreshCurrentUser();
     _ref.invalidate(licenseProvider);
     _ref.invalidate(tenantProvider);
+    _ref.read(billingEpochProvider.notifier).state++;
   }
 
   @override
@@ -516,7 +520,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     }
   }
 
-  /// Recharge config + user + licence + tenant (appelé au resume de l'app).
+  /// Recharge config + user + licence + tenant (appelé au resume de l'app,
+  /// et par app.dart à chaque push WebSocket "sync" — voir _triggerSync()).
   Future<void> reload() => _refreshAll();
 
   Future<void> save(AppSettings settings) async {

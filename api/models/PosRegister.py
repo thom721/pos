@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
@@ -21,6 +21,10 @@ class PosRegister(UUIDBase):
     # Session tracking
     session_token = Column(String(36), nullable=True)
     last_seen     = Column(DateTime(timezone=False), nullable=True)   # updated by heartbeat
+    # Dernière version/build de l'app cliente ayant tapé ce endpoint —
+    # permet à l'admin de voir qui tourne sur une version obsolète.
+    app_version   = Column(String(20), nullable=True)
+    app_build     = Column(Integer, nullable=True)
 
     # ── Abonnement par caisse ────────────────────────────────────────────────────
     # Toutes les caisses (initiales ou supplémentaires) ont leur propre ligne de

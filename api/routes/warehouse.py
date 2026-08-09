@@ -62,6 +62,8 @@ class RegisterRead(BaseModel):
     subscription_ends_at: Optional[datetime] = None
     dedicated_user_id: Optional[str] = None
     dedicated_user_name: Optional[str] = None
+    app_version: Optional[str] = None
+    app_build: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -564,16 +566,24 @@ def delete_register(
 @router.post("/registers/heartbeat")
 def register_heartbeat(
     device_id: str = Body(..., embed=True),
+    app_version: str | None = Body(None, embed=True),
+    app_build: int | None = Body(None, embed=True),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Updates last_seen for the calling device's register (keeps the session slot alive)."""
+    """Updates last_seen for the calling device's register (keeps the session slot alive).
+    Also records the client's app version/build — seule source permettant à
+    l'admin de savoir quels appareils tournent sur une version obsolète."""
     register = db.query(PosRegister).filter(
         PosRegister.tenant_id == current_user.tenant_id,
         PosRegister.device_id == device_id,
     ).first()
     if register:
         register.last_seen = now_local()
+        if app_version is not None:
+            register.app_version = app_version
+        if app_build is not None:
+            register.app_build = app_build
         db.commit()
     return {"ok": True}
 

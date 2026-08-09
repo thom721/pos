@@ -13,6 +13,8 @@ class PosRegisterModel {
   final DateTime? subscriptionEndsAt;
   final String? dedicatedUserId;
   final String? dedicatedUserName;
+  final String? appVersion;
+  final int? appBuild;
 
   const PosRegisterModel({
     required this.id,
@@ -27,6 +29,8 @@ class PosRegisterModel {
     this.subscriptionEndsAt,
     this.dedicatedUserId,
     this.dedicatedUserName,
+    this.appVersion,
+    this.appBuild,
   });
 
   factory PosRegisterModel.fromJson(Map<String, dynamic> json) =>
@@ -49,6 +53,8 @@ class PosRegisterModel {
             : null,
         dedicatedUserId: json['dedicated_user_id']?.toString(),
         dedicatedUserName: json['dedicated_user_name']?.toString(),
+        appVersion: json['app_version']?.toString(),
+        appBuild: (json['app_build'] as num?)?.toInt(),
       );
 
   /// Date d'expiration effective : subscription_ends_at en priorité, sinon trial_ends_at.

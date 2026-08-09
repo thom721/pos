@@ -637,6 +637,13 @@ class _RegisterTile extends ConsumerWidget {
               style: const TextStyle(
                   fontSize: 11, color: AppColors.textSecondary),
             ),
+            if (register.appVersion != null)
+              Text(
+                'App v${register.appVersion}'
+                '${register.appBuild != null ? ' (build ${register.appBuild})' : ''}',
+                style: const TextStyle(
+                    fontSize: 11, color: AppColors.textSecondary),
+              ),
             if (expiryText.isNotEmpty)
               Text(
                 expiryText,

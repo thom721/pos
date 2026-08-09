@@ -14,10 +14,12 @@ import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/models/pos_register_model.dart';
 import 'package:pos_connect/data/repositories/warehouse_repository.dart';
 import 'package:pos_connect/providers/entrepot_provider.dart';
+import 'package:pos_connect/providers/license_provider.dart' show billingEpochProvider;
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
 final _billingStatusProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  ref.watch(billingEpochProvider); // rafraîchi toutes les 5 min (voir settings_provider.dart)
   final res = await dio.get('/api/billing/status');
   return res.data as Map<String, dynamic>;
 });
@@ -33,6 +35,7 @@ final _billingConfigProvider = FutureProvider<Map<String, dynamic>>((ref) async 
 });
 
 final _planUsageProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  ref.watch(billingEpochProvider); // rafraîchi toutes les 5 min (voir settings_provider.dart)
   final res = await dio.get('/api/billing/plan-usage');
   return res.data as Map<String, dynamic>;
 });

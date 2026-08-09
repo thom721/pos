@@ -348,7 +348,6 @@ def get_version(db: Session = Depends(get_db)):
         return {
             "latest_version":    "0.9.0",
             "latest_build":      1,
-            "min_version":       "0.9.0",
             "update_notes":      None,
             "update_url":        None,
             "update_url_android": None,
@@ -357,7 +356,6 @@ def get_version(db: Session = Depends(get_db)):
     return {
         "latest_version":    getattr(cfg, "latest_version", "0.9.0"),
         "latest_build":      getattr(cfg, "latest_build",   1),
-        "min_version":       getattr(cfg, "min_version",    "0.9.0"),
         "update_notes":      getattr(cfg, "update_notes",   None),
         "update_url":        getattr(cfg, "update_url",     None),
         "update_url_android": getattr(cfg, "update_url_android", None),

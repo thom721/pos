@@ -17,10 +17,11 @@ _PING_INTERVAL = 30  # seconds — keepalive sent to client when idle
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     """
-    Persistent connection for Android offline-first clients.
+    Persistent connection for Android and desktop clients (web still relies
+    on periodic polling — see websocket_service.dart).
     The server pushes {"type": "sync"} whenever a write mutation completes
-    for the connected tenant, so the client can drain its offline queue and
-    refresh its SQLite cache immediately instead of waiting for the timer.
+    for the connected tenant, so the client can refresh immediately instead
+    of waiting for the fallback timer.
     Auth: JWT passed as ?token= query parameter (standard Bearer token).
     """
     payload = verify_token(token)

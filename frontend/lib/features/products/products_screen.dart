@@ -2003,7 +2003,7 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
     } catch (e) {
       setState(() {
         _loading = false;
-        _error = 'Erreur lors de l\'enregistrement. Réessayez.';
+        _error = extractAnyError(e);
       });
       return;
     }
@@ -2016,7 +2016,8 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
         if (mounted) {
           setState(() {
             _loading = false;
-            _error = 'Produit enregistré, mais l\'image n\'a pas pu être uploadée. Réessayez.';
+            _error = 'Produit enregistré, mais l\'image n\'a pas pu être uploadée : '
+                '${extractAnyError(e)}';
           });
         }
         ref.invalidate(productsProvider);
@@ -2782,7 +2783,7 @@ class _AdjustStockDialogState extends ConsumerState<_AdjustStockDialog> {
     } catch (e) {
       setState(() {
         _loading = false;
-        _error = 'Erreur lors de l\'ajustement. Réessayez.';
+        _error = extractAnyError(e);
       });
     }
   }

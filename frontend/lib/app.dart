@@ -10,19 +10,25 @@ import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
+import 'package:pos_connect/providers/version_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/offline_cache_service.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
 import 'package:pos_connect/services/websocket_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Android: WebSocket for real-time push + 2-min fallback timer
-// Desktop/Web: 5-min polling timer only
-const _kAndroidFallbackInterval = Duration(minutes: 2);
-const _kDesktopSyncInterval = Duration(minutes: 5);
+// Android + Bureau (Windows/macOS/Linux) : push WebSocket temps réel dès
+// qu'une mutation serveur a lieu (paiement approuvé, permissions modifiées,
+// etc.) + timer de secours si le WS est déconnecté.
+// Web : polling 5 min uniquement — IOWebSocketChannel repose sur dart:io,
+// indisponible en navigateur.
+const _kWsFallbackInterval = Duration(minutes: 2);
+const _kWebPollInterval = Duration(minutes: 5);
 
 bool get _isAndroid =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+bool get _supportsWebSocket => !kIsWeb;
 
 class PosApp extends ConsumerStatefulWidget {
   const PosApp({super.key});
@@ -97,16 +103,16 @@ class _PosAppState extends ConsumerState<PosApp> {
     // repoussant la détection au prochain cycle (jusqu'à 2 min sur Android).
     checkDevicePendingApproval(ref).ignore();
     _triggerSync();
-    if (_isAndroid) {
+    if (_supportsWebSocket) {
       WebSocketService.instance.start(
         _triggerSync,
         onPermissionsChanged: () => _forceLogout(
           'Vos permissions ont été modifiées par un administrateur — veuillez vous reconnecter.',
         ),
       );
-      _syncTimer = Timer.periodic(_kAndroidFallbackInterval, (_) => _triggerSync());
+      _syncTimer = Timer.periodic(_kWsFallbackInterval, (_) => _triggerSync());
     } else {
-      _syncTimer = Timer.periodic(_kDesktopSyncInterval, (_) => _triggerSync());
+      _syncTimer = Timer.periodic(_kWebPollInterval, (_) => _triggerSync());
     }
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(
@@ -131,7 +137,11 @@ class _PosAppState extends ConsumerState<PosApp> {
     try {
       await dio.post(
         '/api/warehouses/registers/heartbeat',
-        data: {'device_id': deviceId},
+        data: {
+          'device_id': deviceId,
+          'app_version': AppConstants.appVersion,
+          'app_build': AppConstants.appBuildNumber,
+        },
         options: kBackgroundOptions,
       );
     } catch (_) {
@@ -167,6 +177,15 @@ class _PosAppState extends ConsumerState<PosApp> {
     // silencieusement le tout premier appel juste après connexion (voir
     // _startAutoSync, qui appelle déjà cette même fonction immédiatement).
     checkDevicePendingApproval(ref, warehouseId: warehouseId).ignore();
+    // Licence/facturation/tenant — même déclencheur que le reste du cycle de
+    // sync (push WebSocket sur Android/bureau, polling 5 min sur web) au lieu
+    // du timer 5 min séparé de settings_provider.dart (gardé comme filet de
+    // sécurité uniquement).
+    ref.read(settingsProvider.notifier).reload().ignore();
+    // Mise à jour applicative — sans ça, une session déjà ouverte ne voyait
+    // jamais un blocage forcé publié après son démarrage (versionProvider
+    // n'était chargé qu'une fois, au lancement de l'app).
+    ref.invalidate(versionProvider);
     if (_isAndroid) {
       // Android : attendre la fin de la sync SQLite avant de notifier les providers
       // (les repos lisent depuis SQLite, il faut que le cache soit à jour)

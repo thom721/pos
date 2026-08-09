@@ -16,10 +16,11 @@ const _tokenStorage = FlutterSecureStorage(
   aOptions: AndroidOptions(encryptedSharedPreferences: true),
 );
 
-/// Maintains a persistent WebSocket connection to the cloud API (Android only).
+/// Maintains a persistent WebSocket connection to the cloud API (Android and
+/// desktop — start() no-ops on web, which IOWebSocketChannel doesn't support).
 /// The server pushes {"type": "sync"} after every write mutation, triggering
-/// an immediate queue drain + SQLite cache refresh instead of waiting for the
-/// periodic fallback timer.
+/// an immediate sync + settings/license/billing refresh instead of waiting
+/// for the periodic fallback timer.
 class WebSocketService {
   WebSocketService._();
   static final WebSocketService instance = WebSocketService._();
