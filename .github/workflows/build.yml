@@ -479,14 +479,28 @@ jobs:
             echo "VERSION=${{ github.event.inputs.version || '1.0.0' }}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Décoder le certificat de signature (secrets)
+        shell: pwsh
+        run: |
+          $bytes = [Convert]::FromBase64String("${{ secrets.WIN_CODESIGN_PFX_BASE64 }}")
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\posconnect-codesign.pfx", $bytes)
+
       - name: Compiler l'installeur client Inno Setup
         shell: pwsh
         run: |
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          $ver  = "${{ steps.version.outputs.VERSION }}"
+          $iscc     = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          $ver      = "${{ steps.version.outputs.VERSION }}"
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+              Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) { throw "signtool.exe introuvable sur ce runner" }
+          $pfx  = "$env:RUNNER_TEMP\posconnect-codesign.pfx"
+          $pass = "${{ secrets.WIN_CODESIGN_PFX_PASSWORD }}"
+          $signCmd = "`"$signtool`" sign /fd SHA256 /f `"$pfx`" /p `"$pass`" /tr http://timestamp.digicert.com /td SHA256 `$f"
           Write-Host "Compilation client Inno Setup v$ver"
-          & $iscc "/DMyAppVersion=$ver" "certificat\pos-client.iss"
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup ISCC.exe a échoué (code $LASTEXITCODE)" }
+          & $iscc "/DMyAppVersion=$ver" "/SPosConnectSignTool=$signCmd" "certificat\pos-client.iss"
+          $exitCode = $LASTEXITCODE
+          Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          if ($exitCode -ne 0) { throw "Inno Setup ISCC.exe a échoué (code $exitCode)" }
 
       - name: Upload installeur client Windows
         uses: actions/upload-artifact@v4

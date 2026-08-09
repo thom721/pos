@@ -25,9 +25,10 @@ DefaultDirName={autopf}\POS Connect
 DisableDirPage=no
 DisableProgramGroupPage=yes
 
-; Pas d'admin obligatoire — élévation UAC proposée si Program Files est choisi
-PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+; Admin requis — nécessaire pour que le certutil -addstore Root du [Run]
+; (installation du certificat de signature dans le magasin de confiance
+; Windows) s'exécute sans invite UAC supplémentaire.
+PrivilegesRequired=admin
 
 ; Architecture 64 bits uniquement
 ArchitecturesAllowed=x64compatible
@@ -46,6 +47,11 @@ OutputBaseFilename=POSConnect-Client-Setup-{#MyAppVersion}
 SolidCompression=yes
 WizardStyle=modern
 
+; Signature Authenticode — la commande réelle est passée par ISCC en ligne
+; de commande (/SPosConnectSignTool=...) depuis le CI, pas stockée ici (le
+; .pfx/mot de passe restent des secrets GitHub Actions, jamais commités).
+SignTool=PosConnectSignTool
+
 [Languages]
 Name: "french";  MessagesFile: "compiler:Languages\French.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -56,13 +62,20 @@ Name: "desktopicon"; Description: "Créer une icône sur le Bureau"; \
 
 ; ── Fichiers à copier ─────────────────────────────────────────────────────────
 [Files]
-; Application Flutter Windows
-Source: "frontend-windows\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; Application Flutter Windows — "sign" applique PosConnectSignTool à cet
+; exe précis pendant la compilation (l'exe brut sorti de `flutter build`
+; n'est pas signé).
+Source: "frontend-windows\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion sign
 Source: "frontend-windows\*"; DestDir: "{app}"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Icône
 Source: "setup-info\pos.ico"; DestDir: "{app}"; Flags: ignoreversion
+
+; Certificat public de signature — installé dans le magasin de confiance
+; Windows par le [Run] ci-dessous, puis supprimé (ne reste jamais sur disque).
+Source: "setup-info\posconnect-codesign.cer"; DestDir: "{tmp}"; \
+  Flags: ignoreversion deleteafterinstall
 
 ; ── Registre Windows ──────────────────────────────────────────────────────────
 [Registry]
@@ -92,6 +105,16 @@ Name: "{autodesktop}\{#MyAppName}";  Filename: "{app}\{#MyAppExeName}"; \
 
 ; ── Commandes après installation ──────────────────────────────────────────────
 [Run]
+; Fait confiance au certificat de signature — sans ça, SmartScreen avertit
+; quand même au premier lancement même si l'exe est signé (auto-signé =
+; pas encore dans une chaîne de confiance reconnue par Windows). Une fois
+; installé ici, toutes les futures mises à jour signées par ce même
+; certificat ne redéclencheront plus jamais l'avertissement sur cette machine.
+Filename: "certutil.exe"; \
+  Parameters: "-addstore Root ""{tmp}\posconnect-codesign.cer"""; \
+  Flags: runhidden waituntilterminated; \
+  StatusMsg: "Installation du certificat de signature..."
+
 Filename: "{app}\{#MyAppExeName}"; \
   Description: "Démarrer POS Connect maintenant"; \
   Flags: nowait postinstall skipifsilent

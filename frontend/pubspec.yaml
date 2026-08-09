@@ -1,7 +1,7 @@
 name: pos_connect
 description: POS Connect — Système de caisse moderne inspiré de QuickBooks.
 publish_to: 'none'
-version: 2.0.0+30
+version: 2.0.0+31
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -33,6 +33,9 @@ dependencies:
 
   # Key-value storage (more reliable on Flutter Web)
   shared_preferences: ^2.3.3
+
+  # Dossier applicatif par utilisateur (cache SQLite desktop — voir local_db_service.dart)
+  path_provider: ^2.1.4
 
   # Fonts
   google_fonts: ^6.2.1

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -39,13 +40,22 @@ class LocalDbService {
     if (_db != null) return;
     if (kIsWeb) return; // SQLite non disponible sur web
 
+    String dbPath;
     if (!Platform.isAndroid && !Platform.isIOS) {
-      // Windows / macOS / Linux : utiliser l'implémentation FFI
+      // Windows / macOS / Linux : utiliser l'implémentation FFI.
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
+      // getDatabasesPath() par défaut de sqflite_common_ffi renvoie un
+      // chemin relatif au répertoire courant (.dart_tool/…) — non
+      // inscriptible par un utilisateur standard quand l'app est installée
+      // dans Program Files ("pour tous les utilisateurs"), ce qui faisait
+      // planter l'ouverture de la base au démarrage (l'app ne "lançait pas").
+      // On force un dossier propre à l'utilisateur, toujours inscriptible.
+      final dir = await getApplicationSupportDirectory();
+      dbPath = join(dir.path, 'pos_cache.db');
+    } else {
+      dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     }
-
-    final dbPath = join(await getDatabasesPath(), 'pos_cache.db');
     _db = await openDatabase(
       dbPath,
       version: 27,
