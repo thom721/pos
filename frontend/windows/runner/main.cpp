@@ -13,6 +13,21 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     CreateAndAttachConsole();
   }
 
+  // Instance unique — relancer l'app pendant qu'elle tourne déjà ramène la
+  // fenêtre existante au premier plan au lieu d'ouvrir une deuxième instance.
+  // Le handle reste ouvert pour toute la durée du process (relâché
+  // automatiquement par Windows à la fermeture) — ne pas le fermer.
+  HANDLE single_instance_mutex = ::CreateMutexW(
+      nullptr, TRUE, L"Global\\POSConnectClientSingleInstance");
+  if (single_instance_mutex && ::GetLastError() == ERROR_ALREADY_EXISTS) {
+    HWND existing = ::FindWindowW(nullptr, L"pos_connect");
+    if (existing) {
+      ::ShowWindow(existing, SW_RESTORE);
+      ::SetForegroundWindow(existing);
+    }
+    return EXIT_SUCCESS;
+  }
+
   // Initialize COM, so that it is available for use in the library and/or
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);

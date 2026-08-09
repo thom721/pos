@@ -48,6 +48,29 @@ env:
 
 jobs:
 
+  # ── Version partagée ────────────────────────────────────────────────────────
+  # Un seul calcul pour tout le workflow — évite la duplication et garantit que
+  # tous les jobs utilisent exactement la même version. build_number = numéro
+  # de run GitHub (toujours croissant) : embarqué dans AppConstants.appBuildNumber
+  # (constants.dart) par chaque job frontend-*, pour que la comparaison de
+  # version côté client (VersionCheckService) ne puisse plus dériver du chiffre
+  # saisi manuellement dans le panneau admin — voir "Numéro de build" là-bas,
+  # qui doit correspondre à CE build_number pour cette release.
+  determine-version:
+    name: 🔢 Déterminer la version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build_number: ${{ github.run_number }}
+    steps:
+      - id: v
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.event.inputs.version || '1.0.0' }}" >> $GITHUB_OUTPUT
+          fi
+
   # ── Windows ─────────────────────────────────────────────────────────────────
   backend-windows:
     name: 🖥 Backend — Windows
@@ -205,8 +228,23 @@ jobs:
   frontend-windows:
     name: 🖥 Frontend — Windows
     runs-on: windows-latest
+    needs: [determine-version]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Fixer la version/build de l'app (constants.dart)
+        shell: bash
+        run: |
+          python3 <<'EOF'
+          import re
+          path = "frontend/lib/core/constants.dart"
+          with open(path) as f:
+              c = f.read()
+          c = re.sub(r"appVersion\s*=\s*'[^']*'", "appVersion     = '${{ needs.determine-version.outputs.version }}'", c)
+          c = re.sub(r"appBuildNumber\s*=\s*\d+", "appBuildNumber = ${{ needs.determine-version.outputs.build_number }}", c)
+          with open(path, "w") as f:
+              f.write(c)
+          EOF
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -233,8 +271,22 @@ jobs:
   frontend-linux:
     name: 🐧 Frontend — Linux
     runs-on: ubuntu-22.04
+    needs: [determine-version]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Fixer la version/build de l'app (constants.dart)
+        run: |
+          python3 <<'EOF'
+          import re
+          path = "frontend/lib/core/constants.dart"
+          with open(path) as f:
+              c = f.read()
+          c = re.sub(r"appVersion\s*=\s*'[^']*'", "appVersion     = '${{ needs.determine-version.outputs.version }}'", c)
+          c = re.sub(r"appBuildNumber\s*=\s*\d+", "appBuildNumber = ${{ needs.determine-version.outputs.build_number }}", c)
+          with open(path, "w") as f:
+              f.write(c)
+          EOF
 
       - name: Dépendances système Linux
         run: |
@@ -271,8 +323,22 @@ jobs:
   frontend-macos:
     name:  Frontend — macOS
     runs-on: macos-14
+    needs: [determine-version]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Fixer la version/build de l'app (constants.dart)
+        run: |
+          python3 <<'EOF'
+          import re
+          path = "frontend/lib/core/constants.dart"
+          with open(path) as f:
+              c = f.read()
+          c = re.sub(r"appVersion\s*=\s*'[^']*'", "appVersion     = '${{ needs.determine-version.outputs.version }}'", c)
+          c = re.sub(r"appBuildNumber\s*=\s*\d+", "appBuildNumber = ${{ needs.determine-version.outputs.build_number }}", c)
+          with open(path, "w") as f:
+              f.write(c)
+          EOF
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -312,8 +378,22 @@ jobs:
   frontend-web:
     name: 🌐 Frontend — Web
     runs-on: ubuntu-latest
+    needs: [determine-version]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Fixer la version/build de l'app (constants.dart)
+        run: |
+          python3 <<'EOF'
+          import re
+          path = "frontend/lib/core/constants.dart"
+          with open(path) as f:
+              c = f.read()
+          c = re.sub(r"appVersion\s*=\s*'[^']*'", "appVersion     = '${{ needs.determine-version.outputs.version }}'", c)
+          c = re.sub(r"appBuildNumber\s*=\s*\d+", "appBuildNumber = ${{ needs.determine-version.outputs.build_number }}", c)
+          with open(path, "w") as f:
+              f.write(c)
+          EOF
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -368,7 +448,7 @@ jobs:
   inno-setup:
     name: 🏗 Windows Installer (Inno Setup)
     runs-on: windows-latest
-    needs: [backend-windows]
+    needs: [backend-windows, determine-version]
     steps:
       - uses: actions/checkout@v4
 
@@ -427,21 +507,11 @@ jobs:
           }
           Write-Host "OK — posconnect-manager.exe compilé"
 
-      - name: Déterminer la version
-        id: version
-        shell: bash
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-          else
-            echo "VERSION=${{ github.event.inputs.version || '1.0.0' }}" >> $GITHUB_OUTPUT
-          fi
-
       - name: Compiler l'installeur Inno Setup
         shell: pwsh
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          $ver  = "${{ steps.version.outputs.VERSION }}"
+          $ver  = "${{ needs.determine-version.outputs.version }}"
           Write-Host "Compilation Inno Setup v$ver"
           & $iscc "/DMyAppVersion=$ver" "certificat\pos-server.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup ISCC.exe a échoué (code $LASTEXITCODE)" }
@@ -459,7 +529,7 @@ jobs:
   inno-client:
     name: 🖥 Client Installer (Inno Setup)
     runs-on: windows-latest
-    needs: [frontend-windows]
+    needs: [frontend-windows, determine-version]
     steps:
       - uses: actions/checkout@v4
 
@@ -469,21 +539,11 @@ jobs:
           name: frontend-windows
           path: certificat/frontend-windows/
 
-      - name: Déterminer la version
-        id: version
-        shell: bash
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-          else
-            echo "VERSION=${{ github.event.inputs.version || '1.0.0' }}" >> $GITHUB_OUTPUT
-          fi
-
       - name: Compiler l'installeur client Inno Setup
         shell: pwsh
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          $ver  = "${{ steps.version.outputs.VERSION }}"
+          $ver  = "${{ needs.determine-version.outputs.version }}"
           Write-Host "Compilation client Inno Setup v$ver"
           & $iscc "/DMyAppVersion=$ver" "certificat\pos-client.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup ISCC.exe a échoué (code $LASTEXITCODE)" }
@@ -528,6 +588,7 @@ jobs:
   release:
     name: 📦 Créer la Release
     needs:
+      - determine-version
       - backend-windows
       - backend-linux
       - backend-macos
@@ -544,22 +605,13 @@ jobs:
         with:
           path: artifacts/
 
-      - name: Déterminer la version
-        id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-          else
-            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          fi
-
       - name: Assembler Windows (zip backend+frontend)
         run: |
           mkdir -p packages/windows
           cp -r artifacts/backend-windows/* packages/windows/
           cp -r artifacts/frontend-windows/* packages/windows/
           cd packages
-          zip -r posconnect-windows-${{ steps.version.outputs.VERSION }}.zip windows/
+          zip -r posconnect-windows-${{ needs.determine-version.outputs.version }}.zip windows/
 
       - name: Copier installeur serveur Windows (.exe)
         run: |
@@ -577,7 +629,7 @@ jobs:
           cp -r artifacts/backend-linux/* packages/linux/
           cp -r artifacts/frontend-linux/* packages/linux/
           cd packages
-          tar -czf posconnect-linux-${{ steps.version.outputs.VERSION }}.tar.gz linux/
+          tar -czf posconnect-linux-${{ needs.determine-version.outputs.version }}.tar.gz linux/
 
       - name: Assembler macOS (tar.gz)
         run: |
@@ -585,14 +637,14 @@ jobs:
           cp -r artifacts/backend-macos/* packages/macos/
           cp artifacts/frontend-macos/posconnect-macos-app.tar.gz packages/macos/
           cd packages
-          tar -czf posconnect-macos-${{ steps.version.outputs.VERSION }}.tar.gz macos/
+          tar -czf posconnect-macos-${{ needs.determine-version.outputs.version }}.tar.gz macos/
 
       - name: Assembler Web (zip)
         run: |
           mkdir -p packages/web
           cp -r artifacts/frontend-web/* packages/web/
           cd packages
-          zip -r posconnect-web-${{ steps.version.outputs.VERSION }}.zip web/
+          zip -r posconnect-web-${{ needs.determine-version.outputs.version }}.zip web/
 
       - name: Afficher les tailles
         run: ls -lh packages/*.zip packages/*.tar.gz
@@ -600,7 +652,7 @@ jobs:
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: posconnect-v${{ steps.version.outputs.VERSION }}
+          name: posconnect-v${{ needs.determine-version.outputs.version }}
           path: |
             packages/posconnect-windows-*.zip
             packages/POSConnect-Setup-*.exe
@@ -614,18 +666,18 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          name: POS Connect v${{ steps.version.outputs.VERSION }}
+          name: POS Connect v${{ needs.determine-version.outputs.version }}
           body: |
-            ## POS Connect v${{ steps.version.outputs.VERSION }}
+            ## POS Connect v${{ needs.determine-version.outputs.version }}
 
             | Plateforme | Fichier |
             |-----------|---------|
-            | Windows — Serveur (installeur) | `POSConnect-Setup-${{ steps.version.outputs.VERSION }}.exe` |
-            | Windows — Client (installeur)  | `POSConnect-Client-Setup-${{ steps.version.outputs.VERSION }}.exe` |
-            | Windows — Zip (serveur+client) | `posconnect-windows-${{ steps.version.outputs.VERSION }}.zip` |
-            | Linux                | `posconnect-linux-${{ steps.version.outputs.VERSION }}.tar.gz` |
-            | macOS                | `posconnect-macos-${{ steps.version.outputs.VERSION }}.tar.gz` |
-            | Web                  | `posconnect-web-${{ steps.version.outputs.VERSION }}.zip` |
+            | Windows — Serveur (installeur) | `POSConnect-Setup-${{ needs.determine-version.outputs.version }}.exe` |
+            | Windows — Client (installeur)  | `POSConnect-Client-Setup-${{ needs.determine-version.outputs.version }}.exe` |
+            | Windows — Zip (serveur+client) | `posconnect-windows-${{ needs.determine-version.outputs.version }}.zip` |
+            | Linux                | `posconnect-linux-${{ needs.determine-version.outputs.version }}.tar.gz` |
+            | macOS                | `posconnect-macos-${{ needs.determine-version.outputs.version }}.tar.gz` |
+            | Web                  | `posconnect-web-${{ needs.determine-version.outputs.version }}.zip` |
 
             ### Installation Windows
             Télécharger et exécuter `POSConnect-Setup-*.exe` en tant qu'Administrateur.
@@ -656,19 +708,19 @@ jobs:
         with:
           repository: infini-software/pos
           token: ${{ secrets.INFINI_SOFTWARE_RELEASE_TOKEN }}
-          tag_name: v${{ steps.version.outputs.VERSION }}
-          name: POS Connect v${{ steps.version.outputs.VERSION }}
+          tag_name: v${{ needs.determine-version.outputs.version }}
+          name: POS Connect v${{ needs.determine-version.outputs.version }}
           body: |
-            ## POS Connect v${{ steps.version.outputs.VERSION }}
+            ## POS Connect v${{ needs.determine-version.outputs.version }}
 
             | Plateforme | Fichier |
             |-----------|---------|
-            | Windows — Serveur (installeur) | `POSConnect-Setup-${{ steps.version.outputs.VERSION }}.exe` |
-            | Windows — Client (installeur)  | `POSConnect-Client-Setup-${{ steps.version.outputs.VERSION }}.exe` |
-            | Windows — Zip (serveur+client) | `posconnect-windows-${{ steps.version.outputs.VERSION }}.zip` |
-            | Linux                | `posconnect-linux-${{ steps.version.outputs.VERSION }}.tar.gz` |
-            | macOS                | `posconnect-macos-${{ steps.version.outputs.VERSION }}.tar.gz` |
-            | Web                  | `posconnect-web-${{ steps.version.outputs.VERSION }}.zip` |
+            | Windows — Serveur (installeur) | `POSConnect-Setup-${{ needs.determine-version.outputs.version }}.exe` |
+            | Windows — Client (installeur)  | `POSConnect-Client-Setup-${{ needs.determine-version.outputs.version }}.exe` |
+            | Windows — Zip (serveur+client) | `posconnect-windows-${{ needs.determine-version.outputs.version }}.zip` |
+            | Linux                | `posconnect-linux-${{ needs.determine-version.outputs.version }}.tar.gz` |
+            | macOS                | `posconnect-macos-${{ needs.determine-version.outputs.version }}.tar.gz` |
+            | Web                  | `posconnect-web-${{ needs.determine-version.outputs.version }}.zip` |
           files: |
             packages/posconnect-windows-*.zip
             packages/POSConnect-Setup-*.exe

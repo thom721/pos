@@ -1618,6 +1618,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   final _updateNotesCtrl          = TextEditingController();
   final _updateUrlCtrl            = TextEditingController();
   final _updateUrlAndroidCtrl     = TextEditingController();
+  final _updateUrlWindowsServerCtrl = TextEditingController();
 
   String _moncashMode = 'manual';
   String _natcashMode = 'manual';
@@ -1668,6 +1669,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _updateNotesCtrl.text   = cfg['update_notes']?.toString()   ?? '';
     _updateUrlCtrl.text        = cfg['update_url']?.toString()         ?? '';
     _updateUrlAndroidCtrl.text = cfg['update_url_android']?.toString() ?? '';
+    _updateUrlWindowsServerCtrl.text = cfg['update_url_windows_server']?.toString() ?? '';
     _forceUpdate               = cfg['force_update'] as bool?          ?? false;
     _trialIncluded          = cfg['trial_included_in_billing'] as bool? ?? false;
     _loaded = true;
@@ -1719,6 +1721,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _updateNotesCtrl.dispose();
     _updateUrlCtrl.dispose();
     _updateUrlAndroidCtrl.dispose();
+    _updateUrlWindowsServerCtrl.dispose();
     for (final e in _planEditors) { e.dispose(); }
     super.dispose();
   }
@@ -1783,6 +1786,8 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
         'update_notes':   _updateNotesCtrl.text.trim().isEmpty ? null : _updateNotesCtrl.text.trim(),
         'update_url':         _updateUrlCtrl.text.trim().isEmpty ? null : _updateUrlCtrl.text.trim(),
         'update_url_android': _updateUrlAndroidCtrl.text.trim().isEmpty ? null : _updateUrlAndroidCtrl.text.trim(),
+        'update_url_windows_server': _updateUrlWindowsServerCtrl.text.trim().isEmpty
+            ? null : _updateUrlWindowsServerCtrl.text.trim(),
         'force_update':       _forceUpdate,
       });
       setState(() { _loaded = false; _plansLoaded = false; });
@@ -2297,8 +2302,9 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                     TextFormField(
                       controller: _updateUrlCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Lien Windows / Desktop (facultatif)',
-                        hintText: 'https://github.com/…/setup.exe',
+                        labelText: 'Lien Windows / Desktop — Client (facultatif)',
+                        hintText: 'https://github.com/…/POSConnect-Client-Setup-*.exe',
+                        helperText: 'Affiché dans l\'app caisse quand une mise à jour est disponible.',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -2307,6 +2313,15 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                       decoration: const InputDecoration(
                         labelText: 'Lien Android — Google Play (facultatif)',
                         hintText: 'https://play.google.com/store/apps/details?id=…',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _updateUrlWindowsServerCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Lien Windows — Serveur (facultatif, référence)',
+                        hintText: 'https://github.com/…/POSConnect-Setup-*.exe',
+                        helperText: 'Non affiché dans l\'app — juste un aide-mémoire pour vous.',
                       ),
                     ),
                     const SizedBox(height: 4),

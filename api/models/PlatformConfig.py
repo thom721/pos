@@ -69,4 +69,8 @@ class PlatformConfig(UUIDBase):
     update_notes   = Column(Text,        nullable=True,  default=None)
     update_url         = Column(String(512), nullable=True,  default=None)
     update_url_android = Column(String(512), nullable=True,  default=None)
+    # Purement informatif — le serveur n'a aucune vérification de version
+    # automatique (contrairement au client), ce lien n'est jamais lu par
+    # l'app ; juste un aide-mémoire centralisé pour l'admin.
+    update_url_windows_server = Column(String(512), nullable=True, default=None)
     force_update       = Column(Boolean,     nullable=False, default=False)

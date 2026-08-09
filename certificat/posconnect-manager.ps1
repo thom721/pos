@@ -39,6 +39,24 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
+# -- Instance unique -------------------------------------------------------
+# Le raccourci Startup ET le raccourci Menu Démarrer peuvent tous deux lancer
+# l'app - sans cette protection, un second lancement créerait une deuxième
+# icône systray dupliquée. "Global\" = mutex machine-wide, pas juste par
+# session utilisateur (cohérent avec l'app qui tourne déjà en admin).
+$mutexName = "Global\POSConnectManagerSingleInstance"
+$createdNew = $false
+$script:singleInstanceMutex = New-Object System.Threading.Mutex($false, $mutexName, [ref]$createdNew)
+if (-not $createdNew) {
+    [System.Windows.Forms.MessageBox]::Show(
+        "POS Connect Manager tourne déjà — voir l'icône dans la zone de notification (près de l'horloge).",
+        "POS Connect Manager",
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Information
+    ) | Out-Null
+    exit
+}
+
 # -- Lecture pos_server.ini (port + type de base) ------------------------------
 $ApiPort = 9003
 $DbTypeIni = "mysql"    # "mysql" | "sqlite"
@@ -776,6 +794,7 @@ $menuSep = New-Object System.Windows.Forms.ToolStripSeparator
 $menuQuit = New-Object System.Windows.Forms.ToolStripMenuItem "Quitter"
 $menuQuit.Add_Click({
     $notifyIcon.Visible = $false
+    try { $script:singleInstanceMutex.ReleaseMutex() } catch {}
     [System.Windows.Forms.Application]::Exit()
 })
 
