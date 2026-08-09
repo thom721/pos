@@ -13,6 +13,14 @@ bool get cameraScanSupported =>
     defaultTargetPlatform == TargetPlatform.iOS ||
     defaultTargetPlatform == TargetPlatform.macOS;
 
+/// Certains décodeurs caméra préfixent la valeur brute par l'identifiant de
+/// symbologie AIM (ISO/IEC 15424) — ex: "]C1" pour Code128, "]E0" pour
+/// EAN-13. Purement technique, absent du code-barres réellement imprimé.
+final _aimSymbologyPrefix = RegExp(r'^\][A-Za-z]\d');
+
+String stripAimSymbologyPrefix(String code) =>
+    code.replaceFirst(_aimSymbologyPrefix, '');
+
 /// Plein écran caméra pour le scan de codes-barres.
 ///
 /// - [continuous] = true (défaut, ex. panier caisse) : l'écran reste ouvert
@@ -54,8 +62,10 @@ class _BarcodeScannerSheetState extends State<BarcodeScannerSheet> {
 
   Future<void> _handleDetect(BarcodeCapture capture) async {
     final barcodes = capture.barcodes;
-    final code = barcodes.isEmpty ? null : barcodes.first.rawValue;
-    if (code == null || code.isEmpty || _busy) return;
+    final rawCode = barcodes.isEmpty ? null : barcodes.first.rawValue;
+    if (rawCode == null || rawCode.isEmpty || _busy) return;
+    final code = stripAimSymbologyPrefix(rawCode);
+    if (code.isEmpty) return;
 
     // Anti-rebond : ignore la relecture du même code pendant 1.5s
     // (la caméra détecte le même code plusieurs fois par seconde).

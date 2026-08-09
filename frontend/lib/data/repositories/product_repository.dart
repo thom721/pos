@@ -183,12 +183,17 @@ class ProductRepository {
     return PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
   }
 
+  /// Identifiant de symbologie AIM (ISO/IEC 15424) que certains scanners
+  /// caméra préfixent au code décodé — ex: "]C1" pour Code128, "]E0" pour
+  /// EAN-13. Purement technique, absent du code-barres réellement imprimé.
+  static final _aimSymbologyPrefix = RegExp(r'^\][A-Za-z]\d');
+
   /// Résout un code scanné (douchette ou caméra) vers le produit exact.
   /// Réutilise la recherche existante (name OR barcode ilike) puis ne
   /// retient que la correspondance exacte du code-barres — évite un faux
   /// positif si le code scanné apparaît comme sous-chaîne d'un nom produit.
   Future<ProductModel?> findByBarcode(String code, {String? warehouseId}) async {
-    final trimmed = code.trim();
+    final trimmed = code.trim().replaceFirst(_aimSymbologyPrefix, '');
     if (trimmed.isEmpty) return null;
     final res = await searchForSale(
       search: trimmed, perPage: 20, warehouseId: warehouseId,
