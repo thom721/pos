@@ -234,6 +234,16 @@ var
 begin
   Result := '';
 
+  // posconnect-manager.exe tourne désormais en permanence dans la zone de
+  // notification (systray, lancé au démarrage de Windows) — contrairement à
+  // avant, fermer sa fenêtre ne quitte plus le process, donc Inno Setup ne
+  // peut plus le fermer via sa détection automatique de fichiers verrouillés
+  // ("Setup was unable to automatically close all applications"). On le
+  // force à quitter explicitement avant la copie des fichiers. Sans effet
+  // s'il ne tourne pas (taskkill échoue silencieusement).
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM posconnect-manager.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
   // Vérifier si POS_Connect_API existe déjà (= réinstallation ou mise à jour).
   // sc.exe query retourne 0 si le service existe (peu importe son état).
   Exec(ExpandConstant('{sys}\sc.exe'), 'query POS_Connect_API',
