@@ -4,7 +4,11 @@
 ; ============================================================
 
 #define MyAppName    "POS Serveur"
-#define MyAppVersion "1.0.0"
+; Valeur de repli uniquement — le CI passe toujours /DMyAppVersion=$ver.
+; Sans ce garde, ce #define écrase silencieusement celle fournie par /D.
+#ifndef MyAppVersion
+  #define MyAppVersion "1.0.0"
+#endif
 #define MyAppPublisher "POS Connect"
 #define MyAppURL     "https://posconnect.ht"
 #define MyAppExeName "posconnect-server.exe"
