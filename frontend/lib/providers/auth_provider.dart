@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/core/constants.dart';
+import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow, toHaitiTime;
 import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
@@ -189,12 +190,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final token = await _repo.cloudLogin(email.trim(), password);
       final user = token.user != null ? UserModel.fromJson(token.user!) : null;
 
-      // Sur web, seul l'admin peut accéder à l'interface de gestion cloud.
-      if (kIsWeb && (user == null || !user.isAdmin)) {
+      // Sur web, seuls admin/manager (ou un rôle ayant reçu la permission
+      // connect.cloud via la matrice de permissions) peuvent accéder à
+      // l'interface de gestion cloud — un caissier reste bloqué par défaut.
+      if (kIsWeb && (user == null || !user.hasPermission(Perm.connectCloud))) {
         await _repo.logout();
         state = state.copyWith(
           isLoading: false,
-          error: 'Accès refusé. Seul le propriétaire (admin) peut se connecter via le cloud.',
+          error: 'Accès web non autorisé pour ce compte. Utilisez l\'application mobile/bureau.',
         );
         return false;
       }

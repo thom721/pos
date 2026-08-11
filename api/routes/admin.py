@@ -111,7 +111,10 @@ class PlatformConfigUpdate(BaseModel):
     update_url:         str  | None = None
     update_url_android: str  | None = None
     update_url_windows_server: str  | None = None
+    latest_version_server: str | None = None
     force_update:       bool | None = None
+    entrepot_trial_days: int  | None = None
+    entrepot_trial_all:  bool | None = None
     trial_included_in_billing: bool | None = None
 
 
@@ -686,6 +689,23 @@ def manual_activate_tenant(
     }
 
 
+@router.post("/tenants/{tenant_id}/entrepot-trial/grant-missing")
+def grant_missing_entrepot_trials(
+    tenant_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """Accorde rétroactivement l'essai (PlatformConfig.entrepot_trial_days) aux
+    entrepôts de ce tenant sans abonnement/essai actif — rattrape les
+    entrepôts créés avant l'activation de l'essai gratuit."""
+    t = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Tenant introuvable")
+    from api.services import entrepot_service
+    updated = entrepot_service.grant_missing_trials(db, tenant_id)
+    return {"status": "ok", "tenant": t.slug, "entrepots_updated": updated}
+
+
 # ── Purge unclaimed warehouses ──────────────────────────────────────────────
 
 _WH_FK_TABLES = [
@@ -1140,6 +1160,9 @@ def get_platform_config(
         "update_url":          getattr(cfg, "update_url",          None),
         "update_url_android":  getattr(cfg, "update_url_android",  None),
         "update_url_windows_server": getattr(cfg, "update_url_windows_server", None),
+        "latest_version_server": getattr(cfg, "latest_version_server", None),
+        "entrepot_trial_days": getattr(cfg, "entrepot_trial_days", 30),
+        "entrepot_trial_all":  bool(getattr(cfg, "entrepot_trial_all", False)),
         "force_update":        bool(getattr(cfg, "force_update", False)),
         "trial_included_in_billing": bool(getattr(cfg, "trial_included_in_billing", False)),
         "created_at":        cfg.created_at.isoformat() if cfg.created_at else None,
@@ -1201,6 +1224,9 @@ def update_platform_config(
     if body.update_url          is not None: cfg.update_url          = body.update_url
     if body.update_url_android  is not None: cfg.update_url_android  = body.update_url_android
     if body.update_url_windows_server is not None: cfg.update_url_windows_server = body.update_url_windows_server
+    if body.latest_version_server is not None: cfg.latest_version_server = body.latest_version_server
+    if body.entrepot_trial_days is not None: cfg.entrepot_trial_days = body.entrepot_trial_days
+    if body.entrepot_trial_all  is not None: cfg.entrepot_trial_all  = body.entrepot_trial_all
     if body.force_update        is not None: cfg.force_update        = body.force_update
     if body.trial_included_in_billing is not None:
         cfg.trial_included_in_billing = body.trial_included_in_billing
@@ -1241,6 +1267,9 @@ def update_platform_config(
         "update_url":          getattr(cfg, "update_url",          None),
         "update_url_android":  getattr(cfg, "update_url_android",  None),
         "update_url_windows_server": getattr(cfg, "update_url_windows_server", None),
+        "latest_version_server": getattr(cfg, "latest_version_server", None),
+        "entrepot_trial_days": getattr(cfg, "entrepot_trial_days", 30),
+        "entrepot_trial_all":  bool(getattr(cfg, "entrepot_trial_all", False)),
         "force_update":        bool(getattr(cfg, "force_update", False)),
         "updated_at":        cfg.updated_at.isoformat() if cfg.updated_at else None,
     }

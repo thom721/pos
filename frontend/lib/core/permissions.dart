@@ -136,6 +136,9 @@ abstract class Perm {
   // Entrepôt (stock central)
   static const entrepotCreate = 'entrepot.create';
   static const entrepotRead   = 'entrepot.read';
+
+  // Accès à l'interface web (navigateur) — vérifié au login cloud
+  static const connectCloud = 'connect.cloud';
 }
 
 /// Permissions regroupées par rôle — miroir de ROLE_PERMISSIONS en Python.
@@ -169,6 +172,7 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.depotsCreate, Perm.depotsRead,
     Perm.retraitsCreate, Perm.retraitsRead,
     Perm.entrepotCreate, Perm.entrepotRead,
+    Perm.connectCloud,
   },
   'cashier': {
     Perm.salesCreate, Perm.salesRead, Perm.salesUpdate, Perm.salesCancel,

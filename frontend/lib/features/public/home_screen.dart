@@ -6,7 +6,24 @@ import 'package:pos_connect/providers/pricing_provider.dart'
     show PricingInfo, PricingPlan, pricingProvider;
 import 'package:pos_connect/features/public/public_nav_bar.dart';
 import 'package:pos_connect/shared/widgets/pos_logo.dart';
+import 'package:pos_connect/data/api/api_client.dart' show dio;
 import 'package:url_launcher/url_launcher.dart';
+
+// Liens de téléchargement Windows (client/serveur) — saisis dans le panneau
+// admin (Mises à jour applicatives), publiquement exposés via
+// /api/public/version (pas d'auth requise, page marketing visitée sans compte).
+final _windowsDownloadLinksProvider = FutureProvider<({String? client, String? server})>((ref) async {
+  try {
+    final res = await dio.get('/api/public/version');
+    final data = res.data as Map<String, dynamic>;
+    return (
+      client: data['update_url'] as String?,
+      server: data['update_url_windows_server'] as String?,
+    );
+  } catch (_) {
+    return (client: null, server: null);
+  }
+});
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
@@ -163,6 +180,7 @@ class _HeroText extends ConsumerWidget {
       Wrap(spacing: 10, runSpacing: 8, children: [
         _PlatformPill(Icons.android_rounded,    'Android', available: true),
         _PlatformPill(Icons.computer_rounded,   'macOS',   available: true),
+        const _WindowsPlatformPill(),
         _PlatformPill(Icons.web_rounded,        'Web',     available: true),
         _PlatformPill(Icons.phone_iphone_rounded, 'iOS',   available: false, soon: true),
       ]),
@@ -252,6 +270,118 @@ class _PlatformPill extends StatelessWidget {
           ),
         ],
       ]),
+    );
+  }
+}
+
+class _WindowsPlatformPill extends ConsumerStatefulWidget {
+  const _WindowsPlatformPill();
+
+  @override
+  ConsumerState<_WindowsPlatformPill> createState() => _WindowsPlatformPillState();
+}
+
+class _WindowsPlatformPillState extends ConsumerState<_WindowsPlatformPill> {
+  bool _expanded = false;
+
+  Future<void> _open(String? url) async {
+    if (url == null || url.isEmpty) return;
+    final uri = Uri.tryParse(url);
+    if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final links = ref.watch(_windowsDownloadLinksProvider).valueOrNull;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: _green.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _green.withValues(alpha: 0.3)),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.desktop_windows_rounded, size: 14, color: _green),
+              const SizedBox(width: 6),
+              Text('Windows',
+                  style: TextStyle(
+                      fontSize: 12, color: _green, fontWeight: FontWeight.w500)),
+              const SizedBox(width: 4),
+              Icon(
+                  _expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                  size: 14,
+                  color: _green),
+            ]),
+          ),
+        ),
+        if (_expanded)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _DownloadLinkButton(
+                  label: 'Télécharger — Client (caisse)',
+                  url: links?.client,
+                  onTap: () => _open(links?.client),
+                ),
+                const SizedBox(height: 6),
+                _DownloadLinkButton(
+                  label: 'Télécharger — Serveur',
+                  url: links?.server,
+                  onTap: () => _open(links?.server),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _DownloadLinkButton extends StatelessWidget {
+  final String label;
+  final String? url;
+  final VoidCallback onTap;
+  const _DownloadLinkButton(
+      {required this.label, required this.url, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final available = url != null && url!.isNotEmpty;
+    return InkWell(
+      onTap: available ? onTap : null,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: _white.withValues(alpha: available ? 0.08 : 0.04),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _white.withValues(alpha: 0.12)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.download_rounded,
+              size: 14,
+              color: available ? _white : _white.withValues(alpha: 0.35)),
+          const SizedBox(width: 8),
+          Text(available ? label : '$label — bientôt',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: available
+                      ? _white.withValues(alpha: 0.85)
+                      : _white.withValues(alpha: 0.35))),
+        ]),
+      ),
     );
   }
 }

@@ -352,6 +352,8 @@ def get_version(db: Session = Depends(get_db)):
             "update_url":        None,
             "update_url_android": None,
             "force_update":      False,
+            "latest_version_server": None,
+            "update_url_windows_server": None,
         }
     return {
         "latest_version":    getattr(cfg, "latest_version", "0.9.0"),
@@ -360,6 +362,10 @@ def get_version(db: Session = Depends(get_db)):
         "update_url":        getattr(cfg, "update_url",     None),
         "update_url_android": getattr(cfg, "update_url_android", None),
         "force_update":      bool(getattr(cfg, "force_update", False)),
+        # Lu par posconnect-manager.exe (systray, tous les serveurs
+        # self-hosted) — comparaison simple de chaîne, pas de blocage forcé.
+        "latest_version_server": getattr(cfg, "latest_version_server", None),
+        "update_url_windows_server": getattr(cfg, "update_url_windows_server", None),
     }
 
 

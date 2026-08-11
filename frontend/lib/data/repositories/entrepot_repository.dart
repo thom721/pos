@@ -81,14 +81,17 @@ class EntrepotRepository {
     return TransferReceiptModel.fromJson(res.data as Map<String, dynamic>);
   }
 
+  /// [warehouseId] optionnel — omis, l'historique couvre tous les dépôts du
+  /// tenant (utilisé pour l'historique produit depuis la page Produits, hors
+  /// contexte Entrepôt qui filtre toujours sur un warehouseId précis).
   Future<PaginatedResponse<StockMovementModel>> getMovements({
-    required String warehouseId,
+    String? warehouseId,
     String? productId,
     int page = 1,
     int limit = 20,
   }) async {
     final res = await dio.get('/api/stock-movements/', queryParameters: {
-      'warehouse_id': warehouseId,
+      if (warehouseId != null && warehouseId.isNotEmpty) 'warehouse_id': warehouseId,
       if (productId != null && productId.isNotEmpty) 'product_id': productId,
       'page': page,
       'limit': limit,

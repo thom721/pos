@@ -109,6 +109,7 @@ const _permMatrix = [
     perms: [
       (label: 'Voir config',     perm: Perm.configRead),
       (label: 'Modifier config', perm: Perm.configUpdate),
+      (label: 'Accès web (navigateur)', perm: Perm.connectCloud),
     ]
   ),
   (

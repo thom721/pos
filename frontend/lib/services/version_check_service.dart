@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:pos_connect/core/constants.dart';
 
 enum VersionUpdateType { none, optional, forced }
@@ -26,6 +27,15 @@ class VersionStatus {
 
 class VersionCheckService {
   static Future<VersionStatus> check() async {
+    // Le web n'a pas de concept d'installeur à télécharger — se redéploie
+    // simplement via un rafraîchissement de page, jamais de bannière/blocage.
+    if (kIsWeb) {
+      return const VersionStatus(
+        updateType:    VersionUpdateType.none,
+        latestVersion: AppConstants.appVersion,
+        latestBuild:   AppConstants.appBuildNumber,
+      );
+    }
     try {
       final client = Dio(BaseOptions(
         baseUrl: AppConstants.cloudUrl,

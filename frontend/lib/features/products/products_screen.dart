@@ -3,12 +3,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/product_model.dart';
+import 'package:pos_connect/data/models/paginated_response.dart';
+import 'package:pos_connect/data/models/stock_movement_model.dart';
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
@@ -1233,12 +1234,120 @@ class _ProductThumb extends StatelessWidget {
       );
 }
 
-// Ouvre l'historique des mouvements de l'Entrepôt filtré sur ce produit —
-// réutilise l'onglet Historique existant plutôt que de dupliquer une vue.
+// Historique des mouvements de CE produit, tous dépôts confondus — dialog
+// autonome (pas de navigation vers l'Entrepôt : celui-ci ne montre que ses
+// propres mouvements, filtrés sur son propre warehouse_id, donc un
+// ajustement de stock fait depuis cette page n'y apparaissait jamais).
 void _openStockHistory(BuildContext context, WidgetRef ref, ProductModel p) {
-  ref.read(entrepotMovementProductFilterProvider.notifier).state = p;
-  ref.read(entrepotInitialTabProvider.notifier).state = 1;
-  context.push('/entrepot');
+  showDialog(
+    context: context,
+    builder: (_) => _StockHistoryDialog(product: p),
+  );
+}
+
+final _stockHistoryFmt = NumberFormat('#,##0.##', 'fr');
+final _stockHistoryDateFmt = DateFormat('dd/MM/yyyy HH:mm');
+
+class _StockHistoryDialog extends ConsumerStatefulWidget {
+  final ProductModel product;
+  const _StockHistoryDialog({required this.product});
+
+  @override
+  ConsumerState<_StockHistoryDialog> createState() => _StockHistoryDialogState();
+}
+
+class _StockHistoryDialogState extends ConsumerState<_StockHistoryDialog> {
+  late Future<PaginatedResponse<StockMovementModel>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref.read(entrepotRepositoryProvider).getMovements(
+          productId: widget.product.id,
+          limit: 50,
+        );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Historique — ${widget.product.name}', style: const TextStyle(fontSize: 15)),
+      content: SizedBox(
+        width: 420,
+        height: 420,
+        child: FutureBuilder<PaginatedResponse<StockMovementModel>>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(
+                child: Text('Erreur : ${extractAnyError(snapshot.error ?? "inconnue")}',
+                    style: const TextStyle(color: AppColors.error)),
+              );
+            }
+            final movements = snapshot.data!.data;
+            if (movements.isEmpty) {
+              return const Center(
+                child: Text('Aucun mouvement enregistré',
+                    style: TextStyle(color: AppColors.textSecondary)),
+              );
+            }
+            return ListView.separated(
+              itemCount: movements.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, i) => _StockHistoryRow(mv: movements[i]),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer')),
+      ],
+    );
+  }
+}
+
+class _StockHistoryRow extends StatelessWidget {
+  final StockMovementModel mv;
+  const _StockHistoryRow({required this.mv});
+
+  @override
+  Widget build(BuildContext context) {
+    final isIn = mv.type.toUpperCase() == 'IN';
+    return ListTile(
+      dense: true,
+      leading: Icon(
+        isIn ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+        color: isIn ? AppColors.success : AppColors.error,
+      ),
+      title: Text(
+        mv.sourceLabel.isNotEmpty ? mv.sourceLabel : (isIn ? 'Entrée' : 'Sortie'),
+        style: const TextStyle(fontSize: 13),
+      ),
+      subtitle: Text(
+        '${mv.note != null && mv.note!.isNotEmpty ? mv.note! : ''}'
+        '${mv.userFullName != null && mv.userFullName!.isNotEmpty ? ' — par ${mv.userFullName}' : ''}',
+        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+      ),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            '${isIn ? '+' : '-'}${_stockHistoryFmt.format(mv.quantity)}',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: isIn ? AppColors.success : AppColors.error,
+            ),
+          ),
+          Text(_stockHistoryDateFmt.format(mv.createdAt),
+              style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+        ],
+      ),
+    );
+  }
 }
 
 // ─── Table ────────────────────────────────────────────────────────────────────

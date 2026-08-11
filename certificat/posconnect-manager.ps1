@@ -816,6 +816,51 @@ $form.Add_FormClosing({
     }
 })
 
+# -- Vérification de mise à jour serveur ---------------------------------------
+# Interroge toujours l'instance cloud centrale (pas le serveur local) — même
+# source que le client Flutter (AppConstants.cloudUrl). Comparaison de
+# chaîne simple contre la version installée (registre) ; jamais de blocage
+# forcé pour un serveur en prod, juste une notification systray.
+$script:updateDownloadUrl = $null
+function Test-ServerUpdate {
+    try {
+        $installedVersion = (Get-ItemProperty -Path "HKLM:\SOFTWARE\POS Connect" `
+            -Name "Version" -ErrorAction SilentlyContinue).Version
+        if (-not $installedVersion) { return }
+
+        # PowerShell 5.1 / Windows Server plus anciens n'activent pas TLS 1.2
+        # par défaut — la requête échouerait silencieusement sans ça.
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+        $resp = Invoke-RestMethod -Uri "https://pos.infini-software.cloud/api/public/version" `
+            -Method Get -TimeoutSec 8
+        $latest = $resp.latest_version_server
+        if ($latest -and ($latest -ne $installedVersion)) {
+            $script:updateDownloadUrl = $resp.update_url_windows_server
+            $notifyIcon.ShowBalloonTip(
+                10000,
+                "Mise à jour disponible",
+                "POS Serveur $latest est disponible (version installée : $installedVersion). Cliquez pour ouvrir le lien de téléchargement.",
+                [System.Windows.Forms.ToolTipIcon]::Info
+            )
+        }
+    } catch {
+        # Pas de connexion / serveur cloud injoignable — non bloquant, on
+        # retentera au prochain cycle du timer.
+    }
+}
+$notifyIcon.Add_BalloonTipClicked({
+    if ($script:updateDownloadUrl) {
+        Start-Process $script:updateDownloadUrl
+    }
+})
+
+$updateCheckTimer = New-Object System.Windows.Forms.Timer
+$updateCheckTimer.Interval = 24 * 60 * 60 * 1000   # 24h — l'app tourne en permanence dans le systray
+$updateCheckTimer.Add_Tick({ Test-ServerUpdate })
+$updateCheckTimer.Start()
+Test-ServerUpdate   # premier check immédiat au démarrage
+
 # -- Statut initial + lancement (caché — seul le systray/Menu Démarrer l'affiche) --
 Update-Status
 [System.Windows.Forms.Application]::Run()

@@ -623,6 +623,14 @@ class _TenantCard extends ConsumerWidget {
                     foregroundColor: AppColors.warning,
                   ),
                 ),
+                IconButton(
+                  onPressed: () => _grantMissingEntrepotTrials(context, ref, tenant),
+                  icon: const Icon(Icons.warehouse_rounded, size: 18),
+                  tooltip: 'Accorder l\'essai aux entrepôts sans abonnement',
+                  style: IconButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary,
+                  ),
+                ),
                 if (!isActive)
                   OutlinedButton.icon(
                     onPressed: () => _showActivateDialog(context, ref, tenant),
@@ -848,6 +856,48 @@ class _TenantCard extends ConsumerWidget {
         );
       }),
     );
+  }
+
+  Future<void> _grantMissingEntrepotTrials(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> tenant) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Accorder l\'essai entrepôt'),
+        content: Text(
+          'Accorder l\'essai gratuit (durée configurée dans Mises à jour '
+          'applicatives) aux entrepôts de ${tenant['business_name']} sans '
+          'abonnement/essai actif ? Les entrepôts déjà payés ne sont pas touchés.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmer')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      final res = await d.post(
+        '/api/admin/tenants/${tenant['id']}/entrepot-trial/grant-missing',
+      );
+      final updated = res.data['entrepots_updated'] as int? ?? 0;
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(updated == 0
+              ? 'Aucun entrepôt à mettre à jour — tous ont déjà un abonnement actif'
+              : '$updated entrepôt(s) mis à jour avec un nouvel essai'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : ${extractAnyError(e)}'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    }
   }
 
   Future<void> _showEditDialog(
@@ -1589,6 +1639,7 @@ class _PlatformConfigTab extends ConsumerStatefulWidget {
 
 class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   final _formKey = GlobalKey<FormState>();
+  final _scrollController = ScrollController();
   bool _saving = false;
 
   final _moncashCtrl           = TextEditingController();
@@ -1619,6 +1670,8 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   final _updateUrlCtrl            = TextEditingController();
   final _updateUrlAndroidCtrl     = TextEditingController();
   final _updateUrlWindowsServerCtrl = TextEditingController();
+  final _latestVersionServerCtrl    = TextEditingController();
+  final _entrepotTrialDaysCtrl      = TextEditingController();
 
   String _moncashMode = 'manual';
   String _natcashMode = 'manual';
@@ -1628,6 +1681,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   bool _cardEnabled    = true;
   bool _forceUpdate    = false;
   bool _trialIncluded  = false;
+  bool _entrepotTrialAll = false;
   bool _loaded = false;
 
   // Pricing plans
@@ -1670,8 +1724,11 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _updateUrlCtrl.text        = cfg['update_url']?.toString()         ?? '';
     _updateUrlAndroidCtrl.text = cfg['update_url_android']?.toString() ?? '';
     _updateUrlWindowsServerCtrl.text = cfg['update_url_windows_server']?.toString() ?? '';
+    _latestVersionServerCtrl.text    = cfg['latest_version_server']?.toString()    ?? '';
     _forceUpdate               = cfg['force_update'] as bool?          ?? false;
     _trialIncluded          = cfg['trial_included_in_billing'] as bool? ?? false;
+    _entrepotTrialDaysCtrl.text = cfg['entrepot_trial_days']?.toString() ?? '30';
+    _entrepotTrialAll           = cfg['entrepot_trial_all'] as bool?    ?? false;
     _loaded = true;
 
     if (!_plansLoaded) {
@@ -1722,7 +1779,10 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _updateUrlCtrl.dispose();
     _updateUrlAndroidCtrl.dispose();
     _updateUrlWindowsServerCtrl.dispose();
+    _latestVersionServerCtrl.dispose();
+    _entrepotTrialDaysCtrl.dispose();
     for (final e in _planEditors) { e.dispose(); }
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -1746,7 +1806,21 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      // Un seul Form couvre toute cette longue page — un champ invalide
+      // ailleurs (hors écran) bloquait la sauvegarde sans aucun indice
+      // visible, donnant l'impression qu'il fallait ressaisir "deux fois".
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Certains champs sont invalides — vérifiez le formulaire (en rouge)'),
+        backgroundColor: AppColors.error,
+      ));
+      return;
+    }
     setState(() => _saving = true);
     try {
       final d = await ref.read(adminDioProvider.future);
@@ -1788,7 +1862,11 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
         'update_url_android': _updateUrlAndroidCtrl.text.trim().isEmpty ? null : _updateUrlAndroidCtrl.text.trim(),
         'update_url_windows_server': _updateUrlWindowsServerCtrl.text.trim().isEmpty
             ? null : _updateUrlWindowsServerCtrl.text.trim(),
+        'latest_version_server': _latestVersionServerCtrl.text.trim().isEmpty
+            ? null : _latestVersionServerCtrl.text.trim(),
         'force_update':       _forceUpdate,
+        'entrepot_trial_days': int.tryParse(_entrepotTrialDaysCtrl.text.trim()) ?? 30,
+        'entrepot_trial_all':  _entrepotTrialAll,
       });
       setState(() { _loaded = false; _plansLoaded = false; });
       ref.invalidate(_platformConfigProvider);
@@ -1804,7 +1882,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur: $e'),
+            content: Text('Erreur : ${extractAnyError(e)}'),
             backgroundColor: AppColors.error,
           ),
         );
@@ -1830,6 +1908,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
       data: (cfg) {
         _populateFrom(cfg);
         return SingleChildScrollView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 600),
@@ -2317,11 +2396,21 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
+                      controller: _latestVersionServerCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Dernière version serveur (facultatif)',
+                        hintText: '2.0.13',
+                        helperText: 'Comparée à la version installée par posconnect-manager '
+                            '(notification systray si différente — jamais de blocage forcé).',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
                       controller: _updateUrlWindowsServerCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Lien Windows — Serveur (facultatif, référence)',
+                        labelText: 'Lien Windows — Serveur (facultatif)',
                         hintText: 'https://github.com/…/POSConnect-Setup-*.exe',
-                        helperText: 'Non affiché dans l\'app — juste un aide-mémoire pour vous.',
+                        helperText: 'Ouvert si l\'utilisateur clique la notification de mise à jour.',
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -2331,6 +2420,27 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                           'Bloque l\'application sur les versions obsolètes'),
                       value: _forceUpdate,
                       onChanged: (v) => setState(() => _forceUpdate = v),
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ]),
+                  _configSection(context, 'Essai gratuit Entrepôt', [
+                    TextFormField(
+                      controller: _entrepotTrialDaysCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Durée de l\'essai (jours)',
+                        hintText: '30',
+                      ),
+                      validator: (v) =>
+                          int.tryParse(v ?? '') == null ? 'Entier requis' : null,
+                    ),
+                    const SizedBox(height: 4),
+                    SwitchListTile(
+                      title: const Text('Étendre l\'essai à tous les entrepôts'),
+                      subtitle: const Text(
+                          'Sinon, seul le 1er entrepôt d\'un tenant obtient l\'essai automatiquement'),
+                      value: _entrepotTrialAll,
+                      onChanged: (v) => setState(() => _entrepotTrialAll = v),
                       contentPadding: EdgeInsets.zero,
                     ),
                   ]),

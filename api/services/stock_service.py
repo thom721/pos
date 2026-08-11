@@ -67,11 +67,20 @@ def record_stock_movement(
     final_quantity = Decimal(str(quantity))
     final_note = note
 
+    target_product = product
+
     if product is not None and product.is_composite:
         target_id = product.component_product_id
+        target_product = product.component
         final_quantity = final_quantity * Decimal(str(product.component_quantity))
         suffix = f"(converti depuis « {product.name} »)"
         final_note = f"{note} {suffix}" if note else suffix
+
+    # Capturé AVANT db.add(mv) — l'autoflush de session déclenché par la
+    # lecture de target_product.stock (relation stock_movements) inclurait
+    # sinon le mouvement qu'on est justement en train de créer, faussant le
+    # calcul "avant/après" utilisé pour détecter le franchissement du seuil.
+    stock_before = target_product.stock if target_product is not None else None
 
     mv = StockMovement(
         product_id=target_id,
@@ -87,6 +96,16 @@ def record_stock_movement(
         expiry_date=expiry_date,
     )
     db.add(mv)
+
+    # Alerte stock bas — seulement au franchissement du seuil vers le bas
+    # (pas à chaque vente supplémentaire une fois déjà sous le seuil).
+    if stock_before is not None and final_quantity < 0:
+        alert = target_product.alert_stock or 0
+        stock_after = stock_before + final_quantity
+        if stock_before > alert and stock_after <= alert:
+            from api.utils.email import maybe_send_low_stock_alert
+            maybe_send_low_stock_alert(db, target_product)
+
     return mv
 
 

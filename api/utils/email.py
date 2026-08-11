@@ -2,6 +2,7 @@
 Utilitaire d'envoi d'email SMTP pour les notifications de plan.
 Config lue depuis PlatformConfig (table singleton).
 """
+import json
 import smtplib
 import threading
 from email.mime.multipart import MIMEMultipart
@@ -82,6 +83,108 @@ sera bloquée</strong>.</p>
             pass  # échec silencieux
 
     threading.Thread(target=_send, daemon=True).start()
+
+
+def send_low_stock_email(
+    to_addr: str,
+    business_name: str,
+    product_name: str,
+    current_stock,
+    alert_threshold,
+    smtp_host: str,
+    smtp_port: int,
+    smtp_user: str,
+    smtp_password: str,
+    smtp_from: str,
+) -> None:
+    """Lance l'envoi en arrière-plan — ne bloque pas la requête."""
+    if not smtp_host or not smtp_from:
+        return  # SMTP non configuré → silencieux
+
+    subject = f"POS Connect — Stock bas : {product_name}"
+    html = f"""
+<html><body style="font-family:sans-serif;color:#222">
+<h2 style="color:#c0392b">⚠️ Stock bas — {product_name}</h2>
+<p>Bonjour,</p>
+<p>Le produit <strong>{product_name}</strong> ({business_name}) est passé sous
+le seuil d'alerte configuré.</p>
+<p>Stock actuel : <strong>{current_stock}</strong> — seuil d'alerte : <strong>{alert_threshold}</strong></p>
+<p style="color:#888;font-size:12px">
+  POS Connect &mdash; posconnect.ht<br>
+  Cet email a été envoyé automatiquement.
+</p>
+</body></html>
+"""
+
+    def _send():
+        try:
+            _send_via_smtp(smtp_host, smtp_port, smtp_user, smtp_password,
+                           smtp_from, to_addr, subject, html)
+        except Exception:
+            pass  # échec silencieux
+
+    threading.Thread(target=_send, daemon=True).start()
+
+
+def maybe_send_low_stock_alert(db, product) -> None:
+    """
+    Envoie une alerte email quand le stock d'un produit franchit son seuil
+    (Product.alert_stock) vers le bas — appelé depuis
+    stock_service.record_stock_movement APRÈS que le mouvement ait été
+    appliqué, uniquement au moment du franchissement (pas à chaque vente
+    supplémentaire une fois déjà sous le seuil — voir l'appelant).
+    Réglage par tenant : AppConfig.low_stock_alert_enabled/_roles.
+    """
+    from api.models.AppConfig import AppConfig
+    from api.models.PlatformConfig import PlatformConfig
+    from api.models.User import User
+
+    tenant_id = product.tenant_id
+    if not tenant_id:
+        return
+
+    cfg = (
+        db.query(AppConfig)
+        .filter(AppConfig.tenant_id == tenant_id, AppConfig.warehouse_id.is_(None))
+        .first()
+    )
+    if not cfg or not cfg.low_stock_alert_enabled:
+        return
+
+    roles = []
+    if cfg.low_stock_alert_roles:
+        try:
+            roles = json.loads(cfg.low_stock_alert_roles)
+        except (ValueError, TypeError):
+            roles = []
+    if not roles:
+        return
+
+    platform_cfg = db.query(PlatformConfig).first()
+    if not platform_cfg or not platform_cfg.smtp_host or not platform_cfg.smtp_from:
+        return  # SMTP non configuré
+
+    recipients = (
+        db.query(User)
+        .filter(User.tenant_id == tenant_id, User.is_active == True)  # noqa: E712
+        .all()
+    )
+    business_name = getattr(cfg, "business_name", None) or ""
+    for user in recipients:
+        if not user.email or not any(r in (user.roles or []) for r in roles):
+            continue
+        send_low_stock_email(
+            to_addr        = user.email,
+            business_name  = business_name,
+            product_name   = product.name,
+            current_stock  = product.stock,
+            alert_threshold = product.alert_stock,
+            smtp_host      = platform_cfg.smtp_host,
+            smtp_port      = platform_cfg.smtp_port,
+            smtp_user      = platform_cfg.smtp_user,
+            smtp_password  = platform_cfg.smtp_password,
+            smtp_from      = platform_cfg.smtp_from,
+        )
 
 
 def maybe_send_warning(tenant, db) -> None:

@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from sqlalchemy.orm import Session, joinedload
@@ -6,6 +7,7 @@ from fastapi import HTTPException
 from api.core.dt_coerce import now_local
 from api.models.Warehouse import Warehouse
 from api.models.Product import Product
+from api.models.PlatformConfig import PlatformConfig
 from api.services.stock_service import record_stock_movement
 from api.models.StockMovement import StockType
 
@@ -45,8 +47,15 @@ def create_entrepot(
     création : l'entrepôt n'est jamais installable comme un poste de vente
     (empêche la génération/le rachat d'un code d'installation — voir
     api/routes/warehouse.py::get_install_code et api/routes/sync.py::redeem_installation_code).
-    Pas d'essai gratuit : subscription_ends_at reste NULL tant qu'aucun
-    paiement n'a été confirmé — voir _assert_paid()."""
+    Essai gratuit : le 1er entrepôt du tenant l'obtient toujours (durée =
+    PlatformConfig.entrepot_trial_days) ; les suivants aussi si
+    entrepot_trial_all est activé — sinon subscription_ends_at reste NULL
+    tant qu'aucun paiement n'a été confirmé — voir _assert_paid()."""
+    is_first = list_entrepots(db, tenant_id) == []
+    cfg = db.query(PlatformConfig).first()
+    trial_days = int(getattr(cfg, "entrepot_trial_days", 30) or 30) if cfg else 30
+    trial_all  = bool(getattr(cfg, "entrepot_trial_all", False)) if cfg else False
+
     entrepot = Warehouse(
         tenant_id=tenant_id,
         name=name,
@@ -56,16 +65,37 @@ def create_entrepot(
         is_entrepot=True,
         is_claimed=True,
     )
+    if is_first or trial_all:
+        entrepot.subscription_ends_at = now_local() + timedelta(days=trial_days)
     db.add(entrepot)
     db.commit()
     db.refresh(entrepot)
     return entrepot
 
 
+def grant_missing_trials(db: Session, tenant_id: str) -> int:
+    """Accorde rétroactivement l'essai (PlatformConfig.entrepot_trial_days)
+    aux entrepôts de ce tenant sans abonnement actif (jamais payés, jamais
+    eu d'essai, ou essai/abonnement déjà expiré) — action superadmin ponctuelle,
+    pour rattraper des entrepôts créés avant l'activation de l'essai gratuit
+    ou avant un changement de durée. Retourne le nombre d'entrepôts mis à jour."""
+    cfg = db.query(PlatformConfig).first()
+    trial_days = int(getattr(cfg, "entrepot_trial_days", 30) or 30) if cfg else 30
+    now = now_local()
+    updated = 0
+    for entrepot in list_entrepots(db, tenant_id):
+        end = entrepot.subscription_ends_at
+        if not end or end <= now:
+            entrepot.subscription_ends_at = now + timedelta(days=trial_days)
+            updated += 1
+    db.commit()
+    return updated
+
+
 def _assert_paid(entrepot: Warehouse) -> None:
-    """Bloque la distribution tant que l'entrepôt n'a pas d'abonnement actif —
-    pas d'essai gratuit, contrairement aux caisses (voir _RegisterPaymentSection
-    côté Flutter et le point équivalent pour les caisses)."""
+    """Bloque la distribution tant que l'entrepôt n'a pas d'abonnement/essai
+    actif (voir create_entrepot pour l'octroi de l'essai à la création, et
+    grant_missing_trials pour l'octroi rétroactif)."""
     end = entrepot.subscription_ends_at
     if not end or end <= now_local():
         raise HTTPException(

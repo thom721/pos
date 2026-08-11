@@ -30,6 +30,12 @@ class PlatformConfig(UUIDBase):
     price_per_extra_depot_htg = Column(Numeric(10, 2), nullable=False, default=500.00)
     price_per_extra_depot_usd = Column(Numeric(10, 2), nullable=False, default=4.00)
 
+    # Essai gratuit entrepôt — le 1er entrepôt d'un tenant l'obtient toujours ;
+    # entrepot_trial_all étend ce même essai aux entrepôts suivants (2e, 3e...)
+    # dès leur création (voir entrepot_service.create_entrepot).
+    entrepot_trial_days = Column(Integer, nullable=False, default=30)
+    entrepot_trial_all  = Column(Boolean, nullable=False, default=False)
+
     # SMTP — pour les notifications d'expiration de plan
     smtp_host     = Column(String(200), nullable=False, default='')
     smtp_port     = Column(Integer,     nullable=False, default=587)
@@ -69,8 +75,10 @@ class PlatformConfig(UUIDBase):
     update_notes   = Column(Text,        nullable=True,  default=None)
     update_url         = Column(String(512), nullable=True,  default=None)
     update_url_android = Column(String(512), nullable=True,  default=None)
-    # Purement informatif — le serveur n'a aucune vérification de version
-    # automatique (contrairement au client), ce lien n'est jamais lu par
-    # l'app ; juste un aide-mémoire centralisé pour l'admin.
     update_url_windows_server = Column(String(512), nullable=True, default=None)
+    # Comparé par posconnect-manager.exe (systray, tous les serveurs
+    # self-hosted) contre sa version installée (registre HKLM\SOFTWARE\
+    # POS Connect\Version) — comparaison de chaîne simple, pas de
+    # force_update pour le serveur (jamais bloquer un serveur en prod).
+    latest_version_server = Column(String(20), nullable=True, default=None)
     force_update       = Column(Boolean,     nullable=False, default=False)

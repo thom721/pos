@@ -145,6 +145,12 @@ class P:
     ENTREPOT_CREATE = "entrepot.create"
     ENTREPOT_READ   = "entrepot.read"
 
+    # Accès à l'interface web (navigateur) — vérifié côté client au login
+    # cloud (auth_provider.dart), pas par un endpoint API dédié : accordé au
+    # rôle par défaut à admin (wildcard "all") et manager ; peut être accordé
+    # individuellement à un caissier via la matrice de permissions.
+    CONNECT_CLOUD = "connect.cloud"
+
 
 # ---------------------------------------------------------------------------
 # Role → permissions mapping
@@ -182,6 +188,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.DEPOTS_CREATE, P.DEPOTS_READ,
         P.RETRAITS_CREATE, P.RETRAITS_READ,
         P.ENTREPOT_CREATE, P.ENTREPOT_READ,
+        P.CONNECT_CLOUD,
     },
 
     "cashier": {

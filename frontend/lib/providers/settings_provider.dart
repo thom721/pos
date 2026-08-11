@@ -78,6 +78,10 @@ class AppSettings {
   // utilisable comme moyen de paiement sur une vente future.
   final bool loyaltyEnabled;
   final double loyaltyPercent;
+  // Alerte email stock bas — envoyée aux rôles listés quand un produit
+  // franchit son seuil d'alerte (Product.alert_stock) vers le bas.
+  final bool lowStockAlertEnabled;
+  final List<String> lowStockAlertRoles;
 
   const AppSettings({
     this.businessName = 'Mon Commerce',
@@ -109,6 +113,8 @@ class AppSettings {
     this.clientSabotageFields = const [],
     this.loyaltyEnabled = false,
     this.loyaltyPercent = 0.0,
+    this.lowStockAlertEnabled = false,
+    this.lowStockAlertRoles = const [],
   });
 
   AppSettings copyWith({
@@ -141,6 +147,8 @@ class AppSettings {
     List<Map<String, dynamic>>? clientSabotageFields,
     bool? loyaltyEnabled,
     double? loyaltyPercent,
+    bool? lowStockAlertEnabled,
+    List<String>? lowStockAlertRoles,
   }) =>
       AppSettings(
         businessName: businessName ?? this.businessName,
@@ -172,6 +180,8 @@ class AppSettings {
         clientSabotageFields: clientSabotageFields ?? this.clientSabotageFields,
         loyaltyEnabled: loyaltyEnabled ?? this.loyaltyEnabled,
         loyaltyPercent: loyaltyPercent ?? this.loyaltyPercent,
+        lowStockAlertEnabled: lowStockAlertEnabled ?? this.lowStockAlertEnabled,
+        lowStockAlertRoles: lowStockAlertRoles ?? this.lowStockAlertRoles,
       );
 
   // Serialize to API (snake_case)
@@ -213,6 +223,8 @@ class AppSettings {
               .toList(),
         'loyalty_enabled': loyaltyEnabled,
         'loyalty_percent': loyaltyPercent,
+        'low_stock_alert_enabled': lowStockAlertEnabled,
+        'low_stock_alert_roles': lowStockAlertRoles,
       };
 
   // Parse from API response (snake_case)
@@ -244,7 +256,14 @@ class AppSettings {
         clientSabotageFields: _parseSabotageFields(j['client_sabotage_fields']),
         loyaltyEnabled: j['loyalty_enabled'] as bool? ?? false,
         loyaltyPercent: (j['loyalty_percent'] as num?)?.toDouble() ?? 0.0,
+        lowStockAlertEnabled: j['low_stock_alert_enabled'] as bool? ?? false,
+        lowStockAlertRoles: _parseStringList(j['low_stock_alert_roles']),
       );
+
+  static List<String> _parseStringList(dynamic raw) {
+    if (raw == null || raw is! List) return const [];
+    return raw.map((e) => e.toString()).toList();
+  }
 
   /// Une chaîne vide (pas seulement null) doit retomber sur 'manual' — sinon
   /// le DropdownButtonFormField de la page Paramètres plante (aucun item ne
@@ -311,6 +330,8 @@ class AppSettings {
         'clientSabotageFields': clientSabotageFields,
         'loyaltyEnabled': loyaltyEnabled,
         'loyaltyPercent': loyaltyPercent,
+        'lowStockAlertEnabled': lowStockAlertEnabled,
+        'lowStockAlertRoles': lowStockAlertRoles,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -343,6 +364,8 @@ class AppSettings {
         clientSabotageFields: _parseSabotageFields(j['clientSabotageFields']),
         loyaltyEnabled: j['loyaltyEnabled'] as bool? ?? false,
         loyaltyPercent: (j['loyaltyPercent'] as num?)?.toDouble() ?? 0.0,
+        lowStockAlertEnabled: j['lowStockAlertEnabled'] as bool? ?? false,
+        lowStockAlertRoles: _parseStringList(j['lowStockAlertRoles']),
       );
 }
 

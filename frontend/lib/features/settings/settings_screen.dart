@@ -394,6 +394,70 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const SizedBox(height: 24),
 
+            // ── Alertes stock bas ────────────────────────────────────────
+            _SectionHeader(icon: Icons.notifications_active_rounded, title: 'Alertes stock'),
+            const SizedBox(height: 16),
+            _Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    title: const Text('Alerte email stock bas',
+                        style: TextStyle(fontSize: 14)),
+                    subtitle: const Text(
+                        'Envoie un email aux rôles sélectionnés quand un produit '
+                        'passe sous son seuil d\'alerte',
+                        style: TextStyle(fontSize: 12)),
+                    trailing: Switch(
+                      value: settings.lowStockAlertEnabled,
+                      thumbColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? Colors.white
+                            : null,
+                      ),
+                      trackColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? AppColors.primary
+                            : null,
+                      ),
+                      onChanged: (v) =>
+                          notifier.save(settings.copyWith(lowStockAlertEnabled: v)),
+                    ),
+                  ),
+                  if (settings.lowStockAlertEnabled) ...[
+                    const Divider(height: 1),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('Rôles à notifier',
+                            style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      ),
+                    ),
+                    for (final role in const [
+                      ('admin', 'Admin'),
+                      ('manager', 'Manager'),
+                      ('stock_manager', 'Gestionnaire de stock'),
+                    ])
+                      CheckboxListTile(
+                        dense: true,
+                        title: Text(role.$2, style: const TextStyle(fontSize: 13)),
+                        value: settings.lowStockAlertRoles.contains(role.$1),
+                        onChanged: (checked) {
+                          final roles = [...settings.lowStockAlertRoles];
+                          if (checked == true) {
+                            if (!roles.contains(role.$1)) roles.add(role.$1);
+                          } else {
+                            roles.remove(role.$1);
+                          }
+                          notifier.save(settings.copyWith(lowStockAlertRoles: roles));
+                        },
+                      ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
             // ── Règles métier ─────────────────────────────────────────────
             _SectionHeader(icon: Icons.rule_rounded, title: 'Règles métier'),
             const SizedBox(height: 16),

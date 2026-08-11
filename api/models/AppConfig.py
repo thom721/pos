@@ -49,6 +49,13 @@ class AppConfig(UUIDBase):
     # orienter l'interface (quel workflow est mis en avant pour ce tenant).
     composite_stock_trigger = Column(String(20), nullable=False, default='manual')
 
+    # Alerte email stock bas — envoyée une fois par franchissement du seuil
+    # (Product.alert_stock), voir stock_service.record_stock_movement.
+    # low_stock_alert_roles : JSON list de rôles à notifier (ex: ["admin",
+    # "manager", "stock_manager"]) — vide/null = personne même si activé.
+    low_stock_alert_enabled = Column(Boolean, nullable=False, default=False)
+    low_stock_alert_roles   = Column(Text, nullable=True, default=None)
+
     # Système de Sabotage — champs additionnels configurables pour ClientSabotage.
     # JSON list [{label, required}, ...]. Ne contient jamais nom/prenom/telephone/
     # adresse : ces champs sont toujours obligatoires, codés en dur côté modèle.

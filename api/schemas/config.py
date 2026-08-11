@@ -29,8 +29,11 @@ class ConfigRead(BaseModel):
     client_sabotage_fields: Optional[list] = None
     loyalty_enabled: bool = False
     loyalty_percent: float = 0.0
+    low_stock_alert_enabled: bool = False
+    low_stock_alert_roles: Optional[list] = None
 
-    @field_validator('hotel_checkin_fields', 'report_columns', 'client_sabotage_fields', mode='before')
+    @field_validator('hotel_checkin_fields', 'report_columns', 'client_sabotage_fields',
+                      'low_stock_alert_roles', mode='before')
     @classmethod
     def _parse_checkin(cls, v):
         if isinstance(v, str):
@@ -70,3 +73,5 @@ class ConfigUpdate(BaseModel):
     client_sabotage_fields: Optional[list] = None
     loyalty_enabled: Optional[bool] = None
     loyalty_percent: Optional[float] = None
+    low_stock_alert_enabled: Optional[bool] = None
+    low_stock_alert_roles: Optional[list] = None

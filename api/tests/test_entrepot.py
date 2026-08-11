@@ -18,6 +18,7 @@ from api.models.Category import Category
 from api.models.Product import Product
 from api.models.Warehouse import Warehouse
 from api.models.BillingPayment import BillingPayment
+from api.models.PlatformConfig import PlatformConfig
 from api.models.Purchase import Purchase, PurchaseStatus
 from api.models.PurchaseItem import PurchaseItem
 from api.services import entrepot_service
@@ -87,11 +88,57 @@ def test_create_multiple_entrepots_for_same_tenant(db, tenant):
     assert {e.id for e in all_entrepots} == {e1.id, e2.id}
 
 
-def test_new_entrepot_has_no_free_trial(db, tenant):
-    """Contrairement aux caisses, pas d'essai gratuit — subscription_ends_at
-    est NULL à la création."""
+def test_first_entrepot_gets_free_trial(db, tenant):
+    """Le 1er entrepôt du tenant obtient automatiquement l'essai gratuit
+    (PlatformConfig.entrepot_trial_days, 30 jours par défaut)."""
     entrepot = entrepot_service.create_entrepot(db, tenant.id)
-    assert entrepot.subscription_ends_at is None
+    assert entrepot.subscription_ends_at is not None
+    assert entrepot.subscription_ends_at > now_local() + timedelta(days=29)
+
+
+def test_second_entrepot_has_no_free_trial_by_default(db, tenant):
+    """Le 2e entrepôt (et les suivants) n'a PAS d'essai par défaut —
+    entrepot_trial_all doit être activé explicitement pour l'étendre."""
+    entrepot_service.create_entrepot(db, tenant.id, "Entrepôt A")
+    second = entrepot_service.create_entrepot(db, tenant.id, "Entrepôt B")
+    assert second.subscription_ends_at is None
+
+
+def test_entrepot_trial_all_extends_trial_to_every_entrepot(db, tenant):
+    """entrepot_trial_all=True : même le 2e (et les suivants) obtient l'essai
+    à la création, pas seulement le 1er."""
+    db.add(PlatformConfig(entrepot_trial_all=True))
+    db.flush()
+
+    entrepot_service.create_entrepot(db, tenant.id, "Entrepôt A")
+    second = entrepot_service.create_entrepot(db, tenant.id, "Entrepôt B")
+    assert second.subscription_ends_at is not None
+    assert second.subscription_ends_at > now_local() + timedelta(days=29)
+
+
+def test_entrepot_trial_days_configurable(db, tenant):
+    db.add(PlatformConfig(entrepot_trial_days=7))
+    db.flush()
+
+    entrepot = entrepot_service.create_entrepot(db, tenant.id)
+    delta = entrepot.subscription_ends_at - now_local()
+    assert timedelta(days=6) < delta <= timedelta(days=7)
+
+
+def test_grant_missing_trials_only_updates_unpaid_entrepots(db, tenant):
+    entrepot_a = entrepot_service.create_entrepot(db, tenant.id, "Entrepôt A")  # essai auto (1er)
+    entrepot_b = entrepot_service.create_entrepot(db, tenant.id, "Entrepôt B")  # pas d'essai (2e)
+    _mark_paid(db, entrepot_a, days=5)  # déjà payé — ne doit pas être touché
+    original_end = entrepot_a.subscription_ends_at
+
+    updated = entrepot_service.grant_missing_trials(db, tenant.id)
+
+    assert updated == 1
+    db.refresh(entrepot_a)
+    db.refresh(entrepot_b)
+    assert entrepot_a.subscription_ends_at == original_end  # inchangé
+    assert entrepot_b.subscription_ends_at is not None
+    assert entrepot_b.subscription_ends_at > now_local() + timedelta(days=29)
 
 
 def test_create_entrepot_is_claimed_to_prevent_installation(db, tenant):
@@ -159,10 +206,14 @@ def test_purchase_receipt_targeting_entrepot_increases_its_stock(db, tenant, pro
 
 
 def test_distribute_rejected_when_entrepot_unpaid(db, tenant, product, depots):
-    """Pas d'essai gratuit : distribuer est bloqué (402) tant que l'entrepôt
-    n'a pas d'abonnement actif — recevoir du stock reste libre."""
+    """Distribuer est bloqué (402) tant que l'entrepôt n'a pas d'abonnement/
+    essai actif — recevoir du stock reste libre. Le 1er entrepôt obtient
+    l'essai automatiquement (voir test_first_entrepot_gets_free_trial) ; on
+    l'annule ici pour isoler le comportement "non payé" testé."""
     depot_a, _ = depots
     entrepot = entrepot_service.create_entrepot(db, tenant.id)
+    entrepot.subscription_ends_at = None
+    db.flush()
     entrepot_service.adjust_entrepot_stock(db, tenant.id, entrepot.id, product.id, 30, None, "u1")
 
     with pytest.raises(HTTPException) as exc:
@@ -323,8 +374,12 @@ def test_transfer_from_depot_to_entrepot_never_requires_payment(db, tenant, prod
 
 def test_transfer_between_entrepots_requires_source_paid(db, tenant, product):
     """Transfert entrepôt → entrepôt : bloqué (402) si la source (celle qui
-    perd du stock) n'a pas d'abonnement actif, comme pour distribute()."""
+    perd du stock) n'a pas d'abonnement actif, comme pour distribute(). Le
+    1er entrepôt (ent_a) obtient l'essai automatiquement — annulé ici pour
+    isoler le comportement "non payé" testé."""
     ent_a = entrepot_service.create_entrepot(db, tenant.id, "Entrepôt A")
+    ent_a.subscription_ends_at = None
+    db.flush()
     ent_b = entrepot_service.create_entrepot(db, tenant.id, "Entrepôt B")
     entrepot_service.adjust_entrepot_stock(db, tenant.id, ent_a.id, product.id, 30, None, "u1")
 
