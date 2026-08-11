@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -72,7 +73,10 @@ class WarehousesScreen extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (canCreate) ...[
+                // Création de dépôt réservée au cloud (web) — un poste local
+                // ne doit jamais pouvoir créer sa propre ligne indépendamment
+                // du cloud (source de doublons non fusionnables par la sync).
+                if (canCreate && kIsWeb) ...[
                   const SizedBox(width: 8),
                   FilledButton.icon(
                     onPressed: () => _showWarehouseDialog(context, ref),
@@ -131,7 +135,7 @@ class WarehousesScreen extends ConsumerWidget {
                                 fontWeight: FontWeight.w600,
                                 color: AppColors.textSecondary)),
                         const SizedBox(height: 8),
-                        if (canCreate)
+                        if (canCreate && kIsWeb)
                           FilledButton.icon(
                             onPressed: () =>
                                 _showWarehouseDialog(context, ref),

@@ -19,7 +19,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt as _jwt
 from pydantic import BaseModel
-from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import inspect as sa_inspect, or_ as sa_or_
 from sqlalchemy.orm import Session
 
 from api.core.config import settings, write_ini_config
@@ -412,6 +412,20 @@ def sync_push(
 
 _PULL_PAGE_SIZE = 500  # safe batch size — avoids 2000-record truncation data loss
 
+
+def _scope_warehouse_pull(query, model, entity_type: str):
+    """Un entrepôt (is_entrepot=True) sans linked_warehouse_id reste
+    cloud-only : deux installations locales pourraient sinon créer chacune
+    leur propre entrepôt "Entrepôt" indépendamment, sans jamais se fusionner
+    (pas de clé de correspondance fiable côté sync) — voir
+    Warehouse.linked_warehouse_id. Les entrepôts rattachés à un dépôt
+    synchronisent normalement."""
+    if entity_type != "warehouse":
+        return query
+    return query.filter(
+        sa_or_(model.is_entrepot == False, model.linked_warehouse_id.isnot(None))  # noqa: E712
+    )
+
 @router.get("/pull")
 def sync_pull(
     entity_type: str = Query(...),
@@ -442,6 +456,7 @@ def sync_pull(
     query = db.query(model).order_by(model.updated_at.asc())
     if "tenant_id" in col_names:
         query = query.filter(model.tenant_id == tenant_id)
+    query = _scope_warehouse_pull(query, model, entity_type)
     if since_dt:
         query = query.filter(model.updated_at > since_dt)
 
@@ -495,6 +510,7 @@ def sync_pull_batch(
         query = db.query(model).order_by(model.updated_at.asc())
         if "tenant_id" in col_names:
             query = query.filter(model.tenant_id == tenant_id)
+        query = _scope_warehouse_pull(query, model, entity_type)
         if since_dt:
             query = query.filter(model.updated_at > since_dt)
         rows      = query.limit(_PULL_PAGE_SIZE + 1).all()
@@ -579,6 +595,8 @@ def public_platform_config(
         "moncash_enabled":            cfg.moncash_enabled,
         "natcash_enabled":            cfg.natcash_enabled,
         "card_enabled":               cfg.card_enabled,
+        "entrepot_trial_days":        cfg.entrepot_trial_days,
+        "entrepot_trial_all":         cfg.entrepot_trial_all,
     }
 
 

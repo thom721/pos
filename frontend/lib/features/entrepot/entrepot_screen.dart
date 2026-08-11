@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -60,16 +61,20 @@ class EntrepotScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
-                entrepotsAsync.maybeWhen(
-                  data: (list) => list.isNotEmpty
-                      ? TextButton.icon(
-                          onPressed: () => _showCreateEntrepotDialog(context, ref),
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('Nouvel entrepôt'),
-                        )
-                      : const SizedBox.shrink(),
-                  orElse: () => const SizedBox.shrink(),
-                ),
+                // Création d'entrepôt réservée au cloud (web) — même
+                // raisonnement que pour les dépôts (warehouses_screen.dart) :
+                // évite les doublons créés indépendamment sur chaque poste local.
+                if (kIsWeb)
+                  entrepotsAsync.maybeWhen(
+                    data: (list) => list.isNotEmpty
+                        ? TextButton.icon(
+                            onPressed: () => _showCreateEntrepotDialog(context, ref),
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Nouvel entrepôt'),
+                          )
+                        : const SizedBox.shrink(),
+                    orElse: () => const SizedBox.shrink(),
+                  ),
               ],
             ),
             const SizedBox(height: 20),
@@ -92,11 +97,24 @@ class EntrepotScreen extends ConsumerWidget {
 
 // ── Création (nom + adresse) ─────────────────────────────────────────────
 
-Future<void> _showCreateEntrepotDialog(BuildContext context, WidgetRef ref) {
+Future<void> _showCreateEntrepotDialog(BuildContext context, WidgetRef ref) async {
   final nameCtrl = TextEditingController(text: 'Entrepôt');
   final addressCtrl = TextEditingController();
   var loading = false;
   String? error;
+  String? linkedWarehouseId;
+
+  List<WarehouseModel> depots = [];
+  try {
+    depots = (await ref.read(warehouseListProvider.future))
+        .where((w) => !w.isEntrepot)
+        .toList();
+  } catch (_) {
+    // Liste des dépôts indisponible (hors-ligne, etc.) — le rattachement
+    // reste simplement optionnel, la création n'en dépend pas.
+  }
+
+  if (!context.mounted) return;
 
   return showDialog(
     context: context,
@@ -116,6 +134,23 @@ Future<void> _showCreateEntrepotDialog(BuildContext context, WidgetRef ref) {
               controller: addressCtrl,
               decoration: const InputDecoration(labelText: 'Adresse'),
             ),
+            if (depots.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: linkedWarehouseId,
+                decoration: const InputDecoration(
+                  labelText: 'Dépôt rattaché (optionnel)',
+                  helperText: 'Sans rattachement, l\'entrepôt reste accessible '
+                      'uniquement depuis le web (jamais synchronisé sur ce poste).',
+                  helperMaxLines: 3,
+                ),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('Aucun — cloud uniquement')),
+                  ...depots.map((w) => DropdownMenuItem(value: w.id, child: Text(w.name))),
+                ],
+                onChanged: (v) => setState(() => linkedWarehouseId = v),
+              ),
+            ],
             if (error != null) ...[
               const SizedBox(height: 8),
               Text(error!, style: const TextStyle(color: AppColors.error, fontSize: 12)),
@@ -138,6 +173,7 @@ Future<void> _showCreateEntrepotDialog(BuildContext context, WidgetRef ref) {
                       final created = await ref.read(entrepotRepositoryProvider).createEntrepot(
                             name: name,
                             address: addressCtrl.text.trim(),
+                            linkedWarehouseId: linkedWarehouseId,
                           );
                       ref.invalidate(entrepotsProvider);
                       ref.read(activeEntrepotProvider.notifier).state = created;
@@ -178,11 +214,17 @@ class _SetupView extends ConsumerWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
-          if (canCreate)
+          if (canCreate && kIsWeb)
             ElevatedButton.icon(
               onPressed: () => _showCreateEntrepotDialog(context, ref),
               icon: const Icon(Icons.add),
               label: const Text('Créer l\'entrepôt'),
+            )
+          else if (canCreate)
+            const Text(
+              'La création d\'un entrepôt se fait depuis le site web.',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
             ),
         ],
       ),

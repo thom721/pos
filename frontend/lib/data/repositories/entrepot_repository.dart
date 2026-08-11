@@ -16,10 +16,30 @@ class EntrepotRepository {
   Future<WarehouseModel> createEntrepot({
     String name = 'Entrepôt',
     String? address,
+    String? linkedWarehouseId,
   }) async {
     final res = await dio.post('/api/entrepot/', data: {
       'name': name,
       if (address != null && address.isNotEmpty) 'address': address,
+      if (linkedWarehouseId != null) 'linked_warehouse_id': linkedWarehouseId,
+    });
+    return WarehouseModel.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  /// [linkedWarehouseId] : passer une chaîne vide pour détacher l'entrepôt
+  /// (le repasse cloud-only) — omettre le champ pour ne pas y toucher.
+  Future<WarehouseModel> updateEntrepot(
+    String entrepotId, {
+    String? name,
+    String? address,
+    String? linkedWarehouseId,
+    bool unlink = false,
+  }) async {
+    final res = await dio.patch('/api/entrepot/$entrepotId', data: {
+      if (name != null) 'name': name,
+      if (address != null) 'address': address,
+      if (unlink) 'linked_warehouse_id': null
+      else if (linkedWarehouseId != null) 'linked_warehouse_id': linkedWarehouseId,
     });
     return WarehouseModel.fromJson(res.data as Map<String, dynamic>);
   }

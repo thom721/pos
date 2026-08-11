@@ -4,6 +4,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
 
+from api.core.config import settings
 from api.core.dt_coerce import now_local
 from api.models.Warehouse import Warehouse
 from api.models.Product import Product
@@ -36,8 +37,21 @@ def get_entrepot_by_id(db: Session, tenant_id: str, entrepot_id: str) -> Warehou
     return entrepot
 
 
+def _validate_linked_warehouse(db: Session, tenant_id: str, linked_warehouse_id: str | None) -> None:
+    if not linked_warehouse_id:
+        return
+    target = db.query(Warehouse).filter(
+        Warehouse.id == linked_warehouse_id,
+        Warehouse.tenant_id == tenant_id,
+        Warehouse.is_entrepot == False,  # noqa: E712
+    ).first()
+    if not target:
+        raise HTTPException(404, "Dépôt à rattacher introuvable")
+
+
 def create_entrepot(
     db: Session, tenant_id: str, name: str = "Entrepôt", address: str | None = None,
+    linked_warehouse_id: str | None = None,
 ) -> Warehouse:
     """Un tenant peut créer plusieurs entrepôts (pas de plafond, comme les
     caisses). Ne crée PAS de PosRegister ni d'InstallationCode (ce n'est pas
@@ -50,7 +64,19 @@ def create_entrepot(
     Essai gratuit : le 1er entrepôt du tenant l'obtient toujours (durée =
     PlatformConfig.entrepot_trial_days) ; les suivants aussi si
     entrepot_trial_all est activé — sinon subscription_ends_at reste NULL
-    tant qu'aucun paiement n'a été confirmé — voir _assert_paid()."""
+    tant qu'aucun paiement n'a été confirmé — voir _assert_paid().
+    linked_warehouse_id : dépôt de vente auquel rattacher l'entrepôt — sans ça
+    l'entrepôt reste cloud-only, jamais synchronisé vers le local (voir
+    Warehouse.linked_warehouse_id et api/routes/sync.py).
+    Comme pour create_warehouse (api/routes/warehouse.py), la création est
+    refusée sur un poste local synchronisé — doit passer par le cloud."""
+    if settings.CLOUD_SYNC_ENABLED:
+        raise HTTPException(
+            403,
+            "La création d'un entrepôt doit se faire depuis le site web (cloud), "
+            "pas depuis ce poste local — pour éviter des doublons non synchronisables.",
+        )
+    _validate_linked_warehouse(db, tenant_id, linked_warehouse_id)
     is_first = list_entrepots(db, tenant_id) == []
     cfg = db.query(PlatformConfig).first()
     trial_days = int(getattr(cfg, "entrepot_trial_days", 30) or 30) if cfg else 30
@@ -64,10 +90,32 @@ def create_entrepot(
         is_default=False,
         is_entrepot=True,
         is_claimed=True,
+        linked_warehouse_id=linked_warehouse_id,
     )
     if is_first or trial_all:
         entrepot.subscription_ends_at = now_local() + timedelta(days=trial_days)
     db.add(entrepot)
+    db.commit()
+    db.refresh(entrepot)
+    return entrepot
+
+
+def update_entrepot(
+    db: Session, tenant_id: str, entrepot_id: str,
+    name: str | None = None, address: str | None = None,
+    linked_warehouse_id: str | None = ...,
+) -> Warehouse:
+    """linked_warehouse_id utilise `...` (Ellipsis) comme sentinelle "non
+    fourni" — None est une valeur valide (détache l'entrepôt, le repasse
+    cloud-only)."""
+    entrepot = get_entrepot_by_id(db, tenant_id, entrepot_id)
+    if name is not None:
+        entrepot.name = name
+    if address is not None:
+        entrepot.address = address
+    if linked_warehouse_id is not ...:
+        _validate_linked_warehouse(db, tenant_id, linked_warehouse_id)
+        entrepot.linked_warehouse_id = linked_warehouse_id
     db.commit()
     db.refresh(entrepot)
     return entrepot

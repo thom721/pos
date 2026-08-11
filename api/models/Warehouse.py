@@ -21,6 +21,15 @@ class Warehouse(UUIDBase):
     # réception d'achat comme n'importe quel dépôt).
     is_entrepot = Column(Boolean, nullable=False, default=False)
 
+    # Dépôt de vente auquel cet entrepôt est rattaché (uniquement pertinent
+    # quand is_entrepot=True) — sert de clé de synchro stable (au lieu du nom,
+    # non fiable : deux installations peuvent créer un entrepôt "Entrepôt"
+    # indépendamment, sans jamais se fusionner) ET de règle de portée : un
+    # entrepôt sans dépôt rattaché n'est jamais synchronisé vers le local,
+    # il reste consultable uniquement depuis le cloud (voir api/routes/sync.py
+    # sync_pull / sync_pull_batch).
+    linked_warehouse_id = Column(String(36), ForeignKey('warehouses.id'), nullable=True)
+
     # ── Abonnement par entrepôt ────────────────────────────────────────────────
     # Un entrepôt n'a PAS d'essai gratuit : NULL = jamais payé. Distribuer du
     # stock (entrepôt → dépôts) est bloqué tant que non payé (voir

@@ -7,7 +7,7 @@ from api.models.User import User
 from api.schemas.product import ProductRead
 from api.core.PaginateHelper import PaginatedResponse
 from api.schemas.entrepot import (
-    EntrepotCreate, EntrepotRead, StockAdjustRequest, DistributeRequest,
+    EntrepotCreate, EntrepotUpdate, EntrepotRead, StockAdjustRequest, DistributeRequest,
     TransferInRequest, TransferReceipt,
 )
 from api.services.product_service import ProductService
@@ -34,6 +34,22 @@ def store_entrepot(
 ):
     return entrepot_service.create_entrepot(
         db, current_user.tenant_id, payload.name, payload.address,
+        payload.linked_warehouse_id,
+    )
+
+
+@router.patch("/{entrepot_id}", response_model=EntrepotRead)
+def patch_entrepot(
+    entrepot_id: str,
+    payload: EntrepotUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.ENTREPOT_CREATE)),
+):
+    fields = payload.model_dump(exclude_unset=True)
+    return entrepot_service.update_entrepot(
+        db, current_user.tenant_id, entrepot_id,
+        name=fields.get("name"), address=fields.get("address"),
+        linked_warehouse_id=fields.get("linked_warehouse_id", ...),
     )
 
 

@@ -9,6 +9,7 @@ from typing import List, Optional
 
 from api.database import get_db
 from api.dependencies.auth import get_current_user, require_permission
+from api.core.config import settings
 from api.core.permissions import P, has_permission as _has_perm
 from api.core.dt_coerce import now_local
 from api.models.User import User
@@ -188,6 +189,20 @@ def create_warehouse(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.WAREHOUSES_CREATE)),
 ):
+    # Un poste local qui synchronise vers le cloud (CLOUD_SYNC_ENABLED) ne
+    # doit jamais créer sa propre ligne de dépôt : deux installations locales
+    # pourraient sinon créer chacune un dépôt indépendamment, avec des id
+    # différents que la synchro ne peut pas fusionner (pas de repli par nom
+    # pour warehouse — voir local_sync_service.py). La création doit passer
+    # par le cloud (web), seule source canonique. Un poste non synchronisé
+    # (essai autonome, tenant réellement self-hosted sans sync business) n'est
+    # pas concerné : rien à faire diverger.
+    if settings.CLOUD_SYNC_ENABLED:
+        raise HTTPException(
+            status_code=403,
+            detail="La création d'un dépôt doit se faire depuis le site web (cloud), "
+                   "pas depuis ce poste local — pour éviter des doublons non synchronisables.",
+        )
     if not data.force:
         tenant = db.get(Tenant, current_user.tenant_id)
         if tenant:

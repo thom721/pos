@@ -416,3 +416,62 @@ def test_transfer_rejects_insufficient_source_stock(db, tenant, product, depots)
             db, tenant.id, entrepot.id, depot_a.id, product.id, 5, "u1",
         )
     assert exc.value.status_code == 400
+
+
+# ── Rattachement à un dépôt (linked_warehouse_id) ────────────────────────────
+
+def test_create_entrepot_with_linked_warehouse(db, tenant, depots):
+    depot_a, _ = depots
+    entrepot = entrepot_service.create_entrepot(
+        db, tenant.id, "Entrepôt X", linked_warehouse_id=depot_a.id,
+    )
+    assert entrepot.linked_warehouse_id == depot_a.id
+
+
+def test_create_entrepot_rejects_unknown_linked_warehouse(db, tenant):
+    with pytest.raises(HTTPException) as exc:
+        entrepot_service.create_entrepot(db, tenant.id, linked_warehouse_id="does-not-exist")
+    assert exc.value.status_code == 404
+
+
+def test_create_entrepot_rejects_linking_to_another_entrepot(db, tenant):
+    other_entrepot = entrepot_service.create_entrepot(db, tenant.id, "Autre entrepôt")
+    with pytest.raises(HTTPException) as exc:
+        entrepot_service.create_entrepot(
+            db, tenant.id, "Entrepôt X", linked_warehouse_id=other_entrepot.id,
+        )
+    assert exc.value.status_code == 404
+
+
+def test_update_entrepot_can_link_and_unlink(db, tenant, depots):
+    depot_a, _ = depots
+    entrepot = entrepot_service.create_entrepot(db, tenant.id)
+    assert entrepot.linked_warehouse_id is None
+
+    entrepot_service.update_entrepot(db, tenant.id, entrepot.id, linked_warehouse_id=depot_a.id)
+    db.refresh(entrepot)
+    assert entrepot.linked_warehouse_id == depot_a.id
+
+    entrepot_service.update_entrepot(db, tenant.id, entrepot.id, linked_warehouse_id=None)
+    db.refresh(entrepot)
+    assert entrepot.linked_warehouse_id is None
+
+
+def test_update_entrepot_without_linked_warehouse_kwarg_leaves_it_untouched(db, tenant, depots):
+    depot_a, _ = depots
+    entrepot = entrepot_service.create_entrepot(db, tenant.id, linked_warehouse_id=depot_a.id)
+
+    entrepot_service.update_entrepot(db, tenant.id, entrepot.id, name="Nouveau nom")
+    db.refresh(entrepot)
+    assert entrepot.name == "Nouveau nom"
+    assert entrepot.linked_warehouse_id == depot_a.id
+
+
+# ── Création réservée au cloud (bloquée sur un poste local synchronisé) ─────
+
+def test_create_entrepot_blocked_when_cloud_sync_enabled(db, tenant, monkeypatch):
+    import api.services.entrepot_service as es
+    monkeypatch.setattr(es.settings, "CLOUD_SYNC_ENABLED", True)
+    with pytest.raises(HTTPException) as exc:
+        entrepot_service.create_entrepot(db, tenant.id)
+    assert exc.value.status_code == 403

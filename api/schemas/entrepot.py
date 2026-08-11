@@ -6,6 +6,16 @@ from datetime import datetime
 class EntrepotCreate(BaseModel):
     name: str = "Entrepôt"
     address: Optional[str] = None
+    # Dépôt de vente auquel rattacher cet entrepôt — sans ça, l'entrepôt reste
+    # consultable uniquement depuis le cloud (jamais synchronisé vers le
+    # local). Voir Warehouse.linked_warehouse_id.
+    linked_warehouse_id: Optional[str] = None
+
+
+class EntrepotUpdate(BaseModel):
+    name: Optional[str] = None
+    address: Optional[str] = None
+    linked_warehouse_id: Optional[str] = None
 
 
 class EntrepotRead(BaseModel):
@@ -13,6 +23,7 @@ class EntrepotRead(BaseModel):
     name: str
     address: Optional[str] = None
     is_active: bool
+    linked_warehouse_id: Optional[str] = None
     subscription_ends_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
 

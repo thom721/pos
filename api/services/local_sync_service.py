@@ -487,6 +487,7 @@ def _run_sync_inner(db: Session) -> dict:
         "stat_businesses", "stat_transactions_day", "stat_uptime",
         "pricing_plans_json", "logo_url",
         "cash_enabled", "moncash_enabled", "natcash_enabled", "card_enabled",
+        "entrepot_trial_days", "entrepot_trial_all",
     )
     try:
         billing_url = (settings.BILLING_URL or url).rstrip("/")

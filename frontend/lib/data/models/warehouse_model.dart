@@ -13,6 +13,10 @@ class WarehouseModel {
   /// Abonnement de l'entrepôt — NULL = jamais payé (pas d'essai gratuit).
   /// Toujours null pour un dépôt classique (non renvoyé par l'API dépôts).
   final DateTime? subscriptionEndsAt;
+  /// Dépôt de vente auquel cet entrepôt est rattaché (uniquement pertinent si
+  /// isEntrepot=true). Sans rattachement, l'entrepôt reste cloud-only —
+  /// jamais synchronisé vers un poste local (voir api/routes/sync.py).
+  final String? linkedWarehouseId;
 
   const WarehouseModel({
     required this.id,
@@ -24,6 +28,7 @@ class WarehouseModel {
     this.isClaimed = false,
     this.isEntrepot = false,
     this.subscriptionEndsAt,
+    this.linkedWarehouseId,
   });
 
   bool get isSubscriptionActive =>
@@ -41,6 +46,7 @@ class WarehouseModel {
         subscriptionEndsAt: json['subscription_ends_at'] != null
             ? DateTime.tryParse(json['subscription_ends_at'].toString())
             : null,
+        linkedWarehouseId: json['linked_warehouse_id']?.toString(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -53,6 +59,7 @@ class WarehouseModel {
         'is_claimed': isClaimed,
         'is_entrepot': isEntrepot,
         'subscription_ends_at': subscriptionEndsAt?.toIso8601String(),
+        'linked_warehouse_id': linkedWarehouseId,
       };
 
   @override
