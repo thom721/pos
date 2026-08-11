@@ -59,6 +59,10 @@ class TenantPatch(BaseModel):
     sell_cloud: bool | None = None
 
 
+class TenantDeletePayload(BaseModel):
+    confirm_slug: str  # doit correspondre exactement au slug du tenant
+
+
 class ManualActivatePayload(BaseModel):
     amount: float
     currency: str = "HTG"
@@ -640,6 +644,32 @@ def patch_tenant(
         "trial_ends_at":      t.trial_ends_at.isoformat() if t.trial_ends_at else None,
         "days_left":          _days_left(t),
     }
+
+
+# ── Suppression définitive d'un tenant ──────────────────────────────────────
+
+@router.delete("/tenants/{tenant_id}")
+def delete_tenant(
+    tenant_id: str,
+    body: TenantDeletePayload,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """Supprime définitivement un tenant et TOUTES ses données (~49 tables
+    tenant_id-scopées). Irréversible. Exige que confirm_slug corresponde
+    exactement au slug du tenant pour éviter une suppression accidentelle."""
+    t = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Tenant introuvable")
+    if body.confirm_slug != t.slug:
+        raise HTTPException(
+            status_code=400,
+            detail="confirm_slug ne correspond pas au slug du tenant — suppression annulée.",
+        )
+
+    from api.services.tenant_deletion_service import delete_tenant_completely
+    counts = delete_tenant_completely(db, tenant_id)
+    return {"status": "ok", "deleted_tenant": t.slug, "counts": counts}
 
 
 # ── Manual activation ───────────────────────────────────────────────────────

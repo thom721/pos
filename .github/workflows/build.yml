@@ -541,8 +541,11 @@ jobs:
 
       - name: Préparer la signature (certificat + script sign.cmd)
         shell: pwsh
+        env:
+          PFX_B64: ${{ secrets.WIN_CODESIGN_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WIN_CODESIGN_PFX_PASSWORD }}
         run: |
-          $bytes = [Convert]::FromBase64String("${{ secrets.WIN_CODESIGN_PFX_BASE64 }}")
+          $bytes = [Convert]::FromBase64String($env:PFX_B64)
           [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\posconnect-codesign.pfx", $bytes)
 
           $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
@@ -554,7 +557,16 @@ jobs:
           # argument de ligne de commande — évite le bug où & scindait
           # /SPosConnectSignTool=... contenant des guillemets imbriqués en
           # plusieurs arguments ("plus d'un nom de script" côté ISCC).
-          $pass = "${{ secrets.WIN_CODESIGN_PFX_PASSWORD }}"
+          #
+          # Le mot de passe est lu via $env:PFX_PASSWORD (pas interpolé
+          # directement dans une chaîne PowerShell "${{ secrets.X }}") car
+          # s'il contient un caractère '$', PowerShell l'interpréterait comme
+          # le début d'une référence de variable dans une chaîne entre
+          # guillemets doubles et le tronquerait silencieusement — le mot de
+          # passe transmis à signtool serait alors corrompu même si le
+          # secret GitHub est correct (cause probable de "PFX password is
+          # not correct" malgré un mot de passe vérifié comme exact).
+          $pass = $env:PFX_PASSWORD
           @"
           @echo off
           "$signtool" sign /fd SHA256 /f "$env:RUNNER_TEMP\posconnect-codesign.pfx" /p "$pass" /tr http://timestamp.digicert.com /td SHA256 %1

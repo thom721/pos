@@ -631,6 +631,14 @@ class _TenantCard extends ConsumerWidget {
                     foregroundColor: AppColors.textSecondary,
                   ),
                 ),
+                IconButton(
+                  onPressed: () => _showDeleteTenantDialog(context, ref, tenant),
+                  icon: const Icon(Icons.delete_forever_rounded, size: 18),
+                  tooltip: 'Supprimer définitivement ce compte tenant',
+                  style: IconButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                  ),
+                ),
                 if (!isActive)
                   OutlinedButton.icon(
                     onPressed: () => _showActivateDialog(context, ref, tenant),
@@ -761,6 +769,81 @@ class _TenantCard extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('$deleted dépôt${deleted != 1 ? 's' : ''} supprimé${deleted != 1 ? 's' : ''}'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Erreur : $e'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    }
+  }
+
+  Future<void> _showDeleteTenantDialog(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> tenant) async {
+    final tenantId = tenant['id'] as String;
+    final name = tenant['business_name'] as String? ?? tenantId;
+    final slug = tenant['slug'] as String? ?? '';
+    final confirmCtrl = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setState) {
+        final canConfirm = confirmCtrl.text.trim() == slug;
+        return AlertDialog(
+          title: const Text('Supprimer ce compte tenant'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Supprimer définitivement "$name" et TOUTES ses données '
+                '(ventes, produits, utilisateurs, dépôts, paiements, etc.) ?\n\n'
+                'Cette action est IRRÉVERSIBLE. Les autres tenants ne sont pas affectés.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: confirmCtrl,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Tapez "$slug" pour confirmer',
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: canConfirm ? () => Navigator.pop(ctx, true) : null,
+              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+              child: const Text('Supprimer définitivement'),
+            ),
+          ],
+        );
+      }),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      await d.delete(
+        '/api/admin/tenants/$tenantId',
+        data: {'confirm_slug': slug},
+      );
+      ref.invalidate(_tenantsProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Tenant "$name" supprimé définitivement'),
           backgroundColor: AppColors.success,
         ));
       }
