@@ -567,10 +567,28 @@ jobs:
           # secret GitHub est correct (cause probable de "PFX password is
           # not correct" malgré un mot de passe vérifié comme exact).
           $pass = $env:PFX_PASSWORD
+
+          # Diagnostic : ouvre le PFX avec ce mot de passe via .NET, sans
+          # passer par signtool/sign.cmd/Inno — élimine toute cause liée au
+          # fichier batch (quoting, encodage) et répond sans ambiguïté à la
+          # question "ce mot de passe correspond-il à ce fichier PFX ?".
+          Add-Type -AssemblyName System.Security
+          try {
+              $null = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
+                  "$env:RUNNER_TEMP\posconnect-codesign.pfx", $pass)
+              Write-Host "Diagnostic PFX : mot de passe valide, certificat chargé avec succès."
+          } catch {
+              Write-Host "Diagnostic PFX : ÉCHEC du chargement — $($_.Exception.Message)"
+              throw "Le mot de passe ne correspond pas au fichier PFX (vérifié hors signtool/Inno) — secrets WIN_CODESIGN_PFX_BASE64 / WIN_CODESIGN_PFX_PASSWORD désynchronisés."
+          }
+
+          # -Encoding ASCII remplacerait silencieusement par '?' tout
+          # caractère non-ASCII du mot de passe s'il en contenait — UTF8
+          # sans BOM préserve le mot de passe tel quel si jamais c'est le cas.
           @"
           @echo off
           "$signtool" sign /fd SHA256 /f "$env:RUNNER_TEMP\posconnect-codesign.pfx" /p "$pass" /tr http://timestamp.digicert.com /td SHA256 %1
-          "@ | Set-Content -Path "$env:RUNNER_TEMP\sign.cmd" -Encoding ASCII
+          "@ | Set-Content -Path "$env:RUNNER_TEMP\sign.cmd" -Encoding UTF8NoBOM
 
       - name: Compiler l'installeur client Inno Setup (signé)
         shell: pwsh
