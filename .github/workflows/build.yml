@@ -552,42 +552,29 @@ jobs:
               Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1 -ExpandProperty FullName
           if (-not $signtool) { throw "signtool.exe introuvable sur ce runner" }
 
-          # sign.cmd encapsule toute la commande (avec ses guillemets internes
-          # pour les chemins/mot de passe) DANS le fichier, pas dans un
+          # "The specified network password is not correct" au diagnostic
+          # précédent (ni le PFX ni le mot de passe en cause) est en fait un
+          # bug connu de CryptAcquireContext sur les runners GitHub Actions
+          # Windows : X509Certificate2(path, password) et signtool /f /p
+          # échouent tous deux ainsi en session non-interactive, quel que
+          # soit le mot de passe. La solution standard : importer le PFX
+          # dans le magasin de certificats via Import-PfxCertificate (plus
+          # robuste, chemin d'import différent) puis signer par empreinte
+          # (/sha1) au lieu de /f + /p — élimine ce bug entièrement.
+          $securePass = ConvertTo-SecureString -String $env:PFX_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath "$env:RUNNER_TEMP\posconnect-codesign.pfx" `
+              -CertStoreLocation Cert:\CurrentUser\My -Password $securePass -Exportable
+          $thumbprint = $cert.Thumbprint
+          Write-Host "Certificat importé dans Cert:\CurrentUser\My — thumbprint $thumbprint"
+          "THUMBPRINT=$thumbprint" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          # sign.cmd encapsule toute la commande DANS le fichier, pas dans un
           # argument de ligne de commande — évite le bug où & scindait
           # /SPosConnectSignTool=... contenant des guillemets imbriqués en
           # plusieurs arguments ("plus d'un nom de script" côté ISCC).
-          #
-          # Le mot de passe est lu via $env:PFX_PASSWORD (pas interpolé
-          # directement dans une chaîne PowerShell "${{ secrets.X }}") car
-          # s'il contient un caractère '$', PowerShell l'interpréterait comme
-          # le début d'une référence de variable dans une chaîne entre
-          # guillemets doubles et le tronquerait silencieusement — le mot de
-          # passe transmis à signtool serait alors corrompu même si le
-          # secret GitHub est correct (cause probable de "PFX password is
-          # not correct" malgré un mot de passe vérifié comme exact).
-          $pass = $env:PFX_PASSWORD
-
-          # Diagnostic : ouvre le PFX avec ce mot de passe via .NET, sans
-          # passer par signtool/sign.cmd/Inno — élimine toute cause liée au
-          # fichier batch (quoting, encodage) et répond sans ambiguïté à la
-          # question "ce mot de passe correspond-il à ce fichier PFX ?".
-          Add-Type -AssemblyName System.Security
-          try {
-              $null = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
-                  "$env:RUNNER_TEMP\posconnect-codesign.pfx", $pass)
-              Write-Host "Diagnostic PFX : mot de passe valide, certificat chargé avec succès."
-          } catch {
-              Write-Host "Diagnostic PFX : ÉCHEC du chargement — $($_.Exception.Message)"
-              throw "Le mot de passe ne correspond pas au fichier PFX (vérifié hors signtool/Inno) — secrets WIN_CODESIGN_PFX_BASE64 / WIN_CODESIGN_PFX_PASSWORD désynchronisés."
-          }
-
-          # -Encoding ASCII remplacerait silencieusement par '?' tout
-          # caractère non-ASCII du mot de passe s'il en contenait — UTF8
-          # sans BOM préserve le mot de passe tel quel si jamais c'est le cas.
           @"
           @echo off
-          "$signtool" sign /fd SHA256 /f "$env:RUNNER_TEMP\posconnect-codesign.pfx" /p "$pass" /tr http://timestamp.digicert.com /td SHA256 %1
+          "$signtool" sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 %1
           "@ | Set-Content -Path "$env:RUNNER_TEMP\sign.cmd" -Encoding UTF8NoBOM
 
       - name: Compiler l'installeur client Inno Setup (signé)
@@ -603,6 +590,7 @@ jobs:
           $exitCode = $LASTEXITCODE
           Remove-Item "$env:RUNNER_TEMP\sign.cmd" -Force -ErrorAction SilentlyContinue
           Remove-Item "$env:RUNNER_TEMP\posconnect-codesign.pfx" -Force -ErrorAction SilentlyContinue
+          Remove-Item "Cert:\CurrentUser\My\$env:THUMBPRINT" -DeleteKey -Force -ErrorAction SilentlyContinue
           if ($exitCode -ne 0) { throw "Inno Setup ISCC.exe a échoué (code $exitCode)" }
 
       - name: Upload installeur client Windows
