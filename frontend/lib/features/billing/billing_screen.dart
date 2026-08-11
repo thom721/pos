@@ -501,7 +501,9 @@ class _BillingContent extends ConsumerWidget {
                 annualDiscountPct: discountPct,
                 cashEnabled: cfg['cash_enabled'] as bool? ?? true,
                 moncashEnabled: cfg['moncash_enabled'] as bool? ?? true,
-                natcashEnabled: cfg['natcash_enabled'] as bool? ?? true);
+                natcashEnabled: cfg['natcash_enabled'] as bool? ?? true,
+                entrepotTrialDays: (cfg['entrepot_trial_days'] as num? ?? 30).toInt(),
+                entrepotTrialAll: cfg['entrepot_trial_all'] as bool? ?? false);
           },
         ),
         const SizedBox(height: 24),
@@ -1720,6 +1722,8 @@ class _EntrepotPaymentSection extends ConsumerStatefulWidget {
   final bool cashEnabled;
   final bool moncashEnabled;
   final bool natcashEnabled;
+  final int entrepotTrialDays;
+  final bool entrepotTrialAll;
 
   const _EntrepotPaymentSection({
     required this.pricePerEntrepot,
@@ -1727,6 +1731,8 @@ class _EntrepotPaymentSection extends ConsumerStatefulWidget {
     this.cashEnabled = true,
     this.moncashEnabled = true,
     this.natcashEnabled = true,
+    this.entrepotTrialDays = 30,
+    this.entrepotTrialAll = false,
   });
 
   @override
@@ -1823,16 +1829,23 @@ class _EntrepotPaymentSectionState
                         color: AppColors.primary, size: 18),
                   ),
                   const SizedBox(width: 10),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Payer vos entrepôts',
+                        const Text('Payer vos entrepôts',
                             style: TextStyle(
                                 fontSize: 14, fontWeight: FontWeight.w600)),
                         Text(
-                            'Pas d\'essai gratuit — la distribution est bloquée tant que non payé.',
-                            style: TextStyle(
+                            widget.entrepotTrialAll
+                                ? 'Chaque entrepôt bénéficie d\'un essai gratuit de '
+                                  '${widget.entrepotTrialDays} jours à la création — '
+                                  'la distribution est bloquée une fois l\'essai/abonnement expiré.'
+                                : 'Seul votre 1er entrepôt bénéficie d\'un essai gratuit de '
+                                  '${widget.entrepotTrialDays} jours à la création — '
+                                  'les suivants sont payants dès leur création. '
+                                  'La distribution est bloquée tant que non payé/expiré.',
+                            style: const TextStyle(
                                 fontSize: 11, color: AppColors.textSecondary)),
                       ],
                     ),
@@ -1948,8 +1961,11 @@ class _EntrepotPaymentSectionState
                     children: entrepots.map((e) {
                       final isSelected = _selected.contains(e.id);
                       final paid = e.isSubscriptionActive;
+                      // "Actif" et non "Payé" — cette date peut venir de
+                      // l'essai gratuit automatique (voir platform_config
+                      // entrepot_trial_days), pas forcément d'un paiement.
                       final statusStr = paid
-                          ? 'Payé jusqu\'au ${DateFormat('dd/MM/yy').format(e.subscriptionEndsAt!)}'
+                          ? 'Actif jusqu\'au ${DateFormat('dd/MM/yy').format(e.subscriptionEndsAt!)}'
                           : 'Non payé';
                       return CheckboxListTile(
                         dense: true,

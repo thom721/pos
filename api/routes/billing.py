@@ -194,6 +194,7 @@ def get_billing_config(
             "support_email": "", "support_whatsapp": "",
             "price_per_extra_caisse_htg": 500.0, "price_per_extra_caisse_usd": 4.0,
             "price_per_extra_depot_htg":  500.0, "price_per_extra_depot_usd":  4.0,
+            "entrepot_trial_days": 30, "entrepot_trial_all": False,
         }
     return {
         "moncash_number":    cfg.moncash_number,
@@ -212,6 +213,8 @@ def get_billing_config(
         "moncash_enabled": bool(getattr(cfg, "moncash_enabled", True)),
         "natcash_enabled": bool(getattr(cfg, "natcash_enabled", True)),
         "card_enabled":    bool(getattr(cfg, "card_enabled",    True)),
+        "entrepot_trial_days": int(getattr(cfg, "entrepot_trial_days", 30)),
+        "entrepot_trial_all":  bool(getattr(cfg, "entrepot_trial_all", False)),
     }
 
 

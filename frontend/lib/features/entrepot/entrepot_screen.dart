@@ -290,8 +290,10 @@ class _SubscriptionBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final paid = entrepot.isSubscriptionActive;
     final color = paid ? AppColors.success : AppColors.error;
+    // "Actif" et non "Payé" — peut venir de l'essai gratuit automatique
+    // (platform_config.entrepot_trial_days), pas forcément d'un paiement.
     final label = paid
-        ? 'Payé jusqu\'au ${_dayFmt.format(entrepot.subscriptionEndsAt!)}'
+        ? 'Actif jusqu\'au ${_dayFmt.format(entrepot.subscriptionEndsAt!)}'
         : 'Non payé';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
