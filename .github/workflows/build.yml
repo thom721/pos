@@ -507,14 +507,47 @@ jobs:
           }
           Write-Host "OK — posconnect-manager.exe compilé"
 
-      - name: Compiler l'installeur Inno Setup
+      - name: Préparer la signature (certificat + script sign.cmd)
+        shell: pwsh
+        env:
+          PFX_B64: ${{ secrets.WIN_CODESIGN_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.WIN_CODESIGN_PFX_PASSWORD }}
+        run: |
+          $bytes = [Convert]::FromBase64String($env:PFX_B64)
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\posconnect-codesign.pfx", $bytes)
+
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+              Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) { throw "signtool.exe introuvable sur ce runner" }
+
+          # Même mécanisme que le job inno-client (voir ses commentaires pour
+          # le détail des deux bugs contournés : CryptAcquireContext sur les
+          # runners Windows via Import-PfxCertificate+/sha1, et le splitting
+          # d'arguments PowerShell via sign.cmd écrit sur disque).
+          $securePass = ConvertTo-SecureString -String $env:PFX_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath "$env:RUNNER_TEMP\posconnect-codesign.pfx" `
+              -CertStoreLocation Cert:\CurrentUser\My -Password $securePass -Exportable
+          $thumbprint = $cert.Thumbprint
+          Write-Host "Certificat importé dans Cert:\CurrentUser\My — thumbprint $thumbprint"
+          "THUMBPRINT=$thumbprint" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          @"
+          @echo off
+          "$signtool" sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 %1
+          "@ | Set-Content -Path "$env:RUNNER_TEMP\sign.cmd" -Encoding UTF8NoBOM
+
+      - name: Compiler l'installeur Inno Setup (signé)
         shell: pwsh
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           $ver  = "${{ needs.determine-version.outputs.version }}"
-          Write-Host "Compilation Inno Setup v$ver"
-          & $iscc "/DMyAppVersion=$ver" "certificat\pos-server.iss"
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup ISCC.exe a échoué (code $LASTEXITCODE)" }
+          Write-Host "Compilation + signature serveur Inno Setup v$ver"
+          & $iscc "/DMyAppVersion=$ver" "/SPosConnectSignTool=$env:RUNNER_TEMP\sign.cmd `$f" "certificat\pos-server.iss"
+          $exitCode = $LASTEXITCODE
+          Remove-Item "$env:RUNNER_TEMP\sign.cmd" -Force -ErrorAction SilentlyContinue
+          Remove-Item "$env:RUNNER_TEMP\posconnect-codesign.pfx" -Force -ErrorAction SilentlyContinue
+          Remove-Item "Cert:\CurrentUser\My\$env:THUMBPRINT" -DeleteKey -Force -ErrorAction SilentlyContinue
+          if ($exitCode -ne 0) { throw "Inno Setup ISCC.exe a échoué (code $exitCode)" }
 
       - name: Upload installeur Windows
         uses: actions/upload-artifact@v4

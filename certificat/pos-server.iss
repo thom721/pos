@@ -47,6 +47,10 @@ OutputBaseFilename=POSConnect-Setup-{#MyAppVersion}
 SolidCompression=yes
 WizardStyle=modern
 
+; Signature Authenticode — même mécanisme que pos-client.iss : la commande
+; réelle est passée par le CI via /SPosConnectSignTool=... (voir build.yml).
+SignTool=PosConnectSignTool
+
 [Languages]
 Name: "french";  MessagesFile: "compiler:Languages\French.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -64,8 +68,8 @@ Name: "{app}\nginx\temp"
 
 ; ── Fichiers à copier ─────────────────────────────────────────────────────────
 [Files]
-; Serveur API compilé (Nuitka)
-Source: "backend-windows\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; Serveur API compilé (Nuitka) — "sign" applique PosConnectSignTool à cet exe précis
+Source: "backend-windows\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion sign
 Source: "backend-windows\*"; DestDir: "{app}"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -86,13 +90,18 @@ Source: "server.key";            DestDir: "{app}\certificat"; Flags: ignoreversi
 Source: "nginx-windows.conf";    DestDir: "{app}\certificat"; Flags: ignoreversion
 
 ; Gestionnaire de services (interface admin — EXE compilé, pas de console PowerShell)
-Source: "posconnect-manager.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "posconnect-manager.exe"; DestDir: "{app}"; Flags: ignoreversion sign
 
 ; Icône de l'application
 Source: "setup-info\pos.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Script d'installation des services (appelé en [Run])
 Source: "setup-info\setup-windows.ps1"; DestDir: "{app}"; Flags: ignoreversion
+
+; Certificat public de signature — installé dans le magasin de confiance
+; Windows par le [Run] ci-dessous, puis supprimé (ne reste jamais sur disque).
+Source: "setup-info\posconnect-codesign.cer"; DestDir: "{tmp}"; \
+  Flags: ignoreversion deleteafterinstall
 
 ; ── Registre Windows ──────────────────────────────────────────────────────────
 [Registry]
@@ -151,6 +160,16 @@ Name: "{commonstartup}\{#MyAppName}"; \
 
 ; ── Commandes après installation ──────────────────────────────────────────────
 [Run]
+; Fait confiance au certificat de signature — sans ça, SmartScreen avertit
+; quand même au premier lancement même si l'exe est signé (auto-signé =
+; pas encore dans une chaîne de confiance reconnue par Windows). Une fois
+; installé ici, toutes les futures mises à jour signées par ce même
+; certificat ne redéclencheront plus jamais l'avertissement sur cette machine.
+Filename: "certutil.exe"; \
+  Parameters: "-addstore Root ""{tmp}\posconnect-codesign.cer"""; \
+  Flags: runhidden waituntilterminated; \
+  StatusMsg: "Installation du certificat de signature..."
+
 ; setup-windows.ps1 reçoit -DbType mysql ou sqlite selon le choix de l'utilisateur.
 ; Il gère : téléchargement MySQL (si absent + MySQL choisi), extraction, init, services.
 Filename: "powershell.exe"; \
