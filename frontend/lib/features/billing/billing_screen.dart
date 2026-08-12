@@ -30,6 +30,7 @@ final _billingPaymentsProvider = FutureProvider<List<Map<String, dynamic>>>((ref
 });
 
 final _billingConfigProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  ref.watch(billingEpochProvider); // rafraîchi toutes les 5 min (voir settings_provider.dart)
   final res = await dio.get('/api/billing/config');
   return res.data as Map<String, dynamic>;
 });
