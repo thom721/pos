@@ -871,6 +871,8 @@ class _WarehouseDialogState extends State<_WarehouseDialog> {
   late final TextEditingController _name;
   late final TextEditingController _desc;
   bool _saving = false;
+  String? _linkedWarehouseId;
+  List<WarehouseModel> _depots = [];
 
   @override
   void initState() {
@@ -878,6 +880,17 @@ class _WarehouseDialogState extends State<_WarehouseDialog> {
     _name = TextEditingController(text: widget.warehouse?.name ?? '');
     _desc =
         TextEditingController(text: widget.warehouse?.description ?? '');
+    _linkedWarehouseId = widget.warehouse?.linkedWarehouseId;
+    if (widget.warehouse?.isEntrepot ?? false) {
+      WarehouseRepository().listWarehouses().then((all) {
+        if (!mounted) return;
+        setState(() {
+          _depots = all
+              .where((w) => !w.isEntrepot && w.id != widget.warehouse!.id)
+              .toList();
+        });
+      }).catchError((_) {});
+    }
   }
 
   @override
@@ -897,8 +910,15 @@ class _WarehouseDialogState extends State<_WarehouseDialog> {
         await repo.createWarehouse(_name.text.trim(),
             description: desc, force: force);
       } else {
-        await repo.updateWarehouse(widget.warehouse!.id,
-            name: _name.text.trim(), description: desc ?? '');
+        await repo.updateWarehouse(
+          widget.warehouse!.id,
+          name: _name.text.trim(),
+          description: desc ?? '',
+          linkedWarehouseId:
+              widget.warehouse!.isEntrepot ? _linkedWarehouseId : null,
+          unlinkWarehouse:
+              widget.warehouse!.isEntrepot && _linkedWarehouseId == null,
+        );
       }
       widget.onSaved();
       if (mounted) Navigator.pop(context);
@@ -947,6 +967,23 @@ class _WarehouseDialogState extends State<_WarehouseDialog> {
                     hintText: 'Adresse, notes…'),
                 maxLines: 2,
               ),
+              if (isEdit && (widget.warehouse?.isEntrepot ?? false)) ...[
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: _linkedWarehouseId,
+                  decoration: const InputDecoration(
+                    labelText: 'Dépôt rattaché (optionnel)',
+                    helperText: 'Sans rattachement, cet entrepôt reste accessible '
+                        'uniquement depuis le web (jamais synchronisé sur un poste local).',
+                    helperMaxLines: 3,
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Aucun — cloud uniquement')),
+                    ..._depots.map((w) => DropdownMenuItem(value: w.id, child: Text(w.name))),
+                  ],
+                  onChanged: (v) => setState(() => _linkedWarehouseId = v),
+                ),
+              ],
             ],
           ),
         ),

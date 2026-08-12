@@ -499,7 +499,19 @@ def _run_sync_inner(db: Session) -> dict:
         pub = pub_resp.json()
         from api.models.PlatformConfig import PlatformConfig as _PC
         local_cfg = db.query(_PC).first()
-        if local_cfg and isinstance(pub, dict) and pub:
+        if not local_cfg:
+            # Un poste local fraîchement installé n'a jamais de ligne
+            # PlatformConfig (_ensure_cloud_admin la crée seulement côté
+            # cloud — elle skip explicitement dès que CLOUD_SYNC_URL est
+            # configuré). Sans cette création, la boucle ci-dessous n'avait
+            # jamais rien à mettre à jour : get_billing_config retombait
+            # alors indéfiniment sur ses valeurs de repli codées en dur
+            # (500 HTG etc.), quels que soient les prix réellement
+            # configurés côté admin.
+            local_cfg = _PC()
+            db.add(local_cfg)
+            db.flush()
+        if isinstance(pub, dict) and pub:
             for field in _PUBLIC_CONFIG_FIELDS:
                 if field in pub:
                     setattr(local_cfg, field, pub[field])

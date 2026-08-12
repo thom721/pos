@@ -339,6 +339,11 @@ def update_warehouse(
         if wh.is_active and not data.is_active:
             _billing.close_extra(db, wh.id)
         wh.is_active = data.is_active
+    if wh.is_entrepot and (data.unlink_warehouse or data.linked_warehouse_id is not None):
+        from api.services.entrepot_service import _validate_linked_warehouse
+        new_link = None if data.unlink_warehouse else data.linked_warehouse_id
+        _validate_linked_warehouse(db, current_user.tenant_id, new_link)
+        wh.linked_warehouse_id = new_link
     db.commit()
     db.refresh(wh)
     return wh

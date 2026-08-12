@@ -30,17 +30,23 @@ class WarehouseRepository {
     }
   }
 
+  /// [linkedWarehouseId]/[unlinkWarehouse] : uniquement pertinent si ce
+  /// warehouse est un entrepôt (isEntrepot=true) — voir Warehouse.linked_warehouse_id.
   Future<WarehouseModel> updateWarehouse(
     String id, {
     String? name,
     String? description,
     bool? isActive,
+    String? linkedWarehouseId,
+    bool unlinkWarehouse = false,
   }) async {
     try {
       final res = await dio.put('/api/warehouses/$id', data: {
         if (name != null) 'name': name,
         if (description != null) 'description': description,
         if (isActive != null) 'is_active': isActive,
+        if (linkedWarehouseId != null) 'linked_warehouse_id': linkedWarehouseId,
+        if (unlinkWarehouse) 'unlink_warehouse': true,
       });
       return WarehouseModel.fromJson(res.data);
     } catch (e) {
