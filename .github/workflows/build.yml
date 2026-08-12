@@ -664,15 +664,32 @@ jobs:
           cd packages
           zip -r posconnect-windows-${{ needs.determine-version.outputs.version }}.zip windows/
 
-      - name: Copier installeur serveur Windows (.exe)
+      # Zippé plutôt que distribué en .exe brut : un .exe téléchargé porte le
+      # Mark of the Web (MOTW) et déclenche SmartScreen à l'exécution. Un
+      # .zip porte aussi le MOTW au téléchargement, mais celui-ci n'est
+      # propagé au contenu extrait que par certains outils (l'Explorateur
+      # Windows natif "Extraire tout" le propage ; beaucoup d'outils tiers
+      # historiquement non). Gain réel donc partiel/dépendant de l'outil de
+      # l'utilisateur, pas une suppression garantie de l'avertissement.
+      - name: Zipper l'installeur serveur Windows
         run: |
-          cp artifacts/windows-installer/POSConnect-Setup.exe packages/ 2>/dev/null || \
+          if [ -f artifacts/windows-installer/POSConnect-Setup.exe ]; then
+            cd artifacts/windows-installer
+            zip ../../packages/POSConnect-Setup.zip POSConnect-Setup.exe
+            cd -
+          else
             echo "Avertissement : aucun EXE serveur Inno Setup trouvé"
+          fi
 
-      - name: Copier installeur client Windows (.exe)
+      - name: Zipper l'installeur client Windows
         run: |
-          cp artifacts/windows-client-installer/POSConnect-Client-Setup.exe packages/ 2>/dev/null || \
+          if [ -f artifacts/windows-client-installer/POSConnect-Client-Setup.exe ]; then
+            cd artifacts/windows-client-installer
+            zip ../../packages/POSConnect-Client-Setup.zip POSConnect-Client-Setup.exe
+            cd -
+          else
             echo "Avertissement : aucun EXE client Inno Setup trouvé"
+          fi
 
       - name: Assembler Linux (tar.gz)
         run: |
@@ -706,8 +723,8 @@ jobs:
           name: posconnect-v${{ needs.determine-version.outputs.version }}
           path: |
             packages/posconnect-windows-*.zip
-            packages/POSConnect-Setup.exe
-            packages/POSConnect-Client-Setup.exe
+            packages/POSConnect-Setup.zip
+            packages/POSConnect-Client-Setup.zip
             packages/posconnect-linux-*.tar.gz
             packages/posconnect-macos-*.tar.gz
             packages/posconnect-web-*.zip
@@ -727,15 +744,15 @@ jobs:
 
             | Plateforme | Fichier |
             |-----------|---------|
-            | Windows — Serveur (installeur) | `POSConnect-Setup.exe` |
-            | Windows — Client (installeur)  | `POSConnect-Client-Setup.exe` |
+            | Windows — Serveur (installeur) | `POSConnect-Setup.zip` |
+            | Windows — Client (installeur)  | `POSConnect-Client-Setup.zip` |
             | Windows — Zip (serveur+client) | `posconnect-windows-${{ needs.determine-version.outputs.version }}.zip` |
             | Linux                | `posconnect-linux-${{ needs.determine-version.outputs.version }}.tar.gz` |
             | macOS                | `posconnect-macos-${{ needs.determine-version.outputs.version }}.tar.gz` |
             | Web                  | `posconnect-web-${{ needs.determine-version.outputs.version }}.zip` |
 
             ### Installation Windows
-            Télécharger et exécuter `POSConnect-Setup.exe` en tant qu'Administrateur.
+            Extraire `POSConnect-Setup.zip` puis exécuter le `.exe` obtenu en tant qu'Administrateur.
             Installe dans `C:\ProgramData\POS_Connect\` (données MySQL dans `C:\ProgramData\POS_Connect_MySQL\`).
 
             ### Déploiement Web
@@ -743,8 +760,8 @@ jobs:
             ou servir avec Nginx (voir documentation).
           files: |
             packages/posconnect-windows-*.zip
-            packages/POSConnect-Setup.exe
-            packages/POSConnect-Client-Setup.exe
+            packages/POSConnect-Setup.zip
+            packages/POSConnect-Client-Setup.zip
             packages/posconnect-linux-*.tar.gz
             packages/posconnect-macos-*.tar.gz
             packages/posconnect-web-*.zip
@@ -774,16 +791,16 @@ jobs:
 
             | Plateforme | Fichier |
             |-----------|---------|
-            | Windows — Serveur (installeur) | `POSConnect-Setup.exe` |
-            | Windows — Client (installeur)  | `POSConnect-Client-Setup.exe` |
+            | Windows — Serveur (installeur) | `POSConnect-Setup.zip` |
+            | Windows — Client (installeur)  | `POSConnect-Client-Setup.zip` |
             | Windows — Zip (serveur+client) | `posconnect-windows-${{ needs.determine-version.outputs.version }}.zip` |
             | Linux                | `posconnect-linux-${{ needs.determine-version.outputs.version }}.tar.gz` |
             | macOS                | `posconnect-macos-${{ needs.determine-version.outputs.version }}.tar.gz` |
             | Web                  | `posconnect-web-${{ needs.determine-version.outputs.version }}.zip` |
           files: |
             packages/posconnect-windows-*.zip
-            packages/POSConnect-Setup.exe
-            packages/POSConnect-Client-Setup.exe
+            packages/POSConnect-Setup.zip
+            packages/POSConnect-Client-Setup.zip
             packages/posconnect-linux-*.tar.gz
             packages/posconnect-macos-*.tar.gz
             packages/posconnect-web-*.zip

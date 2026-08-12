@@ -2465,7 +2465,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                       controller: _updateUrlCtrl,
                       decoration: const InputDecoration(
                         labelText: 'Lien Windows / Desktop — Client (facultatif)',
-                        hintText: 'https://github.com/…/releases/download/vX.X.X/POSConnect-Client-Setup.exe',
+                        hintText: 'https://github.com/…/releases/download/vX.X.X/POSConnect-Client-Setup.zip',
                         helperText: 'Affiché dans l\'app caisse quand une mise à jour est disponible.',
                       ),
                     ),
@@ -2492,7 +2492,7 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                       controller: _updateUrlWindowsServerCtrl,
                       decoration: const InputDecoration(
                         labelText: 'Lien Windows — Serveur (facultatif)',
-                        hintText: 'https://github.com/…/releases/download/vX.X.X/POSConnect-Setup.exe',
+                        hintText: 'https://github.com/…/releases/download/vX.X.X/POSConnect-Setup.zip',
                         helperText: 'Ouvert si l\'utilisateur clique la notification de mise à jour.',
                       ),
                     ),
