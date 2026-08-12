@@ -1264,6 +1264,12 @@ def update_platform_config(
     db.commit()
     db.refresh(cfg)
 
+    # PlatformConfig n'est pas scopé à un tenant — un changement de prix ici
+    # doit atteindre TOUS les tenants connectés immédiatement (push WS), pas
+    # seulement après leur prochain cycle de synchro/timer de repli 5 min.
+    from api.ws_manager import manager as _ws_manager
+    _ws_manager.notify_all_threadsafe()
+
     return {
         "id":                cfg.id,
         "moncash_number":    cfg.moncash_number,

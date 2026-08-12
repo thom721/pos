@@ -10,6 +10,7 @@ import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart' show dio, extractAnyError;
+import 'package:pos_connect/providers/license_provider.dart' show billingEpochProvider;
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
@@ -1429,6 +1430,11 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
     await ref.read(syncProvider.notifier).runSync();
     if (!mounted) return;
     ref.invalidate(pendingOfflineCountProvider);
+    // Un sync manuel réussi peut avoir tiré une config plateforme à jour
+    // (prix/depot supp., essai entrepôt...) dans le PlatformConfig local —
+    // sans ce bump, un écran Abonnement déjà ouvert garderait son prix mis
+    // en cache jusqu'au prochain tick des 5 min ou un redémarrage complet.
+    ref.read(billingEpochProvider.notifier).state++;
     final s = ref.read(syncProvider);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(s.error ?? s.lastResult ?? 'Sync terminé'),

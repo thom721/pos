@@ -43,7 +43,8 @@ InfoAfterFile=setup-info\APRES_INSTALLATION.txt
 SetupIconFile=setup-info\pos.ico
 UninstallDisplayIcon={app}\pos.ico
 OutputDir=.
-OutputBaseFilename=POSConnect-Setup-{#MyAppVersion}
+; Nom fixe (pas de numéro de version) — même raisonnement que pos-client.iss.
+OutputBaseFilename=POSConnect-Setup
 SolidCompression=yes
 WizardStyle=modern
 
@@ -165,8 +166,21 @@ Name: "{commonstartup}\{#MyAppName}"; \
 ; pas encore dans une chaîne de confiance reconnue par Windows). Une fois
 ; installé ici, toutes les futures mises à jour signées par ce même
 ; certificat ne redéclencheront plus jamais l'avertissement sur cette machine.
+;
+; Deux magasins nécessaires, pas un seul : "Root" établit la chaîne de
+; confiance (le certificat auto-signé devient une autorité racine reconnue),
+; mais la vérification "éditeur reconnu" de Windows (celle qui évite le
+; prompt UAC "Éditeur inconnu" et certaines règles de stratégie de groupe)
+; regarde spécifiquement le magasin "TrustedPublisher" — l'absence de cette
+; deuxième commande laissait cette vérification-là toujours en échec même
+; avec un certificat par ailleurs valide et dans une chaîne de confiance.
 Filename: "certutil.exe"; \
   Parameters: "-addstore Root ""{tmp}\posconnect-codesign.cer"""; \
+  Flags: runhidden waituntilterminated; \
+  StatusMsg: "Installation du certificat de signature..."
+
+Filename: "certutil.exe"; \
+  Parameters: "-addstore TrustedPublisher ""{tmp}\posconnect-codesign.cer"""; \
   Flags: runhidden waituntilterminated; \
   StatusMsg: "Installation du certificat de signature..."
 

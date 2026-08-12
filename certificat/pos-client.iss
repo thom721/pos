@@ -47,7 +47,12 @@ InfoAfterFile=setup-info\APRES_INSTALLATION.txt
 SetupIconFile=setup-info\pos.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=.
-OutputBaseFilename=POSConnect-Client-Setup-{#MyAppVersion}
+; Nom fixe (pas de numéro de version) — teste l'hypothèse que la réputation
+; SmartScreen se construit plus lentement quand le nom de fichier change à
+; chaque version (vu comme un flux de fichiers "jamais vus" plutôt que des
+; mises à jour d'une même app). Le numéro de version reste visible dans les
+; propriétés du fichier (AppVersion) et dans le titre GitHub Release.
+OutputBaseFilename=POSConnect-Client-Setup
 SolidCompression=yes
 WizardStyle=modern
 
@@ -114,8 +119,21 @@ Name: "{autodesktop}\{#MyAppName}";  Filename: "{app}\{#MyAppExeName}"; \
 ; pas encore dans une chaîne de confiance reconnue par Windows). Une fois
 ; installé ici, toutes les futures mises à jour signées par ce même
 ; certificat ne redéclencheront plus jamais l'avertissement sur cette machine.
+;
+; Deux magasins nécessaires, pas un seul : "Root" établit la chaîne de
+; confiance (le certificat auto-signé devient une autorité racine reconnue),
+; mais la vérification "éditeur reconnu" de Windows (celle qui évite le
+; prompt UAC "Éditeur inconnu" et certaines règles de stratégie de groupe)
+; regarde spécifiquement le magasin "TrustedPublisher" — l'absence de cette
+; deuxième commande laissait cette vérification-là toujours en échec même
+; avec un certificat par ailleurs valide et dans une chaîne de confiance.
 Filename: "certutil.exe"; \
   Parameters: "-addstore Root ""{tmp}\posconnect-codesign.cer"""; \
+  Flags: runhidden waituntilterminated; \
+  StatusMsg: "Installation du certificat de signature..."
+
+Filename: "certutil.exe"; \
+  Parameters: "-addstore TrustedPublisher ""{tmp}\posconnect-codesign.cer"""; \
   Flags: runhidden waituntilterminated; \
   StatusMsg: "Installation du certificat de signature..."
 

@@ -63,6 +63,22 @@ class ConnectionManager:
     def connection_count(self, tenant_id: str) -> int:
         return len(self._connections.get(tenant_id, set()))
 
+    async def notify_all(self) -> None:
+        """Diffuse à TOUTES les connexions, tous tenants confondus — pour un
+        changement qui n'est pas scopé à un tenant précis (ex: PlatformConfig,
+        modifiée par le superadmin, affecte le prix/essai de tous les tenants
+        d'un coup ; ou le pull de config publique côté serveur local, qui n'a
+        qu'un seul tenant de toute façon)."""
+        dead: list[tuple[str, WebSocket]] = []
+        for tenant_id, conns in list(self._connections.items()):
+            for ws in list(conns):
+                try:
+                    await ws.send_json({"type": "sync"})
+                except Exception:
+                    dead.append((tenant_id, ws))
+        for tenant_id, ws in dead:
+            self.disconnect(ws, tenant_id)
+
     def notify_threadsafe(self, tenant_id: str) -> None:
         """Fire-and-forget notify from a synchronous context (e.g. a threadpool endpoint)."""
         try:
@@ -70,6 +86,17 @@ class ConnectionManager:
             if loop.is_running():
                 loop.call_soon_threadsafe(
                     lambda: asyncio.ensure_future(self.notify(tenant_id))
+                )
+        except RuntimeError:
+            pass
+
+    def notify_all_threadsafe(self) -> None:
+        """Fire-and-forget notify_all from a synchronous context."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.call_soon_threadsafe(
+                    lambda: asyncio.ensure_future(self.notify_all())
                 )
         except RuntimeError:
             pass

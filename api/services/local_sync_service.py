@@ -516,6 +516,11 @@ def _run_sync_inner(db: Session) -> dict:
                 if field in pub:
                     setattr(local_cfg, field, pub[field])
             db.commit()
+            # Pousse aux clients connectés à CE serveur local (WS) — sans ça,
+            # un prix mis à jour côté admin cloud n'atteignait un écran
+            # Abonnement déjà ouvert qu'au prochain timer de repli 5 min.
+            from api.ws_manager import manager as _ws_manager
+            _ws_manager.notify_all_threadsafe()
     except Exception as exc:
         _log.warning("sync public-platform-config: %s", exc)
 

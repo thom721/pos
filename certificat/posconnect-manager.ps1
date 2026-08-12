@@ -284,7 +284,7 @@ function Show-AuthDialog {
 # -- Formulaire principal ------------------------------------------------------
 $form                  = New-Object System.Windows.Forms.Form
 $form.Text             = "POS Serveur -- Etat des services"
-$form.ClientSize       = New-Object System.Drawing.Size(500, 410)
+$form.ClientSize       = New-Object System.Drawing.Size(500, 440)
 $form.StartPosition    = "CenterScreen"
 $form.FormBorderStyle  = "FixedDialog"
 $form.MaximizeBox      = $false
@@ -306,9 +306,22 @@ $lSub.Location  = New-Object System.Drawing.Point(18, 42)
 $lSub.AutoSize  = $true
 $form.Controls.Add($lSub)
 
+# Bandeau mise à jour serveur disponible — caché par défaut, rempli et
+# affiché par Test-ServerUpdate (voir plus bas). Persiste dans la fenêtre
+# principale, contrairement à la bulle systray qui disparaît après 10s.
+$lUpdateBanner            = New-Object System.Windows.Forms.LinkLabel
+$lUpdateBanner.Text       = ""
+$lUpdateBanner.LinkColor  = $clrOrange
+$lUpdateBanner.ActiveLinkColor = $clrOrange
+$lUpdateBanner.Location   = New-Object System.Drawing.Point(14, 62)
+$lUpdateBanner.Size       = New-Object System.Drawing.Size(472, 20)
+$lUpdateBanner.Font       = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+$lUpdateBanner.Visible    = $false
+$form.Controls.Add($lUpdateBanner)
+
 # Panel statuts
 $panel             = New-Object System.Windows.Forms.Panel
-$panel.Location    = New-Object System.Drawing.Point(14, 68)
+$panel.Location    = New-Object System.Drawing.Point(14, 98)
 $panel.Size        = New-Object System.Drawing.Size(472, 156)
 $panel.BackColor   = $clrPanel
 $panel.BorderStyle = "None"
@@ -377,7 +390,7 @@ foreach ($svcName in $SVCS.Keys) {
 $lWarn           = New-Object System.Windows.Forms.Label
 $lWarn.Text      = ""
 $lWarn.ForeColor = $clrOrange
-$lWarn.Location  = New-Object System.Drawing.Point(14, 234)
+$lWarn.Location  = New-Object System.Drawing.Point(14, 264)
 $lWarn.Size      = New-Object System.Drawing.Size(472, 36)
 $lWarn.Font      = New-Object System.Drawing.Font("Segoe UI", 8)
 $form.Controls.Add($lWarn)
@@ -387,7 +400,7 @@ function New-Btn($text, $bgColor, $x) {
     $b          = New-Object System.Windows.Forms.Button
     $b.Text     = $text
     $b.Size     = New-Object System.Drawing.Size(108, 34)
-    $b.Location = New-Object System.Drawing.Point($x, 290)
+    $b.Location = New-Object System.Drawing.Point($x, 320)
     $b.BackColor = $bgColor
     $b.ForeColor = $clrText
     $b.FlatStyle = "Flat"
@@ -409,14 +422,14 @@ $clrBtnSqlite = [System.Drawing.Color]::FromArgb(41, 128, 185)
 $sep           = New-Object System.Windows.Forms.Label
 $sep.Text      = ""
 $sep.BackColor = [System.Drawing.Color]::FromArgb(52, 73, 94)
-$sep.Location  = New-Object System.Drawing.Point(14, 338)
+$sep.Location  = New-Object System.Drawing.Point(14, 368)
 $sep.Size      = New-Object System.Drawing.Size(472, 1)
 $form.Controls.Add($sep)
 
 $lDbType           = New-Object System.Windows.Forms.Label
 $lDbType.Text      = "Base de donnees : " + $DbTypeIni.ToUpper()
 $lDbType.ForeColor = $clrSub
-$lDbType.Location  = New-Object System.Drawing.Point(14, 348)
+$lDbType.Location  = New-Object System.Drawing.Point(14, 378)
 $lDbType.AutoSize  = $true
 $form.Controls.Add($lDbType)
 
@@ -424,7 +437,7 @@ $form.Controls.Add($lDbType)
 $btnToMySQL        = New-Object System.Windows.Forms.Button
 $btnToMySQL.Text   = "Passer a MySQL"
 $btnToMySQL.Size   = New-Object System.Drawing.Size(148, 34)
-$btnToMySQL.Location = New-Object System.Drawing.Point(222, 368)
+$btnToMySQL.Location = New-Object System.Drawing.Point(222, 398)
 $btnToMySQL.BackColor = $clrBtnPurple
 $btnToMySQL.ForeColor = $clrText
 $btnToMySQL.FlatStyle = "Flat"
@@ -437,7 +450,7 @@ $form.Controls.Add($btnToMySQL)
 $btnToSQLite        = New-Object System.Windows.Forms.Button
 $btnToSQLite.Text   = "Revenir a SQLite"
 $btnToSQLite.Size   = New-Object System.Drawing.Size(148, 34)
-$btnToSQLite.Location = New-Object System.Drawing.Point(338, 368)
+$btnToSQLite.Location = New-Object System.Drawing.Point(338, 398)
 $btnToSQLite.BackColor = $clrBtnSqlite
 $btnToSQLite.ForeColor = $clrText
 $btnToSQLite.FlatStyle = "Flat"
@@ -843,6 +856,12 @@ function Test-ServerUpdate {
                 "POS Serveur $latest est disponible (version installée : $installedVersion). Cliquez pour ouvrir le lien de téléchargement.",
                 [System.Windows.Forms.ToolTipIcon]::Info
             )
+            # Bandeau persistant dans la fenêtre principale — contrairement à
+            # la bulle systray (disparaît après 10s, facilement manquée), ceci
+            # reste visible tant que la mise à jour n'est pas installée, et
+            # est visible même si la fenêtre est ouverte après coup.
+            $lUpdateBanner.Text    = "Mise à jour disponible : POS Serveur $latest (installee : $installedVersion) - Cliquez pour telecharger"
+            $lUpdateBanner.Visible = $true
         }
     } catch {
         # Pas de connexion / serveur cloud injoignable — non bloquant, on
@@ -850,6 +869,11 @@ function Test-ServerUpdate {
     }
 }
 $notifyIcon.Add_BalloonTipClicked({
+    if ($script:updateDownloadUrl) {
+        Start-Process $script:updateDownloadUrl
+    }
+})
+$lUpdateBanner.Add_LinkClicked({
     if ($script:updateDownloadUrl) {
         Start-Process $script:updateDownloadUrl
     }
