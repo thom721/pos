@@ -359,7 +359,13 @@ class _CompanyFormState extends ConsumerState<_CompanyForm> {
           'file': await MultipartFile.fromFile(file.path!, filename: file.name),
         });
       }
-      final res = await dio.post('/api/config/logo', data: form);
+      // warehouse_id explicite — sinon le serveur retombe sur le dépôt par
+      // défaut de l'utilisateur (_wh_id), qui peut différer du business
+      // actuellement sélectionné à l'écran : le logo se sauvegarde bien
+      // quelque part, mais pas forcément sur la ligne AppConfig affichée ici.
+      final warehouseId = ref.read(activeWarehouseProvider)?.id;
+      final queryParams = warehouseId != null ? '?warehouse_id=$warehouseId' : '';
+      final res = await dio.post('/api/config/logo$queryParams', data: form);
       final logoPath =
           (res.data as Map<String, dynamic>)['logo_path'] as String? ?? '';
       await ref.read(settingsProvider.notifier).save(
