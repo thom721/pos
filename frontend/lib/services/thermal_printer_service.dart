@@ -9,6 +9,7 @@ import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/services/logo_cache_service.dart';
 import 'package:pos_connect/shared/utils/receipt_pdf.dart';
 import 'package:pos_connect/shared/utils/restaurant_bill_pdf.dart';
 
@@ -51,6 +52,18 @@ class ThermalPrinterService {
 
   Future<bool> get isSunmiAvailable => _checkSunmi();
 
+  Future<void> _printSunmiLogo(AppSettings settings) async {
+    if (settings.logoPath.isEmpty) return;
+    try {
+      final bytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
+      if (bytes == null) return;
+      await SunmiPrinter.printImage(bytes, align: SunmiPrintAlign.CENTER);
+      await SunmiPrinter.lineWrap(1);
+    } catch (_) {
+      // Logo optionnel — un échec ne doit jamais bloquer le reste du reçu.
+    }
+  }
+
   Future<void> printReceipt(
     SaleModel sale,
     AppSettings settings, {
@@ -92,6 +105,7 @@ class ThermalPrinterService {
     final sym = settings.currencySymbol.trim();
 
     // En-tête boutique
+    await _printSunmiLogo(settings);
     await SunmiPrinter.printText(
       '${settings.businessName}\n',
       style: SunmiTextStyle(fontSize: 36, align: SunmiPrintAlign.CENTER, bold: true),
@@ -313,6 +327,7 @@ class ThermalPrinterService {
     final sym = settings.currencySymbol.trim();
     final isPaid = reference != null;
 
+    await _printSunmiLogo(settings);
     await SunmiPrinter.printText(
       '${settings.businessName}\n',
       style: SunmiTextStyle(fontSize: 36, align: SunmiPrintAlign.CENTER, bold: true),
