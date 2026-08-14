@@ -3,6 +3,7 @@ Utilitaire d'envoi d'email SMTP pour les notifications de plan.
 Config lue depuis PlatformConfig (table singleton).
 """
 import json
+import logging
 import smtplib
 import threading
 from email.mime.multipart import MIMEMultipart
@@ -10,6 +11,8 @@ from email.mime.text import MIMEText
 from datetime import timedelta
 
 from api.core.dt_coerce import now_local
+
+_log = logging.getLogger("pos.email")
 
 
 def _send_via_smtp(host: str, port: int, user: str, password: str,
@@ -43,7 +46,8 @@ def send_plan_warning_email(
     """Lance l'envoi en arrière-plan — ne bloque pas la requête."""
 
     if not smtp_host or not smtp_from:
-        return  # SMTP non configuré → silencieux
+        _log.warning("Email non envoyé — SMTP non configuré (PlatformConfig.smtp_host/smtp_from vide)")
+        return
 
     label = "période d'essai" if plan_type == "trial" else "abonnement"
     if days_left == 0:
@@ -80,7 +84,11 @@ sera bloquée</strong>.</p>
             _send_via_smtp(smtp_host, smtp_port, smtp_user, smtp_password,
                            smtp_from, tenant_email, subject, html)
         except Exception:
-            pass  # échec silencieux
+            # Ne bloque jamais la requête HTTP (thread séparé) mais ne doit
+            # plus jamais échouer en silence total — sans ce log, aucune
+            # trace nulle part d'un envoi SMTP en échec (mauvais port/mode
+            # TLS, identifiants invalides, etc.).
+            _log.exception("Échec envoi email (plan warning) vers %s", tenant_email)
 
     threading.Thread(target=_send, daemon=True).start()
 
@@ -96,7 +104,8 @@ def send_password_reset_email(
 ) -> None:
     """Lance l'envoi en arrière-plan — ne bloque pas la requête."""
     if not smtp_host or not smtp_from:
-        return  # SMTP non configuré → silencieux
+        _log.warning("Email non envoyé — SMTP non configuré (PlatformConfig.smtp_host/smtp_from vide)")
+        return
 
     subject = "POS Connect — Code de réinitialisation de mot de passe"
     html = f"""
@@ -118,7 +127,7 @@ demande, ignorez cet email — votre mot de passe reste inchangé.</p>
             _send_via_smtp(smtp_host, smtp_port, smtp_user, smtp_password,
                            smtp_from, to_addr, subject, html)
         except Exception:
-            pass  # échec silencieux
+            _log.exception("Échec envoi email (reset mot de passe) vers %s", to_addr)
 
     threading.Thread(target=_send, daemon=True).start()
 
@@ -137,7 +146,8 @@ def send_low_stock_email(
 ) -> None:
     """Lance l'envoi en arrière-plan — ne bloque pas la requête."""
     if not smtp_host or not smtp_from:
-        return  # SMTP non configuré → silencieux
+        _log.warning("Email non envoyé — SMTP non configuré (PlatformConfig.smtp_host/smtp_from vide)")
+        return
 
     subject = f"POS Connect — Stock bas : {product_name}"
     html = f"""
@@ -159,7 +169,7 @@ le seuil d'alerte configuré.</p>
             _send_via_smtp(smtp_host, smtp_port, smtp_user, smtp_password,
                            smtp_from, to_addr, subject, html)
         except Exception:
-            pass  # échec silencieux
+            _log.exception("Échec envoi email (stock bas) vers %s", to_addr)
 
     threading.Thread(target=_send, daemon=True).start()
 
