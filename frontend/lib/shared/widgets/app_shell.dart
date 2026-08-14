@@ -27,6 +27,17 @@ import 'package:pos_connect/services/offline_queue_service.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:printing/printing.dart' show Printer, Printing;
 
+/// Lien de téléchargement à proposer pour la mise à jour, selon la
+/// plateforme — jamais de repli d'Android vers le lien bureau (.exe) :
+/// un updateUrlAndroid absent/vide doit simplement ne proposer aucun lien
+/// sur Android, pas faire télécharger un installeur Windows à un téléphone.
+String? resolveUpdateDownloadUrl({
+  required bool isAndroid,
+  required VersionStatus version,
+}) {
+  return isAndroid ? version.updateUrlAndroid : version.updateUrl;
+}
+
 class _NavItem {
   final String label;
   final IconData icon;
@@ -1635,9 +1646,7 @@ class _ForceUpdateScreen extends StatelessWidget {
               const SizedBox(height: 28),
               if (!kIsWeb) ...() {
                 final isAndroid = defaultTargetPlatform == TargetPlatform.android;
-                final url = isAndroid
-                    ? (version.updateUrlAndroid ?? version.updateUrl)
-                    : version.updateUrl;
+                final url = resolveUpdateDownloadUrl(isAndroid: isAndroid, version: version);
                 if (url == null || url.isEmpty) return const [];
                 return [
                   FilledButton.icon(
@@ -1704,9 +1713,7 @@ class _UpdateBannerState extends State<_UpdateBanner> {
             ),
             if (!kIsWeb) ...() {
               final isAndroid = defaultTargetPlatform == TargetPlatform.android;
-              final url = isAndroid
-                  ? (widget.version.updateUrlAndroid ?? widget.version.updateUrl)
-                  : widget.version.updateUrl;
+              final url = resolveUpdateDownloadUrl(isAndroid: isAndroid, version: widget.version);
               if (url == null || url.isEmpty) return const [];
               return [
                 const SizedBox(width: 8),

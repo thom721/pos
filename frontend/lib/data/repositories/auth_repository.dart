@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,10 +56,22 @@ class AuthRepository {
   // ── Cloud login (email + password → JSON) ───────────────────────────────
 
   Future<AuthToken> cloudLogin(String email, String password) async {
-    final deviceId = await getOrCreateDeviceId();
+    // Web : jamais de device_id au login — sinon le simple fait d'ouvrir le
+    // tableau de bord dans un navigateur réclame silencieusement la caisse
+    // principale du tenant (device_id posé + "Appareil en attente" affiché
+    // alors qu'aucun vrai appareil ne s'est jamais connecté). Le backend
+    // gère déjà ce cas ("admin web sans caisse liée → pas de vérification",
+    // voir api/core/tenant.py::require_active_plan). Ouvrir une session
+    // caisse depuis le web reste possible : pos_screen.dart récupère son
+    // propre device_id séparément, au moment voulu, pas ici.
+    final deviceId = kIsWeb ? null : await getOrCreateDeviceId();
 
     final response = await dio.post('/api/public/login',
-      data: {'email': email, 'password': password, 'device_id': deviceId},
+      data: {
+        'email': email,
+        'password': password,
+        if (deviceId != null) 'device_id': deviceId,
+      },
       options: Options(extra: {'skipAutoLogout': true}), // idem
     );
 
