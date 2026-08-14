@@ -128,7 +128,7 @@ def _get_or_create_register(
         dedicated = ded_q.first()
         if dedicated:
             if dedicated.device_id != device_id:
-                bind_register_device(dedicated, device_id)
+                bind_register_device(dedicated, device_id, reason="dedicated_user_register")
                 db.flush()
             return dedicated
 
@@ -194,7 +194,7 @@ def _get_or_create_register(
     ).first()
 
     if free_slot:
-        bind_register_device(free_slot, device_id)
+        bind_register_device(free_slot, device_id, reason="open_session_free_slot")
         db.flush()
         return free_slot
 

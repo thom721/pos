@@ -1,4 +1,5 @@
 import json as _json
+import logging
 import uuid as _uuid
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -23,6 +24,8 @@ from api.services import billing_extra_service as _billing
 from api.services import config_service as _config
 from api.services import audit_service
 from api.models.InstallationCode import InstallationCode, generate_installation_code
+
+_log = logging.getLogger("pos.register")
 
 
 def _pricing(db: Session) -> PlatformConfig | None:
@@ -541,6 +544,10 @@ def update_register(
                 raise HTTPException(404, "Utilisateur introuvable")
             reg.dedicated_user_id = data.dedicated_user_id
     if data.reset_device:
+        _log.info(
+            "reset_device: reg=%s (%s) tenant=%s device_id %r efface, par user=%s",
+            reg.id, reg.name, current_user.tenant_id, reg.device_id, current_user.id,
+        )
         reg.device_id = None
         reg.is_device_approved = False
         reg.session_token = None
@@ -553,6 +560,11 @@ def update_register(
         # la fermer séparément via Journal d'audit → Sessions actives.
         _force_close_open_sessions(db, reg, current_user)
     elif data.is_device_approved is not None:
+        _log.info(
+            "is_device_approved: reg=%s (%s) tenant=%s device_id=%r %s -> %s, par user=%s",
+            reg.id, reg.name, current_user.tenant_id, reg.device_id,
+            reg.is_device_approved, data.is_device_approved, current_user.id,
+        )
         reg.is_device_approved = data.is_device_approved
     db.commit()
     db.refresh(reg)

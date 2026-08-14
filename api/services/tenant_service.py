@@ -241,7 +241,7 @@ def cloud_login(db: Session, email: str, password: str,
             register = candidates[0] if candidates else None
 
             if register:
-                bind_register_device(register, device_id)
+                bind_register_device(register, device_id, reason="cloud_login_free_slot")
 
         if register:
             # Rotate session token and stamp last_seen on every login

@@ -1,9 +1,13 @@
+import logging
+
 from sqlalchemy.orm import Session
 from api.models.Warehouse import Warehouse
 from api.models.PosRegister import PosRegister
 
+_log = logging.getLogger("pos.register")
 
-def bind_register_device(reg: PosRegister, new_device_id: str) -> None:
+
+def bind_register_device(reg: PosRegister, new_device_id: str, *, reason: str = "unknown") -> None:
     """Assigne new_device_id à reg. Si l'appareil change réellement, révoque
     l'approbation — un appareil différent doit être ré-approuvé par un admin
     avant de pouvoir ouvrir une caisse (voir cashier_sessions.open_session).
@@ -15,8 +19,19 @@ def bind_register_device(reg: PosRegister, new_device_id: str) -> None:
     la vérification anti-vol de session sur la toute prochaine requête du
     véritable utilisateur courant (get_current_user comparait ce token
     périmé au sid de son propre JWT, encore valide, et le déconnectait à
-    tort avec "une autre connexion a été ouverte")."""
+    tort avec "une autre connexion a été ouverte").
+
+    Logué systématiquement (reason = point d'appel) — bug rapporté plusieurs
+    fois en prod où un appareil déjà approuvé se retrouve réattribué à une
+    autre caisse sans explication ; ce log est la seule façon de savoir,
+    après coup, quel chemin de code a fait le changement.
+    """
     if reg.device_id != new_device_id:
+        _log.info(
+            "bind_register_device: reg=%s (%s) tenant=%s device_id %r -> %r "
+            "(reason=%s) — is_device_approved remis a False",
+            reg.id, reg.name, reg.tenant_id, reg.device_id, new_device_id, reason,
+        )
         reg.is_device_approved = False
         reg.session_token = None
     reg.device_id = new_device_id
