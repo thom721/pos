@@ -67,6 +67,10 @@ services:
       # Plusieurs origines séparées par virgule.
       # Pour autoriser TOUT (dev local seulement) : "*"
       CORS_ORIGINS: ${CORS_ORIGINS:-https://pos.infini-software.cloud}
+      # Regex optionnelle en complément — utile pour tester en local avec
+      # `flutter run -d chrome` (port different a chaque lancement), ex:
+      #   CORS_ORIGIN_REGEX=https?://localhost:\d+
+      CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-}
 
       # ── Flutter web SPA (servi par FastAPI si le dossier "web/" existe) ────
       WEB_DIR: web

@@ -88,6 +88,7 @@ def load_ini_config() -> dict:
         "IDENTITY_PRIVATE_KEY": srv.get("identity_private_key", os.getenv("IDENTITY_PRIVATE_KEY", "")),
         "BILLING_URL":            srv.get("billing_url",            os.getenv("BILLING_URL",            "")),
         "CORS_ORIGINS":           srv.get("cors_origins",           os.getenv("CORS_ORIGINS",           "*")),
+        "CORS_ORIGIN_REGEX":      srv.get("cors_origin_regex",      os.getenv("CORS_ORIGIN_REGEX",      "")),
         "WEB_DIR":                srv.get("web_dir",                os.getenv("WEB_DIR",                "web")),
         "INSTALLER_WAREHOUSE_ID": srv.get("installer_warehouse_id", os.getenv("INSTALLER_WAREHOUSE_ID", "")),
     }
@@ -139,6 +140,12 @@ class Settings(BaseSettings):
     # CORS — origines autorisées (séparées par virgule, ou "*" pour tout autoriser)
     # Production : "https://app.posconnect.ht,https://posconnect.ht"
     CORS_ORIGINS: str = "*"
+
+    # CORS — regex optionnelle en complément de CORS_ORIGINS, pour autoriser un
+    # pattern d'origine sans lister chaque valeur exacte (utile pour tester en
+    # local avec `flutter run -d chrome`, dont le port change à chaque lancement).
+    # Exemple : "https?://localhost:\\d+"
+    CORS_ORIGIN_REGEX: str = ""
 
     # Répertoire du build Flutter web (servi par FastAPI comme SPA)
     # Laisser vide pour désactiver le serving web intégré.

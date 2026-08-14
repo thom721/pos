@@ -71,6 +71,7 @@ _origins: list[str] | str = (
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
+    allow_origin_regex=_settings_cors.CORS_ORIGIN_REGEX or None,
     allow_credentials=_origins != ["*"],  # credentials only when origins are explicit
     allow_methods=["*"],
     allow_headers=["*"],
