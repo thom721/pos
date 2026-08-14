@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
@@ -150,6 +151,9 @@ final syncEpochProvider = StateProvider<int>((ref) => 0);
 final devicePendingApprovalProvider = StateProvider<bool>((ref) => false);
 
 Future<void> checkDevicePendingApproval(WidgetRef ref, {String? warehouseId}) async {
+  // Le web n'a pas de caisse physique à surveiller — éviter de générer/
+  // persister un device_id fantôme depuis un simple onglet de navigateur.
+  if (kIsWeb) return;
   try {
     final deviceId = await AuthRepository().getOrCreateDeviceId();
     final res = await dio.get('/api/sessions/current', queryParameters: {

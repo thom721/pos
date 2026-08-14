@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
-import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/constants.dart';
@@ -24,7 +23,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _navigate() async {
-    FlutterNativeSplash.remove();
+    // FlutterNativeSplash.remove() est maintenant appelé une seule fois au
+    // premier frame dans main.dart — plus ici, car cet écran n'est plus
+    // systématiquement construit (voir router.dart : les routes publiques
+    // atteintes en accès direct ne passent plus par /splash).
 
     if (kIsWeb) {
       // Sur web, ne pas appeler context.go() ici.

@@ -1083,6 +1083,14 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   }
 
   Future<void> _initSession() async {
+    // Le web ne doit jamais réclamer une caisse physique (device_id généré
+    // par un simple onglet de navigateur) — voir _webSessionUnavailable ci-
+    // dessous, affiché à la place de la bannière de session.
+    if (kIsWeb) {
+      if (mounted) setState(() => _sessionChecked = true);
+      _syncSessionProvider();
+      return;
+    }
     _deviceId = await _getDeviceId();
 
     // Mobile & desktop : afficher le cache immédiatement (réactivité), puis
@@ -1159,6 +1167,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   /// Vérifie silencieusement l'état de la session côté serveur.
   /// Appelé en arrière-plan quand le cache est déjà affiché.
   Future<void> _refreshSessionFromServer() async {
+    if (kIsWeb) return; // _deviceId jamais réclamé depuis le web — voir _initSession()
     try {
       final res = await dio.get('/api/sessions/current', queryParameters: _sessionQueryParams);
       final session = res.data['session'];
@@ -1575,31 +1584,35 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
             child: Row(
               children: [
                 Icon(
-                  _devicePendingApproval
-                      ? Icons.hourglass_top_rounded
-                      : (_noSessionPermission || _caisseDisabled)
-                          ? Icons.no_accounts_rounded
-                          : Icons.lock_rounded,
+                  kIsWeb
+                      ? Icons.desktop_windows_rounded
+                      : _devicePendingApproval
+                          ? Icons.hourglass_top_rounded
+                          : (_noSessionPermission || _caisseDisabled)
+                              ? Icons.no_accounts_rounded
+                              : Icons.lock_rounded,
                   color: _devicePendingApproval ? AppColors.warning : AppColors.error,
                   size: 14,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    _devicePendingApproval
-                        ? '⏳ Appareil en attente d\'approbation — contactez votre administrateur'
-                        : _noSessionPermission
-                            ? 'Votre rôle ne permet pas d\'ouvrir une session caisse'
-                            : _caisseDisabled
-                                ? 'Cette caisse est désactivée — contactez votre administrateur'
-                                : 'Caisse non ouverte — les encaissements sont désactivés',
+                    kIsWeb
+                        ? 'Caisse indisponible depuis le navigateur — utilisez l\'application de bureau ou mobile POS Connect'
+                        : _devicePendingApproval
+                            ? '⏳ Appareil en attente d\'approbation — contactez votre administrateur'
+                            : _noSessionPermission
+                                ? 'Votre rôle ne permet pas d\'ouvrir une session caisse'
+                                : _caisseDisabled
+                                    ? 'Cette caisse est désactivée — contactez votre administrateur'
+                                    : 'Caisse non ouverte — les encaissements sont désactivés',
                     style: TextStyle(
                         color: _devicePendingApproval ? AppColors.warning : AppColors.error,
                         fontWeight: FontWeight.w500,
                         fontSize: 11),
                   ),
                 ),
-                if (!_noSessionPermission && !_caisseDisabled && !_devicePendingApproval)
+                if (!kIsWeb && !_noSessionPermission && !_caisseDisabled && !_devicePendingApproval)
                   TextButton(
                     onPressed: _promptOpenSession,
                     style: TextButton.styleFrom(

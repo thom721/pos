@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -38,6 +39,13 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
 
   Future<void> _initSession() async {
     if (_sessionChecked) return;
+    // Le web ne doit jamais réclamer une caisse physique (device_id généré
+    // par un simple onglet de navigateur) — voir build(), qui affiche un
+    // message dédié à la place du bouton "Ouvrir la caisse".
+    if (kIsWeb) {
+      if (mounted) setState(() { _sessionChecked = true; _hasSession = false; });
+      return;
+    }
     _deviceId ??= await AuthRepository().getOrCreateDeviceId();
 
     // Warehouse pas encore chargé → essayer depuis l'API (1ère installation ou
@@ -122,21 +130,32 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.lock_clock_rounded, size: 64, color: AppColors.textSecondary),
-              const SizedBox(height: 16),
-              const Text('Session de caisse requise',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary)),
-              const SizedBox(height: 8),
-              const Text('Ouvrez une session pour accéder aux commandes.',
-                  style: TextStyle(color: AppColors.textSecondary),
-                  textAlign: TextAlign.center),
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: _promptOpenSession,
-                icon: const Icon(Icons.point_of_sale_rounded),
-                label: const Text('Ouvrir la caisse'),
+              Icon(
+                kIsWeb ? Icons.desktop_windows_rounded : Icons.lock_clock_rounded,
+                size: 64, color: AppColors.textSecondary,
               ),
+              const SizedBox(height: 16),
+              Text(
+                kIsWeb ? 'Indisponible depuis le navigateur' : 'Session de caisse requise',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                kIsWeb
+                    ? 'Utilisez l\'application de bureau ou mobile POS Connect pour ouvrir une caisse.'
+                    : 'Ouvrez une session pour accéder aux commandes.',
+                style: const TextStyle(color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
+              ),
+              if (!kIsWeb) ...[
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: _promptOpenSession,
+                  icon: const Icon(Icons.point_of_sale_rounded),
+                  label: const Text('Ouvrir la caisse'),
+                ),
+              ],
             ],
           ),
         ),

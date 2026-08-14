@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -63,8 +64,9 @@ void main() {
         AppConstants.tokenKey: corruptedToken,
       });
 
-      final repo = AuthRepository();
-      final notifier = AuthNotifier(repo);
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(authProvider.notifier);
 
       // Laisser _init() se terminer (async)
       await Future.delayed(const Duration(milliseconds: 200));
@@ -88,8 +90,9 @@ void main() {
         AppConstants.tokenKey: expiredToken,
       });
 
-      final repo = AuthRepository();
-      final notifier = AuthNotifier(repo);
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(authProvider.notifier);
 
       await Future.delayed(const Duration(milliseconds: 200));
 

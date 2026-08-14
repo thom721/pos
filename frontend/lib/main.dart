@@ -44,4 +44,17 @@ void main() async {
   }
 
   runApp(const ProviderScope(child: PosApp()));
+
+  // Retire le splash natif au tout premier frame rendu, quelle que soit la
+  // route atteinte. Auparavant fait dans SplashScreen.initState() — mais
+  // avec les URLs sans # (usePathUrlStrategy), le redirect du routeur reste
+  // sur place pour toute route publique (/admin, /home, /login…) au lieu de
+  // passer par /splash quand l'URL est tapée/rechargée directement. Résultat :
+  // SplashScreen n'était jamais construit, FlutterNativeSplash.remove()
+  // n'était jamais appelé, et l'app restait invisible sous le splash natif
+  // (bug reproductible uniquement en accès direct à une URL, jamais en
+  // navigation interne — voir router.dart, redirect() sur isLoading).
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    FlutterNativeSplash.remove();
+  });
 }
