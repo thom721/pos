@@ -240,9 +240,19 @@ class AppShell extends ConsumerWidget {
       );
     }
 
-    // Force-update: replace entire shell until app is updated
+    // Force-update: replace entire shell until app is updated — mais
+    // seulement si un lien de téléchargement existe réellement pour cette
+    // plateforme. Sinon l'utilisateur reste bloqué sur cet écran sans
+    // aucune échappatoire (ex: mise à jour marquée "forced" sans
+    // update_url_android configuré) — pire qu'un simple bandeau ignorable.
     if (version != null && version.isForced) {
-      return _ForceUpdateScreen(version: version);
+      final isAndroidPlatform = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+      final forceUrl = kIsWeb
+          ? 'web' // le web se met à jour par simple rechargement, pas de lien requis
+          : resolveUpdateDownloadUrl(isAndroid: isAndroidPlatform, version: version);
+      if (forceUrl != null && forceUrl.isNotEmpty) {
+        return _ForceUpdateScreen(version: version);
+      }
     }
 
     final authState = ref.watch(authProvider);
@@ -279,9 +289,20 @@ class AppShell extends ConsumerWidget {
       ));
     }
 
-    // Optional update banner
+    // Optional update banner — natif (mobile/bureau) seulement si un lien de
+    // téléchargement existe réellement pour cette plateforme, sinon le
+    // bandeau reste affiché indéfiniment sans aucun bouton actionnable (ex:
+    // version bureau publiée sans update_url_android configuré — bug
+    // rapporté : bandeau "mise à jour disponible" visible sur mobile alors
+    // que rien n'est réellement disponible pour cette plateforme).
     if (version != null && version.hasUpdate) {
-      banners.add(_UpdateBanner(version: version));
+      final canDownload = kIsWeb ||
+          (resolveUpdateDownloadUrl(isAndroid: isAndroid, version: version)
+                  ?.isNotEmpty ??
+              false);
+      if (canDownload) {
+        banners.add(_UpdateBanner(version: version));
+      }
     }
 
     if (banners.isNotEmpty) {
