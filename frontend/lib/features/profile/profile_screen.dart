@@ -523,8 +523,14 @@ class _CompanyFormState extends ConsumerState<_CompanyForm> {
                             size: 40, color: AppColors.primary)
                         : ClipRRect(
                             borderRadius: BorderRadius.circular(14),
-                            child: Image.network(settings.logoPath,
-                                fit: BoxFit.cover),
+                            // logoPath est un chemin relatif (/static/logos/xyz.png) —
+                            // Image.network exige une URL absolue, contrairement à
+                            // Dio qui la résout via son baseUrl (voir LogoCacheService).
+                            child: Image.network(
+                                '${dio.options.baseUrl}${settings.logoPath}',
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    Icon(typeIcon, size: 40, color: AppColors.primary)),
                           ),
                   ),
                   const SizedBox(height: 8),
