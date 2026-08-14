@@ -102,18 +102,4 @@ def update(
                 setattr(config, key, value)
     db.commit()
     db.refresh(config)
-
-    # Le logo est une identité visuelle unique pour tout le business, pas par
-    # dépôt. Sans ceci, un dépôt qui a déjà sa propre ligne AppConfig (créée
-    # automatiquement à sa création, voir create_for_warehouse) masque
-    # silencieusement tout logo mis à jour ailleurs (config globale ou un
-    # autre dépôt) — bug rapporté : logo enregistré côté web, jamais visible
-    # sur les reçus d'un appareil rattaché à un autre dépôt.
-    if tenant_id and 'logo_path' in data:
-        db.query(AppConfig).filter(
-            AppConfig.tenant_id == tenant_id,
-            AppConfig.id != config.id,
-        ).update({'logo_path': data['logo_path']}, synchronize_session=False)
-        db.commit()
-
     return config
