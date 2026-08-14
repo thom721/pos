@@ -1608,8 +1608,30 @@ if _web_dir.exists() and _web_dir.is_dir():
     async def _serve_bootstrap():
         return FileResponse(str(_web_dir / "flutter_bootstrap.js"), headers=_NO_CACHE)
 
-    # Monté EN DERNIER — les routes API prennent toujours la priorité.
-    app.mount("/", StaticFiles(directory=str(_web_dir), html=True), name="web")
+    # Fallback SPA (nécessaire pour usePathUrlStrategy() côté Flutter web —
+    # URLs sans # : voir frontend/lib/main.dart) : toute route qui ne
+    # correspond ni à l'API (déjà enregistrée plus haut, donc prioritaire)
+    # ni à un fichier statique existant reçoit index.html, exactement comme
+    # le "try_files ... /index.html" de nginx côté cloud
+    # (pos.infini-software.cloud.nginx.conf, déjà en place). Ce serveur
+    # local n'a pas de nginx devant lui — FastAPI doit jouer ce rôle
+    # lui-même, remplace donc le simple StaticFiles(html=True) (qui ne
+    # gérait que "/", pas les sous-routes profondes type /dashboard).
+    _web_dir_resolved = _web_dir.resolve()
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def _serve_spa(full_path: str):
+        candidate = (_web_dir_resolved / full_path).resolve()
+        try:
+            candidate.relative_to(_web_dir_resolved)
+        except ValueError:
+            # Tentative de sortir de _web_dir (ex: "../../etc/passwd") — refuse.
+            candidate = _web_dir_resolved / "index.html"
+        if not candidate.is_file():
+            candidate = _web_dir_resolved / "index.html"
+        headers = _NO_CACHE if candidate.name == "index.html" else None
+        return FileResponse(str(candidate), headers=headers)
+
     _log.info("Flutter web SPA servi depuis : %s", _web_dir.resolve())
 
 @app.get("/favicon.ico", include_in_schema=False)
