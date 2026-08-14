@@ -42,6 +42,11 @@ abstract class Perm {
   static const salesUpdate   = 'sales.update';
   static const salesCancel   = 'sales.cancel';
   static const salesDiscount = 'sales.discount'; // appliquer une remise caisse
+  // Dérogation à allow_cashier_credit — dédiée, distincte de salesDiscount ;
+  // volontairement absente de TOUS les rôles par défaut (ni cashier ni
+  // manager — voir rolePermissions ci-dessous) pour un octroi individuel,
+  // utilisateur par utilisateur.
+  static const salesCredit = 'sales.credit';
 
   // Purchases
   static const purchasesCreate  = 'purchases.create';
@@ -175,7 +180,7 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.connectCloud,
   },
   'cashier': {
-    Perm.salesCreate, Perm.salesRead, Perm.salesUpdate, Perm.salesCancel,
+    Perm.salesCreate, Perm.salesRead, Perm.salesUpdate, Perm.salesCancel, Perm.salesDiscount,
     Perm.customersCreate, Perm.customersRead, Perm.customersUpdate,
     Perm.productsRead,
     Perm.categoriesRead,

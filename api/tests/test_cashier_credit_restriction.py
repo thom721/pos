@@ -2,8 +2,10 @@
 bloquait déjà une vente sous-payée sans cette autorisation (pos_screen.dart),
 mais rien ne l'appliquait côté serveur — un appel API direct pouvait la
 contourner. create_sale rejette maintenant ce cas (400), sauf si
-allow_cashier_credit est activé ou si l'utilisateur a la permission
-sales.discount (même dérogation que le frontend)."""
+allow_cashier_credit est activé ou si l'utilisateur a la permission dédiée
+sales.credit (même dérogation que le frontend) — volontairement distincte de
+sales.discount et non accordée par défaut au rôle cashier, pour permettre un
+octroi individuel, caissier par caissier."""
 from decimal import Decimal
 
 import pytest
@@ -93,14 +95,25 @@ def test_underpaid_sale_allowed_when_config_permits_credit(db, tenant, product):
     assert sale.paid_amount == Decimal("300.00")
 
 
-def test_underpaid_sale_allowed_with_sales_discount_permission(db, tenant, product):
-    """sales.discount outrepasse la restriction, même config par défaut (False)."""
+def test_underpaid_sale_allowed_with_sales_credit_permission(db, tenant, product):
+    """sales.credit outrepasse la restriction, même config par défaut (False)."""
     sale = sale_service.create_sale(
         db, _sale_data(product, 300), user_id="u1", tenant_id=tenant.id,
-        current_user=_FakeUser(permissions=["sales.discount"]),
+        current_user=_FakeUser(permissions=["sales.credit"]),
     )
     db.commit()
     assert sale is not None
+
+
+def test_underpaid_sale_still_rejected_with_only_sales_discount_permission(db, tenant, product):
+    """sales.discount seul ne suffit plus — c'est précisément le point : les
+    deux capacités sont désormais dissociées."""
+    with pytest.raises(HTTPException) as exc:
+        sale_service.create_sale(
+            db, _sale_data(product, 300), user_id="u1", tenant_id=tenant.id,
+            current_user=_FakeUser(permissions=["sales.discount"]),
+        )
+    assert exc.value.status_code == 400
 
 
 def test_fully_paid_sale_never_blocked_regardless_of_credit_config(db, tenant, product):

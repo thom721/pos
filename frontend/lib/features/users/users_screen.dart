@@ -30,6 +30,7 @@ const _permMatrix = [
       (label: 'Modifier', perm: Perm.salesUpdate),
       (label: 'Annuler',  perm: Perm.salesCancel),
       (label: 'Remise',   perm: Perm.salesDiscount),
+      (label: 'Vente à crédit', perm: Perm.salesCredit),
     ]
   ),
   (

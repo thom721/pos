@@ -386,6 +386,7 @@ class _WarehouseSection extends ConsumerWidget {
               registers: registers,
               canUpdate: canUpdate,
               canDelete: canDelete,
+              isEntrepot: warehouse.isEntrepot,
               onRefresh: onRefreshRegisters,
             ),
           ),
@@ -462,6 +463,7 @@ class _RegistersList extends StatelessWidget {
   final List<PosRegisterModel> registers;
   final bool canUpdate;
   final bool canDelete;
+  final bool isEntrepot;
   final VoidCallback onRefresh;
 
   const _RegistersList({
@@ -469,6 +471,7 @@ class _RegistersList extends StatelessWidget {
     required this.registers,
     required this.canUpdate,
     required this.canDelete,
+    this.isEntrepot = false,
     required this.onRefresh,
   });
 
@@ -484,14 +487,17 @@ class _RegistersList extends StatelessWidget {
                 const Icon(Icons.point_of_sale_outlined,
                     size: 16, color: AppColors.textSecondary),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Aucune caisse — les caisses sont créées automatiquement\nlors de la première ouverture de session.',
-                    style: TextStyle(
+                    isEntrepot
+                        ? 'Un entrepôt ne peut pas avoir de caisse — il sert uniquement '
+                          'à réceptionner et distribuer du stock.'
+                        : 'Aucune caisse — les caisses sont créées automatiquement\nlors de la première ouverture de session.',
+                    style: const TextStyle(
                         fontSize: 12, color: AppColors.textSecondary),
                   ),
                 ),
-                if (canUpdate)
+                if (canUpdate && !isEntrepot)
                   TextButton.icon(
                     onPressed: () =>
                         _showAddRegister(context),
@@ -512,7 +518,7 @@ class _RegistersList extends StatelessWidget {
                 canDelete: canDelete,
                 onRefresh: onRefresh,
               )),
-          if (canUpdate)
+          if (canUpdate && !isEntrepot)
             Padding(
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

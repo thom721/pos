@@ -134,12 +134,21 @@ SYNC_ENTITIES: list[dict] = [
 ]
 
 # Columns excluded when sending to cloud (cloud assigns its own tenant_id via sync token)
-_EXCLUDE_PUSH = {"tenant_id", "password", "password_hash", "offline_hash"}  # never push credentials/hashes to cloud
+# password_reset_code/_expires_at : code court-terme (15 min), n'a de sens
+# que pour le backend qui l'a généré et qui validera reset-password — le
+# répliquer vers l'autre système exposerait inutilement un identifiant de
+# contournement d'authentification actif, même bref (même raisonnement que
+# password/offline_hash).
+_EXCLUDE_PUSH = {
+    "tenant_id", "password", "password_hash", "offline_hash",
+    "password_reset_code", "password_reset_expires_at",
+}  # never push credentials/hashes to cloud
 _EXCLUDE_PULL: set[str] = set()
 
 # Per-entity fields that are device-specific — never overwrite local values from cloud pull
 _ENTITY_EXCLUDE_PULL: dict[str, set[str]] = {
     "app_config": {"pos_printer_name", "doc_printer_name", "pos_auto_print", "doc_auto_print"},
+    "user": {"password_reset_code", "password_reset_expires_at"},
 }
 _PUSH_CHUNK   = 500   # max records per HTTP push request
 

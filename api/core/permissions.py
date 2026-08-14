@@ -47,6 +47,13 @@ class P:
     SALES_UPDATE    = "sales.update"
     SALES_CANCEL    = "sales.cancel"
     SALES_DISCOUNT  = "sales.discount"
+    # Dérogation à AppConfig.allow_cashier_credit — dédiée (avant, sales.discount
+    # servait aussi pour ça, conflatant deux capacités différentes : accorder
+    # une remise et autoriser une vente sous-payée/à crédit). Volontairement
+    # PAS accordée par défaut à AUCUN rôle (ni cashier, ni manager — voir
+    # ROLE_PERMISSIONS) — le but est de l'octroyer individuellement,
+    # utilisateur par utilisateur, jamais automatiquement via le rôle.
+    SALES_CREDIT    = "sales.credit"
 
     # Purchases
     PURCHASES_CREATE   = "purchases.create"
@@ -192,7 +199,12 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     },
 
     "cashier": {
-        P.SALES_CREATE, P.SALES_READ, P.SALES_UPDATE, P.SALES_CANCEL,
+        # sales.discount : appliquer un rabais existant (actif/disponible)
+        # sur une vente — accordé à tous les caissiers par défaut. Distinct
+        # de discounts.create/update/delete (créer/modifier un rabais dans
+        # la page Rabais, réservé à manager) et de sales.credit (vendre à
+        # crédit, volontairement PAS accordé par défaut — voir sa définition).
+        P.SALES_CREATE, P.SALES_READ, P.SALES_UPDATE, P.SALES_CANCEL, P.SALES_DISCOUNT,
         P.CUSTOMERS_CREATE, P.CUSTOMERS_READ, P.CUSTOMERS_UPDATE,
         P.PRODUCTS_READ,
         P.CATEGORIES_READ,

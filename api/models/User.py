@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, JSON, Boolean, Integer, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, JSON, Boolean, Integer, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .base import UUIDBase
 
@@ -21,6 +21,10 @@ class User(UUIDBase):
     offline_hash = Column(String(64), nullable=True)
     must_change_password = Column(Boolean, default=True, nullable=False)
     is_active    = Column(Boolean, default=True, nullable=False)
+    # Réinitialisation de mot de passe — code numérique à 6 chiffres, envoyé
+    # par email, expire 15 min après génération (voir api/routes/auth.py).
+    password_reset_code       = Column(String(10), nullable=True)
+    password_reset_expires_at = Column(DateTime, nullable=True)
     # Incrémenté à chaque changement de roles/permissions — comparé au claim
     # "perm_v" du JWT pour forcer une reconnexion quand les droits changent.
     permissions_version = Column(Integer, default=0, nullable=False)

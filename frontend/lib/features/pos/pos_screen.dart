@@ -2147,7 +2147,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           if (pos.balance > 0.005) {
                             final settings = ref.read(settingsProvider);
                             final canCredit = settings.allowCashierCredit ||
-                                ref.read(hasPermissionProvider(Perm.salesDiscount));
+                                ref.read(hasPermissionProvider(Perm.salesCredit));
                             if (!canCredit) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(

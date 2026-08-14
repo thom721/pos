@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
+import 'package:pos_connect/data/models/debt_model.dart';
 import 'package:pos_connect/data/repositories/customer_repository.dart';
+import 'package:pos_connect/data/repositories/debt_repository.dart';
 import 'package:pos_connect/providers/customer_provider.dart';
 
 final _fmt =
@@ -119,30 +121,176 @@ class _CustomerCard extends ConsumerWidget {
                       color: AppColors.textSecondary, fontSize: 12)),
           ],
         ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Limite: ${_fmt.format(customer.creditLimit)}',
-                style: const TextStyle(
-                    fontSize: 12, color: AppColors.textSecondary)),
-            if (customer.loyaltyBalance > 0)
-              Text('Fidélité: ${_fmt.format(customer.loyaltyBalance)}',
-                  style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w600)),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('Limite: ${_fmt.format(customer.creditLimit)}',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary)),
+                if (customer.loyaltyBalance > 0)
+                  Text('Fidélité: ${_fmt.format(customer.loyaltyBalance)}',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600)),
+              ],
+            ),
+            IconButton(
+              icon: const Icon(Icons.remove_red_eye_outlined, size: 20),
+              tooltip: 'Voir les détails',
+              onPressed: () => showDialog(
+                context: context,
+                builder: (_) => _CustomerDetailsDialog(customer: customer),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, size: 20),
+              tooltip: 'Modifier',
+              onPressed: () => showDialog(
+                context: context,
+                builder: (_) => CustomerFormDialog(customer: customer),
+              ),
+            ),
           ],
         ),
-        onTap: () {
-          showDialog(
-            context: context,
-            builder: (_) => CustomerFormDialog(customer: customer),
-          );
-        },
       ),
     );
   }
+}
+
+class _CustomerDetailsDialog extends ConsumerStatefulWidget {
+  final CustomerModel customer;
+  const _CustomerDetailsDialog({required this.customer});
+
+  @override
+  ConsumerState<_CustomerDetailsDialog> createState() =>
+      _CustomerDetailsDialogState();
+}
+
+class _CustomerDetailsDialogState
+    extends ConsumerState<_CustomerDetailsDialog> {
+  late Future<List<DebtModel>> _debtsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _debtsFuture = DebtRepository()
+        .getDebts(partnerType: 'CUSTOMER', partnerId: widget.customer.id, limit: 100)
+        .then((res) => res.data.where((d) => d.balance > 0).toList());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.customer;
+    return AlertDialog(
+      title: Text(c.fullName),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _detailRow('Téléphone', c.phone),
+            if (c.nif != null && c.nif!.isNotEmpty) _detailRow('NIF/CIN', c.nif!),
+            if (c.email != null && c.email!.isNotEmpty) _detailRow('Email', c.email!),
+            if (c.address.isNotEmpty) _detailRow('Adresse', c.address),
+            _detailRow('Limite de crédit', _fmt.format(c.creditLimit)),
+            if (c.loyaltyBalance > 0)
+              _detailRow('Solde fidélité', _fmt.format(c.loyaltyBalance)),
+            const SizedBox(height: 16),
+            const Text('Dettes en cours',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+            const SizedBox(height: 8),
+            FutureBuilder<List<DebtModel>>(
+              future: _debtsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Center(
+                        child: SizedBox(
+                            width: 20, height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2))),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return Text('Erreur : ${snapshot.error}',
+                      style: const TextStyle(color: AppColors.error, fontSize: 12));
+                }
+                final debts = snapshot.data ?? [];
+                if (debts.isEmpty) {
+                  return const Text('Aucune dette en cours',
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 13));
+                }
+                final total = debts.fold<double>(0, (sum, d) => sum + d.balance);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ...debts.map((d) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(d.referenceType,
+                                  style: const TextStyle(fontSize: 13)),
+                              Text(_fmt.format(d.balance),
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.error,
+                                      fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        )),
+                    const Divider(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total dû',
+                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                        Text(_fmt.format(total),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: AppColors.error)),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Fermer'),
+        ),
+      ],
+    );
+  }
+
+  Widget _detailRow(String label, String value) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 130,
+              child: Text(label,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary)),
+            ),
+            Expanded(
+              child: Text(value, style: const TextStyle(fontSize: 13)),
+            ),
+          ],
+        ),
+      );
 }
 
 class CustomerFormDialog extends ConsumerStatefulWidget {

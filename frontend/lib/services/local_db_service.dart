@@ -58,7 +58,7 @@ class LocalDbService {
     }
     _db = await openDatabase(
       dbPath,
-      version: 27,
+      version: 28,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -227,6 +227,11 @@ class LocalDbService {
     if (oldVersion < 27) {
       try { await db.execute("ALTER TABLE customers ADD COLUMN fname TEXT NOT NULL DEFAULT ''"); } catch (_) {}
     }
+    if (oldVersion < 28) {
+      // Warehouse.linked_warehouse_id (rattachement entrepôt → dépôt) —
+      // absent du cache local jusqu'ici.
+      try { await db.execute('ALTER TABLE warehouses ADD COLUMN linked_warehouse_id TEXT'); } catch (_) {}
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -301,7 +306,8 @@ class LocalDbService {
         is_default  INTEGER NOT NULL DEFAULT 0,
         is_active   INTEGER NOT NULL DEFAULT 1,
         is_claimed  INTEGER NOT NULL DEFAULT 0,
-        is_entrepot INTEGER NOT NULL DEFAULT 0
+        is_entrepot INTEGER NOT NULL DEFAULT 0,
+        linked_warehouse_id TEXT
       )
     ''');
 
@@ -1218,6 +1224,7 @@ class LocalDbService {
           'is_active': w.isActive ? 1 : 0,
           'is_claimed': w.isClaimed ? 1 : 0,
           'is_entrepot': w.isEntrepot ? 1 : 0,
+          'linked_warehouse_id': w.linkedWarehouseId,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -1241,6 +1248,7 @@ class LocalDbService {
           isActive: (r['is_active'] as int) == 1,
           isClaimed: (r['is_claimed'] as int? ?? 0) == 1,
           isEntrepot: (r['is_entrepot'] as int? ?? 0) == 1,
+          linkedWarehouseId: r['linked_warehouse_id'] as String?,
         )).toList();
   }
 
@@ -1905,6 +1913,7 @@ class LocalDbService {
   Future<PaginatedResponse<DebtModel>> getDebts({
     String? partnerType,
     String? status,
+    String? partnerId,
     int page = 1,
     int limit = 50,
   }) async {
@@ -1925,6 +1934,10 @@ class LocalDbService {
     if (status != null && status.isNotEmpty) {
       where.add('status = ?');
       args.add(status.toUpperCase());
+    }
+    if (partnerId != null && partnerId.isNotEmpty) {
+      where.add('partner_id = ?');
+      args.add(partnerId);
     }
     final whereStr = where.isEmpty ? null : where.join(' AND ');
 

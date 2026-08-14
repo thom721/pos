@@ -206,10 +206,16 @@ String extractErrorMessage(DioException e) {
   final status = e.response?.statusCode;
 
   // 1. Priorité : message spécifique retourné par le serveur.
+  //    "message" d'abord — de nombreuses routes renvoient
+  //    {"detail": "<code_machine>", "message": "<texte humain>"} (ex:
+  //    "device_pending_approval" / "Cet appareil doit être approuvé...") ;
+  //    lire "detail" en premier affichait le code brut au lieu du texte
+  //    explicatif. Pour les HTTPException classiques (juste {"detail":
+  //    "texte"}, pas de "message"), le repli sur "detail" reste inchangé.
   try {
     final data = e.response?.data;
     if (data is Map) {
-      final raw = (data['detail'] ?? data['message'])?.toString();
+      final raw = (data['message'] ?? data['detail'])?.toString();
       if (raw != null && raw.isNotEmpty && !_kGenericPhrases.contains(raw)) {
         return raw;
       }

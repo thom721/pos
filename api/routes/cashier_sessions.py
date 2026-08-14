@@ -95,6 +95,16 @@ def _get_or_create_register(
     # config.py::_wh_id / restaurant.py create_table/create_menu_item).
     warehouse_id = resolve_warehouse_id(db, tenant_id, warehouse_id) if warehouse_id else None
 
+    if warehouse_id:
+        from api.models.Warehouse import Warehouse as _WH
+        _wh = db.get(_WH, warehouse_id)
+        if _wh and _wh.is_entrepot:
+            return JSONResponse(status_code=400, content={
+                "detail": "entrepot_no_register",
+                "message": "Un entrepôt ne peut pas avoir de caisse — il sert uniquement "
+                           "à réceptionner et distribuer du stock.",
+            })
+
     tenant = db.get(Tenant, tenant_id)
 
     requires_explicit = False

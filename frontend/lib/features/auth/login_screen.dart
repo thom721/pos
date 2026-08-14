@@ -71,6 +71,135 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
+  Future<void> _showForgotPasswordDialog({String prefill = ''}) async {
+    final emailCtrl = TextEditingController(text: prefill.trim());
+    final codeCtrl = TextEditingController();
+    final newPassCtrl = TextEditingController();
+    var step = 0; // 0 = saisie email, 1 = code + nouveau mot de passe
+    var loading = false;
+    String? error;
+    String? info;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) => AlertDialog(
+          title: const Text('Mot de passe oublié'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (step == 0) ...[
+                  const Text(
+                    "Entrez l'email associé à votre compte — un code de "
+                    'vérification à 6 chiffres vous sera envoyé.',
+                    style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: emailCtrl,
+                    autofocus: true,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                  ),
+                ] else ...[
+                  Text(
+                    info ?? 'Code envoyé à ${emailCtrl.text.trim()}',
+                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: codeCtrl,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    decoration: const InputDecoration(
+                        labelText: 'Code reçu par email', counterText: ''),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: newPassCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Nouveau mot de passe'),
+                  ),
+                ],
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(error!, style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: loading
+                  ? null
+                  : () async {
+                      if (step == 0) {
+                        final email = emailCtrl.text.trim();
+                        if (email.isEmpty) {
+                          setDialogState(() => error = "L'email est requis");
+                          return;
+                        }
+                        setDialogState(() { loading = true; error = null; });
+                        try {
+                          final res = await dio.post('/api/auth/forgot-password',
+                              data: {'email': email});
+                          setDialogState(() {
+                            loading = false;
+                            step = 1;
+                            info = res.data['message'] as String?;
+                          });
+                        } catch (e) {
+                          setDialogState(() {
+                            loading = false;
+                            error = extractAnyError(e);
+                          });
+                        }
+                      } else {
+                        if (codeCtrl.text.trim().isEmpty || newPassCtrl.text.isEmpty) {
+                          setDialogState(() => error = 'Code et nouveau mot de passe requis');
+                          return;
+                        }
+                        setDialogState(() { loading = true; error = null; });
+                        try {
+                          await dio.post('/api/auth/reset-password', data: {
+                            'email': emailCtrl.text.trim(),
+                            'code': codeCtrl.text.trim(),
+                            'new_password': newPassCtrl.text,
+                          });
+                          if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                              content: Text('Mot de passe réinitialisé — vous pouvez vous connecter.'),
+                              backgroundColor: AppColors.success,
+                            ));
+                          }
+                        } catch (e) {
+                          setDialogState(() {
+                            loading = false;
+                            error = extractAnyError(e);
+                          });
+                        }
+                      }
+                    },
+              child: loading
+                  ? const SizedBox(width: 18, height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Text(step == 0 ? 'Envoyer le code' : 'Réinitialiser'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   String _buildLocalUrl(String raw) {
     if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
     return raw.contains(':') ? 'http://$raw' : 'http://$raw:9003';
@@ -321,7 +450,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
             validator: (v) => v == null || v.isEmpty ? 'Requis' : null,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => _showForgotPasswordDialog(prefill: _emailCtrl.text),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Mot de passe oublié ?',
+                  style: TextStyle(fontSize: 13)),
+            ),
+          ),
+          const SizedBox(height: 16),
 
           SizedBox(
             height: 50,
@@ -418,7 +561,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             validator: (v) =>
                 v == null || v.isEmpty ? 'Requis' : null,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => _showForgotPasswordDialog(),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Mot de passe oublié ?',
+                  style: TextStyle(fontSize: 13)),
+            ),
+          ),
+          const SizedBox(height: 4),
 
           GestureDetector(
             onTap: () =>

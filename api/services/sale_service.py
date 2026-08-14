@@ -143,6 +143,50 @@ def get_sale(db: Session, sale_id: str, tenant_id: str | None = None):
         _inject_returned_qty(db, [sale])
     return sale
 
+def _enforce_credit_limit(
+    db: Session, customer_id: str, tenant_id: str | None, new_balance: float,
+    exclude_debt_id: str | None = None,
+) -> None:
+    """Bloque une vente à crédit qui dépasserait Customer.credit_limit —
+    jusqu'ici ce champ n'était affiché nulle part côté validation (juste un
+    champ d'affichage), un client avec une limite à 0 (valeur par défaut,
+    "aucun crédit autorisé" — voir le commentaire sur le modèle) pouvait donc
+    accumuler de la dette sans aucune restriction. exclude_debt_id permet
+    d'exclure la propre dette de la vente en cours d'édition (update_sale)
+    du total existant, pour ne pas la compter deux fois."""
+    from api.models.Customer import Customer
+    from api.models.Debt import Debt
+
+    # customer_id peut être un uuid.UUID (SaleCreate/SaleUpdate.customer_id
+    # est typé Optional[UUID]) — Customer.id est une colonne String, la
+    # comparaison échoue silencieusement (aucune ligne trouvée, donc aucun
+    # blocage) sans ce str() explicite.
+    customer_id = str(customer_id)
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        return
+    credit_limit = float(customer.credit_limit or 0)
+
+    existing_q = db.query(func.coalesce(func.sum(Debt.balance), 0)).filter(
+        Debt.partner_type == "CUSTOMER",
+        Debt.partner_id == customer_id,
+        Debt.status != "PAID",
+    )
+    if tenant_id:
+        existing_q = existing_q.filter(Debt.tenant_id == tenant_id)
+    if exclude_debt_id:
+        existing_q = existing_q.filter(Debt.id != exclude_debt_id)
+    existing_debt = float(existing_q.scalar() or 0)
+
+    if existing_debt + new_balance > credit_limit:
+        raise HTTPException(
+            400,
+            f"Limite de crédit dépassée pour {customer.name} "
+            f"(limite : {credit_limit:.2f}, dette actuelle : {existing_debt:.2f}, "
+            f"nouvelle dette : {new_balance:.2f}).",
+        )
+
+
 def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | None = None):
     from api.models.Debt import Debt
     from api.models.StockMovement import StockType
@@ -307,6 +351,10 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
         .first()
     )
     if balance > 0 and sale.customer_id:
+        _enforce_credit_limit(
+            db, sale.customer_id, tenant_id, balance,
+            exclude_debt_id=existing_debt.id if existing_debt else None,
+        )
         if existing_debt:
             existing_debt.total_amount = final
             existing_debt.paid_amount = float(sale.paid_amount)
@@ -469,10 +517,12 @@ def create_sale(
     # Crédit — refuse une vente sous-payée si le poste n'y est pas autorisé.
     # Le frontend bloque déjà ce cas (pos_screen.dart) mais un contrôle
     # uniquement côté app est contournable (appel API direct) ; revérifié ici,
-    # seule source de vérité fiable. Même dérogation que le frontend :
-    # sales.discount outrepasse la restriction (ex: superviseur). Sans
-    # current_user (appel interne, ex: tests), la vérification est ignorée —
-    # elle n'a de sens que pour un appel HTTP authentifié.
+    # seule source de vérité fiable. Dérogation : sales.credit — permission
+    # dédiée, volontairement distincte de sales.discount (accorder une remise
+    # et autoriser une vente à crédit sont deux capacités différentes), pas
+    # accordée par défaut au rôle cashier pour permettre un octroi individuel,
+    # caissier par caissier. Sans current_user (appel interne, ex: tests), la
+    # vérification est ignorée — elle n'a de sens que pour un appel HTTP authentifié.
     if (
         current_user is not None
         and remaining_after_loyalty - collected > 0.005
@@ -481,7 +531,7 @@ def create_sale(
         from api.core.permissions import has_permission as _has_perm, P
         perms = getattr(current_user, "permissions", None) or []
         roles = getattr(current_user, "roles", None) or []
-        if not _has_perm(perms, roles, P.SALES_DISCOUNT):
+        if not _has_perm(perms, roles, P.SALES_CREDIT):
             raise HTTPException(
                 400, "Les ventes à crédit ne sont pas autorisées pour ce poste."
             )
@@ -608,6 +658,7 @@ def create_sale(
         sale.status = "PARTIAL"
 
     if balance > 0 and data.customer_id:
+        _enforce_credit_limit(db, data.customer_id, tenant_id, balance)
         debt = Debt(
             reference_type="SALE",
             reference_id=sale.id,

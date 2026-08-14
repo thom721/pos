@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta
 from math import ceil
-from typing import List
+from typing import Callable, List
 
 from pydantic import BaseModel
 
@@ -541,6 +542,35 @@ def create_stripe_checkout(
         raise HTTPException(status_code=500, detail=f"Erreur Stripe: {str(e)}")
 
 
+def _generate_and_commit_payments(
+    db: Session, prefix: str,
+    build: Callable[[int], list],
+    max_attempts: int = 5,
+) -> list:
+    """Crée et commite un lot de BillingPayment dont le numéro de facture suit
+    la forme f"{prefix}{n:04d}", n généré par COUNT()+1 — pas atomique : deux
+    soumissions concurrentes (ou un double-clic/retry après une erreur
+    transitoire) peuvent tomber sur le même numéro, provoquant une
+    IntegrityError sur la contrainte unique invoice_number. Retente depuis un
+    COUNT() frais dans ce cas plutôt que remonter une erreur 500 au tenant.
+
+    build(base_count) doit créer les BillingPayment (db.add() inclus) en
+    numérotant à partir de base_count, et retourner la liste créée."""
+    last_exc: IntegrityError | None = None
+    for _ in range(max_attempts):
+        base_count = db.query(BillingPayment).filter(
+            BillingPayment.invoice_number.like(f"{prefix}%"),
+        ).count()
+        payments = build(base_count)
+        try:
+            db.commit()
+            return payments
+        except IntegrityError as exc:
+            db.rollback()
+            last_exc = exc
+    raise last_exc
+
+
 @router.post("/submit-payment", status_code=201)
 def submit_payment(
     body: SubmitPaymentRequest,
@@ -568,37 +598,34 @@ def submit_payment(
     now = now_local()
     year   = now.year
     prefix = f"PEND-{year}-"
-    # invoice_number est unique globalement (tous tenants confondus) — le compteur
-    # doit donc porter sur tous les tenants, pas seulement celui-ci.
-    count  = db.query(BillingPayment).filter(
-        BillingPayment.invoice_number.like(f"{prefix}%"),
-    ).count()
-    invoice_number = f"{prefix}{count + 1:04d}"
 
     plan_label   = "Annuel (-{}%)".format(int(getattr(cfg, "annual_discount_pct", 20) if cfg else 20)) if plan_type == "annual" else f"{months} mois"
     method_label = {"cash": "Espèces", "moncash": "MonCash", "natcash": "NatCash"}.get(body.method, "Manuel")
     days = 365 if plan_type == "annual" else 30 * months
 
-    payment = BillingPayment(
-        tenant_id=tenant.id,
-        invoice_number=invoice_number,
-        method=body.method,
-        amount=amount,
-        currency="HTG",
-        months=months,
-        status="pending",
-        reference=body.reference,
-        plan_type=plan_type,
-        # Séparateur ASCII (pas d'em dash "—") : le reçu PDF utilise la police
-        # par défaut du package `pdf` (Helvetica/WinAnsi), qui ne couvre pas
-        # U+2014 et affichait un caractère de remplacement "□" à la place.
-        description=f"Demande {method_label} - {plan_label} ({amount:.0f} HTG) - en attente de validation",
-        paid_at=None,
-        period_start=encrypt_date(now, tenant.id),
-        period_end=encrypt_date(now + timedelta(days=days), tenant.id),
-    )
-    db.add(payment)
-    db.commit()
+    def _build(base_count: int) -> list:
+        payment = BillingPayment(
+            tenant_id=tenant.id,
+            invoice_number=f"{prefix}{base_count + 1:04d}",
+            method=body.method,
+            amount=amount,
+            currency="HTG",
+            months=months,
+            status="pending",
+            reference=body.reference,
+            plan_type=plan_type,
+            # Séparateur ASCII (pas d'em dash "—") : le reçu PDF utilise la police
+            # par défaut du package `pdf` (Helvetica/WinAnsi), qui ne couvre pas
+            # U+2014 et affichait un caractère de remplacement "□" à la place.
+            description=f"Demande {method_label} - {plan_label} ({amount:.0f} HTG) - en attente de validation",
+            paid_at=None,
+            period_start=encrypt_date(now, tenant.id),
+            period_end=encrypt_date(now + timedelta(days=days), tenant.id),
+        )
+        db.add(payment)
+        return [payment]
+
+    payment = _generate_and_commit_payments(db, prefix, _build)[0]
     db.refresh(payment)
 
     return {
@@ -652,50 +679,46 @@ def _submit_register_payment_for_tenant(
     for reg in registers:
         by_wh[reg.warehouse_id or "__none__"].append(reg)
 
-    # invoice_number est unique globalement (tous tenants confondus) — le compteur
-    # doit donc porter sur tous les tenants, pas seulement celui-ci.
-    base_count = db.query(BillingPayment).filter(
-        BillingPayment.invoice_number.like(f"{prefix}%"),
-    ).count()
+    def _build(base_count: int) -> list:
+        created = []
+        for idx, (wh_id, wh_regs) in enumerate(by_wh.items()):
+            if plan_type == "annual":
+                wh_amount = price_per_caisse_htg * 12 * len(wh_regs) * (1 - discount_pct / 100)
+            else:
+                wh_amount = price_per_caisse_htg * months * len(wh_regs)
 
-    payments_created = []
-    for idx, (wh_id, wh_regs) in enumerate(by_wh.items()):
-        if plan_type == "annual":
-            wh_amount = price_per_caisse_htg * 12 * len(wh_regs) * (1 - discount_pct / 100)
-        else:
-            wh_amount = price_per_caisse_htg * months * len(wh_regs)
+            wh_name = "Sans dépôt"
+            if wh_id != "__none__":
+                wh_obj = db.query(Warehouse).filter_by(id=wh_id, tenant_id=tenant.id).first()
+                if wh_obj:
+                    wh_name = wh_obj.name
 
-        wh_name = "Sans dépôt"
-        if wh_id != "__none__":
-            wh_obj = db.query(Warehouse).filter_by(id=wh_id, tenant_id=tenant.id).first()
-            if wh_obj:
-                wh_name = wh_obj.name
+            invoice_number = f"{prefix}{base_count + idx + 1:04d}"
+            reg_names = ", ".join(r.name for r in wh_regs)
 
-        invoice_number = f"{prefix}{base_count + idx + 1:04d}"
-        reg_names = ", ".join(r.name for r in wh_regs)
+            payment = BillingPayment(
+                tenant_id=tenant.id,
+                invoice_number=invoice_number,
+                method=body.method,
+                amount=wh_amount,
+                currency="HTG",
+                months=months,
+                status="pending",
+                reference=body.reference,
+                plan_type=plan_type,
+                register_ids_json=_json.dumps([r.id for r in wh_regs]),
+                # Voir le commentaire équivalent ci-dessus (submit_payment) — même
+                # correctif d'encodage pour le reçu PDF.
+                description=f"{wh_name} - {reg_names} - {method_label} - {plan_label} ({wh_amount:.0f} HTG)",
+                paid_at=None,
+                period_start=encrypt_date(now, tenant.id),
+                period_end=encrypt_date(now + timedelta(days=days), tenant.id),
+            )
+            db.add(payment)
+            created.append(payment)
+        return created
 
-        payment = BillingPayment(
-            tenant_id=tenant.id,
-            invoice_number=invoice_number,
-            method=body.method,
-            amount=wh_amount,
-            currency="HTG",
-            months=months,
-            status="pending",
-            reference=body.reference,
-            plan_type=plan_type,
-            register_ids_json=_json.dumps([r.id for r in wh_regs]),
-            # Voir le commentaire équivalent ci-dessus (submit_payment) — même
-            # correctif d'encodage pour le reçu PDF.
-            description=f"{wh_name} - {reg_names} - {method_label} - {plan_label} ({wh_amount:.0f} HTG)",
-            paid_at=None,
-            period_start=encrypt_date(now, tenant.id),
-            period_end=encrypt_date(now + timedelta(days=days), tenant.id),
-        )
-        db.add(payment)
-        payments_created.append(payment)
-
-    db.commit()
+    payments_created = _generate_and_commit_payments(db, prefix, _build)
     total_amount = sum(p.amount for p in payments_created)
 
     return {
@@ -804,32 +827,29 @@ def _submit_entrepot_payment_for_tenant(
     else:
         amount = price_per_entrepot_htg * months * len(entrepots)
 
-    # invoice_number est unique globalement (tous tenants confondus) — même
-    # raisonnement que pour submit_payment/submit_register_payment.
-    count = db.query(BillingPayment).filter(
-        BillingPayment.invoice_number.like(f"{prefix}%"),
-    ).count()
-    invoice_number = f"{prefix}{count + 1:04d}"
     ent_names = ", ".join(e.name for e in entrepots)
 
-    payment = BillingPayment(
-        tenant_id=tenant.id,
-        invoice_number=invoice_number,
-        method=body.method,
-        amount=amount,
-        currency="HTG",
-        months=months,
-        status="pending",
-        reference=body.reference,
-        plan_type=plan_type,
-        entrepot_ids_json=_json.dumps([e.id for e in entrepots]),
-        description=f"{ent_names} - {method_label} - {plan_label} ({amount:.0f} HTG)",
-        paid_at=None,
-        period_start=encrypt_date(now, tenant.id),
-        period_end=encrypt_date(now + timedelta(days=days), tenant.id),
-    )
-    db.add(payment)
-    db.commit()
+    def _build(base_count: int) -> list:
+        payment = BillingPayment(
+            tenant_id=tenant.id,
+            invoice_number=f"{prefix}{base_count + 1:04d}",
+            method=body.method,
+            amount=amount,
+            currency="HTG",
+            months=months,
+            status="pending",
+            reference=body.reference,
+            plan_type=plan_type,
+            entrepot_ids_json=_json.dumps([e.id for e in entrepots]),
+            description=f"{ent_names} - {method_label} - {plan_label} ({amount:.0f} HTG)",
+            paid_at=None,
+            period_start=encrypt_date(now, tenant.id),
+            period_end=encrypt_date(now + timedelta(days=days), tenant.id),
+        )
+        db.add(payment)
+        return [payment]
+
+    payment = _generate_and_commit_payments(db, prefix, _build)[0]
     db.refresh(payment)
 
     return {

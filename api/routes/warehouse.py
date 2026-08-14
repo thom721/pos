@@ -430,7 +430,13 @@ def create_register(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.WAREHOUSES_UPDATE)),
 ):
-    _get_or_404(db, warehouse_id, current_user.tenant_id)
+    wh = _get_or_404(db, warehouse_id, current_user.tenant_id)
+    if wh.is_entrepot:
+        raise HTTPException(
+            400,
+            "Un entrepôt ne peut pas avoir de caisse — il sert uniquement "
+            "à réceptionner et distribuer du stock.",
+        )
 
     if not data.force:
         tenant = db.get(Tenant, current_user.tenant_id)

@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from api.database import get_db
-from api.services.auth import Auth,Token,TokenData
+from api.services.auth import Auth,Token,TokenData,get_password_hash
 from api.services.user_service import compute_offline_hash
 from api.core.permissions import ROLE_PERMISSIONS
+from api.core.dt_coerce import now_local
 from datetime import timedelta
 from typing import Annotated
 from fastapi import Depends, HTTPException, status
@@ -98,6 +100,88 @@ def login_for_access_token(
         'permissions': _resolve_permissions(user),
         'must_change_password': user.must_change_password,
     }, plan_warning=warning)
+
+
+# ── Réinitialisation de mot de passe ────────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    code: str
+    new_password: str
+
+
+_GENERIC_FORGOT_MESSAGE = (
+    "Si un compte existe avec cet email, un code de vérification vient d'être envoyé."
+)
+
+
+@router.post("/forgot-password")
+def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Génère un code à 6 chiffres (expire 15 min) et l'envoie par email.
+    Répond toujours le même message générique, que l'email existe ou non —
+    évite qu'un attaquant puisse énumérer les comptes existants."""
+    import random
+    from api.models.User import User
+    from api.models.PlatformConfig import PlatformConfig
+    from api.utils.email import send_password_reset_email
+
+    email = body.email.strip().lower()
+    user = db.query(User).filter(User.email.ilike(email), User.is_active == True).first()  # noqa: E712
+    if user:
+        code = f"{random.randint(0, 999999):06d}"
+        user.password_reset_code = code
+        user.password_reset_expires_at = now_local() + timedelta(minutes=15)
+        db.commit()
+
+        cfg = db.query(PlatformConfig).first()
+        if cfg and cfg.smtp_host and cfg.smtp_from:
+            send_password_reset_email(
+                to_addr=user.email,
+                code=code,
+                smtp_host=cfg.smtp_host,
+                smtp_port=cfg.smtp_port,
+                smtp_user=cfg.smtp_user,
+                smtp_password=cfg.smtp_password,
+                smtp_from=cfg.smtp_from,
+            )
+
+    return {"message": _GENERIC_FORGOT_MESSAGE}
+
+
+@router.post("/reset-password")
+def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    from api.models.User import User
+
+    email = body.email.strip().lower()
+    user = db.query(User).filter(User.email.ilike(email), User.is_active == True).first()  # noqa: E712
+    if (
+        not user
+        or not user.password_reset_code
+        or not user.password_reset_expires_at
+        or user.password_reset_code != body.code.strip()
+        or user.password_reset_expires_at < now_local()
+    ):
+        raise HTTPException(status_code=400, detail="Code invalide ou expiré")
+
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Le mot de passe doit contenir au moins 6 caractères")
+
+    user.password = get_password_hash(body.new_password)
+    # offline_hash est dérivé de (email, password) — sans le recalculer ici,
+    # la connexion hors-ligne resterait cassée après un reset (voir login,
+    # qui ne le recalcule que s'il est absent, pas s'il est simplement périmé).
+    if user.email:
+        user.offline_hash = compute_offline_hash(user.email, body.new_password)
+    user.password_reset_code = None
+    user.password_reset_expires_at = None
+    user.must_change_password = False
+    db.commit()
+
+    return {"message": "Mot de passe réinitialisé avec succès."}
 
 
 # @router.get("/users/me/", response_model=User)

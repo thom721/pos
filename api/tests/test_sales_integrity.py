@@ -39,14 +39,36 @@ def test_create_sale_idempotent_client_id():
 
 
 def test_discount_requires_permission():
-    """Un user sans sales.discount ne peut pas créer une vente avec remise."""
-    # Vérifie que has_permission est appelé correctement
+    """Un rôle sans sales.discount (ex: serveur) ne peut pas créer une vente
+    avec remise. Tous les caissiers l'ont par défaut (voir
+    test_all_cashiers_can_apply_discount_by_default) — un rôle plus restreint
+    est nécessaire ici pour tester le cas "refusé"."""
     from api.core.permissions import has_permission, P
 
-    user_perms = ["sales.create", "sales.read"]
-    user_roles = ["cashier"]
+    user_perms = ["sales.create"]
+    user_roles = ["waiter"]
 
     assert not has_permission(user_perms, user_roles, P.SALES_DISCOUNT)
+
+
+def test_all_cashiers_can_apply_discount_by_default():
+    """Appliquer un rabais existant (actif/disponible) sur une vente doit
+    être possible pour tout caissier, sans octroi individuel — distinct de
+    sales.credit (vendre à crédit), volontairement pas accordé par défaut."""
+    from api.core.permissions import has_permission, P
+
+    assert has_permission([], ["cashier"], P.SALES_DISCOUNT)
+    assert not has_permission([], ["cashier"], P.SALES_CREDIT)
+
+
+def test_no_role_grants_credit_by_default_including_manager():
+    """sales.credit doit rester 100% explicite, octroyé individuellement —
+    même le rôle manager ne l'a pas par défaut (contrairement à
+    sales.discount, qu'il a bien)."""
+    from api.core.permissions import has_permission, P
+
+    assert not has_permission([], ["manager"], P.SALES_CREDIT)
+    assert has_permission([], ["manager"], P.SALES_DISCOUNT)
 
 
 def test_admin_can_apply_discount():

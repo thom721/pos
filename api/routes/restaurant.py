@@ -757,6 +757,8 @@ def checkout_order(
 
     remaining = final - data.paid_amount
     if remaining > 0 and data.customer_id:
+        from api.services.sale_service import _enforce_credit_limit
+        _enforce_credit_limit(db, data.customer_id, current_user.tenant_id, remaining)
         db.add(Debt(
             reference_type='SALE',
             reference_id=sale.id,

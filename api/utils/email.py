@@ -85,6 +85,44 @@ sera bloquée</strong>.</p>
     threading.Thread(target=_send, daemon=True).start()
 
 
+def send_password_reset_email(
+    to_addr: str,
+    code: str,
+    smtp_host: str,
+    smtp_port: int,
+    smtp_user: str,
+    smtp_password: str,
+    smtp_from: str,
+) -> None:
+    """Lance l'envoi en arrière-plan — ne bloque pas la requête."""
+    if not smtp_host or not smtp_from:
+        return  # SMTP non configuré → silencieux
+
+    subject = "POS Connect — Code de réinitialisation de mot de passe"
+    html = f"""
+<html><body style="font-family:sans-serif;color:#222">
+<h2>Réinitialisation de mot de passe</h2>
+<p>Voici votre code de vérification :</p>
+<p style="font-size:28px;font-weight:bold;letter-spacing:4px">{code}</p>
+<p>Ce code expire dans 15 minutes. Si vous n'êtes pas à l'origine de cette
+demande, ignorez cet email — votre mot de passe reste inchangé.</p>
+<p style="color:#888;font-size:12px">
+  POS Connect &mdash; posconnect.ht<br>
+  Cet email a été envoyé automatiquement.
+</p>
+</body></html>
+"""
+
+    def _send():
+        try:
+            _send_via_smtp(smtp_host, smtp_port, smtp_user, smtp_password,
+                           smtp_from, to_addr, subject, html)
+        except Exception:
+            pass  # échec silencieux
+
+    threading.Thread(target=_send, daemon=True).start()
+
+
 def send_low_stock_email(
     to_addr: str,
     business_name: str,
