@@ -104,19 +104,27 @@ class _CustomerCard extends ConsumerWidget {
           ),
         ),
         title: Text(customer.fullName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
                 fontWeight: FontWeight.w600, fontSize: 14)),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(customer.phone,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12)),
             if (customer.nif != null)
               Text('NIF/CIN: ${customer.nif}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       color: AppColors.textSecondary, fontSize: 12)),
             if (customer.email != null)
               Text(customer.email!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       color: AppColors.textSecondary, fontSize: 12)),
           ],
@@ -129,10 +137,14 @@ class _CustomerCard extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text('Limite: ${_fmt.format(customer.creditLimit)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         fontSize: 12, color: AppColors.textSecondary)),
                 if (customer.loyaltyBalance > 0)
                   Text('Fidélité: ${_fmt.format(customer.loyaltyBalance)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 12,
                           color: AppColors.primary,
