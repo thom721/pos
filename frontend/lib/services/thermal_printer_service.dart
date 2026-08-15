@@ -71,9 +71,22 @@ class ThermalPrinterService {
       final targetH = (targetW * decoded.height / decoded.width).round();
       final resized = img.copyResize(decoded, width: targetW, height: targetH,
           interpolation: img.Interpolation.average);
+
+      // Seuillage noir/blanc pur (même formule de luminance que le chemin
+      // Bluetooth, _logoToEscPos) — sans ça, le SDK Sunmi applique SA PROPRE
+      // dithering (ImageAlgorithm.DITHERING, côté natif Android) par-dessus
+      // une image déjà lissée par l'interpolation ci-dessus : les deux flous
+      // s'accumulent et donnent un rendu grisâtre/brouillé sur le papier
+      // thermique. Un logo déjà en noir/blanc pur traverse cette dithering
+      // sans être altéré.
+      for (final pixel in resized) {
+        final lum = 0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b;
+        final v = lum < 128.0 ? 0 : 255;
+        pixel..r = v..g = v..b = v;
+      }
       final pngBytes = img.encodePng(resized);
 
-      await SunmiPrinter.printImage(pngBytes, align: SunmiPrintAlign.CENTER);
+      await SunmiPrinter.printImage(pngBytes, align: SunmiPrintAlign.LEFT);
       await SunmiPrinter.lineWrap(1);
     } catch (_) {
       // Logo optionnel — un échec ne doit jamais bloquer le reste du reçu.
