@@ -56,11 +56,18 @@ Future<void> initServerUrl() async {
   final url = prefs.getString(AppConstants.serverUrlKey);
   if (url == _localBaseUrl) {
     final ip = prefs.getString(AppConstants.serverIpKey) ?? '';
+    dio.options.baseUrl = _localBaseUrl;
     if (ip.isNotEmpty) {
-      dio.options.baseUrl = _localBaseUrl;
+      // IP saisie manuellement — résolution figée au niveau socket.
       configureLocalHttps(dio, ip);
-      return;
+    } else {
+      // Aucune IP mémorisée = serveur auto-découvert via mDNS (voir
+      // login_screen.dart::_initLocalServer) — résolu à nouveau par le
+      // système à chaque requête, s'adapte tout seul si le serveur change
+      // d'IP tant que mDNS reste disponible sur ce réseau.
+      configureAutoDiscoveredHttps(dio);
     }
+    return;
   }
   dio.options.baseUrl =
       (url != null && url.isNotEmpty) ? url : AppConstants.baseUrl;

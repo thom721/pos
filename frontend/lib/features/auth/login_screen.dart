@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show FilteringTextInputFormatter;
@@ -6,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/data/api/local_https.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/shared/widgets/pos_logo.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,6 +29,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscureCloud = true;
   bool _obscureLocal = true;
   bool _showServerConfig = false;
+  bool _autoDiscovering = false;
+  bool _usingAutoDiscoveredServer = false;
 
   final _cloudFormKey = GlobalKey<FormState>();
   final _localFormKey = GlobalKey<FormState>();
@@ -38,7 +42,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void initState() {
     super.initState();
     // Android est cloud-only : pas de serveur local à charger.
-    if (!kIsWeb && !_isAndroid) _loadSavedServer();
+    if (!kIsWeb && !_isAndroid) _initLocalServer();
   }
 
   @override
@@ -51,15 +55,49 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _loadSavedServer() async {
+  Future<void> _initLocalServer() async {
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString(AppConstants.serverUrlKey) ?? '';
     final ip  = prefs.getString(AppConstants.serverIpKey)  ?? '';
     final display = (url.isNotEmpty && url != 'https://infini-post.local') ? url : ip;
     if (display.isNotEmpty) {
+      // Déjà configuré explicitement (IP manuelle ou URL) — respecter ce
+      // choix, ne pas retenter l'auto-découverte à chaque lancement.
       setState(() => _serverCtrl.text = display);
-    } else if (_isAndroid) {
-      setState(() => _showServerConfig = true);
+      return;
+    }
+    if (url == 'https://infini-post.local') {
+      // Mode auto-découverte déjà choisi précédemment (aucune IP mémorisée
+      // volontairement, voir api_client.dart::initServerUrl) — la connexion
+      // se refait via mDNS à chaque requête, déjà configurée par
+      // initServerUrl() au démarrage de l'app. Juste refléter l'état dans l'UI.
+      setState(() {
+        _usingAutoDiscoveredServer = true;
+        _serverCtrl.text = 'infini-post.local (détecté automatiquement)';
+      });
+      return;
+    }
+
+    // Premier lancement, rien de configuré : tenter la découverte
+    // automatique via mDNS avant de forcer une saisie manuelle d'IP.
+    if (!mounted) return;
+    setState(() => _autoDiscovering = true);
+    final found = await tryAutoDiscoverLocalServer();
+    if (!mounted) return;
+    if (found) {
+      configureAutoDiscoveredHttps(dio);
+      await prefs.setString(AppConstants.serverUrlKey, 'https://infini-post.local');
+      await prefs.remove(AppConstants.serverIpKey);
+      setState(() {
+        _autoDiscovering = false;
+        _usingAutoDiscoveredServer = true;
+        _serverCtrl.text = 'infini-post.local (détecté automatiquement)';
+      });
+    } else {
+      setState(() {
+        _autoDiscovering = false;
+        _showServerConfig = true;
+      });
     }
   }
 
@@ -200,15 +238,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  String _buildLocalUrl(String raw) {
-    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-    return raw.contains(':') ? 'http://$raw' : 'http://$raw:9003';
+  /// Ne garde que l'IP (retire un éventuel ":port" tapé par erreur) — le
+  /// port 9003 est le backend brut HTTP, jamais utilisé directement par le
+  /// client : toute connexion passe par nginx en HTTPS (port 443) via
+  /// saveLocalServer()/configureLocalHttps(), jamais par saveServerUrl().
+  String _extractIp(String raw) {
+    final idx = raw.indexOf(':');
+    return idx == -1 ? raw : raw.substring(0, idx);
   }
 
   Future<void> _submitLocal() async {
     if (!_localFormKey.currentState!.validate()) return;
-    if (_serverCtrl.text.trim().isNotEmpty) {
-      await saveServerUrl(_buildLocalUrl(_serverCtrl.text.trim()));
+    // Serveur auto-découvert via mDNS : dio est déjà configuré
+    // (configureAutoDiscoveredHttps) — ne pas l'écraser.
+    if (!_usingAutoDiscoveredServer && _serverCtrl.text.trim().isNotEmpty) {
+      final ip = _extractIp(_serverCtrl.text.trim());
+      // TOUJOURS HTTPS + certificat épinglé (jamais saveServerUrl(), qui
+      // pointerait en HTTP brut vers le port 9003 directement, hors nginx).
+      await saveLocalServer(ip);
+      // Best-effort : ajoute aussi l'entrée dans le fichier hosts de CETTE
+      // machine (mDNS a échoué si on en est là) — non bloquant si pas de
+      // droits admin, le pinning ci-dessus fait déjà fonctionner l'app.
+      unawaited(tryAddHostsEntry(ip));
     }
     await ref.read(authProvider.notifier).login(
       _usernameCtrl.text.trim(),
@@ -341,7 +392,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ],
                       _buildErrorBanner(authState),
                       if (kIsWeb)  _buildCloudForm(authState),
-                      if (!kIsWeb) _buildLocalForm(authState),
+                      if (!kIsWeb && _autoDiscovering) _buildAutoDiscoveringIndicator(),
+                      if (!kIsWeb && !_autoDiscovering) _buildLocalForm(authState),
                     ],
                   ),
                 ),
@@ -512,6 +564,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
+  // ── Auto-découverte du serveur local (mDNS) ───────────────────────────────────
+
+  Widget _buildAutoDiscoveringIndicator() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 28, height: 28,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+          SizedBox(height: 16),
+          Text('Recherche du serveur sur le réseau local…',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+        ],
+      ),
+    );
+  }
+
   // ── Local form ──────────────────────────────────────────────────────────────
 
   Widget _buildLocalForm(AuthState authState) {
@@ -578,8 +650,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           const SizedBox(height: 4),
 
           GestureDetector(
-            onTap: () =>
-                setState(() => _showServerConfig = !_showServerConfig),
+            onTap: () => setState(() {
+              _showServerConfig = !_showServerConfig;
+              // Vider le texte d'affichage "détecté automatiquement" (pas
+              // une IP valide) pour laisser un champ propre si l'utilisateur
+              // veut basculer sur une adresse manuelle.
+              if (_showServerConfig && _usingAutoDiscoveredServer) {
+                _serverCtrl.clear();
+              }
+            }),
             behavior: HitTestBehavior.opaque,
             child: Row(children: [
               Icon(
@@ -618,15 +697,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               controller: _serverCtrl,
               keyboardType: TextInputType.url,
               decoration: const InputDecoration(
-                labelText: 'Adresse du serveur',
-                hintText: '192.168.0.104 ou 192.168.0.104:9003',
+                labelText: 'Adresse IP du serveur',
+                hintText: '192.168.0.104',
                 prefixIcon: Icon(Icons.router_outlined),
-                helperText: 'IP seule → port 9003 par défaut',
+                helperText: 'Connexion HTTPS sécurisée (port 443)',
               ),
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[\d.:]')),
               ],
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) => setState(() => _usingAutoDiscoveredServer = false),
             ),
           ],
           const SizedBox(height: 24),
