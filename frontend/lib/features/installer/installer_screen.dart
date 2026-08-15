@@ -2057,9 +2057,19 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
     if (!_failed) {
       // Persiste l'adresse du serveur dans SharedPreferences une seule fois, à la fin.
       // Poste client : HTTPS + épinglage de certificat (cfg.serverUrl = IP nue).
-      // Serveur/both : connexion directe à soi-même, HTTP suffit (pas de trajet réseau).
+      // Serveur/both sur Windows : à ce stade, setup-windows.ps1 (exécuté en
+      // amont par l'installeur Inno Setup, avant même le premier lancement de
+      // cette app) a déjà configuré nginx + le certificat pour de vrai — donc
+      // plus besoin de HTTP direct vers le port 9003 nu comme le fait le test
+      // de connexion PLUS TÔT dans ce wizard (_ServerAddressPage._test(), qui
+      // lui doit rester en HTTP : nginx n'existe pas encore à cette étape-là).
+      // Non-Windows (macOS/Linux, service_wrapper) : aucun nginx/certificat
+      // équivalent n'est mis en place par cet installeur — HTTP direct reste
+      // le seul choix qui fonctionne réellement là-bas.
       if (cfg.mode == InstallMode.client && cfg.serverUrl.isNotEmpty) {
         await saveLocalServer(cfg.serverUrl);
+      } else if (cfg.mode != InstallMode.client && Platform.isWindows) {
+        await saveLocalServer('127.0.0.1');
       } else {
         await saveServerUrl(cfg.serverUrl.isNotEmpty ? cfg.serverUrl : dio.options.baseUrl);
       }
