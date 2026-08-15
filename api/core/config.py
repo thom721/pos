@@ -49,12 +49,37 @@ def _safe_read_ini(cfg: configparser.ConfigParser, path: Path) -> None:
     utf-8-sig = utf-8 + strip automatique du BOM ﻿ (créé par Notepad/Windows).
     En cas de fichier corrompu : repart d'un état vide plutôt que de crasher.
     """
+    import logging as _log
+
     try:
-        cfg.read(path, encoding="utf-8-sig")
+        parsed = cfg.read(path, encoding="utf-8-sig")
     except configparser.MissingSectionHeaderError:
-        import logging as _log
         _log.getLogger(__name__).warning(
             "pos_server.ini corrompu ou illisible — réinitialisation : %s", path
+        )
+        return
+
+    if not parsed:
+        # configparser.read() ignore SILENCIEUSEMENT un fichier illisible
+        # (permissions insuffisantes pour le compte du service Windows au
+        # démarrage, verrou, etc.) au lieu de lever une exception — le
+        # process démarrait alors avec une config vide (repli sur DB_TYPE
+        # mysql par défaut/variables d'environnement) sans AUCUNE trace de
+        # la cause. Bug réel rencontré : service démarré par Windows avec
+        # des droits insuffisants pour lire C:\ProgramData\...\pos_server.ini,
+        # basculait sur sqlite/setup_done=false sans rien logger, alors que
+        # le fichier — lisible par l'utilisateur humain dans Notepad —
+        # semblait pourtant correctement configuré en mysql.
+        try:
+            readable = os.access(path, os.R_OK)
+        except OSError:
+            readable = False
+        _log.getLogger(__name__).warning(
+            "pos_server.ini existe (%s) mais n'a pas pu être lu par ce process "
+            "(droit de lecture détecté: %s) — config vide, repli sur "
+            "DB_TYPE=mysql par défaut/variables d'environnement. Vérifier les "
+            "droits du compte utilisé par le service Windows sur ce fichier.",
+            path, readable,
         )
 
 
