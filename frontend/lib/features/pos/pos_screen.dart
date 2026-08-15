@@ -2165,9 +2165,10 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text(
-                                      'Les ventes à crédit ne sont pas autorisées pour ce poste.'),
+                                      "Vous n'avez pas la permission d'effectuer une vente à crédit. "
+                                      "Demandez à un administrateur de vous l'accorder, ou faites payer le montant total."),
                                   backgroundColor: AppColors.error,
-                                  duration: Duration(seconds: 3),
+                                  duration: Duration(seconds: 4),
                                 ),
                               );
                               return;

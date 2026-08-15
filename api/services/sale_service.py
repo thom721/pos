@@ -533,7 +533,9 @@ def create_sale(
         roles = getattr(current_user, "roles", None) or []
         if not _has_perm(perms, roles, P.SALES_CREDIT):
             raise HTTPException(
-                400, "Les ventes à crédit ne sont pas autorisées pour ce poste."
+                400,
+                "Vous n'avez pas la permission d'effectuer une vente à crédit. "
+                "Demandez à un administrateur de vous l'accorder, ou faites payer le montant total.",
             )
 
     # Fidélisation — gain : crédite un % du montant de la vente sur le solde
