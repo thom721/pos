@@ -1,6 +1,7 @@
 
 import asyncio
 import logging
+import os
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy import text
 
@@ -1566,6 +1567,19 @@ async def start_auto_sync():
         _log.info("Auto-heal: billing_url set to %s (from cloud_sync_url)", _sync_url)
 
     _auto_sync_task = asyncio.create_task(_auto_sync_loop())
+
+    # mDNS ("infini-post.local") — installation locale Windows uniquement.
+    # Le cloud (Docker/Linux) n'a pas de réseau local a annoncer.
+    if os.name == "nt":
+        from api.services.mdns_service import start_mdns_responder
+        start_mdns_responder()
+
+
+@app.on_event("shutdown")
+async def stop_mdns():
+    if os.name == "nt":
+        from api.services.mdns_service import stop_mdns_responder
+        stop_mdns_responder()
 
 
 def restart_auto_sync():

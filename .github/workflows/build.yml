@@ -112,6 +112,7 @@ jobs:
             --include-package-data=alembic `
             --include-package=tzdata `
             --include-package-data=tzdata `
+            --include-package=zeroconf `
             --include-data-files=alembic.ini=alembic.ini `
             --include-data-files=api/alembic.ini=api/alembic.ini `
             --include-data-files=pos_server.ini.example=pos_server.ini.example `
