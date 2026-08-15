@@ -42,9 +42,16 @@ class AuthRepository {
   // ── Local login (username + password → OAuth2 form) ─────────────────────
 
   Future<AuthToken> login(String username, String password) async {
+    // FormData.fromMap() force TOUJOURS un encodage multipart/form-data,
+    // quel que soit le contentType déclaré ici — le corps réel ne
+    // correspondait donc jamais au Content-Type annoncé
+    // (application/x-www-form-urlencoded), et le serveur (qui attend un
+    // OAuth2PasswordRequestForm classique) échouait à le parser : 400 Bad
+    // Request systématique, quels que soient les identifiants saisis. Un
+    // Map simple laisse Dio l'encoder correctement en url-encoded.
     final response = await dio.post(
       '/api/auth/login',
-      data: FormData.fromMap({'username': username, 'password': password}),
+      data: {'username': username, 'password': password},
       options: Options(
         contentType: 'application/x-www-form-urlencoded',
         extra: {'skipAutoLogout': true}, // 401 = mauvais identifiants, pas session expirée
