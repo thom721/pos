@@ -1494,6 +1494,23 @@ _SYNC_DEBOUNCE      = 5     # secondes d'attente après signal pour batcher les 
 _auto_sync_task: asyncio.Task | None = None
 _sync_event = asyncio.Event()           # signalé après toute écriture locale
 
+_MDNS_WATCH_INTERVAL = 120  # secondes entre deux vérifications de l'IP locale
+_mdns_watch_task: asyncio.Task | None = None
+
+
+async def _mdns_watch_loop():
+    """Revérifie périodiquement l'IP locale et redémarre la diffusion mDNS
+    si elle a changé (bail DHCP renouvelé, routeur redémarré...) — sans
+    ceci, infini-post.local resterait figé sur une IP périmée jusqu'au
+    prochain redémarrage du service (voir mdns_service.refresh_if_ip_changed)."""
+    from api.services.mdns_service import refresh_if_ip_changed
+    while True:
+        await asyncio.sleep(_MDNS_WATCH_INTERVAL)
+        try:
+            refresh_if_ip_changed()
+        except Exception:
+            logging.getLogger("pos.mdns").exception("Échec vérification IP mDNS")
+
 
 def signal_pending_sync() -> None:
     """Appeler après toute écriture locale — réveille le loop de sync immédiatement."""
@@ -1571,13 +1588,17 @@ async def start_auto_sync():
     # mDNS ("infini-post.local") — installation locale Windows uniquement.
     # Le cloud (Docker/Linux) n'a pas de réseau local a annoncer.
     if os.name == "nt":
+        global _mdns_watch_task
         from api.services.mdns_service import start_mdns_responder
         start_mdns_responder()
+        _mdns_watch_task = asyncio.create_task(_mdns_watch_loop())
 
 
 @app.on_event("shutdown")
 async def stop_mdns():
     if os.name == "nt":
+        if _mdns_watch_task and not _mdns_watch_task.done():
+            _mdns_watch_task.cancel()
         from api.services.mdns_service import stop_mdns_responder
         stop_mdns_responder()
 

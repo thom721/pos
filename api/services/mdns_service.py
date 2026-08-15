@@ -19,6 +19,8 @@ _log = logging.getLogger("pos.mdns")
 _HOSTNAME = "infini-post.local."
 _zeroconf = None
 _service_info = None
+_current_ip: str | None = None
+_current_port: int = 443
 
 
 def _local_ip() -> str | None:
@@ -42,7 +44,7 @@ def start_mdns_responder(port: int = 443) -> None:
     si mDNS échoue pour une raison quelconque — pare-feu, adaptateur réseau
     désactivé, etc.). Idempotent : un appel répété relance proprement plutôt
     que de fuiter l'instance Zeroconf précédente."""
-    global _zeroconf, _service_info
+    global _zeroconf, _service_info, _current_ip, _current_port
     if _zeroconf is not None:
         stop_mdns_responder()
     try:
@@ -62,6 +64,7 @@ def start_mdns_responder(port: int = 443) -> None:
             server=_HOSTNAME,
         )
         _zeroconf.register_service(_service_info)
+        _current_ip, _current_port = ip, port
         _log.info("mDNS démarré : %s -> %s (port %d)", _HOSTNAME, ip, port)
     except Exception:
         _log.exception("Échec démarrage mDNS — infini-post.local ne sera "
@@ -81,3 +84,17 @@ def stop_mdns_responder() -> None:
     finally:
         _zeroconf = None
         _service_info = None
+
+
+def refresh_if_ip_changed() -> None:
+    """Appelée périodiquement (voir _mdns_watch_loop dans main.py) — le DHCP
+    peut réattribuer une IP différente au serveur pendant qu'il tourne
+    (renouvellement de bail, redémarrage du routeur...). L'IP n'était sinon
+    lue qu'une seule fois au démarrage : la diffusion mDNS restait figée sur
+    l'ancienne IP, injoignable, jusqu'au prochain redémarrage du service."""
+    if _zeroconf is None:
+        return  # jamais démarré (ou échec) — rien à rafraîchir
+    ip = _local_ip()
+    if ip and ip != _current_ip:
+        _log.info("IP locale changée (%s -> %s) — redémarrage mDNS", _current_ip, ip)
+        start_mdns_responder(port=_current_port)
