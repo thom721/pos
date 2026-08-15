@@ -1,8 +1,8 @@
 # PPRD — Product & Project Requirements Document
 # POS Connect — Système de Caisse Multi-Plateforme
 
-**Date :** 2026-07-26
-**Version :** 0.9 (en développement actif) — app 2.0.0+12
+**Date :** 2026-08-15
+**Version :** 0.9 (en développement actif) — app 2.0.0+33, tag v2.0.29
 **Stack backend :** Python 3.11 · FastAPI · SQLAlchemy · MySQL / SQLite · JWT
 **Stack frontend :** Flutter 3.x · Riverpod · go_router · Dio · SharedPreferences
 
@@ -432,6 +432,11 @@ room_attributes   ← attributs clé/valeur des chambres hôtel (FK restaurant_t
 | B11 | Résolu | `list_tables` excluait les caissiers (check `_is_manager`) → corrigé : `'serveur' in roles` |
 | B12 | Résolu | MySQL 1292 sur `POST /api/warehouses/{id}/registers` — colonnes `trial_ends_at` / `subscription_*_at` restées `DATETIME` alors que les valeurs Fernet sont du TEXT → migration `s5t6u7v8w9x0` estampillée sans avoir tourné → correction directe SQL + migration idempotente `f8bf3dfe3543` |
 | B13 | Résolu | Alembic multiple heads — révision `a1b2c3d4e5f6` dupliquée → renommée `f3930ab198e9` + merge `00d25d56df77` |
+| B14 | Résolu | Logo/uploads jamais accessibles publiquement en prod — nginx ne proxyait pas `/static/` vers FastAPI, `try_files` retombait sur le SPA → bloc `location /static/` ajouté (`pos.infini-software.cloud.nginx.conf`) |
+| B15 | Résolu | Windows : dépendance de service `POS_Connect_API` → `POS_Connect_MySQL` (nssm `DependOnService`) posée uniquement à l'install fraîche, jamais réappliquée sur réinstallation/mise à jour → si l'API démarre avant MySQL au boot, `_ensure_db_ready()` bascule silencieusement et définitivement sur SQLite (`db_type: sqlite`, `setup_done: false`) même avec `pos_server.ini` correctement configuré en mysql. Corrigé : dépendance posée à chaque exécution (`setup-info/setup-windows.ps1`) |
+| B16 | Résolu | `pos_server.ini` illisible (permissions/verrou) → `configparser.read()` échoue en silence total, aucune trace dans les logs → log explicite ajouté (`api/core/config.py`) |
+| B17 | Actif | Fichiers uploadés (`api/static/logos/*`) disparaissent entre deux déploiements prod — cause exacte non confirmée (probable étape de déploiement qui réinitialise `/opt/post` aux fichiers trackés par git, or ces uploads ne sont pas versionnés) — à investiguer côté script de déploiement |
+| B18 | Ajouté | `CORS_ORIGIN_REGEX` (optionnel, vide par défaut) en complément de `CORS_ORIGINS` — permet `flutter run -d chrome` en local contre un backend sans lister un port exact à chaque lancement |
 
 ### 5.2 Frontend
 
@@ -463,6 +468,12 @@ room_attributes   ← attributs clé/valeur des chambres hôtel (FK restaurant_t
 | F24 | Résolu | Bouton "Télécharger" dans `_ForceUpdateScreen` vide (`onPressed: () {}`) → branché sur `launchUrl` |
 | F25 | Résolu | Bandeau `_UpdateBanner` sans bouton téléchargement → ajouté avec sélection Android/Desktop |
 | F26 | Résolu | `e.toString()` affiché brut dans `warehouses_screen`, `products_screen`, `returns_screen`, `inventory_screen`, `return_provider` → `extractAnyError(e)` |
+| F27 | Résolu | Web pouvait réclamer une caisse physique juste en affichant l'onglet POS/Commandes (device_id généré localement, aucun appareil réel) → web ne peut plus ouvrir de session caisse (`pos_screen`, `commandes_screen`, `checkDevicePendingApproval`), message dédié vers l'app bureau/mobile |
+| F28 | Résolu | Bannière "Nouvelle version disponible" et écran de mise à jour obligatoire (`_ForceUpdateScreen`, plein écran, sans bouton retour) s'affichaient même sans lien de téléchargement pour la plateforme courante → masqués si `resolveUpdateDownloadUrl` retourne vide (web excepté) |
+| F29 | Résolu | Nom/téléphone/NIF client wrappait caractère par caractère sur écran étroit (`_CustomerCard` sans `maxLines`/`overflow`, `trailing` trop large) → `maxLines: 1` + `TextOverflow.ellipsis` partout dans la carte |
+| F30 | Résolu | Logo entreprise jamais affiché sur l'écran Profil même après upload réussi — `Image.network(settings.logoPath, ...)` utilisait un chemin relatif, sans `errorBuilder` → URL absolue via `dio.options.baseUrl` + fallback icône |
+| F31 | Résolu | Upload logo (`POST /api/config/logo`) n'envoyait pas `warehouse_id` (contrairement à `_load()`/`save()`) → pouvait atterrir sur une ligne `AppConfig` différente de celle affichée à l'écran (dépôt par défaut de l'utilisateur ≠ business sélectionné) |
+| F32 | Résolu | Logo jamais imprimé sur reçu via imprimante Sunmi intégrée (seuls PDF et Bluetooth l'avaient) → `SunmiPrinter.printImage()` ajouté dans `thermal_printer_service.dart` |
 
 ---
 
@@ -569,6 +580,7 @@ SECRET_KEY=change_me_use_openssl_rand_hex_32
 | Haute | Intégration API MonCash / NatCash (mode `api_auto`) |
 | Haute | Portail self-service tenant (upgrade plan, voir caisses) |
 | Haute | Activation/désactivation utilisateur UI (utiliser `users.is_active`) |
+| Haute | Identifier pourquoi `api/static/logos/*` disparaît entre deux déploiements prod (voir B17) — rendre les uploads persistants indépendamment du script de déploiement |
 | Moyenne | Impression tickets thermiques (reçus de ventes, mode restaurant — `printing` package) |
 | Moyenne | Dashboard statistiques complet (ventes/jour, top produits) |
 | Moyenne | Page de configuration URL serveur sur web (remplace le wizard) |
