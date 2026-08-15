@@ -27,12 +27,31 @@ bool _acceptPinnedCert(X509Certificate cert, String host, int port) {
 void configureLocalHttps(Dio dio, String serverIp) {
   dio.httpClientAdapter = IOHttpClientAdapter(
     createHttpClient: () => HttpClient()
-      ..badCertificateCallback = _acceptPinnedCert
       ..connectionFactory = (Uri uri, String? proxyHost, int? proxyPort) {
         // Résout infini-post.local → IP du serveur au niveau socket
-        // TLS utilise toujours "infini-post.local" comme SNI hostname
+        // TLS utilise toujours "infini-post.local" comme SNI hostname.
+        //
+        // CRITIQUE : dès qu'un connectionFactory personnalisé est fourni,
+        // dart:io HttpClient saute ENTIÈREMENT sa propre montée en TLS
+        // automatique (voir http_impl.dart, _ConnectionTarget.connect() :
+        // SecureSocket.startConnect() n'est appelé QUE dans la branche
+        // "pas de connectionFactory") — et badCertificateCallback n'est
+        // jamais consulté non plus dans ce chemin. Sans le SecureSocket.secure()
+        // explicite ci-dessous, la socket retournée reste une socket TCP EN
+        // CLAIR sur le port 443 : nginx la rejette ("The plain HTTP request
+        // was sent to HTTPS port") et AUCUN épinglage de certificat n'est
+        // jamais réellement appliqué. C'était le bug de fond derrière tous
+        // les 400 en connexion locale — sans rapport avec l'encodage du body.
         final target = uri.host == _localHost ? serverIp : uri.host;
-        return Socket.startConnect(target, uri.port);
+        final secureFuture = Socket.startConnect(target, uri.port)
+            .then((task) => task.socket)
+            .then((raw) => SecureSocket.secure(
+                  raw,
+                  host: _localHost,
+                  onBadCertificate: (cert) =>
+                      _acceptPinnedCert(cert, _localHost, uri.port),
+                ));
+        return Future.value(ConnectionTask.fromSocket(secureFuture, () {}));
       },
   );
 }
