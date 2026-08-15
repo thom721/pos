@@ -974,55 +974,6 @@ class _MobileShellState extends ConsumerState<_MobileShell>
     );
   }
 
-  void _showDebugSheet(BuildContext context, WidgetRef ref) {
-    final user = ref.read(authProvider).user;
-    final active = ref.read(activeWarehouseProvider);
-    final whAsync = ref.read(warehouseListProvider);
-    final warehouses = whAsync.valueOrNull ?? [];
-    final whState = whAsync.when(
-      data: (d) => 'OK (${d.length} dépôt${d.length == 1 ? '' : 's'})',
-      loading: () => '⏳ chargement...',
-      error: (e, _) => '❌ ERREUR: $e',
-    );
-    final hasRestriction = (user?.warehouseIds ?? []).isNotEmpty;
-    final apiWh = hasRestriction ? active?.id : null;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        final screenH = MediaQuery.sizeOf(ctx).height;
-        return SafeArea(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: screenH * 0.75),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Debug — Warehouse', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                  const Divider(),
-                  _DebugRow('Utilisateur', user?.username ?? '—'),
-                  _DebugRow('Rôles', user?.roles.join(', ') ?? '—'),
-                  _DebugRow('warehouseIds (user)', user?.warehouseIds.isEmpty == true ? '[] (accès total)' : user?.warehouseIds.join(', ') ?? '—'),
-                  const Divider(),
-                  _DebugRow('Dépôt actif (provider)', active != null ? '${active.name} (${active.id})' : '⚠ null'),
-                  _DebugRow('hasRestriction', '$hasRestriction'),
-                  _DebugRow('warehouseId envoyé API', apiWh ?? 'null → backend retourne tout'),
-                  const Divider(),
-                  _DebugRow('Provider état', whState),
-                  _DebugRow('Dépôts disponibles (${warehouses.length})',
-                      warehouses.isEmpty ? '—' : warehouses.map((w) => '${w.name}${w.isDefault ? " ★" : ""}').join(', ')),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Future<void> _syncNow() async {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
@@ -1109,14 +1060,6 @@ class _MobileShellState extends ConsumerState<_MobileShell>
                   color: AppColors.textSecondary),
               tooltip: 'Taille papier imprimante',
               onPressed: () => _showPaperSizeSheet(context, ref),
-            ),
-          // Bouton debug — Android seulement
-          if (_isAndroid)
-            IconButton(
-              icon: const Icon(Icons.bug_report_outlined, size: 20,
-                  color: AppColors.textSecondary),
-              tooltip: 'Debug warehouse',
-              onPressed: () => _showDebugSheet(context, ref),
             ),
           // Actions Android : sync + connecté
           if (_isAndroid)
@@ -1371,35 +1314,6 @@ class _MobileShellState extends ConsumerState<_MobileShell>
                 onTap: () => go(item.route),
               )),
     ];
-  }
-}
-
-// ── Debug helper ──────────────────────────────────────────────────────────────
-
-class _DebugRow extends StatelessWidget {
-  final String label;
-  final String value;
-  const _DebugRow(this.label, this.value);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 160,
-            child: Text(label,
-                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-          ),
-          Expanded(
-            child: Text(value,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          ),
-        ],
-      ),
-    );
   }
 }
 

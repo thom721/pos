@@ -273,25 +273,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
               e.type == DioExceptionType.receiveTimeout ||
               e.type == DioExceptionType.unknown));
 
-  // DIAGNOSTIC TEMPORAIRE — 400 systématique en local sur un poste Windows
-  // malgré un body correct confirmé via LogInterceptor en debug macOS.
-  // Affiche le détail brut (build release n'a aucun log console accessible)
-  // pour voir enfin ce que CE poste envoie réellement. À retirer une fois
-  // la cause trouvée.
-  String _debugSuffix(Object e) {
-    if (e is! DioException) return '';
-    final req = e.requestOptions;
-    return '\n[DEBUG] ${e.response?.statusCode} '
-        'ct=${req.contentType} '
-        'dataType=${req.data.runtimeType} '
-        'body=${req.data} '
-        'resp=${e.response?.data}';
-  }
-
   String _loginErrorMsg(Object e) {
     final s = e.toString();
     if (s.contains('401') || s.contains('400')) {
-      return 'Identifiants incorrects${_debugSuffix(e)}';
+      return 'Identifiants incorrects';
     }
     if (s.contains('receive timeout') || s.contains('receiveTimeout')) {
       return 'Le serveur ne répond pas (base de données lente ou non démarrée). Réessayez dans quelques secondes.';
