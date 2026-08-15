@@ -16,6 +16,8 @@ $ErrorActionPreference = "Continue"
 # -- Chemins --------------------------------------------------------------------
 $InstallDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DataDir     = "$env:ProgramData\POS_Connect"
+$HostsFile   = "$env:SystemRoot\System32\drivers\etc\hosts"
+$LocalHostname = "infini-post.local"
 $NssmExe     = "$InstallDir\nssm\nssm.exe"
 $NginxExe    = "$InstallDir\nginx\nginx.exe"
 $ApiExe      = "$InstallDir\posconnect-server.exe"
@@ -750,6 +752,25 @@ function Add-FwRule {
 Add-FwRule -Name "POS Connect Serveur API (9003)" -Port 9003
 Add-FwRule -Name "POS Connect Nginx HTTP (8080)"   -Port 8080
 Add-FwRule -Name "POS Connect Nginx HTTPS (443)"  -Port 443
+
+# -- 8. Fichier hosts -- infini-post.local --------------------------------------
+# Sans cette entree, "infini-post.local" n'est resoluble par AUCUN outil
+# standard (navigateur, curl) sur cette machine -- app.dart/local_https_native.dart
+# contourne deja le DNS au niveau socket pour l'app Flutter elle-meme, mais un
+# test manuel via navigateur echoue systematiquement sans cette ligne dans
+# le fichier hosts. Ajoutee ici (127.0.0.1, la machine qui heberge le serveur).
+Write-Log "Fichier hosts ($LocalHostname)..."
+$hostsContent = Get-Content $HostsFile -Raw -ErrorAction SilentlyContinue
+if ($hostsContent -and $hostsContent -match [regex]::Escape($LocalHostname)) {
+    Write-Log "$LocalHostname deja present dans le fichier hosts."
+} else {
+    try {
+        Add-Content -Path $HostsFile -Value "`r`n127.0.0.1`t$LocalHostname" -ErrorAction Stop
+        Write-Log "$LocalHostname ajoute au fichier hosts (127.0.0.1)."
+    } catch {
+        Write-Log "Impossible d'ecrire dans le fichier hosts : $_" "WARN"
+    }
+}
 
 Write-Log "=== Configuration POS Connect terminee ==="
 Write-Log "Log complet : $LogFile"
