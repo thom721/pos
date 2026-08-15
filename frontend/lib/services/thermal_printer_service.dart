@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:printing/printing.dart';
@@ -55,9 +56,24 @@ class ThermalPrinterService {
   Future<void> _printSunmiLogo(AppSettings settings) async {
     if (settings.logoPath.isEmpty) return;
     try {
-      final bytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
-      if (bytes == null) return;
-      await SunmiPrinter.printImage(bytes, align: SunmiPrintAlign.CENTER);
+      final rawBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
+      if (rawBytes == null) return;
+
+      // Redimensionner avant impression — contrairement au chemin Bluetooth
+      // (_logoToEscPos), l'image était envoyée brute (taille d'upload
+      // d'origine) directement au SDK Sunmi, qui la réduit lui-même sans
+      // interpolation soignée : rendu pixelisé/dégradé sur le papier
+      // thermique. Même largeur cible que le Bluetooth (~40% de la largeur
+      // papier en points, 203 dpi ≈ 8 points/mm).
+      final decoded = img.decodeImage(rawBytes);
+      if (decoded == null) return;
+      final targetW = settings.paperWidth == 80 ? 200 : 128;
+      final targetH = (targetW * decoded.height / decoded.width).round();
+      final resized = img.copyResize(decoded, width: targetW, height: targetH,
+          interpolation: img.Interpolation.average);
+      final pngBytes = img.encodePng(resized);
+
+      await SunmiPrinter.printImage(pngBytes, align: SunmiPrintAlign.CENTER);
       await SunmiPrinter.lineWrap(1);
     } catch (_) {
       // Logo optionnel — un échec ne doit jamais bloquer le reste du reçu.
