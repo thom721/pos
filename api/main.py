@@ -54,7 +54,16 @@ from api.models.InstallationCode import InstallationCode as _InstallationCode  #
 from fastapi.staticfiles import StaticFiles
 from fastapi.encoders import jsonable_encoder
 
-app = FastAPI()
+from api.core.config import settings as _settings_docs
+
+# /docs, /redoc, /openapi.json désactivés par défaut — voir ENABLE_API_DOCS
+# (config.py) : un serveur local exposé sur le LAN ne doit pas exposer une
+# console d'appel API interactive publiquement.
+app = FastAPI(
+    docs_url="/docs" if _settings_docs.ENABLE_API_DOCS else None,
+    redoc_url="/redoc" if _settings_docs.ENABLE_API_DOCS else None,
+    openapi_url="/openapi.json" if _settings_docs.ENABLE_API_DOCS else None,
+)
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 # Configurable via pos_server.ini [server] cors_origins ou CORS_ORIGINS env.

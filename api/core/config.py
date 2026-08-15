@@ -116,6 +116,7 @@ def load_ini_config() -> dict:
         "CORS_ORIGIN_REGEX":      srv.get("cors_origin_regex",      os.getenv("CORS_ORIGIN_REGEX",      "")),
         "WEB_DIR":                srv.get("web_dir",                os.getenv("WEB_DIR",                "web")),
         "INSTALLER_WAREHOUSE_ID": srv.get("installer_warehouse_id", os.getenv("INSTALLER_WAREHOUSE_ID", "")),
+        "ENABLE_API_DOCS":        srv.get("enable_api_docs",        os.getenv("ENABLE_API_DOCS",        "false")).lower() == "true",
     }
 
 
@@ -171,6 +172,12 @@ class Settings(BaseSettings):
     # local avec `flutter run -d chrome`, dont le port change à chaque lancement).
     # Exemple : "https?://localhost:\\d+"
     CORS_ORIGIN_REGEX: str = ""
+
+    # /docs, /redoc, /openapi.json — désactivés par défaut : un serveur local
+    # exposé sur le LAN (voire accessible depuis internet si port forwarding)
+    # ne doit pas exposer une console d'appel API interactive publiquement.
+    # Mettre ENABLE_API_DOCS=true (env ou pos_server.ini [server]) pour du dev.
+    ENABLE_API_DOCS: bool = False
 
     # Répertoire du build Flutter web (servi par FastAPI comme SPA)
     # Laisser vide pour désactiver le serving web intégré.
