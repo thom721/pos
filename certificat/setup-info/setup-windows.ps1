@@ -609,14 +609,22 @@ if ($LASTEXITCODE -ne 0 -or "$svcApiStatus" -match "can't open service|No such s
     & $NssmExe set    $SvcApi Start         SERVICE_AUTO_START
     & $NssmExe set    $SvcApi AppStdout     "$DataDir\api-stdout.log"
     & $NssmExe set    $SvcApi AppStderr     "$DataDir\api-stderr.log"
-    if ($DbType -eq "mysql") {
-        & $NssmExe set $SvcApi DependOnService "POS_Connect_MySQL"
-    }
     Write-Log "Service $SvcApi installe"
 } else {
     Write-Log "Service $SvcApi existe deja -- arret pour eviter conflit port 9003..."
     Stop-Service -Name $SvcApi -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
+}
+# Applique/reapplique la dependance a CHAQUE execution, service neuf ou deja
+# existant (mise a jour) -- avant, ceci n'etait fait que dans la branche
+# "installation fraiche" ci-dessus, jamais sur une reinstallation d'un
+# service deja present. Sans dependance, Windows peut demarrer l'API avant
+# que MySQL accepte des connexions au boot : _ensure_db_ready() (api/main.py)
+# bascule alors silencieusement et DEFINITIVEMENT sur SQLite pour toute la
+# duree du process (config vide, setup_done=false), meme si pos_server.ini
+# est correctement configure en mysql -- bug reel observe en prod.
+if ($DbType -eq "mysql") {
+    & $NssmExe set $SvcApi DependOnService "POS_Connect_MySQL"
 }
 
 # -- 4b. Configuration Nginx : conf + certificats -------------------------------
@@ -683,13 +691,15 @@ if ($LASTEXITCODE -ne 0 -or "$svcNginxStatus" -match "can't open service|No such
     & $NssmExe set    $SvcNginx Start         SERVICE_AUTO_START
     & $NssmExe set    $SvcNginx AppStdout     "$InstallDir\nginx\logs\nssm-stdout.log"
     & $NssmExe set    $SvcNginx AppStderr     "$InstallDir\nginx\logs\nssm-stderr.log"
-    & $NssmExe set    $SvcNginx DependOnService "POS_Connect_API"
     Write-Log "Service $SvcNginx installe"
 } else {
     Write-Log "Service $SvcNginx existe deja -- arret pour reinitialisation..."
     Stop-Service -Name $SvcNginx -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
 }
+# Meme raison que pour SvcApi ci-dessus : applique a chaque execution, pas
+# seulement a l'installation fraiche.
+& $NssmExe set $SvcNginx DependOnService "POS_Connect_API"
 
 # -- 6. Demarrer API + Nginx ----------------------------------------------------
 Write-Log "Demarrage des services API et Nginx..."
