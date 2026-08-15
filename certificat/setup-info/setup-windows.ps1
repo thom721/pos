@@ -674,12 +674,27 @@ if (Test-Path $SrcConf) {
 }
 
 # -- 4c. Liberation port 443 de HTTP.sys ----------------------------------------
-# Sur Windows, HTTP.sys (pilote noyau) peut reserver le port 443.
-# nginx se lie directement (sans HTTP.sys) et obtient WSAEACCES (10013) si le port
-# est deja revendique. On supprime la reservation HTTP.sys avant de demarrer nginx.
-# Le redirect HTTP utilise le port 8080 (evite tout conflit avec Apache/IIS sur 80).
-Write-Log "Liberation port 443 de HTTP.sys (evite erreur bind 10013)..."
-& netsh http delete urlacl url="https://+:443/" 2>&1 | Out-Null
+# Sur Windows, HTTP.sys (pilote noyau) peut reserver le port 443 -- des lors
+# qu'UNE SEULE reservation existe sur ce port (meme pour un sous-chemin
+# specifique, ex: https://+:443/sra_{GUID}/ pose par le service VPN SstpSvc,
+# ou par d'autres composants Windows), HTTP.sys prend le controle exclusif du
+# port au niveau noyau. nginx se lie DIRECTEMENT au socket (sans passer par
+# HTTP.sys) et echoue avec WSAEACCES (10013) des qu'UNE reservation existe,
+# peu importe son chemin -- supprimer seulement l'URL exacte "https://+:443/"
+# (comme avant) ne suffit donc pas : il faut supprimer TOUTES les reservations
+# sur ce port. Bug reel observe en prod : nginx ne demarrait jamais a cause
+# d'une reservation SstpSvc (VPN) jamais nettoyee par l'ancienne commande.
+Write-Log "Liberation du port 443 de HTTP.sys (evite erreur bind 10013)..."
+$urlaclOutput = & netsh http show urlacl 2>&1
+$portReservations = $urlaclOutput | Select-String -Pattern '^\s*Reserved URL\s*:\s*(https?://\S*:443/\S*)' |
+    ForEach-Object { $_.Matches[0].Groups[1].Value }
+foreach ($resUrl in $portReservations) {
+    Write-Log "  Reservation HTTP.sys trouvee sur le port 443 : $resUrl -- suppression..."
+    & netsh http delete urlacl url="$resUrl" 2>&1 | Out-Null
+}
+if ($portReservations.Count -eq 0) {
+    Write-Log "  Aucune reservation HTTP.sys sur le port 443."
+}
 
 # -- 5. Service : Nginx ---------------------------------------------------------
 $SvcNginx = "POS_Connect_Nginx"
