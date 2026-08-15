@@ -59,7 +59,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString(AppConstants.serverUrlKey) ?? '';
     final ip  = prefs.getString(AppConstants.serverIpKey)  ?? '';
-    final display = (url.isNotEmpty && url != 'https://infini-post.local') ? url : ip;
+    // _extractIp() normalise une éventuelle ancienne valeur "http://ip:9003"
+    // (format d'avant le passage au HTTPS obligatoire) en simple IP — sinon
+    // elle réapparaît telle quelle dans le champ et _submitLocal() la
+    // remange plus tard en pensant recevoir une IP nue.
+    final display = (url.isNotEmpty && url != 'https://infini-post.local') ? _extractIp(url) : ip;
     if (display.isNotEmpty) {
       // Déjà configuré explicitement (IP manuelle ou URL) — respecter ce
       // choix, ne pas retenter l'auto-découverte à chaque lancement.
@@ -238,13 +242,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  /// Ne garde que l'IP (retire un éventuel ":port" tapé par erreur) — le
-  /// port 9003 est le backend brut HTTP, jamais utilisé directement par le
-  /// client : toute connexion passe par nginx en HTTPS (port 443) via
+  /// Ne garde que l'IP — retire un éventuel schéma ("http://"/"https://",
+  /// résidu d'une ancienne valeur serverUrlKey enregistrée avant le passage
+  /// au HTTPS obligatoire par saveLocalServer()) ET un éventuel ":port"
+  /// (tapé par erreur, ou hérité du même ancien format "http://ip:9003").
+  /// Sans le retrait du schéma, "http://127.0.0.1:9003" était coupé au
+  /// premier ":" et donnait l'IP "http" — d'où un "Failed host lookup: http".
+  /// Le port 9003 est le backend brut HTTP, jamais utilisé directement par
+  /// le client : toute connexion passe par nginx en HTTPS (port 443) via
   /// saveLocalServer()/configureLocalHttps(), jamais par saveServerUrl().
   String _extractIp(String raw) {
-    final idx = raw.indexOf(':');
-    return idx == -1 ? raw : raw.substring(0, idx);
+    var s = raw.trim();
+    final schemeIdx = s.indexOf('://');
+    if (schemeIdx != -1) s = s.substring(schemeIdx + 3);
+    final idx = s.indexOf(':');
+    return idx == -1 ? s : s.substring(0, idx);
   }
 
   Future<void> _submitLocal() async {
