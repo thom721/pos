@@ -1267,76 +1267,103 @@ def _ensure_db_ready():
     Teste la connexion DB au démarrage.
     Si MySQL est configuré mais inaccessible, bascule automatiquement sur SQLite
     et met à jour le moteur global — évite un crash non géré au premier démarrage.
+
+    Réessaie plusieurs fois avant de basculer : DependOnService (nssm) garantit
+    seulement l'ORDRE de démarrage des services Windows, pas que mysqld ait fini
+    son initialisation interne (recovery InnoDB, etc.) au moment où Windows le
+    marque "démarré" — un service qui démarre juste après une mise à jour/un
+    redémarrage peut donc être encore inaccessible quelques secondes après avoir
+    été lancé. Sans retry, l'API basculait alors immédiatement et DEFINITIVEMENT
+    sur SQLite pour toute la durée du process (bug réel observé : nécessitait un
+    redémarrage complet du PC pour que la fenêtre de démarrage soit assez large).
     """
+    import time as _time
     import api.database as _db_module
     from api.core.config import settings as _s
 
-    try:
-        with _db_module.engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        return _db_module.engine  # connexion OK
-    except Exception as exc:
-        if _s.DB_TYPE != "sqlite":
+    _MAX_ATTEMPTS = 15
+    _RETRY_DELAY_S = 2
+
+    last_exc: Exception | None = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            with _db_module.engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            if attempt > 1:
+                _log.info("✅ MySQL joignable après %d tentative(s).", attempt)
+            return _db_module.engine  # connexion OK
+        except Exception as exc:
+            last_exc = exc
+            if _s.DB_TYPE == "sqlite" or attempt == _MAX_ATTEMPTS:
+                break
             _log.warning(
-                "⚠️  Impossible de joindre MySQL (%s). "
-                "Basculement automatique sur SQLite (pos_connect.db). "
-                "Configurez pos_server.ini [database] type=sqlite pour éviter ce message.",
-                exc,
+                "MySQL pas encore joignable (tentative %d/%d) : %s — réessai dans %ds...",
+                attempt, _MAX_ATTEMPTS, exc, _RETRY_DELAY_S,
             )
-            # Recréer le moteur en mode SQLite
-            # Chemin absolu : ProgramData sur Windows, répertoire courant ailleurs
-            import os as _os
-            from pathlib import Path as _Path
-            from sqlalchemy import create_engine
-            from sqlalchemy.orm import sessionmaker
-            if _os.name == "nt":
-                _data = _Path(_os.environ.get("PROGRAMDATA", "C:\\ProgramData")) / "POS_Connect"
-                _data.mkdir(parents=True, exist_ok=True)
-                _sqlite_path = str(_data / "pos_connect.db")
-                # Supprimer l'attribut lecture-seule et s'assurer que SYSTEM peut écrire.
-                # Nécessaire quand le fichier a été créé par une installation précédente
-                # avec des permissions restrictives (errno SQLITE_READONLY au démarrage).
-                try:
-                    import stat as _stat
-                    import subprocess as _sp
-                    if _os.path.exists(_sqlite_path):
-                        _mode = _os.stat(_sqlite_path).st_mode
-                        if not (_mode & _stat.S_IWRITE):
-                            _os.chmod(_sqlite_path, _mode | _stat.S_IWRITE)
-                    # Accorder SYSTEM + Administrateurs en écriture sur tout le dossier
-                    _sp.run(
-                        ["icacls", str(_data),
-                         "/grant", "SYSTEM:(OI)(CI)F",
-                         "/grant", "Administrators:(OI)(CI)F",
-                         "/T", "/C", "/Q"],
-                        capture_output=True, timeout=10,
-                    )
-                except Exception as _perm_exc:
-                    _log.warning("SQLite permission fix échoué : %s", _perm_exc)
-            else:
-                _sqlite_path = "./pos_connect.db"
-            sqlite_url = f"sqlite:///{_sqlite_path}"
-            new_engine = create_engine(
-                sqlite_url,
-                connect_args={"check_same_thread": False, "timeout": 15},
-            )
+            _time.sleep(_RETRY_DELAY_S)
 
-            from sqlalchemy import event as _sa_event
-            @_sa_event.listens_for(new_engine, "connect")
-            def _set_sqlite_pragma(dbapi_conn, _):
-                cursor = dbapi_conn.cursor()
-                cursor.execute("PRAGMA journal_mode=WAL")
-                cursor.execute("PRAGMA busy_timeout=15000")
-                cursor.execute("PRAGMA foreign_keys=ON")
-                cursor.close()
-
-            _db_module.engine       = new_engine
-            _db_module.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=new_engine)
-            _s.DB_TYPE = "sqlite"
-            return new_engine
+    exc = last_exc
+    if _s.DB_TYPE != "sqlite":
+        _log.warning(
+            "⚠️  Impossible de joindre MySQL après %d tentatives (%s). "
+            "Basculement automatique sur SQLite (pos_connect.db). "
+            "Configurez pos_server.ini [database] type=sqlite pour éviter ce message.",
+            _MAX_ATTEMPTS, exc,
+        )
+        # Recréer le moteur en mode SQLite
+        # Chemin absolu : ProgramData sur Windows, répertoire courant ailleurs
+        import os as _os
+        from pathlib import Path as _Path
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        if _os.name == "nt":
+            _data = _Path(_os.environ.get("PROGRAMDATA", "C:\\ProgramData")) / "POS_Connect"
+            _data.mkdir(parents=True, exist_ok=True)
+            _sqlite_path = str(_data / "pos_connect.db")
+            # Supprimer l'attribut lecture-seule et s'assurer que SYSTEM peut écrire.
+            # Nécessaire quand le fichier a été créé par une installation précédente
+            # avec des permissions restrictives (errno SQLITE_READONLY au démarrage).
+            try:
+                import stat as _stat
+                import subprocess as _sp
+                if _os.path.exists(_sqlite_path):
+                    _mode = _os.stat(_sqlite_path).st_mode
+                    if not (_mode & _stat.S_IWRITE):
+                        _os.chmod(_sqlite_path, _mode | _stat.S_IWRITE)
+                # Accorder SYSTEM + Administrateurs en écriture sur tout le dossier
+                _sp.run(
+                    ["icacls", str(_data),
+                     "/grant", "SYSTEM:(OI)(CI)F",
+                     "/grant", "Administrators:(OI)(CI)F",
+                     "/T", "/C", "/Q"],
+                    capture_output=True, timeout=10,
+                )
+            except Exception as _perm_exc:
+                _log.warning("SQLite permission fix échoué : %s", _perm_exc)
         else:
-            _log.error("❌  Base de données SQLite inaccessible : %s", exc)
-            raise
+            _sqlite_path = "./pos_connect.db"
+        sqlite_url = f"sqlite:///{_sqlite_path}"
+        new_engine = create_engine(
+            sqlite_url,
+            connect_args={"check_same_thread": False, "timeout": 15},
+        )
+
+        from sqlalchemy import event as _sa_event
+        @_sa_event.listens_for(new_engine, "connect")
+        def _set_sqlite_pragma(dbapi_conn, _):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=15000")
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+        _db_module.engine       = new_engine
+        _db_module.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=new_engine)
+        _s.DB_TYPE = "sqlite"
+        return new_engine
+    else:
+        _log.error("❌  Base de données SQLite inaccessible : %s", exc)
+        raise exc
 
 
 def _ensure_sqlite_writable(engine) -> bool:
@@ -1521,6 +1548,54 @@ async def _mdns_watch_loop():
             logging.getLogger("pos.mdns").exception("Échec vérification IP mDNS")
 
 
+_LOG_ROTATE_INTERVAL = 600                       # secondes entre deux vérifications
+_LOG_ROTATE_THRESHOLD_BYTES = 1024 * 1024 * 1024  # 1 Go
+_log_rotate_task: asyncio.Task | None = None
+
+
+def _rotate_mysql_general_log() -> None:
+    """Supprime mysql-query.log (general_log) une fois qu'il dépasse 1 Go.
+
+    general_log reste volontairement actif (my.ini) — il logue chaque requête
+    SQL de chaque connexion, y compris la boucle de sync automatique, et
+    grossit donc très vite même avec peu de données réelles en base. MySQL
+    ne le purge jamais lui-même. On coupe le log (ferme le handle de fichier
+    Windows), supprime le fichier, puis le rallume — MySQL le recrée vide
+    au prochain SET GLOBAL general_log = 1.
+    """
+    from api.core.config import settings as _s
+    if _s.DB_TYPE != "mysql":
+        return
+    import api.database as _db_module
+    _rlog = logging.getLogger("pos.logrotate")
+    try:
+        with _db_module.engine.connect() as conn:
+            row = conn.execute(text("SHOW VARIABLES LIKE 'general_log_file'")).fetchone()
+            log_path = row[1] if row else None
+            if not log_path or not os.path.exists(log_path):
+                return
+            size = os.path.getsize(log_path)
+            if size < _LOG_ROTATE_THRESHOLD_BYTES:
+                return
+            conn.execute(text("SET GLOBAL general_log = 0"))
+            conn.commit()
+            os.remove(log_path)
+            conn.execute(text("SET GLOBAL general_log = 1"))
+            conn.commit()
+            _rlog.info("mysql-query.log supprimé (%.0f Mo atteints)", size / 1024 / 1024)
+    except Exception:
+        _rlog.exception("Échec rotation mysql-query.log")
+
+
+async def _log_rotate_loop():
+    while True:
+        await asyncio.sleep(_LOG_ROTATE_INTERVAL)
+        try:
+            await asyncio.to_thread(_rotate_mysql_general_log)
+        except Exception:
+            logging.getLogger("pos.logrotate").exception("Échec boucle rotation logs")
+
+
 def signal_pending_sync() -> None:
     """Appeler après toute écriture locale — réveille le loop de sync immédiatement."""
     try:
@@ -1594,6 +1669,9 @@ async def start_auto_sync():
 
     _auto_sync_task = asyncio.create_task(_auto_sync_loop())
 
+    global _log_rotate_task
+    _log_rotate_task = asyncio.create_task(_log_rotate_loop())
+
     # mDNS ("infini-post.local") — installation locale Windows uniquement.
     # Le cloud (Docker/Linux) n'a pas de réseau local a annoncer.
     if os.name == "nt":
@@ -1605,6 +1683,8 @@ async def start_auto_sync():
 
 @app.on_event("shutdown")
 async def stop_mdns():
+    if _log_rotate_task and not _log_rotate_task.done():
+        _log_rotate_task.cancel()
     if os.name == "nt":
         if _mdns_watch_task and not _mdns_watch_task.done():
             _mdns_watch_task.cancel()
