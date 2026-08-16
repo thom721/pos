@@ -455,6 +455,13 @@ FLUSH PRIVILEGES;
     }
     # Toujours mettre a jour AppParameters pour corriger le chemin my.ini (reinstallation)
     & $NssmExe set $SvcMySQL AppParameters "--defaults-file=$MyIni"
+    # Rotation des logs stdout/stderr nssm (mysql-stdout.log, mysql-stderr.log) --
+    # sans ca ils grossissent sans limite, comme mysql-query.log avant la
+    # desactivation de general_log ci-dessus. AppRotateOnline permet la rotation
+    # sans redemarrer le service ; AppRotateBytes en octets (10 Mo).
+    & $NssmExe set $SvcMySQL AppRotateFiles  1
+    & $NssmExe set $SvcMySQL AppRotateOnline 1
+    & $NssmExe set $SvcMySQL AppRotateBytes  10485760
 
     # Demarrer MySQL et attendre qu'il soit pret
     Start-Service -Name $SvcMySQL -ErrorAction SilentlyContinue
@@ -628,6 +635,11 @@ if ($LASTEXITCODE -ne 0 -or "$svcApiStatus" -match "can't open service|No such s
 if ($DbType -eq "mysql") {
     & $NssmExe set $SvcApi DependOnService "POS_Connect_MySQL"
 }
+# Rotation des logs stdout/stderr nssm (api-stdout.log, api-stderr.log) --
+# meme raison que pour MySQL ci-dessus.
+& $NssmExe set $SvcApi AppRotateFiles  1
+& $NssmExe set $SvcApi AppRotateOnline 1
+& $NssmExe set $SvcApi AppRotateBytes  10485760
 
 # -- 4b. Configuration Nginx : conf + certificats -------------------------------
 # Nginx lit ses fichiers relatifs a son prefix (dossier de nginx.exe).
@@ -717,6 +729,14 @@ if ($LASTEXITCODE -ne 0 -or "$svcNginxStatus" -match "can't open service|No such
 # Meme raison que pour SvcApi ci-dessus : applique a chaque execution, pas
 # seulement a l'installation fraiche.
 & $NssmExe set $SvcNginx DependOnService "POS_Connect_API"
+# Rotation des logs stdout/stderr nssm (nssm-stdout.log, nssm-stderr.log) --
+# meme raison que pour MySQL/API ci-dessus. Les logs propres a nginx
+# (access.log, error.log dans nginx\logs\) sont geres separement, voir
+# _rotate_if_large ci-dessous : nginx.exe n'accepte pas de rotation via nssm,
+# il ecrit directement dans ses fichiers configures.
+& $NssmExe set $SvcNginx AppRotateFiles  1
+& $NssmExe set $SvcNginx AppRotateOnline 1
+& $NssmExe set $SvcNginx AppRotateBytes  10485760
 
 # -- 6. Demarrer API + Nginx ----------------------------------------------------
 Write-Log "Demarrage des services API et Nginx..."
@@ -733,6 +753,50 @@ foreach ($svc in @($SvcApi, $SvcNginx)) {
     } catch {
         Write-Log "  FAIL $svc : $_" "WARN"
     }
+}
+
+# -- 6b. Verification de bout en bout (nginx -> API -> MySQL) ------------------
+# Le statut Windows "Running" verifie juste que le processus tourne, pas que
+# la chaine complete repond reellement (nginx peut demarrer puis planter sur
+# une erreur de conf, l'API peut tourner sans jamais joindre MySQL, etc.) --
+# exactement le genre d'ecart deja rencontre en pratique. Un vrai appel HTTPS
+# a travers nginx, avec quelques tentatives (nginx vient de demarrer, laisse-
+# lui le temps d'etre pret), donne un signal fiable avant de considerer
+# l'installation terminee.
+Write-Log "Verification de bout en bout (https://127.0.0.1/api/setup/health)..."
+$HealthOk = $false
+for ($i = 1; $i -le 5; $i++) {
+    try {
+        $health = Invoke-RestMethod -Uri "https://127.0.0.1/api/setup/health" `
+                      -SkipCertificateCheck -TimeoutSec 5 -ErrorAction Stop
+        if ($health.status -eq "ok") {
+            if ($DbType -eq "mysql" -and $health.db_type -ne "mysql") {
+                # La chaine repond mais l'API a bascule silencieusement sur SQLite
+                # (MySQL injoignable a son propre demarrage) -- symptome reel deja
+                # rencontre. Compte comme un echec : signaler, pas "OK".
+                Write-Log "  ECHEC l'API repond mais a bascule sur SQLite (db_type=$($health.db_type)) au lieu de MySQL -- redemarrez le service $SvcApi une fois MySQL confirme pret." "WARN"
+                break
+            }
+            if ($IsUpgrade -and -not $health.setup_done) {
+                # Mise a jour (pas une install fraiche) : des utilisateurs existent
+                # forcement deja depuis avant -- setup_done=false ici veut dire que
+                # l'API voit une base sans aucun utilisateur (ex: bascule SQLite
+                # vide malgre db_type affichant "mysql", ou mauvaise base MySQL).
+                Write-Log "  ECHEC mise a jour mais setup_done=false (aucun utilisateur trouve) -- verifiez que l'API pointe vers la bonne base." "WARN"
+                break
+            }
+            Write-Log "  OK chaine complete operationnelle, db_type=$($health.db_type), setup_done=$($health.setup_done) (tentative $i/5)"
+            $HealthOk = $true
+            break
+        }
+        Write-Log "  Reponse inattendue (tentative $i/5) : $($health | ConvertTo-Json -Compress)" "WARN"
+    } catch {
+        Write-Log "  Pas encore pret (tentative $i/5) : $_" "WARN"
+    }
+    if ($i -lt 5) { Start-Sleep -Seconds 3 }
+}
+if (-not $HealthOk) {
+    Write-Log "ECHEC verification finale -- nginx/API/MySQL ne repondent pas ensemble apres 5 tentatives. Consultez les logs (nginx\logs\error.log, api-stderr.log, mysql-error.log)." "WARN"
 }
 
 # -- 7. Regles pare-feu --------------------------------------------------------
