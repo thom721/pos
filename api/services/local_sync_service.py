@@ -159,6 +159,31 @@ _sync_lock = _threading.Lock()
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+def _ensure_logo_file(url: str, token: str, logo_path: str | None) -> None:
+    """Le sync ne transfère que le champ logo_path (une chaîne, ex:
+    "/static/logos/uuid.png"), jamais les octets de l'image elle-même —
+    voir _row_to_dict, qui sérialise les colonnes telles quelles. Sans ceci,
+    un logo uploadé côté cloud (web) redescend bien en base locale via la
+    sync app_config, mais le FICHIER n'existe jamais sur le disque du
+    serveur local : l'app bureau reçoit un logo_path à jour mais 404 en
+    tentant de charger l'image (voir GET /static/logos/...).
+    """
+    import os
+    if not logo_path:
+        return
+    local_path = os.path.join("api", logo_path.lstrip("/"))
+    if os.path.exists(local_path):
+        return
+    try:
+        resp = httpx.get(f"{url}{logo_path}", headers=_headers(token), timeout=15)
+        if resp.status_code == 200:
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            with open(local_path, "wb") as f:
+                f.write(resp.content)
+    except Exception as exc:
+        _log.warning("Échec téléchargement logo depuis le cloud (%s): %s", logo_path, exc)
+
+
 def _row_to_dict(row: Any, exclude: set[str] = frozenset()) -> dict:
     mapper = sa_inspect(type(row))
     return {
@@ -438,6 +463,9 @@ def _run_sync_inner(db: Session) -> dict:
                             if k in col_names and k != "id" and k not in entity_excl:
                                 setattr(existing, k, v)
                         applied += 1
+
+                if etype == "app_config" and rec.get("logo_path"):
+                    _ensure_logo_file(url, token, rec["logo_path"])
 
             summary["pulled"][etype] = applied
             state.records_pulled += applied
