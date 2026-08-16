@@ -149,12 +149,9 @@ class BluetoothPrintService {
       final bytesPerRow = (targetW + 7) ~/ 8;
       final cmd = <int>[];
 
-      // Center the image: left padding in bytes
-      final paperDots = settings.paperWidth == 80 ? 576 : 384;
-      final paddingDots = ((paperDots - targetW) ~/ 2).clamp(0, paperDots);
-      final paddingBytes = paddingDots ~/ 8;
-      // Adjust xL/xH to include padding so the image is centered
-      final totalBytesPerRow = paddingBytes + bytesPerRow;
+      // Aligné à gauche (cohérent avec _printSunmiLogo et receipt_pdf.dart) —
+      // aucun padding gauche, l'image commence au bord de la zone imprimable.
+      final totalBytesPerRow = bytesPerRow;
 
       // GS v 0 — raster bit image
       cmd.addAll([
@@ -164,10 +161,6 @@ class BluetoothPrintService {
       ]);
 
       for (int y = 0; y < targetH; y++) {
-        // Left padding bytes (white = 0)
-        for (int i = 0; i < paddingBytes; i++) {
-          cmd.add(0x00);
-        }
         // Image bytes
         for (int bx = 0; bx < bytesPerRow; bx++) {
           int b = 0;
@@ -237,14 +230,6 @@ class BluetoothPrintService {
     esc([0x1B, 0x45, 0x01]);               // Bold ON global — retiré puis restauré : sans lui, certaines
                                             // imprimantes (dont celle testée) impriment trop pâle même avec double-strike
 
-    // ── Logo (si disponible) ───────────────────────────────────────────────
-    if (logoBytes.isNotEmpty) {
-      esc([0x1B, 0x61, 0x01]); // centre
-      buf.addAll(logoBytes);
-      nl();
-      esc([0x1B, 0x61, 0x00]); // gauche
-    }
-
     // ── En-tête ────────────────────────────────────────────────────────────
     esc([0x1B, 0x61, 0x01]);
     esc([0x1D, 0x21, 0x10]); // double hauteur
@@ -260,6 +245,12 @@ class BluetoothPrintService {
       nl();
     }
     esc([0x1B, 0x61, 0x00]);
+
+    // ── Logo (si disponible, sous l'en-tête) ─────────────────────────────────
+    if (logoBytes.isNotEmpty) {
+      buf.addAll(logoBytes);
+      nl();
+    }
     nl();
     dash();
 
@@ -428,13 +419,6 @@ class BluetoothPrintService {
     esc([0x1B, 0x47, 0x01]);
     esc([0x1B, 0x45, 0x01]);
 
-    if (logoBytes.isNotEmpty) {
-      esc([0x1B, 0x61, 0x01]);
-      buf.addAll(logoBytes);
-      nl();
-      esc([0x1B, 0x61, 0x00]);
-    }
-
     esc([0x1B, 0x61, 0x01]);
     esc([0x1D, 0x21, 0x10]);
     text(settings.businessName);
@@ -449,6 +433,11 @@ class BluetoothPrintService {
       nl();
     }
     esc([0x1B, 0x61, 0x00]);
+
+    if (logoBytes.isNotEmpty) {
+      buf.addAll(logoBytes);
+      nl();
+    }
     nl();
     dash();
     nl();
@@ -553,13 +542,6 @@ class BluetoothPrintService {
     esc([0x1B, 0x47, 0x01]);               // Double-strike ON
     esc([0x1B, 0x45, 0x01]);               // Bold ON global
 
-    if (logoBytes.isNotEmpty) {
-      esc([0x1B, 0x61, 0x01]);
-      buf.addAll(logoBytes);
-      nl();
-      esc([0x1B, 0x61, 0x00]);
-    }
-
     // Header
     esc([0x1B, 0x61, 0x01]);
     esc([0x1D, 0x21, 0x10]);
@@ -568,6 +550,12 @@ class BluetoothPrintService {
     esc([0x1D, 0x21, 0x00]);
     if (settings.address.isNotEmpty) { text(settings.address); nl(); }
     if (settings.phone.isNotEmpty) { text('Tél: ${settings.phone}'); nl(); }
+    esc([0x1B, 0x61, 0x00]);
+    if (logoBytes.isNotEmpty) {
+      buf.addAll(logoBytes);
+      nl();
+    }
+    esc([0x1B, 0x61, 0x01]);
     nl();
     esc([0x1B, 0x45, 0x01]);
     text(isPaid ? 'RECU' : 'ADDITION');

@@ -130,19 +130,20 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.stretch,
         children: [
-          // ── En-tête : logo + infos entreprise ──────────────────────────
-          if (logoImage != null) ...[
-            pw.Center(
-                child: pw.Image(logoImage,
-                    height: settings.paperWidth == 48 ? 30 : settings.paperWidth == 58 ? 40 : 50,
-                    fit: pw.BoxFit.contain)),
-            pw.SizedBox(height: 4),
-          ],
+          // ── En-tête : infos entreprise + logo (sous l'en-tête) ───────────
           pw.Center(child: pw.Text(settings.businessName, style: title)),
           if (settings.address.isNotEmpty)
             pw.Center(child: pw.Text(settings.address, style: small)),
           if (settings.phone.isNotEmpty)
             pw.Center(child: pw.Text('Tél: ${settings.phone}', style: small)),
+          if (logoImage != null) ...[
+            pw.SizedBox(height: 4),
+            pw.Align(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Image(logoImage,
+                    height: settings.paperWidth == 48 ? 30 : settings.paperWidth == 58 ? 40 : 50,
+                    fit: pw.BoxFit.contain)),
+          ],
           pw.SizedBox(height: 4),
           divider(),
 

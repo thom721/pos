@@ -133,8 +133,7 @@ class ThermalPrinterService {
     final date = DateFormat('dd/MM/yyyy HH:mm');
     final sym = settings.currencySymbol.trim();
 
-    // En-tête boutique
-    await _printSunmiLogo(settings);
+    // En-tête boutique — logo sous le nom/adresse/téléphone (pas au-dessus)
     await SunmiPrinter.printText(
       '${settings.businessName}\n',
       style: SunmiTextStyle(fontSize: 36, align: SunmiPrintAlign.CENTER, bold: true),
@@ -151,6 +150,7 @@ class ThermalPrinterService {
         style: SunmiTextStyle(fontSize: 24, align: SunmiPrintAlign.CENTER),
       );
     }
+    await _printSunmiLogo(settings);
     await SunmiPrinter.line();
     await SunmiPrinter.lineWrap(1);
 
@@ -356,7 +356,6 @@ class ThermalPrinterService {
     final sym = settings.currencySymbol.trim();
     final isPaid = reference != null;
 
-    await _printSunmiLogo(settings);
     await SunmiPrinter.printText(
       '${settings.businessName}\n',
       style: SunmiTextStyle(fontSize: 36, align: SunmiPrintAlign.CENTER, bold: true),
@@ -369,6 +368,7 @@ class ThermalPrinterService {
       await SunmiPrinter.printText('Tél: ${settings.phone}\n',
           style: SunmiTextStyle(fontSize: 24, align: SunmiPrintAlign.CENTER));
     }
+    await _printSunmiLogo(settings);
     await SunmiPrinter.line();
     await SunmiPrinter.printText(isPaid ? 'REÇU\n' : 'ADDITION\n',
         style: SunmiTextStyle(fontSize: 28, bold: true, align: SunmiPrintAlign.CENTER));

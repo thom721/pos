@@ -145,14 +145,7 @@ Future<Uint8List> buildRestaurantBillPdf(
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.stretch,
         children: [
-          // ── En-tête ───────────────────────────────────────────────────
-          if (logoImage != null) ...[
-            pw.Center(
-                child: pw.Image(logoImage,
-                    height: settings.paperWidth == 58 ? 40 : 50,
-                    fit: pw.BoxFit.contain)),
-            pw.SizedBox(height: 4),
-          ],
+          // ── En-tête : infos entreprise + logo (sous l'en-tête) ───────────
           pw.Center(
               child: pw.Text(settings.businessName, style: title)),
           if (settings.address.isNotEmpty)
@@ -161,6 +154,14 @@ Future<Uint8List> buildRestaurantBillPdf(
           if (settings.phone.isNotEmpty)
             pw.Center(
                 child: pw.Text('Tél: ${settings.phone}', style: small)),
+          if (logoImage != null) ...[
+            pw.SizedBox(height: 4),
+            pw.Align(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Image(logoImage,
+                    height: settings.paperWidth == 58 ? 40 : 50,
+                    fit: pw.BoxFit.contain)),
+          ],
           pw.SizedBox(height: 6),
           pw.Center(
             child: pw.Text(
