@@ -147,7 +147,15 @@ _EXCLUDE_PULL: set[str] = set()
 
 # Per-entity fields that are device-specific — never overwrite local values from cloud pull
 _ENTITY_EXCLUDE_PULL: dict[str, set[str]] = {
-    "app_config": {"pos_printer_name", "doc_printer_name", "pos_auto_print", "doc_auto_print"},
+    "app_config": {
+        "pos_printer_name", "doc_printer_name", "pos_auto_print", "doc_auto_print",
+        # État local anti-doublon du digest quotidien (_daily_notif_loop,
+        # api/main.py) — écrit par CE serveur, jamais un réglage posé par le
+        # cloud admin. Un pull qui l'écraserait pourrait faire repartir un
+        # digest déjà envoyé aujourd'hui, ou en bloquer un qui ne l'a pas
+        # encore été.
+        "low_stock_digest_sent_date",
+    },
     "user": {"password_reset_code", "password_reset_expires_at"},
 }
 _PUSH_CHUNK   = 500   # max records per HTTP push request
