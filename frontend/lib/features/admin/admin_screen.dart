@@ -1733,6 +1733,10 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
   final _extraCaisseUsdCtrl    = TextEditingController();
   final _extraDepotHtgCtrl     = TextEditingController();
   final _extraDepotUsdCtrl     = TextEditingController();
+  final _renewalCaisseHtgCtrl  = TextEditingController();
+  final _renewalCaisseUsdCtrl  = TextEditingController();
+  final _renewalDepotHtgCtrl   = TextEditingController();
+  final _renewalDepotUsdCtrl   = TextEditingController();
   final _stripePriceCtrl       = TextEditingController();
   final _trialDaysCtrl         = TextEditingController();
   final _supportEmailCtrl      = TextEditingController();
@@ -1781,6 +1785,10 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _extraCaisseUsdCtrl.text    = cfg['price_per_extra_caisse_usd']?.toString() ?? '4';
     _extraDepotHtgCtrl.text     = cfg['price_per_extra_depot_htg']?.toString()  ?? '500';
     _extraDepotUsdCtrl.text     = cfg['price_per_extra_depot_usd']?.toString()  ?? '4';
+    _renewalCaisseHtgCtrl.text  = cfg['renewal_price_per_caisse_htg']?.toString() ?? '500';
+    _renewalCaisseUsdCtrl.text  = cfg['renewal_price_per_caisse_usd']?.toString() ?? '4';
+    _renewalDepotHtgCtrl.text   = cfg['renewal_price_per_depot_htg']?.toString()  ?? '500';
+    _renewalDepotUsdCtrl.text   = cfg['renewal_price_per_depot_usd']?.toString()  ?? '4';
     _stripePriceCtrl.text       = cfg['stripe_price_id']?.toString()            ?? '';
     _trialDaysCtrl.text         = cfg['trial_days']?.toString()                 ?? '30';
     _supportEmailCtrl.text      = cfg['support_email']?.toString()              ?? '';
@@ -1842,6 +1850,10 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
     _extraCaisseUsdCtrl.dispose();
     _extraDepotHtgCtrl.dispose();
     _extraDepotUsdCtrl.dispose();
+    _renewalCaisseHtgCtrl.dispose();
+    _renewalCaisseUsdCtrl.dispose();
+    _renewalDepotHtgCtrl.dispose();
+    _renewalDepotUsdCtrl.dispose();
     _stripePriceCtrl.dispose();
     _trialDaysCtrl.dispose();
     _supportEmailCtrl.dispose();
@@ -1916,6 +1928,10 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
         'price_per_extra_caisse_usd':  double.tryParse(_extraCaisseUsdCtrl.text) ?? 4,
         'price_per_extra_depot_htg':   double.tryParse(_extraDepotHtgCtrl.text)  ?? 500,
         'price_per_extra_depot_usd':   double.tryParse(_extraDepotUsdCtrl.text)  ?? 4,
+        'renewal_price_per_caisse_htg': double.tryParse(_renewalCaisseHtgCtrl.text) ?? 500,
+        'renewal_price_per_caisse_usd': double.tryParse(_renewalCaisseUsdCtrl.text) ?? 4,
+        'renewal_price_per_depot_htg':  double.tryParse(_renewalDepotHtgCtrl.text)  ?? 500,
+        'renewal_price_per_depot_usd':  double.tryParse(_renewalDepotUsdCtrl.text)  ?? 4,
         'stripe_price_id':             _stripePriceCtrl.text.trim(),
         'trial_days':                  int.tryParse(_trialDaysCtrl.text) ?? 30,
         'trial_included_in_billing':   _trialIncluded,
@@ -2119,6 +2135,60 @@ class _PlatformConfigTabState extends ConsumerState<_PlatformConfigTab> {
                             controller: _extraDepotUsdCtrl,
                             keyboardType: TextInputType.number,
                             decoration: const InputDecoration(labelText: 'Prix / dépôt supp. (USD)'),
+                            validator: (v) =>
+                                double.tryParse(v ?? '') == null ? 'Invalide' : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // Prix appliqué à partir de la 2e année d'abonnement (après
+                    // les 12 premiers mois) — remplace les prix ci-dessus pour
+                    // chaque caisse/entrepôt, initial ou supplémentaire.
+                    Text('Renouvellement (après 12 mois)',
+                        style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _renewalCaisseHtgCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Renouvellement / caisse (HTG)'),
+                            validator: (v) =>
+                                double.tryParse(v ?? '') == null ? 'Invalide' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _renewalCaisseUsdCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Renouvellement / caisse (USD)'),
+                            validator: (v) =>
+                                double.tryParse(v ?? '') == null ? 'Invalide' : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _renewalDepotHtgCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Renouvellement / dépôt (HTG)'),
+                            validator: (v) =>
+                                double.tryParse(v ?? '') == null ? 'Invalide' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _renewalDepotUsdCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Renouvellement / dépôt (USD)'),
                             validator: (v) =>
                                 double.tryParse(v ?? '') == null ? 'Invalide' : null,
                           ),

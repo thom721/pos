@@ -953,6 +953,10 @@ class _EntrepotUsageRow extends StatelessWidget {
     };
 
     final expiry = _parseDate(entrepot['subscription_ends_at'] as String?);
+    final renewalPriceHtg = (entrepot['renewal_price_htg'] as num?)?.toDouble();
+    final renewalEffectiveAt = _parseDate(entrepot['renewal_effective_at'] as String?);
+    final showRenewalNotice = renewalEffectiveAt != null &&
+        renewalPriceHtg != null && renewalPriceHtg != monthlyHtg;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -991,6 +995,18 @@ class _EntrepotUsageRow extends StatelessWidget {
                     ),
                   ],
                 ]),
+                if (showRenewalNotice)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Renouvellement à ${renewalPriceHtg.toStringAsFixed(0)} HTG '
+                      'à partir du ${DateFormat('dd/MM/yy').format(renewalEffectiveAt.toLocal())}',
+                      style: const TextStyle(
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                          color: AppColors.textSecondary),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1047,6 +1063,10 @@ class _RegisterUsageGroup extends StatelessWidget {
           final expiry = _parseDate(r['subscription_ends_at'] as String?)
               ?? _parseDate(r['trial_ends_at'] as String?);
           final daysLeft = expiry?.toUtc().difference(haitiNow().toUtc()).inDays;
+          final renewalPriceHtg = (r['renewal_price_htg'] as num?)?.toDouble();
+          final renewalEffectiveAt = _parseDate(r['renewal_effective_at'] as String?);
+          final showRenewalNotice = renewalEffectiveAt != null &&
+              renewalPriceHtg != null && renewalPriceHtg != monthlyHtg;
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),
@@ -1104,6 +1124,18 @@ class _RegisterUsageGroup extends StatelessWidget {
                           ),
                         ],
                       ]),
+                      if (showRenewalNotice)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            'Renouvellement à ${renewalPriceHtg.toStringAsFixed(0)} HTG '
+                            'à partir du ${DateFormat('dd/MM/yy').format(renewalEffectiveAt.toLocal())}',
+                            style: const TextStyle(
+                                fontSize: 10,
+                                fontStyle: FontStyle.italic,
+                                color: AppColors.textSecondary),
+                          ),
+                        ),
                     ],
                   ),
                 ),

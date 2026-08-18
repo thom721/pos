@@ -49,6 +49,24 @@ class SubmitEntrepotPaymentRequest(BaseModel):
 router = APIRouter(prefix="/api/billing", tags=["Billing"])
 
 
+# "Après la première année (1 an ou 12 mois)" — voir clarification utilisateur :
+# s'applique uniformément à toute caisse/tout entrepôt (initial ou supplémentaire),
+# indépendamment d'un statut affilié.
+_RENEWAL_PERIOD_DAYS = 365
+
+
+def _renewal_pricing(started_at, now, normal_price: float, renewal_price: float):
+    """Prix applicable pour LE PROCHAIN renouvellement de cette ressource
+    (caisse ou entrepôt), et la date à partir de laquelle le prix de
+    renouvellement s'applique. `started_at` absent (jamais démarré) → prix
+    normal, pas de date de bascule."""
+    if not started_at:
+        return normal_price, None
+    effective_at = started_at + timedelta(days=_RENEWAL_PERIOD_DAYS)
+    applicable = renewal_price if now >= effective_at else normal_price
+    return applicable, effective_at
+
+
 def _get_tenant(db: Session, user: User) -> Tenant:
     if not user.tenant_id:
         raise HTTPException(status_code=400, detail="Compte local — pas d'abonnement cloud")
@@ -94,11 +112,13 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
         Warehouse.is_entrepot == False,  # noqa: E712
     ).count()
 
-    # Toutes les caisses (initiales et supplémentaires) sont facturées au même prix.
+    # Toutes les caisses (initiales et supplémentaires) sont facturées au même
+    # prix — sauf celles ayant dépassé leur première année d'abonnement, qui
+    # basculent sur le prix de renouvellement (voir _renewal_pricing).
     xc_htg = float(cfg.price_per_extra_caisse_htg) if cfg else 500.0
     xc_usd = float(cfg.price_per_extra_caisse_usd) if cfg else 4.0
-    total_htg = xc_htg * caisse_count
-    total_usd = xc_usd * caisse_count
+    rc_htg = float(cfg.renewal_price_per_caisse_htg) if cfg else xc_htg
+    rc_usd = float(cfg.renewal_price_per_caisse_usd) if cfg else xc_usd
 
     # Détail par caisse avec warehouse pour affichage dans la page abonnement.
     # Chaque caisse (initiale ou non) a ses propres dates de facturation.
@@ -112,6 +132,8 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
         .all()
     )
 
+    total_htg = 0.0
+    total_usd = 0.0
     registers_detail = []
     for reg, wh in regs_q:
         sub_end   = reg.subscription_ends_at
@@ -127,6 +149,10 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
             reg_status = "no_subscription"
 
         sub_started = getattr(reg, "subscription_started_at", None)
+        unit_htg, renewal_at = _renewal_pricing(sub_started, now, xc_htg, rc_htg)
+        unit_usd, _          = _renewal_pricing(sub_started, now, xc_usd, rc_usd)
+        total_htg += unit_htg
+        total_usd += unit_usd
         registers_detail.append({
             "id":                      reg.id,
             "name":                    reg.name,
@@ -135,14 +161,22 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
             "trial_ends_at":           reg.trial_ends_at.isoformat()           if reg.trial_ends_at           else None,
             "subscription_started_at": sub_started.isoformat()                 if sub_started                 else None,
             "subscription_ends_at":    reg.subscription_ends_at.isoformat()    if reg.subscription_ends_at    else None,
-            "monthly_htg":             xc_htg,
+            "monthly_htg":             unit_htg,
+            "monthly_usd":             unit_usd,
+            "renewal_price_htg":       rc_htg,
+            "renewal_price_usd":       rc_usd,
+            "renewal_effective_at":    renewal_at.isoformat() if renewal_at else None,
             "status":                  reg_status,
         })
 
     # Entrepôts — pas d'essai gratuit (contrairement aux caisses), prix
     # réutilisé de price_per_extra_depot_htg/usd (jusqu'ici jamais branché).
+    # Pas de subscription_started_at sur Warehouse — created_at sert d'ancre
+    # pour la première année (voir clarification utilisateur).
     xd_htg = float(cfg.price_per_extra_depot_htg) if cfg else 500.0
     xd_usd = float(cfg.price_per_extra_depot_usd) if cfg else 4.0
+    rd_htg = float(cfg.renewal_price_per_depot_htg) if cfg else xd_htg
+    rd_usd = float(cfg.renewal_price_per_depot_usd) if cfg else xd_usd
     entrepots_q = db.query(Warehouse).filter(
         Warehouse.tenant_id == tenant.id,
         Warehouse.is_entrepot == True,  # noqa: E712
@@ -152,12 +186,18 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
     for wh in entrepots_q:
         sub_end = wh.subscription_ends_at
         ent_status = "active" if sub_end and sub_end > now else "unpaid"
+        unit_htg, renewal_at = _renewal_pricing(wh.created_at, now, xd_htg, rd_htg)
+        unit_usd, _          = _renewal_pricing(wh.created_at, now, xd_usd, rd_usd)
         entrepots_detail.append({
             "id":                   wh.id,
             "name":                 wh.name,
             "address":              wh.address,
             "subscription_ends_at": sub_end.isoformat() if sub_end else None,
-            "monthly_htg":          xd_htg,
+            "monthly_htg":          unit_htg,
+            "monthly_usd":          unit_usd,
+            "renewal_price_htg":    rd_htg,
+            "renewal_price_usd":    rd_usd,
+            "renewal_effective_at": renewal_at.isoformat() if renewal_at else None,
             "status":               ent_status,
         })
 
@@ -171,11 +211,15 @@ def _compute_plan_usage(tenant: Tenant, db: Session, cfg: PlatformConfig | None)
         "price_per_caisse_usd":       xc_usd,
         "price_per_extra_caisse_htg": xc_htg,
         "price_per_extra_caisse_usd": xc_usd,
+        "renewal_price_per_caisse_htg": rc_htg,
+        "renewal_price_per_caisse_usd": rc_usd,
         "total_monthly_htg":          total_htg,
         "total_monthly_usd":          total_usd,
         "registers":                  registers_detail,
         "price_per_entrepot_htg":     xd_htg,
         "price_per_entrepot_usd":     xd_usd,
+        "renewal_price_per_depot_htg": rd_htg,
+        "renewal_price_per_depot_usd": rd_usd,
         "entrepots":                  entrepots_detail,
     }
 
@@ -195,6 +239,8 @@ def get_billing_config(
             "support_email": "", "support_whatsapp": "",
             "price_per_extra_caisse_htg": 500.0, "price_per_extra_caisse_usd": 4.0,
             "price_per_extra_depot_htg":  500.0, "price_per_extra_depot_usd":  4.0,
+            "renewal_price_per_caisse_htg": 500.0, "renewal_price_per_caisse_usd": 4.0,
+            "renewal_price_per_depot_htg":  500.0, "renewal_price_per_depot_usd":  4.0,
             "entrepot_trial_days": 30, "entrepot_trial_all": False,
         }
     return {
@@ -208,6 +254,12 @@ def get_billing_config(
         "support_whatsapp":  cfg.support_whatsapp,
         "price_per_extra_caisse_htg": float(cfg.price_per_extra_caisse_htg),
         "price_per_extra_caisse_usd": float(cfg.price_per_extra_caisse_usd),
+        "price_per_extra_depot_htg":  float(getattr(cfg, "price_per_extra_depot_htg", 500.0)),
+        "price_per_extra_depot_usd":  float(getattr(cfg, "price_per_extra_depot_usd", 4.0)),
+        "renewal_price_per_caisse_htg": float(getattr(cfg, "renewal_price_per_caisse_htg", 500.0)),
+        "renewal_price_per_caisse_usd": float(getattr(cfg, "renewal_price_per_caisse_usd", 4.0)),
+        "renewal_price_per_depot_htg":  float(getattr(cfg, "renewal_price_per_depot_htg", 500.0)),
+        "renewal_price_per_depot_usd":  float(getattr(cfg, "renewal_price_per_depot_usd", 4.0)),
         "annual_discount_pct": int(getattr(cfg, "annual_discount_pct", 20)),
         # Méthodes de paiement activées
         "cash_enabled":    bool(getattr(cfg, "cash_enabled",    True)),
@@ -662,6 +714,7 @@ def _submit_register_payment_for_tenant(
 
     cfg = db.query(PlatformConfig).first()
     price_per_caisse_htg = float(getattr(cfg, "price_per_extra_caisse_htg", 500) if cfg else 500)
+    renewal_price_per_caisse_htg = float(getattr(cfg, "renewal_price_per_caisse_htg", price_per_caisse_htg) if cfg else price_per_caisse_htg)
     discount_pct = float(getattr(cfg, "annual_discount_pct", 20) if cfg else 20)
 
     import json as _json
@@ -674,6 +727,11 @@ def _submit_register_payment_for_tenant(
     year = now.year
     prefix = f"REG-{year}-"
 
+    def _unit_price(reg: PosRegister) -> float:
+        started = getattr(reg, "subscription_started_at", None)
+        price, _ = _renewal_pricing(started, now, price_per_caisse_htg, renewal_price_per_caisse_htg)
+        return price
+
     # Grouper par warehouse → une ligne dans l'historique par dépôt
     by_wh: dict[str, list] = _defaultdict(list)
     for reg in registers:
@@ -682,10 +740,11 @@ def _submit_register_payment_for_tenant(
     def _build(base_count: int) -> list:
         created = []
         for idx, (wh_id, wh_regs) in enumerate(by_wh.items()):
+            unit_sum = sum(_unit_price(r) for r in wh_regs)
             if plan_type == "annual":
-                wh_amount = price_per_caisse_htg * 12 * len(wh_regs) * (1 - discount_pct / 100)
+                wh_amount = unit_sum * 12 * (1 - discount_pct / 100)
             else:
-                wh_amount = price_per_caisse_htg * months * len(wh_regs)
+                wh_amount = unit_sum * months
 
             wh_name = "Sans dépôt"
             if wh_id != "__none__":
@@ -811,6 +870,7 @@ def _submit_entrepot_payment_for_tenant(
 
     cfg = db.query(PlatformConfig).first()
     price_per_entrepot_htg = float(getattr(cfg, "price_per_extra_depot_htg", 500) if cfg else 500)
+    renewal_price_per_entrepot_htg = float(getattr(cfg, "renewal_price_per_depot_htg", price_per_entrepot_htg) if cfg else price_per_entrepot_htg)
     discount_pct = float(getattr(cfg, "annual_discount_pct", 20) if cfg else 20)
 
     import json as _json
@@ -822,10 +882,16 @@ def _submit_entrepot_payment_for_tenant(
     year = now.year
     prefix = f"ENT-{year}-"
 
+    # Pas de subscription_started_at sur Warehouse — created_at sert d'ancre
+    # pour la première année (voir clarification utilisateur).
+    unit_sum = sum(
+        _renewal_pricing(e.created_at, now, price_per_entrepot_htg, renewal_price_per_entrepot_htg)[0]
+        for e in entrepots
+    )
     if plan_type == "annual":
-        amount = price_per_entrepot_htg * 12 * len(entrepots) * (1 - discount_pct / 100)
+        amount = unit_sum * 12 * (1 - discount_pct / 100)
     else:
-        amount = price_per_entrepot_htg * months * len(entrepots)
+        amount = unit_sum * months
 
     ent_names = ", ".join(e.name for e in entrepots)
 

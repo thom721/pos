@@ -30,6 +30,16 @@ class PlatformConfig(UUIDBase):
     price_per_extra_depot_htg = Column(Numeric(10, 2), nullable=False, default=500.00)
     price_per_extra_depot_usd = Column(Numeric(10, 2), nullable=False, default=4.00)
 
+    # Prix de renouvellement — remplace price_per_extra_caisse_*/price_per_extra_depot_*
+    # pour toute caisse ou tout entrepôt (initial ou supplémentaire, sans distinction)
+    # ayant dépassé sa première année d'abonnement (365 jours depuis
+    # PosRegister.subscription_started_at, ou Warehouse.created_at pour un entrepôt
+    # — voir billing._compute_plan_usage / _RENEWAL_PERIOD_DAYS).
+    renewal_price_per_caisse_htg = Column(Numeric(10, 2), nullable=False, default=500.00)
+    renewal_price_per_caisse_usd = Column(Numeric(10, 2), nullable=False, default=4.00)
+    renewal_price_per_depot_htg  = Column(Numeric(10, 2), nullable=False, default=500.00)
+    renewal_price_per_depot_usd  = Column(Numeric(10, 2), nullable=False, default=4.00)
+
     # Essai gratuit entrepôt — le 1er entrepôt d'un tenant l'obtient toujours ;
     # entrepot_trial_all étend ce même essai aux entrepôts suivants (2e, 3e...)
     # dès leur création (voir entrepot_service.create_entrepot).

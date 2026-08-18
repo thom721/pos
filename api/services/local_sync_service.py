@@ -521,6 +521,8 @@ def _run_sync_inner(db: Session) -> dict:
         "moncash_mode", "natcash_mode",
         "price_per_extra_caisse_htg", "price_per_extra_caisse_usd",
         "price_per_extra_depot_htg", "price_per_extra_depot_usd",
+        "renewal_price_per_caisse_htg", "renewal_price_per_caisse_usd",
+        "renewal_price_per_depot_htg", "renewal_price_per_depot_usd",
         "stat_businesses", "stat_transactions_day", "stat_uptime",
         "pricing_plans_json", "logo_url",
         "cash_enabled", "moncash_enabled", "natcash_enabled", "card_enabled",
