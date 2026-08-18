@@ -76,12 +76,6 @@ def record_stock_movement(
         suffix = f"(converti depuis « {product.name} »)"
         final_note = f"{note} {suffix}" if note else suffix
 
-    # Capturé AVANT db.add(mv) — l'autoflush de session déclenché par la
-    # lecture de target_product.stock (relation stock_movements) inclurait
-    # sinon le mouvement qu'on est justement en train de créer, faussant le
-    # calcul "avant/après" utilisé pour détecter le franchissement du seuil.
-    stock_before = target_product.stock if target_product is not None else None
-
     mv = StockMovement(
         product_id=target_id,
         user_id=user_id,
@@ -97,16 +91,39 @@ def record_stock_movement(
     )
     db.add(mv)
 
-    # Alerte stock bas — seulement au franchissement du seuil vers le bas
-    # (pas à chaque vente supplémentaire une fois déjà sous le seuil).
-    if stock_before is not None and final_quantity < 0:
-        alert = target_product.alert_stock or 0
-        stock_after = stock_before + final_quantity
-        if stock_before > alert and stock_after <= alert:
-            from api.utils.email import maybe_send_low_stock_alert
-            maybe_send_low_stock_alert(db, target_product)
-
     return mv
+
+
+def list_low_stock_products(
+    db: Session,
+    tenant_id: str,
+    warehouse_id: str | None = None,
+) -> list[dict]:
+    """Produits (non composés, actifs) dont le stock actuel est descendu à ou
+    sous leur seuil d'alerte (Product.alert_stock). Les produits composés en
+    sont exclus : leur stock dérive toujours de leur composant, qui apparaît
+    lui-même dans cette liste s'il est concerné — voir record_stock_movement.
+    Utilisé pour l'affichage temps réel (page d'accueil) et pour le digest
+    email de fin de journée (api.utils.email.maybe_send_low_stock_digest)."""
+    candidates = (
+        db.query(Product)
+        .filter(
+            Product.tenant_id == tenant_id,
+            Product.is_active == True,  # noqa: E712
+            Product.component_product_id.is_(None),
+        )
+        .all()
+    )
+    if not candidates:
+        return []
+    stocks = stock_map(db, [p.id for p in candidates], tenant_id=tenant_id, warehouse_id=warehouse_id)
+    result = []
+    for p in candidates:
+        current = stocks.get(p.id, 0)
+        alert = p.alert_stock or 0
+        if current <= alert:
+            result.append({"id": p.id, "name": p.name, "stock": current, "alert_stock": alert})
+    return result
 
 
 def list_stock_movements(

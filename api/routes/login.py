@@ -29,18 +29,16 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
                 detail="Cet utilisateur n'est pas autorisé à se connecter sur ce dépôt",
             )
 
-    # Avertissement plan expirant (cloud seulement)
+    # Avertissement plan expirant (cloud seulement) — affiché en app ici ;
+    # l'email correspondant part une fois par jour le matin, pas à chaque
+    # connexion (voir _daily_notif_loop dans api/main.py).
     warning = None
     if user.tenant_id:
         from api.models.Tenant import Tenant as TenantModel
         from api.core.tenant import plan_warning
-        from api.utils.email import maybe_send_warning
         tenant = db.query(TenantModel).filter(TenantModel.id == user.tenant_id).first()
         if tenant and not getattr(tenant, "is_local", False):
             warning = plan_warning(tenant)
-            # Email uniquement au propriétaire du tenant
-            if warning and user.email == tenant.owner_email:
-                maybe_send_warning(tenant, db)
 
     return {
         "access_token": auth.create_access_token(user.id),

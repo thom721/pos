@@ -4,6 +4,7 @@ import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/models/stock_movement_model.dart';
 import 'package:pos_connect/data/models/transfer_receipt_model.dart';
+import 'package:pos_connect/data/models/low_stock_product_model.dart';
 
 class EntrepotRepository {
   Future<List<WarehouseModel>> listEntrepots() async {
@@ -117,5 +118,14 @@ class EntrepotRepository {
       'limit': limit,
     });
     return PaginatedResponse.fromJson(res.data, StockMovementModel.fromJson);
+  }
+
+  Future<List<LowStockProductModel>> getLowStockProducts({String? warehouseId}) async {
+    final res = await dio.get('/api/stock-movements/low-stock', queryParameters: {
+      if (warehouseId != null && warehouseId.isNotEmpty) 'warehouse_id': warehouseId,
+    });
+    return (res.data as List)
+        .map((e) => LowStockProductModel.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 }

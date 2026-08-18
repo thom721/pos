@@ -4,6 +4,7 @@ Config lue depuis PlatformConfig (table singleton).
 """
 import json
 import logging
+import re
 import smtplib
 import threading
 from email.mime.multipart import MIMEMultipart
@@ -14,10 +15,20 @@ from api.core.dt_coerce import now_local
 
 _log = logging.getLogger("pos.email")
 
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _is_valid_email(addr: str | None) -> bool:
+    return bool(addr) and bool(_EMAIL_RE.match(addr))
+
 
 def _send_via_smtp(host: str, port: int, user: str, password: str,
                    from_addr: str, to_addr: str,
                    subject: str, html: str) -> None:
+    if not _is_valid_email(to_addr):
+        _log.warning("Email non envoyé — adresse invalide : %r", to_addr)
+        return
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = from_addr
@@ -132,34 +143,47 @@ demande, ignorez cet email — votre mot de passe reste inchangé.</p>
     threading.Thread(target=_send, daemon=True).start()
 
 
-def send_low_stock_email(
+def send_low_stock_digest_email(
     to_addr: str,
     business_name: str,
-    product_name: str,
-    current_stock,
-    alert_threshold,
+    products: list[dict],   # [{"name", "stock", "alert_stock"}, ...]
     smtp_host: str,
     smtp_port: int,
     smtp_user: str,
     smtp_password: str,
     smtp_from: str,
 ) -> None:
-    """Lance l'envoi en arrière-plan — ne bloque pas la requête."""
+    """Lance l'envoi en arrière-plan — ne bloque pas la requête.
+    Un seul email récapitulatif listant tous les produits sous leur seuil
+    d'alerte (au lieu d'un email par produit/par franchissement)."""
     if not smtp_host or not smtp_from:
         _log.warning("Email non envoyé — SMTP non configuré (PlatformConfig.smtp_host/smtp_from vide)")
         return
 
-    subject = f"POS Connect — Stock bas : {product_name}"
+    count = len(products)
+    subject = f"POS Connect — {count} produit(s) en stock bas"
+    rows = "".join(
+        f'<tr><td style="padding:6px 12px;border-bottom:1px solid #eee">{p["name"]}</td>'
+        f'<td style="padding:6px 12px;border-bottom:1px solid #eee;text-align:right">{p["stock"]}</td>'
+        f'<td style="padding:6px 12px;border-bottom:1px solid #eee;text-align:right">{p["alert_stock"]}</td></tr>'
+        for p in products
+    )
     html = f"""
 <html><body style="font-family:sans-serif;color:#222">
-<h2 style="color:#c0392b">⚠️ Stock bas — {product_name}</h2>
+<h2 style="color:#c0392b">⚠️ Stock bas — {business_name}</h2>
 <p>Bonjour,</p>
-<p>Le produit <strong>{product_name}</strong> ({business_name}) est passé sous
-le seuil d'alerte configuré.</p>
-<p>Stock actuel : <strong>{current_stock}</strong> — seuil d'alerte : <strong>{alert_threshold}</strong></p>
+<p><strong>{count}</strong> produit(s) sont actuellement sous leur seuil d'alerte :</p>
+<table style="border-collapse:collapse;width:100%;max-width:500px">
+<tr style="background:#f5f5f5">
+  <th style="padding:6px 12px;text-align:left">Produit</th>
+  <th style="padding:6px 12px;text-align:right">Stock</th>
+  <th style="padding:6px 12px;text-align:right">Seuil</th>
+</tr>
+{rows}
+</table>
 <p style="color:#888;font-size:12px">
   POS Connect &mdash; posconnect.ht<br>
-  Cet email a été envoyé automatiquement.
+  Récapitulatif quotidien envoyé automatiquement.
 </p>
 </body></html>
 """
@@ -169,27 +193,24 @@ le seuil d'alerte configuré.</p>
             _send_via_smtp(smtp_host, smtp_port, smtp_user, smtp_password,
                            smtp_from, to_addr, subject, html)
         except Exception:
-            _log.exception("Échec envoi email (stock bas) vers %s", to_addr)
+            _log.exception("Échec envoi email (digest stock bas) vers %s", to_addr)
 
     threading.Thread(target=_send, daemon=True).start()
 
 
-def maybe_send_low_stock_alert(db, product) -> None:
+def maybe_send_low_stock_digest(db, tenant_id: str) -> None:
     """
-    Envoie une alerte email quand le stock d'un produit franchit son seuil
-    (Product.alert_stock) vers le bas — appelé depuis
-    stock_service.record_stock_movement APRÈS que le mouvement ait été
-    appliqué, uniquement au moment du franchissement (pas à chaque vente
-    supplémentaire une fois déjà sous le seuil — voir l'appelant).
-    Réglage par tenant : AppConfig.low_stock_alert_enabled/_roles.
+    Envoie, une fois par jour au maximum, un email récapitulatif listant tous
+    les produits actuellement sous leur seuil d'alerte pour ce tenant —
+    appelé depuis la boucle _daily_notif_loop (api/main.py) en fin de
+    journée. Remplace l'ancien envoi immédiat par produit/par franchissement
+    (trop de mails). Réglage par tenant : AppConfig.low_stock_alert_enabled/
+    _roles ; anti-doublon : AppConfig.low_stock_digest_sent_date.
     """
     from api.models.AppConfig import AppConfig
     from api.models.PlatformConfig import PlatformConfig
     from api.models.User import User
-
-    tenant_id = product.tenant_id
-    if not tenant_id:
-        return
+    from api.services.stock_service import list_low_stock_products
 
     cfg = (
         db.query(AppConfig)
@@ -199,6 +220,10 @@ def maybe_send_low_stock_alert(db, product) -> None:
     if not cfg or not cfg.low_stock_alert_enabled:
         return
 
+    today = now_local().date()
+    if cfg.low_stock_digest_sent_date == today:
+        return  # déjà envoyé aujourd'hui
+
     roles = []
     if cfg.low_stock_alert_roles:
         try:
@@ -206,6 +231,10 @@ def maybe_send_low_stock_alert(db, product) -> None:
         except (ValueError, TypeError):
             roles = []
     if not roles:
+        return
+
+    products = list_low_stock_products(db, tenant_id=tenant_id)
+    if not products:
         return
 
     platform_cfg = db.query(PlatformConfig).first()
@@ -221,18 +250,39 @@ def maybe_send_low_stock_alert(db, product) -> None:
     for user in recipients:
         if not user.email or not any(r in (user.roles or []) for r in roles):
             continue
-        send_low_stock_email(
-            to_addr        = user.email,
-            business_name  = business_name,
-            product_name   = product.name,
-            current_stock  = product.stock,
-            alert_threshold = product.alert_stock,
-            smtp_host      = platform_cfg.smtp_host,
-            smtp_port      = platform_cfg.smtp_port,
-            smtp_user      = platform_cfg.smtp_user,
-            smtp_password  = platform_cfg.smtp_password,
-            smtp_from      = platform_cfg.smtp_from,
+        send_low_stock_digest_email(
+            to_addr       = user.email,
+            business_name = business_name,
+            products      = products,
+            smtp_host     = platform_cfg.smtp_host,
+            smtp_port     = platform_cfg.smtp_port,
+            smtp_user     = platform_cfg.smtp_user,
+            smtp_password = platform_cfg.smtp_password,
+            smtp_from     = platform_cfg.smtp_from,
         )
+
+    cfg.low_stock_digest_sent_date = today
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+def send_evening_low_stock_digests(db) -> None:
+    """Parcourt tous les tenants ayant activé low_stock_alert_enabled et
+    envoie le digest quotidien (voir maybe_send_low_stock_digest, qui gère
+    déjà l'anti-doublon). Appelé une fois par jour en fin de journée par
+    _daily_notif_loop (api/main.py)."""
+    from api.models.AppConfig import AppConfig
+
+    tenant_ids = (
+        db.query(AppConfig.tenant_id)
+        .filter(AppConfig.low_stock_alert_enabled == True, AppConfig.tenant_id.isnot(None))  # noqa: E712
+        .distinct()
+        .all()
+    )
+    for (tenant_id,) in tenant_ids:
+        maybe_send_low_stock_digest(db, tenant_id)
 
 
 def maybe_send_warning(tenant, db) -> None:
@@ -240,7 +290,9 @@ def maybe_send_warning(tenant, db) -> None:
     Envoie l'email de warning si :
     - Le plan expire dans ≤ 5 jours
     - Aucun email envoyé dans les dernières 24h
-    Appeler depuis le login handler.
+    Appelé une fois par jour le matin par send_morning_plan_warnings, via
+    _daily_notif_loop (api/main.py) — plus à chaque connexion (trop de mails
+    en rafale à chaque login avec plusieurs caisses/utilisateurs).
     """
     from api.models.PlatformConfig import PlatformConfig
     from api.core.tenant import plan_warning
@@ -276,3 +328,15 @@ def maybe_send_warning(tenant, db) -> None:
         db.commit()
     except Exception:
         db.rollback()
+
+
+def send_morning_plan_warnings(db) -> None:
+    """Parcourt tous les tenants non-locaux et envoie l'avertissement
+    d'expiration de plan si applicable (voir maybe_send_warning, qui gère
+    déjà le seuil ≤5 jours et le anti-doublon 24h). Appelé une fois par jour
+    le matin par _daily_notif_loop (api/main.py)."""
+    from api.models.Tenant import Tenant
+
+    tenants = db.query(Tenant).filter(Tenant.is_local == False).all()  # noqa: E712
+    for tenant in tenants:
+        maybe_send_warning(tenant, db)

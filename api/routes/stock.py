@@ -5,13 +5,22 @@ from datetime import datetime
 
 from api.database import get_db
 from api.models.User import User
-from api.schemas.stock import StockMovementRead
+from api.schemas.stock import StockMovementRead, LowStockProductRead
 from api.schemas.common import PaginatedResponse
-from api.services.stock_service import list_stock_movements
+from api.services.stock_service import list_stock_movements, list_low_stock_products
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
 
 router = APIRouter(prefix="/api/stock-movements", tags=["Stock"])
+
+
+@router.get("/low-stock", response_model=list[LowStockProductRead])
+def read_low_stock_products(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.STOCK_READ)),
+    warehouse_id: Optional[str] = None,
+):
+    return list_low_stock_products(db, tenant_id=current_user.tenant_id, warehouse_id=warehouse_id)
 
 
 @router.get("/", response_model=PaginatedResponse[StockMovementRead])

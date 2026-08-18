@@ -4,6 +4,13 @@ from datetime import datetime
 from api.schemas.product import ProductRead
 from api.schemas.user import UserOut
 
+
+class LowStockProductRead(BaseModel):
+    id: str
+    name: str
+    stock: float
+    alert_stock: int
+
 class StockMovementRead(BaseModel):
     id: str
     type: str

@@ -252,13 +252,12 @@ def cloud_login(db: Session, email: str, password: str,
             db.refresh(register)
             register_id = register.id
 
-    # Avertissement plan expirant (≤ 5 jours avant la fin)
+    # Avertissement plan expirant (≤ 5 jours avant la fin) — affiché en app ;
+    # l'email correspondant part une fois par jour le matin, pas à chaque
+    # connexion (voir _daily_notif_loop dans api/main.py).
     from api.core.tenant import plan_warning, _check_tenant_access
     _check_tenant_access(tenant, db, hard_block=False)  # met à jour le statut
     warning = plan_warning(tenant)
-    if warning and user.email == tenant.owner_email:
-        from api.utils.email import maybe_send_warning
-        maybe_send_warning(tenant, db)
 
     token_data = {
         "sub": user.username,

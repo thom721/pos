@@ -75,18 +75,16 @@ def login_for_access_token(
         expires_delta=access_token_expires,
     )
 
-    # Avertissement plan expirant (cloud seulement)
+    # Avertissement plan expirant (cloud seulement) — affiché en app ici ;
+    # l'email correspondant part une fois par jour le matin, pas à chaque
+    # connexion (voir _daily_notif_loop dans api/main.py).
     warning = None
     if user.tenant_id:
         from api.models.Tenant import Tenant
         from api.core.tenant import plan_warning
-        from api.utils.email import maybe_send_warning
         tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
         if tenant and not getattr(tenant, "is_local", False):
             warning = plan_warning(tenant)
-            # Email uniquement au propriétaire du tenant
-            if warning and user.email == tenant.owner_email:
-                maybe_send_warning(tenant, db)
 
     return Token(access_token=access_token, token_type="bearer", user={
         'id': user.id,

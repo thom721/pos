@@ -1596,6 +1596,46 @@ async def _log_rotate_loop():
             logging.getLogger("pos.logrotate").exception("Échec boucle rotation logs")
 
 
+# Digest quotidien : stock bas en fin de journée, plan expirant le matin —
+# remplace les anciens envois immédiats (un email par produit à chaque
+# franchissement de seuil, un email de plan à chaque connexion). Vérifié
+# toutes les _DAILY_NOTIF_CHECK_INTERVAL secondes ; chaque fonction gère son
+# propre anti-doublon (AppConfig.low_stock_digest_sent_date,
+# Tenant.last_warning_sent_at) donc un tick manqué/en retard ne cause pas de
+# double envoi le même jour.
+_DAILY_NOTIF_CHECK_INTERVAL = 600  # secondes entre deux vérifications
+_LOW_STOCK_DIGEST_HOUR = 20        # 20h — fin de journée, heure locale Haiti
+_PLAN_WARNING_HOUR     = 8         # 8h — matin, heure locale Haiti
+_daily_notif_task: asyncio.Task | None = None
+
+
+def _run_daily_notifs() -> None:
+    from api.database import SessionLocal
+    from api.core.dt_coerce import now_local
+    from api.utils.email import send_evening_low_stock_digests, send_morning_plan_warnings
+    _nlog = logging.getLogger("pos.dailynotif")
+    hour = now_local().hour
+    db = SessionLocal()
+    try:
+        if hour == _LOW_STOCK_DIGEST_HOUR:
+            send_evening_low_stock_digests(db)
+        if hour == _PLAN_WARNING_HOUR:
+            send_morning_plan_warnings(db)
+    except Exception:
+        _nlog.exception("Échec envoi des notifications quotidiennes")
+    finally:
+        db.close()
+
+
+async def _daily_notif_loop():
+    while True:
+        await asyncio.sleep(_DAILY_NOTIF_CHECK_INTERVAL)
+        try:
+            await asyncio.to_thread(_run_daily_notifs)
+        except Exception:
+            logging.getLogger("pos.dailynotif").exception("Échec boucle notifications quotidiennes")
+
+
 def signal_pending_sync() -> None:
     """Appeler après toute écriture locale — réveille le loop de sync immédiatement."""
     try:
@@ -1672,6 +1712,9 @@ async def start_auto_sync():
     global _log_rotate_task
     _log_rotate_task = asyncio.create_task(_log_rotate_loop())
 
+    global _daily_notif_task
+    _daily_notif_task = asyncio.create_task(_daily_notif_loop())
+
     # mDNS ("infini-post.local") — installation locale Windows uniquement.
     # Le cloud (Docker/Linux) n'a pas de réseau local a annoncer.
     if os.name == "nt":
@@ -1685,6 +1728,8 @@ async def start_auto_sync():
 async def stop_mdns():
     if _log_rotate_task and not _log_rotate_task.done():
         _log_rotate_task.cancel()
+    if _daily_notif_task and not _daily_notif_task.done():
+        _daily_notif_task.cancel()
     if os.name == "nt":
         if _mdns_watch_task and not _mdns_watch_task.done():
             _mdns_watch_task.cancel()

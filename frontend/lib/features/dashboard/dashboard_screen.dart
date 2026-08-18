@@ -12,6 +12,9 @@ import 'package:pos_connect/providers/sale_provider.dart';
 import 'package:pos_connect/providers/debt_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/client_sabotage_provider.dart';
+import 'package:pos_connect/data/models/low_stock_product_model.dart';
+import 'package:pos_connect/providers/entrepot_provider.dart';
+import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:pos_connect/shared/widgets/stat_card.dart';
 import 'package:pos_connect/shared/widgets/status_badge.dart';
@@ -32,6 +35,8 @@ class DashboardScreen extends ConsumerWidget {
     final isCashier = !(user?.hasPermission(Perm.reportsReadAll) ?? false);
     final salesAsync = ref.watch(dashboardSalesProvider(isCashier));
     final debtsAsync = ref.watch(debtsProvider);
+    final canReadStock = ref.watch(hasPermissionProvider(Perm.stockRead));
+    final lowStockAsync = canReadStock ? ref.watch(lowStockProductsProvider) : null;
     final isOrderBased = businessType == 'restaurant' || businessType == 'hotel';
     // Autorisation vente depuis le web (champ sell_cloud sur le tenant)
     final sellCloud =
@@ -102,6 +107,18 @@ class DashboardScreen extends ConsumerWidget {
               ],
             ),
           const SizedBox(height: 24),
+
+          if (lowStockAsync != null)
+            lowStockAsync.when(
+              data: (products) => products.isEmpty
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(bottom: 24),
+                      child: _LowStockBanner(products: products),
+                    ),
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+            ),
 
           // Stats cards
           salesAsync.when(
@@ -490,6 +507,61 @@ class _ErrorCard extends StatelessWidget {
             const Icon(Icons.error_outline, color: AppColors.error),
             const SizedBox(width: 8),
             Expanded(child: Text(message, style: const TextStyle(color: AppColors.error))),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LowStockBanner extends StatelessWidget {
+  final List<LowStockProductModel> products;
+  const _LowStockBanner({required this.products});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: AppColors.warning.withValues(alpha: 0.08),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded, color: AppColors.warning),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${products.length} produit(s) en stock bas',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: AppColors.warning, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => context.go('/products'),
+                  child: const Text('Voir →'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: products.take(8).map((p) {
+                return Chip(
+                  label: Text('${p.name} (${p.stock.toStringAsFixed(0)}/${p.alertStock})'),
+                  backgroundColor: AppColors.surface,
+                  side: BorderSide(color: AppColors.warning.withValues(alpha: 0.3)),
+                );
+              }).toList(),
+            ),
+            if (products.length > 8)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('+ ${products.length - 8} autre(s)',
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+              ),
           ],
         ),
       ),

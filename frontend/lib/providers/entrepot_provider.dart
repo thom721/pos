@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_connect/data/models/low_stock_product_model.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/stock_movement_model.dart';
@@ -6,6 +7,15 @@ import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/repositories/entrepot_repository.dart';
 
 final entrepotRepositoryProvider = Provider((ref) => EntrepotRepository());
+
+// Produits sous leur seuil d'alerte, tous entrepôts confondus — affiché en
+// haut du dashboard (voir dashboard_screen.dart). Remplace l'ancien email
+// immédiat par produit : la liste ici sert d'aperçu temps réel, le digest
+// email quotidien (backend, _daily_notif_loop) couvre la notification.
+final lowStockProductsProvider =
+    FutureProvider.autoDispose<List<LowStockProductModel>>((ref) async {
+  return ref.read(entrepotRepositoryProvider).getLowStockProducts();
+});
 
 // Un tenant peut avoir plusieurs entrepôts — liste complète.
 final entrepotsProvider =

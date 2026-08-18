@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Column, String, Numeric, Boolean, Text
+from sqlalchemy import ForeignKey, Column, String, Numeric, Boolean, Text, Date
 from .base import UUIDBase
 
 class AppConfig(UUIDBase):
@@ -49,12 +49,16 @@ class AppConfig(UUIDBase):
     # orienter l'interface (quel workflow est mis en avant pour ce tenant).
     composite_stock_trigger = Column(String(20), nullable=False, default='manual')
 
-    # Alerte email stock bas — envoyée une fois par franchissement du seuil
-    # (Product.alert_stock), voir stock_service.record_stock_movement.
+    # Alerte email stock bas — un seul email récapitulatif par jour (tous les
+    # produits sous leur seuil Product.alert_stock à ce moment-là), envoyé en
+    # fin de journée par la boucle _daily_notif_loop (api/main.py) — voir
+    # api.utils.email.maybe_send_low_stock_digest. low_stock_digest_sent_date
+    # évite un second envoi le même jour si le serveur redémarre.
     # low_stock_alert_roles : JSON list de rôles à notifier (ex: ["admin",
     # "manager", "stock_manager"]) — vide/null = personne même si activé.
-    low_stock_alert_enabled = Column(Boolean, nullable=False, default=False)
-    low_stock_alert_roles   = Column(Text, nullable=True, default=None)
+    low_stock_alert_enabled    = Column(Boolean, nullable=False, default=False)
+    low_stock_alert_roles      = Column(Text, nullable=True, default=None)
+    low_stock_digest_sent_date = Column(Date, nullable=True, default=None)
 
     # Système de Sabotage — champs additionnels configurables pour ClientSabotage.
     # JSON list [{label, required}, ...]. Ne contient jamais nom/prenom/telephone/
