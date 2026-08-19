@@ -14,31 +14,39 @@ PRÉREQUIS SYSTÈME
 CE QUI SERA INSTALLÉ
 --------------------
   - POS Connect Serveur (API FastAPI compilée)
+  - MySQL (base de données locale) — sauf si vous choisissez SQLite
   - Nginx (reverse proxy HTTPS)
   - Certificat SSL auto-signé (pour les connexions sécurisées sur le réseau local)
   - NSSM (gestionnaire de services Windows)
-  - Deux services Windows démarrés automatiquement :
-      · POS_Connect_Nginx  — proxy HTTPS (port 443)
-      · POS_Connect_API    — serveur API  (port 9003)
+  - Diffusion mDNS "infini-post.local" (auto-découverte réseau local)
+  - Trois services Windows démarrés automatiquement :
+      · POS_Connect_MySQL  — base de données  (port 3307, local uniquement)
+      · POS_Connect_API    — serveur API      (port 9003, jamais exposé directement)
+      · POS_Connect_Nginx  — proxy HTTPS      (port 443, seul point d'accès réseau)
 
 DOSSIER D'INSTALLATION
 ----------------------
   C:\Program Files\POS_Connect\
+  Données et configuration : C:\ProgramData\POS_Connect\
 
 AVANT DE CONTINUER, VÉRIFIEZ QUE :
 -----------------------------------
   [ ] Vous avez les droits Administrateur sur ce poste
-  [ ] Les ports 443 et 9003 ne sont pas bloqués par un autre logiciel
+  [ ] Le port 443 n'est pas déjà utilisé par un autre logiciel (IIS, Apache,
+      WampServer...) — sinon Nginx ne pourra pas démarrer
       (désactivez temporairement l'antivirus si nécessaire)
   [ ] Vous avez votre code d'abonnement POS Connect à portée de main
-  [ ] MySQL / MariaDB est installé et accessible si vous utilisez ce mode
-      (SQLite est disponible sans installation supplémentaire)
+  [ ] Si vous prévoyez d'utiliser MySQL, aucune autre instance MySQL
+      n'occupe déjà le port 3307 sur ce poste
 
 POSTES CLIENTS (AUTRES ORDINATEURS)
 ------------------------------------
+  Toute connexion se fait exclusivement en HTTPS, jamais en HTTP brut.
   Après l'installation du serveur, les autres postes du réseau local
-  pourront se connecter via l'adresse IP de ce serveur sur le port 9003.
-  Ex : http://192.168.1.10:9003
+  détectent automatiquement le serveur via "infini-post.local" (aucune
+  IP à saisir). Si l'auto-découverte échoue sur ce réseau, l'app propose
+  la saisie manuelle de l'adresse IP du serveur — elle se connecte alors
+  quand même en HTTPS avec le certificat épinglé, jamais en clair.
 
 SUPPORT
 -------
