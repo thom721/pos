@@ -151,6 +151,14 @@ GUIDES = {
     "Admin": {
         "subtitle": "Guide d'utilisation — administration complète",
         "sections": [
+            ("Créer votre compte", [
+                "Le tout premier compte administrateur d'un commerce se crée "
+                "depuis le site web (posconnect.ht), pas depuis l'application "
+                "bureau ou mobile — c'est cette inscription qui crée votre "
+                "abonnement et votre compte.",
+                "Une fois ce compte créé, connectez-vous avec les mêmes "
+                "identifiants dans l'application bureau/mobile.",
+            ]),
             ("Accès complet", [
                 "Le rôle Admin a accès à absolument tout — l'ensemble des "
                 "fonctionnalités Caissier et Manager, plus l'administration "
