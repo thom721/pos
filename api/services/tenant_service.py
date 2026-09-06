@@ -36,7 +36,20 @@ def _expand_permissions(user: User, db: Session) -> list[str]:
     for role_name in (user.roles or []):
         if role_name == "admin":
             return ["all"]
-        role = db.query(Role).filter(Role.name == role_name).first()
+        # Le fork propre à ce tenant (s'il existe) prime sur le défaut
+        # plateforme — même précédence que has_permission/TENANT_ROLE_OVERRIDES
+        # (api/core/permissions.py). Sans le filtre tenant_id, .first() sur un
+        # nom partagé par plusieurs tenants renverrait une ligne arbitraire,
+        # potentiellement celle d'un AUTRE tenant.
+        role = None
+        if user.tenant_id:
+            role = db.query(Role).filter(
+                Role.name == role_name, Role.tenant_id == user.tenant_id,
+            ).first()
+        if not role:
+            role = db.query(Role).filter(
+                Role.name == role_name, Role.tenant_id.is_(None),
+            ).first()
         if role and role.permissions:
             perms = role.permissions if isinstance(role.permissions, list) else []
             if "all" in perms:

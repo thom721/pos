@@ -100,6 +100,7 @@ def require_permission(permission: str):
             current_user.permissions or [],
             current_user.roles or [],
             permission,
+            tenant_id=current_user.tenant_id,
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

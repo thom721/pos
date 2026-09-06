@@ -5,20 +5,17 @@ from api.services.user_service import UserService
 from api.schemas.user import UserCreate, UserRead, UserPublicRead, UserSyncRead, UserUpdate, ChangePasswordRequest
 from api.database import get_db
 from api.dependencies.auth import require_permission, get_current_user
-from api.core.permissions import P, ROLE_PERMISSIONS
+from api.core.permissions import P, resolve_effective_permissions
 from api.models.User import User
 
 
 def _resolve_permissions(user) -> list[str]:
-    roles = user.roles or []
-    explicit = set(user.permissions or [])
-    if "all" in explicit or any(ROLE_PERMISSIONS.get(r, set()) == {"all"} for r in roles):
-        return ["all"]
-    role_perms: set[str] = set()
-    for role in roles:
-        role_perms.update(ROLE_PERMISSIONS.get(role, set()))
-    custom = {p for p in explicit if p not in roles and p != "all"}
-    return sorted(role_perms | custom)
+    """Permissions effectives d'un utilisateur — appelé par GET /users/me,
+    rafraîchi toutes les 5 min + à chaque reprise de l'app côté Flutter
+    (voir refreshCurrentUser). Voir resolve_effective_permissions
+    (api/core/permissions.py) pour la précédence fork tenant / défaut
+    plateforme."""
+    return resolve_effective_permissions(user.roles, user.permissions, user.tenant_id)
 
 router = APIRouter(tags=['Users'])
 

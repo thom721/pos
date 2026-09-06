@@ -142,6 +142,12 @@ abstract class Perm {
   static const entrepotCreate = 'entrepot.create';
   static const entrepotRead   = 'entrepot.read';
 
+  // Dépenses (charges d'exploitation — loyer, fournitures, transport...)
+  static const expensesCreate = 'expenses.create';
+  static const expensesRead   = 'expenses.read';
+  static const expensesUpdate = 'expenses.update';
+  static const expensesDelete = 'expenses.delete';
+
   // Accès à l'interface web (navigateur) — vérifié au login cloud
   static const connectCloud = 'connect.cloud';
 }
@@ -177,6 +183,7 @@ const Map<String, Set<String>> rolePermissions = {
     Perm.depotsCreate, Perm.depotsRead,
     Perm.retraitsCreate, Perm.retraitsRead,
     Perm.entrepotCreate, Perm.entrepotRead,
+    Perm.expensesCreate, Perm.expensesRead, Perm.expensesUpdate, Perm.expensesDelete,
     Perm.connectCloud,
   },
   'cashier': {

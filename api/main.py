@@ -35,6 +35,7 @@ from api.routes import client_sabotage as client_sabotage_router
 from api.routes import depot as depot_router
 from api.routes import retrait as retrait_router
 from api.routes import entrepot as entrepot_router
+from api.routes import expense as expense_router
 from api.ws_manager import manager as _ws_manager
 from api.core.security import verify_token as _verify_token
 # Import models so create_all picks them up
@@ -153,6 +154,7 @@ app.include_router(client_sabotage_router.router)
 app.include_router(depot_router.router)
 app.include_router(retrait_router.router)
 app.include_router(entrepot_router.router)
+app.include_router(expense_router.router)
 
 # ── Built-in role definitions ─────────────────────────────────────────────────
 _BUILTIN_ROLES = [
@@ -844,6 +846,167 @@ def _repair_duplicate_registers(active_engine=None) -> None:
             _log.warning("registres dupliqués: ajout de la contrainte échoué (nouveaux doublons ?): %s", exc)
 
 
+def _repair_role_uniqueness(active_engine=None) -> None:
+    """
+    Migration ponctuelle : Role.name portait une contrainte UNIQUE globale
+    (index `ix_roles_name`) au lieu d'une contrainte (tenant_id, name) — donc
+    UNE SEULE ligne "manager"/"cashier"/etc. existait pour TOUS les tenants
+    de la plateforme. Conséquence en production : un tenant modifiant les
+    permissions d'un rôle intégré via la page Utilisateurs & Rôles (ex:
+    décocher "Accès web") changeait ce rôle pour tous les autres tenants
+    aussi, jusqu'au prochain redémarrage qui réécrasait silencieusement avec
+    les défauts codés en dur (voir _BUILTIN_ROLES ci-dessus) — un bug
+    impossible à relier à son origine réelle. Corrigé en amont : Role.py
+    déclare désormais name sans unique=True mais avec
+    UniqueConstraint('tenant_id', 'name'), et roles.py/permissions.py
+    scopent les requêtes/le cache par tenant.
+
+    _sync_schema_from_models() n'ajoute que des colonnes, jamais de
+    contraintes/index — cette migration bascule donc l'index existant
+    (idempotente, MySQL uniquement — SQLite est toujours mono-tenant en
+    pratique, aucun risque de fuite cross-tenant à corriger). S'exécute à
+    chaque démarrage.
+    """
+    from sqlalchemy import text as _text, inspect as _inspect
+
+    import api.database as _db_mod
+    _eng = active_engine or _db_mod.engine
+    if _eng.dialect.name != "mysql":
+        return
+
+    try:
+        inspector = _inspect(_eng)
+        if "roles" not in inspector.get_table_names():
+            return
+        indexes = inspector.get_indexes("roles")
+    except Exception as exc:
+        _log.warning("roles: impossible d'inspecter le schéma: %s", exc)
+        return
+
+    has_old_unique = any(
+        idx["name"] == "ix_roles_name" and idx.get("unique") for idx in indexes
+    )
+    has_new_unique = any(idx["name"] == "uq_role_tenant_name" for idx in indexes)
+    if not has_old_unique and has_new_unique:
+        return  # déjà migré
+
+    with _eng.connect() as conn:
+        try:
+            if has_old_unique:
+                conn.execute(_text("ALTER TABLE `roles` DROP INDEX `ix_roles_name`"))
+                conn.commit()
+                _log.info("roles: index unique global ix_roles_name supprimé")
+        except Exception as exc:
+            conn.rollback()
+            _log.warning("roles: suppression de ix_roles_name échouée: %s", exc)
+
+        try:
+            if not has_new_unique:
+                conn.execute(_text(
+                    "ALTER TABLE `roles` "
+                    "ADD UNIQUE KEY `uq_role_tenant_name` (`tenant_id`, `name`)"
+                ))
+                conn.commit()
+                _log.info("roles: contrainte uq_role_tenant_name ajoutée")
+        except Exception as exc:
+            conn.rollback()
+            _log.warning("roles: ajout de uq_role_tenant_name échoué: %s", exc)
+
+
+def _owning_tenants_for_role(role_name: str, all_users: list[tuple]) -> list[str]:
+    """Tenants distincts (triés) dont au moins un utilisateur porte
+    `role_name` dans User.roles (JSON). Extrait de _backfill_custom_role_
+    ownership pour être testable indépendamment du moteur/dialecte DB."""
+    return sorted({
+        u_tenant_id for (u_tenant_id, u_roles) in all_users
+        if u_tenant_id and isinstance(u_roles, list) and role_name in u_roles
+    })
+
+
+def _backfill_custom_role_ownership(active_engine=None) -> None:
+    """
+    Migration ponctuelle : avant le correctif d'isolation des rôles (voir
+    _repair_role_uniqueness), create_role ne renseignait jamais tenant_id —
+    un rôle personnalisé (is_builtin=False) créé par un tenant se
+    retrouvait avec tenant_id NULL, exactement comme les rôles intégrés
+    partagés. Sans ce backfill, list_roles/update_role (désormais scopés
+    par tenant) le rendraient invisible dans la page Utilisateurs & Rôles
+    de TOUS les tenants — y compris celui qui l'a créé — même s'il reste
+    fonctionnel pour les utilisateurs qui le portent déjà (has_permission /
+    _expand_permissions retombent toujours sur la ligne tenant_id NULL par
+    nom quand aucun fork tenant n'existe).
+
+    Rattache chaque rôle personnalisé orphelin au(x) tenant(s) dont au moins
+    un utilisateur porte ce nom de rôle (User.roles, JSON) — dupliqué si
+    plusieurs tenants l'utilisaient sous le même nom (déjà partagé par
+    accident avant ce correctif, impossible de trancher qui est le
+    "propriétaire" légitime). Si aucun utilisateur ne le référence, laissé
+    tel quel (tenant_id NULL) plutôt que deviné ou supprimé — probablement
+    jamais assigné, sans risque à rester tel quel. Idempotent (ne retraite
+    que les lignes encore orphelines) — s'exécute à chaque démarrage.
+
+    MySQL uniquement, et après _repair_role_uniqueness : dupliquer une ligne
+    orpheline entre plusieurs tenants exige la contrainte (tenant_id, name),
+    pas l'ancienne contrainte globale sur name seul.
+    """
+    from sqlalchemy import inspect as _inspect
+    import api.database as _db_mod
+    from api.models.Role import Role as RoleModel
+    from api.models.User import User as UserModel
+
+    _eng = active_engine or _db_mod.engine
+    if _eng.dialect.name != "mysql":
+        return
+
+    try:
+        inspector = _inspect(_eng)
+        if "roles" not in inspector.get_table_names() or "users" not in inspector.get_table_names():
+            return
+    except Exception as exc:
+        _log.warning("roles: impossible d'inspecter le schéma (backfill rôles orphelins): %s", exc)
+        return
+
+    db = _db_mod.SessionLocal()
+    try:
+        orphans = db.query(RoleModel).filter(
+            RoleModel.tenant_id.is_(None), RoleModel.is_builtin == False,  # noqa: E712
+        ).all()
+        if not orphans:
+            return
+
+        all_users = db.query(UserModel.tenant_id, UserModel.roles).all()
+
+        moved = 0
+        for orphan in orphans:
+            owning_tenants = _owning_tenants_for_role(orphan.name, all_users)
+            if not owning_tenants:
+                continue  # jamais assigné à personne — laissé tel quel
+
+            first, *rest = owning_tenants
+            orphan.tenant_id = first
+            for tid in rest:
+                db.add(RoleModel(
+                    tenant_id=tid, name=orphan.name, label=orphan.label,
+                    color=orphan.color, is_builtin=False, permissions=orphan.permissions,
+                ))
+            moved += 1
+            if rest:
+                _log.info(
+                    "roles: rôle personnalisé orphelin '%s' rattaché à %d tenants (dupliqué)",
+                    orphan.name, len(owning_tenants),
+                )
+            else:
+                _log.info("roles: rôle personnalisé orphelin '%s' rattaché à son tenant", orphan.name)
+
+        if moved:
+            db.commit()
+    except Exception as exc:
+        db.rollback()
+        _log.warning("roles: backfill des rôles personnalisés orphelins échoué: %s", exc)
+    finally:
+        db.close()
+
+
 def _repair_annual_discount_default(active_engine=None) -> None:
     """
     Migration ponctuelle : PlatformConfig.annual_discount_pct déclare
@@ -1469,6 +1632,13 @@ def on_startup():
         # 2i. Désactive les pos_registers dupliqués (tenant_id, device_id) et
         # ajoute la contrainte manquante (one-shot, MySQL uniquement)
         _repair_duplicate_registers(_active_engine)
+        # 2i-bis. Bascule la contrainte unique roles.name (globale, cross-
+        # tenant) vers (tenant_id, name) (one-shot, MySQL uniquement)
+        _repair_role_uniqueness(_active_engine)
+        # 2i-ter. Rattache les rôles personnalisés orphelins (créés avant le
+        # correctif ci-dessus) au(x) tenant(s) qui les utilisent réellement
+        # (one-shot, MySQL uniquement, doit rester APRÈS _repair_role_uniqueness)
+        _backfill_custom_role_ownership(_active_engine)
         # 2j. Corrige platform_config.annual_discount_pct si resté à 0 (one-shot)
         _repair_annual_discount_default(_active_engine)
         # 2k. Rattache les stock_movements orphelins (warehouse_id NULL) au
@@ -1496,10 +1666,15 @@ def on_startup():
             # 5. Dépôt par défaut — crée "Depot principal" si aucun dépôt n'existe
             _ensure_default_warehouse(db, local_tid)
             # 6. Seed/sync built-in roles — crée ou met à jour les permissions
+            # (uniquement la ligne GLOBALE tenant_id NULL — jamais le fork
+            # d'un tenant, sans quoi ce filtre sans tenant_id l'écraserait
+            # silencieusement avec les défauts plateforme au redémarrage)
             for rd in _BUILTIN_ROLES:
                 perms = rd["permissions"] if rd["permissions"] is not None \
                     else list(ROLE_PERMISSIONS.get(rd["name"], set()))
-                existing = db.query(RoleModel).filter(RoleModel.name == rd["name"]).first()
+                existing = db.query(RoleModel).filter(
+                    RoleModel.name == rd["name"], RoleModel.tenant_id.is_(None),
+                ).first()
                 if not existing:
                     db.add(RoleModel(
                         name=rd["name"],

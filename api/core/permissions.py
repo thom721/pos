@@ -152,6 +152,12 @@ class P:
     ENTREPOT_CREATE = "entrepot.create"
     ENTREPOT_READ   = "entrepot.read"
 
+    # Dépenses (charges d'exploitation — loyer, fournitures, transport...)
+    EXPENSES_CREATE = "expenses.create"
+    EXPENSES_READ   = "expenses.read"
+    EXPENSES_UPDATE = "expenses.update"
+    EXPENSES_DELETE = "expenses.delete"
+
     # Accès à l'interface web (navigateur) — vérifié côté client au login
     # cloud (auth_provider.dart), pas par un endpoint API dédié : accordé au
     # rôle par défaut à admin (wildcard "all") et manager ; peut être accordé
@@ -195,6 +201,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.DEPOTS_CREATE, P.DEPOTS_READ,
         P.RETRAITS_CREATE, P.RETRAITS_READ,
         P.ENTREPOT_CREATE, P.ENTREPOT_READ,
+        P.EXPENSES_CREATE, P.EXPENSES_READ, P.EXPENSES_UPDATE, P.EXPENSES_DELETE,
         P.CONNECT_CLOUD,
     },
 
@@ -250,15 +257,29 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
 }
 
 
+# Permissions d'un rôle intégré (admin/manager/cashier/stock_manager/waiter)
+# personnalisées par UN tenant précis — clé (tenant_id, role_name). Distinct
+# de ROLE_PERMISSIONS (défauts plateforme, partagés tant qu'aucun tenant ne
+# les a "forkés" — voir api/routes/roles.py update_role). Un rôle CUSTOM créé
+# par un tenant (is_builtin=False) vit aussi ici, jamais dans ROLE_PERMISSIONS
+# — sans quoi son nom serait visible/actif pour tous les autres tenants.
+TENANT_ROLE_OVERRIDES: dict[tuple[str, str], set[str]] = {}
+
+
 def load_roles_from_db(db_roles: list) -> None:
     """
-    Merge DB-stored role permissions into ROLE_PERMISSIONS.
+    Merge DB-stored role permissions into ROLE_PERMISSIONS (rôle global,
+    tenant_id NULL — défaut plateforme) ou TENANT_ROLE_OVERRIDES (rôle propre
+    à un tenant, qu'il soit un fork d'un rôle intégré ou un rôle personnalisé).
     Called at startup and after any role update.
     db_roles: list of Role ORM objects.
     """
     for role in db_roles:
-        perms = role.permissions or []
-        ROLE_PERMISSIONS[role.name] = set(perms)
+        perms = set(role.permissions or [])
+        if role.tenant_id:
+            TENANT_ROLE_OVERRIDES[(role.tenant_id, role.name)] = perms
+        else:
+            ROLE_PERMISSIONS[role.name] = perms
 
 
 def get_all_role_names() -> list[str]:
@@ -269,8 +290,13 @@ def has_permission(
     user_permissions: List[str],
     user_roles: List[str],
     required: str,
+    tenant_id: str | None = None,
 ) -> bool:
-    """Return True if the user has the required permission."""
+    """Return True if the user has the required permission.
+
+    `tenant_id` sélectionne la surcharge propre au tenant si elle existe
+    (TENANT_ROLE_OVERRIDES) avant de retomber sur le défaut plateforme
+    (ROLE_PERMISSIONS) — voir leurs docstrings respectives."""
     perms = set(user_permissions or [])
     roles = list(user_roles or [])
 
@@ -282,10 +308,43 @@ def has_permission(
     if required in perms:
         return True
 
-    # Role-derived permissions
+    # Role-derived permissions — surcharge tenant d'abord, puis défaut plateforme
     for role in roles:
-        role_perms = ROLE_PERMISSIONS.get(role, set())
+        role_perms = TENANT_ROLE_OVERRIDES.get((tenant_id, role)) if tenant_id else None
+        if role_perms is None:
+            role_perms = ROLE_PERMISSIONS.get(role, set())
         if "all" in role_perms or required in role_perms:
             return True
 
     return False
+
+
+def resolve_effective_permissions(
+    user_roles: List[str],
+    user_permissions: List[str],
+    tenant_id: str | None = None,
+) -> list[str]:
+    """Permissions effectives d'un utilisateur = permissions dérivées de ses
+    rôles (fork tenant en priorité, sinon défaut plateforme — même
+    précédence que has_permission) + ses permissions individuelles
+    explicites. Point unique utilisé par /login, /register et GET
+    /users/me — ce calcul était dupliqué indépendamment dans ces 3 endroits
+    (routes/auth.py, routes/user.py) sans tenir compte du tenant, ce qui a
+    déjà causé un bug une fois (voir has_permission) ; centralisé ici pour
+    qu'un futur correctif n'ait plus qu'un seul endroit à corriger."""
+    roles = user_roles or []
+    explicit = set(user_permissions or [])
+
+    def _role_perms(role: str) -> set[str]:
+        if tenant_id and (tenant_id, role) in TENANT_ROLE_OVERRIDES:
+            return TENANT_ROLE_OVERRIDES[(tenant_id, role)]
+        return ROLE_PERMISSIONS.get(role, set())
+
+    if "all" in explicit or any(_role_perms(r) == {"all"} for r in roles):
+        return ["all"]
+
+    role_perms: set[str] = set()
+    for role in roles:
+        role_perms.update(_role_perms(role))
+    custom = {p for p in explicit if p not in roles and p != "all"}
+    return sorted(role_perms | custom)
