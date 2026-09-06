@@ -459,6 +459,82 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const SizedBox(height: 24),
 
+            // ── Sections de la page Rapports ─────────────────────────────
+            _SectionHeader(icon: Icons.assessment_rounded, title: 'Sections des rapports'),
+            const SizedBox(height: 16),
+            _Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    title: const Text('Dépenses', style: TextStyle(fontSize: 14)),
+                    subtitle: const Text(
+                        'Affiche la section Dépenses (globale et par dépôt) dans la page Rapports',
+                        style: TextStyle(fontSize: 12)),
+                    trailing: Switch(
+                      value: settings.expensesReportsEnabled,
+                      thumbColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? Colors.white
+                            : null,
+                      ),
+                      trackColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? AppColors.primary
+                            : null,
+                      ),
+                      onChanged: (v) =>
+                          notifier.save(settings.copyWith(expensesReportsEnabled: v)),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    title: const Text('Payroll', style: TextStyle(fontSize: 14)),
+                    subtitle: const Text(
+                        'Affiche la section Payroll (masse salariale) dans la page Rapports',
+                        style: TextStyle(fontSize: 12)),
+                    trailing: Switch(
+                      value: settings.payrollReportsEnabled,
+                      thumbColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? Colors.white
+                            : null,
+                      ),
+                      trackColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? AppColors.primary
+                            : null,
+                      ),
+                      onChanged: (v) =>
+                          notifier.save(settings.copyWith(payrollReportsEnabled: v)),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    title: const Text('Prêts et remboursements', style: TextStyle(fontSize: 14)),
+                    subtitle: const Text(
+                        'Affiche la section Prêts (montants accordés, soldes, remboursements) dans la page Rapports',
+                        style: TextStyle(fontSize: 12)),
+                    trailing: Switch(
+                      value: settings.loansReportsEnabled,
+                      thumbColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? Colors.white
+                            : null,
+                      ),
+                      trackColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? AppColors.primary
+                            : null,
+                      ),
+                      onChanged: (v) =>
+                          notifier.save(settings.copyWith(loansReportsEnabled: v)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
             // ── Règles métier ─────────────────────────────────────────────
             _SectionHeader(icon: Icons.rule_rounded, title: 'Règles métier'),
             const SizedBox(height: 16),

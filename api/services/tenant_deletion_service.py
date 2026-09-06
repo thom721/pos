@@ -28,12 +28,14 @@ from api.models.Debt import Debt
 from api.models.Depot import Depot
 from api.models.Discount import Discount
 from api.models.EmployeeLoan import EmployeeLoan
+from api.models.Expense import Expense
 from api.models.EmployeeProfile import EmployeeProfile
 from api.models.HousekeepingTask import HousekeepingTask
 from api.models.Ingredient import Ingredient
 from api.models.InstallationCode import InstallationCode
 from api.models.InventoryRecord import InventoryRecord
 from api.models.Invoice import Invoice, InvoiceItem
+from api.models.LoanRepayment import LoanRepayment
 from api.models.MenuItem import MenuItem
 from api.models.ModifierGroup import ModifierGroup, ModifierOption
 from api.models.OfflineSyncQueue import OfflineSyncQueue
@@ -73,9 +75,9 @@ _log = logging.getLogger("pos.tenant_deletion")
 # mais gardé lisible/cohérent.
 TENANT_SCOPED_MODELS = [
     AuditLog, BillingExtra, BillingPayment, CashierSession,
-    ClientSabotage, Debt, Depot, Discount, EmployeeLoan, EmployeeProfile,
+    ClientSabotage, Debt, Depot, Discount, EmployeeLoan, EmployeeProfile, Expense,
     HousekeepingTask, Ingredient, InstallationCode, InventoryRecord,
-    InvoiceItem, Invoice, MenuItem, ModifierOption, ModifierGroup,
+    InvoiceItem, Invoice, LoanRepayment, MenuItem, ModifierOption, ModifierGroup,
     OfflineSyncQueue, Payment, PayrollLoanDeduction, PayrollEntry, PayrollPeriod,
     PosRegister, ProductWarehousePrice, ProformaItem, Proforma,
     PurchaseItem, PurchaseReceiptItem, PurchaseReceipt, Purchase,

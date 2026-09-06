@@ -1,9 +1,11 @@
 import json
+from decimal import Decimal
 from sqlalchemy.orm import Session
 from api.models.EmployeeProfile import EmployeeProfile
 from api.models.EmployeeLoan import EmployeeLoan
+from api.models.LoanRepayment import LoanRepayment
 from api.models.User import User
-from api.schemas.employee import EmployeeProfileCreate, EmployeeProfileUpdate, EmployeeLoanCreate
+from api.schemas.employee import EmployeeProfileCreate, EmployeeProfileUpdate, EmployeeLoanCreate, LoanRepaymentCreate
 from fastapi import HTTPException
 import uuid
 from datetime import date
@@ -167,3 +169,64 @@ def _enrich_loan(l: EmployeeLoan) -> EmployeeLoan:
     if l.employee:
         l.employee_name = f"{l.employee.fname} {l.employee.lname}".strip()
     return l
+
+
+def _get_loan(db: Session, loan_id: str, tenant_id: str | None = None) -> EmployeeLoan:
+    q = db.query(EmployeeLoan).filter(EmployeeLoan.id == loan_id)
+    if tenant_id:
+        q = q.filter(EmployeeLoan.tenant_id == tenant_id)
+    loan = q.first()
+    if not loan:
+        raise HTTPException(404, "Prêt introuvable")
+    return loan
+
+
+def repay_loan(
+    db: Session,
+    loan_id: str,
+    data: LoanRepaymentCreate,
+    created_by: str,
+    tenant_id: str | None = None,
+) -> EmployeeLoan:
+    """Remboursement manuel — pour le cas où le payroll n'est pas utilisé
+    dans le système (l'employé rembourse en espèces/mobile money directement),
+    en complément de la déduction automatique appliquée au paiement d'une
+    période payroll (voir payroll_service.pay_period)."""
+    loan = _get_loan(db, loan_id, tenant_id)
+    if loan.status != "active":
+        raise HTTPException(400, f"Impossible de rembourser un prêt au statut '{loan.status}'")
+
+    amount = Decimal(str(data.amount))
+    if amount <= 0:
+        raise HTTPException(400, "Le montant doit être positif")
+    if amount > Decimal(str(loan.balance)):
+        raise HTTPException(400, f"Le montant dépasse le solde restant ({loan.balance})")
+
+    repayment = LoanRepayment(
+        tenant_id=tenant_id, loan_id=loan.id, amount=amount,
+        method=data.method, note=data.note, created_by=created_by,
+    )
+    db.add(repayment)
+
+    loan.balance = Decimal(str(loan.balance)) - amount
+    if loan.balance <= 0:
+        loan.balance = Decimal(0)
+        loan.status = "paid"
+
+    db.commit()
+    db.refresh(loan)
+    return _enrich_loan(loan)
+
+
+def list_repayments(db: Session, loan_id: str, tenant_id: str | None = None) -> list:
+    # Vérifie l'accès au prêt (scope tenant) avant de renvoyer son historique
+    _get_loan(db, loan_id, tenant_id)
+
+    q = db.query(LoanRepayment).filter(LoanRepayment.loan_id == loan_id)
+    if tenant_id:
+        q = q.filter(LoanRepayment.tenant_id == tenant_id)
+    repayments = q.order_by(LoanRepayment.created_at.desc()).all()
+    for r in repayments:
+        if r.creator:
+            r.creator_name = f"{r.creator.fname} {r.creator.lname}".strip()
+    return repayments

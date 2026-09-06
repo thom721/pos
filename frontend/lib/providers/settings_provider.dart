@@ -82,6 +82,12 @@ class AppSettings {
   // franchit son seuil d'alerte (Product.alert_stock) vers le bas.
   final bool lowStockAlertEnabled;
   final List<String> lowStockAlertRoles;
+  // Sections de la page Rapports, activables indépendamment (tous les
+  // commerces n'ont pas d'employés salariés/prêts) — vérifié aussi côté
+  // serveur (voir api/routes/reports.py _require_report_section).
+  final bool expensesReportsEnabled;
+  final bool payrollReportsEnabled;
+  final bool loansReportsEnabled;
 
   const AppSettings({
     this.businessName = 'Mon Commerce',
@@ -115,6 +121,9 @@ class AppSettings {
     this.loyaltyPercent = 0.0,
     this.lowStockAlertEnabled = false,
     this.lowStockAlertRoles = const [],
+    this.expensesReportsEnabled = true,
+    this.payrollReportsEnabled = false,
+    this.loansReportsEnabled = false,
   });
 
   AppSettings copyWith({
@@ -149,6 +158,9 @@ class AppSettings {
     double? loyaltyPercent,
     bool? lowStockAlertEnabled,
     List<String>? lowStockAlertRoles,
+    bool? expensesReportsEnabled,
+    bool? payrollReportsEnabled,
+    bool? loansReportsEnabled,
   }) =>
       AppSettings(
         businessName: businessName ?? this.businessName,
@@ -182,6 +194,9 @@ class AppSettings {
         loyaltyPercent: loyaltyPercent ?? this.loyaltyPercent,
         lowStockAlertEnabled: lowStockAlertEnabled ?? this.lowStockAlertEnabled,
         lowStockAlertRoles: lowStockAlertRoles ?? this.lowStockAlertRoles,
+        expensesReportsEnabled: expensesReportsEnabled ?? this.expensesReportsEnabled,
+        payrollReportsEnabled: payrollReportsEnabled ?? this.payrollReportsEnabled,
+        loansReportsEnabled: loansReportsEnabled ?? this.loansReportsEnabled,
       );
 
   // Serialize to API (snake_case)
@@ -225,6 +240,9 @@ class AppSettings {
         'loyalty_percent': loyaltyPercent,
         'low_stock_alert_enabled': lowStockAlertEnabled,
         'low_stock_alert_roles': lowStockAlertRoles,
+        'expenses_reports_enabled': expensesReportsEnabled,
+        'payroll_reports_enabled': payrollReportsEnabled,
+        'loans_reports_enabled': loansReportsEnabled,
       };
 
   // Parse from API response (snake_case)
@@ -258,6 +276,9 @@ class AppSettings {
         loyaltyPercent: (j['loyalty_percent'] as num?)?.toDouble() ?? 0.0,
         lowStockAlertEnabled: j['low_stock_alert_enabled'] as bool? ?? false,
         lowStockAlertRoles: _parseStringList(j['low_stock_alert_roles']),
+        expensesReportsEnabled: j['expenses_reports_enabled'] as bool? ?? true,
+        payrollReportsEnabled: j['payroll_reports_enabled'] as bool? ?? false,
+        loansReportsEnabled: j['loans_reports_enabled'] as bool? ?? false,
       );
 
   static List<String> _parseStringList(dynamic raw) {
@@ -332,6 +353,9 @@ class AppSettings {
         'loyaltyPercent': loyaltyPercent,
         'lowStockAlertEnabled': lowStockAlertEnabled,
         'lowStockAlertRoles': lowStockAlertRoles,
+        'expensesReportsEnabled': expensesReportsEnabled,
+        'payrollReportsEnabled': payrollReportsEnabled,
+        'loansReportsEnabled': loansReportsEnabled,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -366,6 +390,9 @@ class AppSettings {
         loyaltyPercent: (j['loyaltyPercent'] as num?)?.toDouble() ?? 0.0,
         lowStockAlertEnabled: j['lowStockAlertEnabled'] as bool? ?? false,
         lowStockAlertRoles: _parseStringList(j['lowStockAlertRoles']),
+        expensesReportsEnabled: j['expensesReportsEnabled'] as bool? ?? true,
+        payrollReportsEnabled: j['payrollReportsEnabled'] as bool? ?? false,
+        loansReportsEnabled: j['loansReportsEnabled'] as bool? ?? false,
       );
 }
 

@@ -124,6 +124,108 @@ class _ProductStat {
   );
 }
 
+// ── Dépenses ─────────────────────────────────────────────────────────────────
+
+class _ExpenseCategoryStat {
+  final String category;
+  final double totalAmount;
+  final int count;
+
+  const _ExpenseCategoryStat({required this.category, required this.totalAmount, required this.count});
+
+  factory _ExpenseCategoryStat.fromJson(Map<String, dynamic> j) => _ExpenseCategoryStat(
+    category:    j['category']?.toString() ?? 'Sans catégorie',
+    totalAmount: (j['total_amount'] as num?)?.toDouble() ?? 0,
+    count:       (j['count'] as num?)?.toInt() ?? 0,
+  );
+}
+
+class _ExpenseWarehouseStat {
+  final String warehouseName;
+  final double totalAmount;
+  final int count;
+
+  const _ExpenseWarehouseStat({required this.warehouseName, required this.totalAmount, required this.count});
+
+  factory _ExpenseWarehouseStat.fromJson(Map<String, dynamic> j) => _ExpenseWarehouseStat(
+    warehouseName: j['warehouse_name']?.toString() ?? 'Aucun dépôt en particulier',
+    totalAmount:   (j['total_amount'] as num?)?.toDouble() ?? 0,
+    count:         (j['count'] as num?)?.toInt() ?? 0,
+  );
+}
+
+class _ExpenseReport {
+  final double totalAmount;
+  final int count;
+  final List<_ExpenseCategoryStat> byCategory;
+  final List<_ExpenseWarehouseStat> byWarehouse;
+
+  const _ExpenseReport({
+    required this.totalAmount, required this.count,
+    required this.byCategory, required this.byWarehouse,
+  });
+}
+
+// ── Payroll ──────────────────────────────────────────────────────────────────
+
+class _PayrollPeriodRow {
+  final String id, reference, label, status;
+  final double totalGross, totalDeductions, totalNet;
+
+  const _PayrollPeriodRow({
+    required this.id, required this.reference, required this.label, required this.status,
+    required this.totalGross, required this.totalDeductions, required this.totalNet,
+  });
+
+  factory _PayrollPeriodRow.fromJson(Map<String, dynamic> j) => _PayrollPeriodRow(
+    id:              j['id']?.toString() ?? '',
+    reference:       j['reference']?.toString() ?? '',
+    label:           j['label']?.toString() ?? '',
+    status:          j['status']?.toString() ?? '',
+    totalGross:      (j['total_gross'] as num?)?.toDouble() ?? 0,
+    totalDeductions: (j['total_deductions'] as num?)?.toDouble() ?? 0,
+    totalNet:        (j['total_net'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+class _PayrollReport {
+  final double totalGross, totalDeductions, totalNet;
+  final int periodsCount, employeesCount;
+  final List<_PayrollPeriodRow> byPeriod;
+
+  const _PayrollReport({
+    required this.totalGross, required this.totalDeductions, required this.totalNet,
+    required this.periodsCount, required this.employeesCount, required this.byPeriod,
+  });
+}
+
+// ── Prêts / remboursements ────────────────────────────────────────────────────
+
+class _LoanStatusStat {
+  final String status;
+  final double totalAmount;
+  final int count;
+
+  const _LoanStatusStat({required this.status, required this.totalAmount, required this.count});
+
+  factory _LoanStatusStat.fromJson(Map<String, dynamic> j) => _LoanStatusStat(
+    status:      j['status']?.toString() ?? '',
+    totalAmount: (j['total_amount'] as num?)?.toDouble() ?? 0,
+    count:       (j['count'] as num?)?.toInt() ?? 0,
+  );
+}
+
+class _LoanReport {
+  final double totalAmount, totalBalance, totalRepaid;
+  final int count;
+  final List<_LoanStatusStat> byStatus;
+
+  const _LoanReport({
+    required this.totalAmount, required this.totalBalance, required this.totalRepaid,
+    required this.count, required this.byStatus,
+  });
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  Providers
 // ══════════════════════════════════════════════════════════════════════════════
@@ -208,6 +310,65 @@ final _warehouseListProvider =
   return WarehouseRepository().listWarehouses();
 });
 
+final _expensesReportProvider = FutureProvider.autoDispose
+    .family<_ExpenseReport, _ReportParams>((ref, params) async {
+  final res = await dio.get('/api/reports/expenses', queryParameters: {
+    'date_from': _haitiMidnightToUtcIso(params.from),
+    'date_to':   _haitiMidnightToUtcIso(params.to),
+  });
+  final data = res.data as Map<String, dynamic>;
+  final g = data['global'] as Map<String, dynamic>;
+  return _ExpenseReport(
+    totalAmount: (g['total_amount'] as num?)?.toDouble() ?? 0,
+    count:       (g['count'] as num?)?.toInt() ?? 0,
+    byCategory: (data['by_category'] as List)
+        .map((e) => _ExpenseCategoryStat.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    byWarehouse: (data['by_warehouse'] as List)
+        .map((e) => _ExpenseWarehouseStat.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
+});
+
+final _payrollReportProvider = FutureProvider.autoDispose
+    .family<_PayrollReport, _ReportParams>((ref, params) async {
+  final res = await dio.get('/api/reports/payroll', queryParameters: {
+    'date_from': _haitiMidnightToUtcIso(params.from),
+    'date_to':   _haitiMidnightToUtcIso(params.to),
+  });
+  final data = res.data as Map<String, dynamic>;
+  final g = data['global'] as Map<String, dynamic>;
+  return _PayrollReport(
+    totalGross:      (g['total_gross'] as num?)?.toDouble() ?? 0,
+    totalDeductions: (g['total_deductions'] as num?)?.toDouble() ?? 0,
+    totalNet:        (g['total_net'] as num?)?.toDouble() ?? 0,
+    periodsCount:    (g['periods_count'] as num?)?.toInt() ?? 0,
+    employeesCount:  (g['employees_count'] as num?)?.toInt() ?? 0,
+    byPeriod: (data['by_period'] as List)
+        .map((e) => _PayrollPeriodRow.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
+});
+
+final _loansReportProvider = FutureProvider.autoDispose
+    .family<_LoanReport, _ReportParams>((ref, params) async {
+  final res = await dio.get('/api/reports/loans', queryParameters: {
+    'date_from': _haitiMidnightToUtcIso(params.from),
+    'date_to':   _haitiMidnightToUtcIso(params.to),
+  });
+  final data = res.data as Map<String, dynamic>;
+  final g = data['global'] as Map<String, dynamic>;
+  return _LoanReport(
+    totalAmount:  (g['total_amount'] as num?)?.toDouble() ?? 0,
+    totalBalance: (g['total_balance'] as num?)?.toDouble() ?? 0,
+    totalRepaid:  (g['total_repaid'] as num?)?.toDouble() ?? 0,
+    count:        (g['count'] as num?)?.toInt() ?? 0,
+    byStatus: (data['by_status'] as List)
+        .map((e) => _LoanStatusStat.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  Écran principal
 // ══════════════════════════════════════════════════════════════════════════════
@@ -252,6 +413,13 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
     final user           = ref.watch(authProvider).user;
     final canRead        = user?.hasPermission(Perm.salesRead) ?? false;
     final warehousesAsync = ref.watch(_warehouseListProvider);
+
+    final showExpenses = settings.expensesReportsEnabled &&
+        (user?.hasPermission(Perm.expensesRead) ?? false);
+    final showPayroll = settings.payrollReportsEnabled &&
+        (user?.hasPermission(Perm.payrollRead) ?? false);
+    final showLoans = settings.loansReportsEnabled &&
+        (user?.hasPermission(Perm.loansRead) ?? false);
 
     final fmt = NumberFormat.currency(
       locale: 'fr_HT',
@@ -376,6 +544,69 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
                   ? _emptyState('Aucun produit vendu sur cette période')
                   : _TopProductsTable(products: products, fmt: fmt),
             ),
+
+            // ── Dépenses ─────────────────────────────────────────────────
+            if (showExpenses) ...[
+              const SizedBox(height: 32),
+              _SectionTitle(
+                icon: Icons.payments_rounded,
+                title: 'Dépenses',
+                subtitle: 'Global et par dépôt, sur la période',
+              ),
+              const SizedBox(height: 12),
+              Consumer(builder: (context, ref, _) {
+                final expensesAsync = ref.watch(_expensesReportProvider(_reportParams));
+                return expensesAsync.when(
+                  loading: () => const _LoadingSection(label: 'Chargement…'),
+                  error:   (e, _) => _ErrorSection(error: e, onRetry: () => ref.invalidate(_expensesReportProvider)),
+                  data: (report) => report.count == 0
+                      ? _emptyState('Aucune dépense enregistrée pour cette période')
+                      : _ExpensesSection(report: report, fmt: fmt),
+                );
+              }),
+            ],
+
+            // ── Payroll ──────────────────────────────────────────────────
+            if (showPayroll) ...[
+              const SizedBox(height: 32),
+              _SectionTitle(
+                icon: Icons.badge_rounded,
+                title: 'Payroll',
+                subtitle: 'Masse salariale sur les périodes de paie de l\'intervalle',
+              ),
+              const SizedBox(height: 12),
+              Consumer(builder: (context, ref, _) {
+                final payrollAsync = ref.watch(_payrollReportProvider(_reportParams));
+                return payrollAsync.when(
+                  loading: () => const _LoadingSection(label: 'Chargement…'),
+                  error:   (e, _) => _ErrorSection(error: e, onRetry: () => ref.invalidate(_payrollReportProvider)),
+                  data: (report) => report.periodsCount == 0
+                      ? _emptyState('Aucune période de paie sur cette période')
+                      : _PayrollSection(report: report, fmt: fmt),
+                );
+              }),
+            ],
+
+            // ── Prêts / remboursements ───────────────────────────────────
+            if (showLoans) ...[
+              const SizedBox(height: 32),
+              _SectionTitle(
+                icon: Icons.request_quote_rounded,
+                title: 'Prêts et remboursements',
+                subtitle: 'Prêts et achats à crédit employés accordés sur la période',
+              ),
+              const SizedBox(height: 12),
+              Consumer(builder: (context, ref, _) {
+                final loansAsync = ref.watch(_loansReportProvider(_reportParams));
+                return loansAsync.when(
+                  loading: () => const _LoadingSection(label: 'Chargement…'),
+                  error:   (e, _) => _ErrorSection(error: e, onRetry: () => ref.invalidate(_loansReportProvider)),
+                  data: (report) => report.count == 0
+                      ? _emptyState('Aucun prêt accordé sur cette période')
+                      : _LoansSection(report: report, fmt: fmt),
+                );
+              }),
+            ],
           ],
         ),
       ),
@@ -1103,6 +1334,247 @@ class _ErrorSection extends StatelessWidget {
       ),
     ),
   );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  Dépenses / Payroll / Prêts — sections activables (voir AppConfig.
+//  expenses_reports_enabled/payroll_reports_enabled/loans_reports_enabled)
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _BreakdownCard extends StatelessWidget {
+  final List<Widget> rows;
+
+  const _BreakdownCard({required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: AppColors.divider),
+      ),
+      child: Column(
+        children: [
+          for (int i = 0; i < rows.length; i++) ...[
+            if (i > 0) const Divider(height: 1, color: AppColors.divider),
+            rows[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Widget _breakdownRow(String label, String value, {String? subLabel}) => Padding(
+  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+  child: Row(
+    children: [
+      Expanded(
+        child: Text(label,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+      ),
+      if (subLabel != null)
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Text(subLabel,
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ),
+      Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+    ],
+  ),
+);
+
+class _ExpensesSection extends StatelessWidget {
+  final _ExpenseReport report;
+  final NumberFormat fmt;
+
+  const _ExpensesSection({required this.report, required this.fmt});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LayoutBuilder(builder: (_, constraints) {
+          final cols = constraints.maxWidth > 700 ? 2 : 1;
+          return GridView.count(
+            crossAxisCount: cols,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 4.0,
+            children: [
+              _KpiCard(
+                label: 'Total dépensé',
+                value: fmt.format(report.totalAmount),
+                icon: Icons.payments_rounded,
+                color: AppColors.error,
+              ),
+              _KpiCard(
+                label: 'Nombre de dépenses',
+                value: '${report.count}',
+                icon: Icons.receipt_long_rounded,
+                color: AppColors.info,
+              ),
+            ],
+          );
+        }),
+        if (report.byCategory.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text('Par catégorie',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          const SizedBox(height: 8),
+          _BreakdownCard(
+            rows: report.byCategory
+                .map((c) => _breakdownRow(c.category, fmt.format(c.totalAmount), subLabel: '${c.count}'))
+                .toList(),
+          ),
+        ],
+        if (report.byWarehouse.length > 1) ...[
+          const SizedBox(height: 16),
+          const Text('Par dépôt',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          const SizedBox(height: 8),
+          _BreakdownCard(
+            rows: report.byWarehouse
+                .map((w) => _breakdownRow(w.warehouseName, fmt.format(w.totalAmount), subLabel: '${w.count}'))
+                .toList(),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PayrollSection extends StatelessWidget {
+  final _PayrollReport report;
+  final NumberFormat fmt;
+
+  const _PayrollSection({required this.report, required this.fmt});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LayoutBuilder(builder: (_, constraints) {
+          final cols = constraints.maxWidth > 700 ? 4 : 2;
+          return GridView.count(
+            crossAxisCount: cols,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 2.0,
+            children: [
+              _KpiCard(
+                label: 'Brut versé',
+                value: fmt.format(report.totalGross),
+                icon: Icons.attach_money_rounded,
+                color: AppColors.primary,
+              ),
+              _KpiCard(
+                label: 'Déductions',
+                value: fmt.format(report.totalDeductions),
+                icon: Icons.remove_circle_outline_rounded,
+                color: AppColors.error,
+              ),
+              _KpiCard(
+                label: 'Net versé',
+                value: fmt.format(report.totalNet),
+                icon: Icons.account_balance_wallet_rounded,
+                color: AppColors.success,
+              ),
+              _KpiCard(
+                label: 'Employés / Périodes',
+                value: '${report.employeesCount} / ${report.periodsCount}',
+                icon: Icons.badge_rounded,
+                color: AppColors.info,
+              ),
+            ],
+          );
+        }),
+        if (report.byPeriod.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text('Par période',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          const SizedBox(height: 8),
+          _BreakdownCard(
+            rows: report.byPeriod
+                .map((p) => _breakdownRow(p.label, fmt.format(p.totalNet), subLabel: p.status))
+                .toList(),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _LoansSection extends StatelessWidget {
+  final _LoanReport report;
+  final NumberFormat fmt;
+
+  const _LoansSection({required this.report, required this.fmt});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LayoutBuilder(builder: (_, constraints) {
+          final cols = constraints.maxWidth > 700 ? 4 : 2;
+          return GridView.count(
+            crossAxisCount: cols,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 2.0,
+            children: [
+              _KpiCard(
+                label: 'Total accordé',
+                value: fmt.format(report.totalAmount),
+                icon: Icons.request_quote_rounded,
+                color: AppColors.primary,
+              ),
+              _KpiCard(
+                label: 'Solde restant dû',
+                value: fmt.format(report.totalBalance),
+                icon: Icons.hourglass_bottom_rounded,
+                color: AppColors.error,
+              ),
+              _KpiCard(
+                label: 'Déjà remboursé',
+                value: fmt.format(report.totalRepaid),
+                icon: Icons.check_circle_outline_rounded,
+                color: AppColors.success,
+              ),
+              _KpiCard(
+                label: 'Nombre de prêts',
+                value: '${report.count}',
+                icon: Icons.people_alt_rounded,
+                color: AppColors.info,
+              ),
+            ],
+          );
+        }),
+        if (report.byStatus.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text('Par statut',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          const SizedBox(height: 8),
+          _BreakdownCard(
+            rows: report.byStatus
+                .map((s) => _breakdownRow(s.status, fmt.format(s.totalAmount), subLabel: '${s.count}'))
+                .toList(),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 // ── Utility ───────────────────────────────────────────────────────────────────

@@ -56,6 +56,7 @@ from api.models.PayrollPeriod import PayrollPeriod
 from api.models.PayrollEntry import PayrollEntry
 from api.models.EmployeeLoan import EmployeeLoan
 from api.models.PayrollLoanDeduction import PayrollLoanDeduction
+from api.models.LoanRepayment import LoanRepayment
 from api.models.RestaurantTable import RestaurantTable
 from api.models.RoomAttribute import RoomAttribute
 from api.models.MenuItem import MenuItem
@@ -67,6 +68,7 @@ from api.models.Discount import Discount
 from api.models.ClientSabotage import ClientSabotage
 from api.models.Depot import Depot
 from api.models.Retrait import Retrait
+from api.models.Expense import Expense
 
 router = APIRouter(prefix="/api/sync", tags=["Sync"])
 _log = logging.getLogger("pos.sync")
@@ -116,6 +118,7 @@ _MODEL_MAP: dict[str, Any] = {
     "payroll_entry":          PayrollEntry,
     "employee_loan":          EmployeeLoan,
     "payroll_loan_deduction": PayrollLoanDeduction,
+    "loan_repayment":         LoanRepayment,
     # Restaurant / Hôtel — configuration
     "restaurant_table":      RestaurantTable,
     "room_attribute":        RoomAttribute,
@@ -130,6 +133,8 @@ _MODEL_MAP: dict[str, Any] = {
     "client_sabotage":       ClientSabotage,
     "depot":                 Depot,
     "retrait":               Retrait,
+    # Dépenses (charges d'exploitation)
+    "expense":               Expense,
     # App settings
     "app_config":            AppConfig,
 }

@@ -38,3 +38,5 @@ from api.models.BillingExtra import BillingExtra
 from api.models.ClientSabotage import ClientSabotage
 from api.models.Depot import Depot
 from api.models.Retrait import Retrait
+from api.models.Expense import Expense
+from api.models.LoanRepayment import LoanRepayment

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -11,8 +11,13 @@ from api.models.SaleItem import SaleItem
 from api.models.Product import Product
 from api.models.Warehouse import Warehouse
 from api.models.Category import Category
+from api.models.Expense import Expense
+from api.models.PayrollPeriod import PayrollPeriod
+from api.models.PayrollEntry import PayrollEntry
+from api.models.EmployeeLoan import EmployeeLoan
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
+from api.services import config_service
 
 router = APIRouter(prefix="/api/reports", tags=["Reports"])
 
@@ -31,6 +36,16 @@ def _apply_date_filters(q, date_from, date_to):
             date_to = date_to.replace(tzinfo=timezone.utc)
         q = q.filter(Sale.created_at <= date_to)
     return q
+
+
+def _require_report_section(db: Session, tenant_id: str | None, field_name: str, label: str) -> None:
+    """Les sections Dépenses/Payroll/Prêts de la page Rapports sont activables
+    indépendamment par tenant (AppConfig.*_reports_enabled) — tous les
+    commerces n'ont pas d'employés salariés/prêts. Vérifié ici (pas seulement
+    masqué côté client) pour ne jamais exposer les données si désactivé."""
+    cfg = config_service.get_or_create(db, tenant_id=tenant_id)
+    if not getattr(cfg, field_name, False):
+        raise HTTPException(status_code=403, detail=f"Section « {label} » désactivée dans la configuration.")
 
 
 def _profit_expr():
@@ -198,3 +213,186 @@ def top_products(
         }
         for r in rows
     ]
+
+
+@router.get("/expenses")
+def expenses_report(
+    date_from:    Optional[datetime] = Query(None),
+    date_to:      Optional[datetime] = Query(None),
+    warehouse_id: Optional[str]      = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.EXPENSES_READ)),
+):
+    """Agrégats des dépenses — globalement, par catégorie, et par dépôt
+    (sauf si warehouse_id est fourni : dans ce cas la répartition par dépôt
+    n'a plus de sens, on ne renvoie que la catégorie)."""
+    tid = current_user.tenant_id
+    _require_report_section(db, tid, "expenses_reports_enabled", "Dépenses")
+
+    base = db.query(Expense).filter(Expense.tenant_id == tid)
+    if date_from:
+        base = base.filter(Expense.expense_date >= date_from)
+    if date_to:
+        base = base.filter(Expense.expense_date <= date_to)
+    if warehouse_id:
+        base = base.filter(Expense.warehouse_id == warehouse_id)
+
+    total_amount, count = base.with_entities(
+        func.coalesce(func.sum(Expense.amount), 0), func.count(Expense.id)
+    ).one()
+
+    cat_rows = (
+        base.with_entities(
+            Expense.category,
+            func.coalesce(func.sum(Expense.amount), 0).label("total_amount"),
+            func.count(Expense.id).label("count"),
+        )
+        .group_by(Expense.category)
+        .order_by(func.sum(Expense.amount).desc())
+        .all()
+    )
+    by_category = [
+        {"category": r.category or "Sans catégorie", "total_amount": float(r.total_amount), "count": r.count}
+        for r in cat_rows
+    ]
+
+    by_warehouse = []
+    if not warehouse_id:
+        wh_rows = (
+            base.with_entities(
+                Expense.warehouse_id,
+                func.coalesce(func.sum(Expense.amount), 0).label("total_amount"),
+                func.count(Expense.id).label("count"),
+            )
+            .group_by(Expense.warehouse_id)
+            .order_by(func.sum(Expense.amount).desc())
+            .all()
+        )
+        wh_names = {w.id: w.name for w in db.query(Warehouse).filter(Warehouse.tenant_id == tid).all()}
+        by_warehouse = [
+            {
+                "warehouse_id":   r.warehouse_id,
+                "warehouse_name": wh_names.get(r.warehouse_id, "Aucun dépôt en particulier") if r.warehouse_id else "Aucun dépôt en particulier",
+                "total_amount":   float(r.total_amount),
+                "count":          r.count,
+            }
+            for r in wh_rows
+        ]
+
+    return {
+        "global": {"total_amount": float(total_amount), "count": count},
+        "by_category": by_category,
+        "by_warehouse": by_warehouse,
+    }
+
+
+@router.get("/payroll")
+def payroll_report(
+    date_from: Optional[datetime] = Query(None),
+    date_to:   Optional[datetime] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.PAYROLL_READ)),
+):
+    """Agrégats payroll — sommes brut/déductions/net sur les périodes dont la
+    date de paie tombe dans l'intervalle, + détail par période."""
+    tid = current_user.tenant_id
+    _require_report_section(db, tid, "payroll_reports_enabled", "Payroll")
+
+    # Seules les périodes "paid" représentent une dépense réelle — les
+    # déductions de prêt (PayrollLoanDeduction) ne sont appliquées au solde
+    # (EmployeeLoan.balance) qu'au paiement (payroll_service.pay_period), pas
+    # au traitement (process_period). Une période "draft"/"processing" n'a
+    # encore rien déboursé, et une période "cancelled" ne le fera jamais —
+    # les deux fausseraient un rapport de dépenses réelles si comptées ici.
+    q = db.query(PayrollPeriod).filter(
+        PayrollPeriod.tenant_id == tid, PayrollPeriod.status == "paid",
+    )
+    if date_from:
+        q = q.filter(PayrollPeriod.pay_date >= date_from.date())
+    if date_to:
+        q = q.filter(PayrollPeriod.pay_date <= date_to.date())
+
+    periods = q.order_by(PayrollPeriod.pay_date.desc()).all()
+
+    total_gross      = sum(float(p.total_gross) for p in periods)
+    total_deductions = sum(float(p.total_deductions) for p in periods)
+    total_net        = sum(float(p.total_net) for p in periods)
+
+    employees_count = 0
+    if periods:
+        employees_count = db.query(func.count(func.distinct(PayrollEntry.employee_id))).filter(
+            PayrollEntry.period_id.in_([p.id for p in periods])
+        ).scalar() or 0
+
+    by_period = [
+        {
+            "id":               p.id,
+            "reference":        p.reference,
+            "label":            p.label,
+            "period_start":     p.period_start.isoformat(),
+            "period_end":       p.period_end.isoformat(),
+            "pay_date":         p.pay_date.isoformat(),
+            "status":           p.status,
+            "total_gross":      float(p.total_gross),
+            "total_deductions": float(p.total_deductions),
+            "total_net":        float(p.total_net),
+        }
+        for p in periods
+    ]
+
+    return {
+        "global": {
+            "total_gross":      total_gross,
+            "total_deductions": total_deductions,
+            "total_net":        total_net,
+            "periods_count":    len(periods),
+            "employees_count":  employees_count,
+        },
+        "by_period": by_period,
+    }
+
+
+@router.get("/loans")
+def loans_report(
+    date_from: Optional[datetime] = Query(None),
+    date_to:   Optional[datetime] = Query(None),
+    status:    Optional[str]      = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.LOANS_READ)),
+):
+    """Agrégats prêts/achats à crédit employés — montant total accordé, solde
+    restant dû, et montant déjà remboursé (total - solde), + détail par statut."""
+    tid = current_user.tenant_id
+    _require_report_section(db, tid, "loans_reports_enabled", "Prêts")
+
+    q = db.query(EmployeeLoan).filter(EmployeeLoan.tenant_id == tid)
+    if date_from:
+        q = q.filter(EmployeeLoan.created_at >= date_from)
+    if date_to:
+        q = q.filter(EmployeeLoan.created_at <= date_to)
+    if status:
+        q = q.filter(EmployeeLoan.status == status)
+
+    loans = q.order_by(EmployeeLoan.created_at.desc()).all()
+
+    total_amount  = sum(float(l.total_amount) for l in loans)
+    total_balance = sum(float(l.balance) for l in loans)
+    total_repaid  = total_amount - total_balance
+
+    by_status: dict[str, dict] = {}
+    for loan in loans:
+        entry = by_status.setdefault(
+            loan.status, {"status": loan.status, "total_amount": 0.0, "count": 0}
+        )
+        entry["total_amount"] += float(loan.total_amount)
+        entry["count"] += 1
+
+    return {
+        "global": {
+            "total_amount":  total_amount,
+            "total_balance": total_balance,
+            "total_repaid":  total_repaid,
+            "count":         len(loans),
+        },
+        "by_status": list(by_status.values()),
+    }

@@ -60,6 +60,7 @@ const _mainNavItems = [
   _NavItem('Retours', Icons.assignment_return_rounded, '/returns'),
   _NavItem('Inventaire',      Icons.warehouse_rounded, '/inventory'),
   _NavItem('Entrepôt', Icons.warehouse, '/entrepot'),
+  _NavItem('Dépenses', Icons.payments_rounded, '/expenses'),
   _NavItem('Business', Icons.apartment_rounded,  '/warehouses'),
 ];
 
@@ -97,6 +98,7 @@ const _restaurantMainNavItems = [
   _NavItem('Produits / Menu', Icons.inventory_2_rounded,            '/products'),
   _NavItem('Clients',         Icons.people_alt_rounded,             '/customers'),
   _NavItem('Dettes',          Icons.account_balance_wallet_rounded, '/debts'),
+  _NavItem('Dépenses',        Icons.payments_rounded,               '/expenses'),
   _NavItem('Business',  Icons.apartment_rounded,              '/warehouses'),
 ];
 
@@ -119,6 +121,7 @@ const _hotelMainNavItems = [
   _NavItem('Bar & Produits',  Icons.inventory_2_rounded,            '/products'),
   _NavItem('Clients',         Icons.people_alt_rounded,             '/customers'),
   _NavItem('Dettes',          Icons.account_balance_wallet_rounded, '/debts'),
+  _NavItem('Dépenses',        Icons.payments_rounded,               '/expenses'),
   _NavItem('Business',        Icons.apartment_rounded,              '/warehouses'),
 ];
 
@@ -203,6 +206,7 @@ const Map<String, String> _routePermission = {
   '/returns':    Perm.returnsRead,
   '/inventory':  Perm.inventoryRead,
   '/entrepot':   Perm.entrepotRead,
+  '/expenses':   Perm.expensesRead,
   '/events':          Perm.invoicesRead,
   '/reports/depots':  Perm.reportsReadAll,
   '/statistics':      Perm.reportsReadAll,

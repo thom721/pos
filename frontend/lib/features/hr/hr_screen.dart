@@ -333,6 +333,20 @@ class _LoanCard extends StatelessWidget {
               valueColor: AlwaysStoppedAnimation(AppColors.primary),
               borderRadius: BorderRadius.circular(4),
             ),
+            if (canApprove && loan['status'] == 'active') ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => showDialog(
+                    context: context,
+                    builder: (_) => _RepayLoanDialog(loan: loan, onSaved: onRefresh),
+                  ),
+                  icon: const Icon(Icons.payments_outlined, size: 14),
+                  label: const Text('Rembourser'),
+                ),
+              ),
+            ],
             if (canApprove && loan['status'] == 'active' && loan['approved_by'] == null) ...[
               const SizedBox(height: 10),
               Row(
@@ -366,6 +380,124 @@ class _LoanCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _RepayLoanDialog extends StatefulWidget {
+  final Map<String, dynamic> loan;
+  final VoidCallback onSaved;
+
+  const _RepayLoanDialog({required this.loan, required this.onSaved});
+
+  @override
+  State<_RepayLoanDialog> createState() => _RepayLoanDialogState();
+}
+
+class _RepayLoanDialogState extends State<_RepayLoanDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _amountCtrl = TextEditingController();
+  final _noteCtrl = TextEditingController();
+  String _method = 'cash';
+  bool _saving = false;
+  String? _error;
+
+  static const _methods = [
+    ('cash', 'Espèces'),
+    ('moncash', 'MonCash'),
+    ('natcash', 'NatCash'),
+    ('bank_transfer', 'Virement bancaire'),
+    ('other', 'Autre'),
+  ];
+
+  @override
+  void dispose() {
+    _amountCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await dio.post('/api/hr/loans/${widget.loan['id']}/repay', data: {
+        'amount': double.parse(_amountCtrl.text),
+        'method': _method,
+        'note': _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+      });
+      widget.onSaved();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() {
+        _saving = false;
+        _error = extractAnyError(e);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final balance = widget.loan['balance']?.toString() ?? '0';
+
+    return AlertDialog(
+      title: const Text('Rembourser le prêt'),
+      content: SizedBox(
+        width: 420,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Solde restant dû : $balance HTG',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _amountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Montant remboursé (HTG) *'),
+                validator: (v) {
+                  final n = double.tryParse(v ?? '');
+                  if (n == null || n <= 0) return 'Montant invalide';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _method,
+                decoration: const InputDecoration(labelText: 'Méthode'),
+                items: _methods
+                    .map((m) => DropdownMenuItem(value: m.$1, child: Text(m.$2)))
+                    .toList(),
+                onChanged: (v) => setState(() => _method = v ?? 'cash'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _noteCtrl,
+                decoration: const InputDecoration(labelText: 'Note (optionnel)'),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!, style: const TextStyle(color: AppColors.error)),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+        ElevatedButton(
+          onPressed: _saving ? null : _submit,
+          child: _saving
+              ? const SizedBox(
+                  width: 16, height: 16,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Confirmer'),
+        ),
+      ],
     );
   }
 }

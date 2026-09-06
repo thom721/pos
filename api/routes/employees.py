@@ -6,7 +6,7 @@ from api.database import get_db
 from api.models.User import User
 from api.schemas.employee import (
     EmployeeProfileCreate, EmployeeProfileUpdate, EmployeeProfileRead,
-    EmployeeLoanCreate, EmployeeLoanRead,
+    EmployeeLoanCreate, EmployeeLoanRead, LoanRepaymentCreate, LoanRepaymentRead,
 )
 from api.services import employee_service
 from api.dependencies.auth import require_permission
@@ -99,3 +99,24 @@ def cancel_loan(
     current_user: User = Depends(require_permission(P.LOANS_APPROVE)),
 ):
     return employee_service.cancel_loan(db, loan_id, tenant_id=current_user.tenant_id)
+
+
+@router.post("/loans/{loan_id}/repay", response_model=EmployeeLoanRead)
+def repay_loan(
+    loan_id: str,
+    data: LoanRepaymentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.LOANS_APPROVE)),
+):
+    """Remboursement manuel (cash/mobile money), pour le cas où le payroll
+    n'est pas utilisé dans le système — voir employee_service.repay_loan."""
+    return employee_service.repay_loan(db, loan_id, data, created_by=current_user.id, tenant_id=current_user.tenant_id)
+
+
+@router.get("/loans/{loan_id}/repayments", response_model=list[LoanRepaymentRead])
+def list_loan_repayments(
+    loan_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.LOANS_READ)),
+):
+    return employee_service.list_repayments(db, loan_id, tenant_id=current_user.tenant_id)

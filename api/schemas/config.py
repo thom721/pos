@@ -31,6 +31,9 @@ class ConfigRead(BaseModel):
     loyalty_percent: float = 0.0
     low_stock_alert_enabled: bool = False
     low_stock_alert_roles: Optional[list] = None
+    expenses_reports_enabled: bool = True
+    payroll_reports_enabled: bool = False
+    loans_reports_enabled: bool = False
 
     @field_validator('hotel_checkin_fields', 'report_columns', 'client_sabotage_fields',
                       'low_stock_alert_roles', mode='before')
@@ -75,3 +78,6 @@ class ConfigUpdate(BaseModel):
     loyalty_percent: Optional[float] = None
     low_stock_alert_enabled: Optional[bool] = None
     low_stock_alert_roles: Optional[list] = None
+    expenses_reports_enabled: Optional[bool] = None
+    payroll_reports_enabled: Optional[bool] = None
+    loans_reports_enabled: Optional[bool] = None

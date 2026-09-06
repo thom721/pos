@@ -86,3 +86,24 @@ class EmployeeLoanRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class LoanRepaymentCreate(BaseModel):
+    amount: Decimal
+    method: str = "cash"    # cash | moncash | natcash | bank_transfer | other
+    note:   Optional[str] = None
+
+
+class LoanRepaymentRead(BaseModel):
+    id:         str
+    loan_id:    str
+    amount:     Decimal
+    method:     str
+    note:       Optional[str]
+    created_by: Optional[str]
+    created_at: datetime
+
+    creator_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True

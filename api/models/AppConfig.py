@@ -69,3 +69,10 @@ class AppConfig(UUIDBase):
     # comme moyen de paiement sur une vente future (voir Customer.loyalty_balance).
     loyalty_enabled = Column(Boolean, nullable=False, default=False)
     loyalty_percent = Column(Numeric(5, 2), nullable=False, default=0)
+
+    # Sections de la page Rapports — activables indépendamment par tenant
+    # (tous les commerces n'ont pas d'employés salariés/prêts). Vérifié
+    # côté serveur dans api/routes/reports.py, pas juste masqué côté client.
+    expenses_reports_enabled = Column(Boolean, nullable=False, default=True)
+    payroll_reports_enabled  = Column(Boolean, nullable=False, default=False)
+    loans_reports_enabled    = Column(Boolean, nullable=False, default=False)

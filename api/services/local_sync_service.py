@@ -49,6 +49,7 @@ from api.models.PayrollPeriod import PayrollPeriod
 from api.models.PayrollEntry import PayrollEntry
 from api.models.EmployeeLoan import EmployeeLoan
 from api.models.PayrollLoanDeduction import PayrollLoanDeduction
+from api.models.LoanRepayment import LoanRepayment
 from api.models.RestaurantTable import RestaurantTable
 from api.models.RoomAttribute import RoomAttribute
 from api.models.MenuItem import MenuItem
@@ -58,6 +59,7 @@ from api.models.HousekeepingTask import HousekeepingTask
 from api.models.ClientSabotage import ClientSabotage
 from api.models.Depot import Depot
 from api.models.Retrait import Retrait
+from api.models.Expense import Expense
 
 _log = logging.getLogger("pos.sync")
 
@@ -113,6 +115,7 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "payroll_entry",          "model": PayrollEntry,         "direction": "both"},
     {"type": "employee_loan",          "model": EmployeeLoan,         "direction": "both"},
     {"type": "payroll_loan_deduction", "model": PayrollLoanDeduction, "direction": "both"},
+    {"type": "loan_repayment",         "model": LoanRepayment,        "direction": "both"},
     # ── Restaurant / Hôtel — configuration (bidirectionnel) ─────────────────────
     # Tables et attributs : un admin cloud peut créer/modifier des chambres
     {"type": "restaurant_table", "model": RestaurantTable, "direction": "both"},
@@ -131,6 +134,8 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "client_sabotage", "model": ClientSabotage, "direction": "both"},
     {"type": "depot",           "model": Depot,          "direction": "both"},
     {"type": "retrait",         "model": Retrait,        "direction": "both"},
+    # ── Dépenses (charges d'exploitation) ────────────────────────────────────
+    {"type": "expense",         "model": Expense,        "direction": "both"},
 ]
 
 # Columns excluded when sending to cloud (cloud assigns its own tenant_id via sync token)
