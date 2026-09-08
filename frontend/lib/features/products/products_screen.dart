@@ -1544,6 +1544,19 @@ class _ProductTable extends ConsumerWidget {
   }
 }
 
+// Produit composé (ex: "Caisse" = 12 x "Boîte") : affiche "3 (+8)" plutôt
+// qu'une fraction décimale trompeuse ("3.67 caisses" ne veut rien dire en
+// pratique) — 3 caisses complètes + 8 unités du composant non regroupées.
+String _stockLabel(ProductModel p) {
+  final stock = p.stock ?? 0;
+  final rem = p.compositeRemainder;
+  if (rem != null && rem > 0) {
+    final remStr = rem % 1 == 0 ? rem.toInt().toString() : rem.toStringAsFixed(1);
+    return '$stock (+$remStr)';
+  }
+  return '$stock';
+}
+
 class _StockChip extends StatelessWidget {
   final ProductModel product;
   const _StockChip({required this.product});
@@ -1561,7 +1574,7 @@ class _StockChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
-      child: Text('${product.stock}',
+      child: Text(_stockLabel(product),
           style: TextStyle(
               color: color, fontSize: 12, fontWeight: FontWeight.w600)),
     );
@@ -1675,7 +1688,7 @@ class _ProductCard extends ConsumerWidget {
                                       ? AppColors.error
                                       : AppColors.textSecondary),
                               const SizedBox(width: 3),
-                              Text('Stock: ${product.stock}',
+                              Text('Stock: ${_stockLabel(product)}',
                                   style: TextStyle(
                                       fontSize: 12,
                                       color: product.isLowStock
@@ -1684,7 +1697,7 @@ class _ProductCard extends ConsumerWidget {
                             ],
                           ),
                         )
-                      : Text('Stock: ${product.stock}',
+                      : Text('Stock: ${_stockLabel(product)}',
                           style: TextStyle(
                               fontSize: 12,
                               color: product.isLowStock

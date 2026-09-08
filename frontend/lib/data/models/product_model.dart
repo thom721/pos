@@ -58,6 +58,10 @@ class ProductModel {
   // n'a alors plus de stock propre (dérivé du composant côté serveur).
   final String? componentProductId;
   final double? componentQuantity;
+  // Reste (unités du composant hors caisses complètes) pour un produit
+  // composé — ex: 44 unités / 12 par caisse → stock=3, compositeRemainder=8.
+  // Évite d'afficher une fraction décimale trompeuse ("3.67 caisses").
+  final double? compositeRemainder;
 
   ProductModel({
     required this.id,
@@ -75,6 +79,7 @@ class ProductModel {
     this.warehouseId,
     this.componentProductId,
     this.componentQuantity,
+    this.compositeRemainder,
   });
 
   bool get isLowStock => stock != null && stock! <= alertStock;
@@ -103,6 +108,9 @@ class ProductModel {
         componentQuantity: json['component_quantity'] != null
             ? (json['component_quantity'] as num?)?.toDouble()
             : null,
+        compositeRemainder: json['composite_remainder'] != null
+            ? (json['composite_remainder'] as num?)?.toDouble()
+            : null,
       );
 
   Map<String, dynamic> toJson() => {
@@ -119,5 +127,6 @@ class ProductModel {
         if (warehouseId != null) 'warehouse_id': warehouseId,
         'component_product_id': componentProductId,
         'component_quantity': componentQuantity,
+        'composite_remainder': compositeRemainder,
       };
 }

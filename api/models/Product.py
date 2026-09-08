@@ -85,6 +85,33 @@ class Product(UUIDBase):
             if m.warehouse_id == warehouse_id
         )
 
+    @hybrid_property
+    def composite_remainder(self):
+        """Unités du composant qui ne forment pas une unité complète de ce
+        produit composé (ex: 44 unités / 12 par caisse = 3 caisses + 8
+        unités restantes) — affiché à côté de `stock` (arrondi) pour éviter
+        la fraction décimale trompeuse ("3.67 caisses" ne veut rien dire en
+        pratique). None pour un produit non composé."""
+        if self.is_composite:
+            if not self.component_quantity:
+                return 0
+            comp_stock = sum(m.quantity for m in self.component.stock_movements) if self.component else 0
+            return comp_stock % self.component_quantity
+        return None
+
+    @hybrid_method
+    def composite_remainder_at(self, warehouse_id):
+        """Équivalent de `composite_remainder` mais limité à un dépôt précis."""
+        if self.is_composite:
+            if not self.component_quantity:
+                return 0
+            comp_stock = sum(
+                m.quantity for m in self.component.stock_movements
+                if m.warehouse_id == warehouse_id
+            ) if self.component else 0
+            return comp_stock % self.component_quantity
+        return None
+
     @hybrid_method
     def available_quantity_at(self, warehouse_id):
         """Équivalent de `available_quantity` (non arrondi) mais limité à un

@@ -146,6 +146,7 @@ class ProductService(TenantService):
                     # composant) — _stock_map renverrait donc toujours 0 ici.
                     # stock_at() dérive correctement depuis le composant.
                     "stock": p.stock_at(warehouse_id) if p.is_composite else stocks.get(p.id, 0.0),
+                    "composite_remainder": p.composite_remainder_at(warehouse_id) if p.is_composite else None,
                     "sale_price": prices.get(p.id, float(p.sale_price)),
                 })
                 for p in items

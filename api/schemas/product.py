@@ -29,6 +29,10 @@ class ProductRead(ProductBase):
     id: str
     image_url: Optional[str] = None
     stock: Optional[float] = None
+    # Reste (unités du composant hors caisses complètes) pour un produit
+    # composé — ex: 44 unités / 12 par caisse → stock=3, composite_remainder=8.
+    # None pour un produit non composé.
+    composite_remainder: Optional[float] = None
     category: Optional[CategoryRead] = None
     is_locked: bool = False
 
