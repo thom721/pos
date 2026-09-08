@@ -105,3 +105,35 @@ def test_generate_and_commit_payments_gives_up_after_max_attempts(db, tenant_wit
     from sqlalchemy.exc import IntegrityError
     with pytest.raises(IntegrityError):
         billing._generate_and_commit_payments(db, "REG-9999-", _build, max_attempts=3)
+
+
+def test_submit_register_payment_survives_gap_in_sequence(db, tenant_with_register, monkeypatch):
+    """Revu en prod le 2026-09-08 : COUNT(*) sous-évalue le prochain numéro
+    dès qu'un trou existe dans la séquence (ex: 0001,0002,0003,0005 avec 0004
+    manquant → COUNT()=4 → next=0005, déjà pris) — les 5 tentatives de retry
+    recalculaient toutes le même COUNT() et échouaient identiquement, deux
+    requêtes de suite ("Duplicate entry 'REG-2026-0005'"). MAX() doit toujours
+    calculer un numéro strictement supérieur, trou ou pas."""
+    tenant, _wh, reg, user = tenant_with_register
+    monkeypatch.setattr(billing.settings, "BILLING_URL", "")
+    monkeypatch.setattr(billing.settings, "CLOUD_SYNC_TOKEN", "")
+
+    year = datetime.now().year
+    # 0001, 0002, 0003 et 0005 existent — 0004 manque (trou).
+    for n in (1, 2, 3, 5):
+        db.add(BillingPayment(
+            tenant_id=tenant.id, invoice_number=f"REG-{year}-{n:04d}",
+            method="cash", amount=100, currency="HTG", months=1,
+            status="pending", plan_type="monthly",
+        ))
+    db.commit()
+
+    body = SubmitRegisterPaymentRequest(register_ids=[reg.id], method="cash", months=1, plan_type="monthly")
+    result = billing.submit_register_payment(body, db, user)
+
+    assert result["status"] == "pending"
+    numbers = {p.invoice_number for p in db.query(BillingPayment).filter_by(tenant_id=tenant.id).all()}
+    # Le nouveau numéro doit être 0006 (MAX existant = 5, +1) — jamais 0004
+    # (le trou) ni 0005 (déjà pris, provoquerait la même collision qu'en prod).
+    assert f"REG-{year}-0006" in numbers
+    assert f"REG-{year}-0004" not in numbers

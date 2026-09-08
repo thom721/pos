@@ -600,19 +600,33 @@ def _generate_and_commit_payments(
     max_attempts: int = 5,
 ) -> list:
     """Crée et commite un lot de BillingPayment dont le numéro de facture suit
-    la forme f"{prefix}{n:04d}", n généré par COUNT()+1 — pas atomique : deux
-    soumissions concurrentes (ou un double-clic/retry après une erreur
-    transitoire) peuvent tomber sur le même numéro, provoquant une
+    la forme f"{prefix}{n:04d}", n généré à partir du MAX déjà utilisé — pas
+    atomique : deux soumissions concurrentes (ou un double-clic/retry après
+    une erreur transitoire) peuvent tomber sur le même numéro, provoquant une
     IntegrityError sur la contrainte unique invoice_number. Retente depuis un
-    COUNT() frais dans ce cas plutôt que remonter une erreur 500 au tenant.
+    MAX() frais dans ce cas plutôt que remonter une erreur 500 au tenant.
+
+    Anciennement basé sur COUNT(*) — cassait dès qu'un trou existait dans la
+    séquence (ex: 0001,0002,0003,0005 avec 0004 manquant : COUNT()=4, donc
+    next=0005, déjà pris) : les 5 tentatives recalculaient alors le même
+    COUNT() (rien ne change entre elles tant qu'aucun commit ne réussit) et
+    échouaient toutes avec exactement le même numéro — vu en prod avec
+    "Duplicate entry 'REG-2026-0005'" répété sur deux requêtes séparées.
+    MAX() est immunisé contre les trous : le prochain numéro est toujours
+    strictement supérieur à tout numéro déjà existant.
 
     build(base_count) doit créer les BillingPayment (db.add() inclus) en
     numérotant à partir de base_count, et retourner la liste créée."""
     last_exc: IntegrityError | None = None
     for _ in range(max_attempts):
-        base_count = db.query(BillingPayment).filter(
+        existing_numbers = db.query(BillingPayment.invoice_number).filter(
             BillingPayment.invoice_number.like(f"{prefix}%"),
-        ).count()
+        ).all()
+        base_count = 0
+        for (num,) in existing_numbers:
+            suffix = num[len(prefix):]
+            if suffix.isdigit():
+                base_count = max(base_count, int(suffix))
         payments = build(base_count)
         try:
             db.commit()
