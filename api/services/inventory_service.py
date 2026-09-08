@@ -45,7 +45,11 @@ def get_preview(
             "barcode": p.barcode,
             "category": p.category.name,
             "category_id": p.category_id,
-            "expected_qty": stocks.get(p.id, 0.0),
+            # _stock_map agrège directement StockMovement.product_id — un
+            # produit composé n'a jamais ses propres mouvements (voir
+            # record_stock_movement), donc son stock attendu doit venir de la
+            # propriété dérivée (composant / component_quantity), pas du map.
+            "expected_qty": p.stock_at(wh_id) if p.is_composite else stocks.get(p.id, 0.0),
         }
         for p in products
     ]
@@ -122,7 +126,9 @@ def create_inventory(db: Session, data, user_id: str, tenant_id: str | None = No
         # _stock_map agrège directement StockMovement.product_id — un produit
         # composé n'a jamais ses propres mouvements (voir record_stock_movement),
         # donc son stock attendu doit venir de la propriété dérivée, pas du map.
-        expected = float(product.stock) if product.is_composite else stocks.get(pid, 0.0)
+        # stock_at(wh_id), pas stock (global) : le comptage porte sur UN dépôt,
+        # comme la branche non-composée ci-dessus (stocks est déjà filtrée par wh_id).
+        expected = float(product.stock_at(wh_id)) if product.is_composite else stocks.get(pid, 0.0)
         counted = float(item.counted_qty)
         diff = counted - expected
 

@@ -1036,6 +1036,9 @@ def confirm_payment(
     payment.period_end = encrypt_date(period_end, payment.tenant_id)
     db.flush()
 
+    cfg = db.query(PlatformConfig).first()
+    trial_included = bool(cfg.trial_included_in_billing) if cfg else False
+
     # ── Paiement par caisse(s) ────────────────────────────────────────────────
     import json as _json
     register_ids_json = getattr(payment, "register_ids_json", None)
@@ -1050,16 +1053,24 @@ def confirm_payment(
             if not reg:
                 continue
             current_end = reg.subscription_ends_at
-            if current_end:
-                remaining = max(0, (current_end - now).days)
+            if current_end and current_end > now:
+                # Renouvellement en cours de cycle : prolonger depuis la fin actuelle
+                base = current_end
+            elif trial_included and not reg.subscription_started_at:
+                # Premier paiement de cette caisse, essai inclus dans la
+                # facturation (PlatformConfig.trial_included_in_billing) :
+                # part de la création de la caisse — les jours d'essai
+                # consommés sont déduits. Même règle que _activate_tenant
+                # pour le plan principal du tenant.
+                created = reg.created_at or now
+                base = created if (created + timedelta(days=days)) > now else now
             else:
-                remaining = 0
-            reg.subscription_started_at = now
-            reg.subscription_ends_at    = now + timedelta(days=days + remaining)
+                base = now
+            reg.subscription_started_at = reg.subscription_started_at or now
+            reg.subscription_ends_at    = base + timedelta(days=days)
             register_results.append({
                 "register_id":              reg.id,
                 "name":                     reg.name,
-                "remaining_days_carried":   remaining,
                 "subscription_started_at":  reg.subscription_started_at.isoformat(),
                 "subscription_ends_at":     reg.subscription_ends_at.isoformat(),
             })

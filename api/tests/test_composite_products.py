@@ -154,3 +154,28 @@ def test_composite_adjust_stock_via_endpoint_helper(db, category):
     db.refresh(boite)
 
     assert boite.stock == 36  # 3 x 12
+
+
+def test_composite_stock_in_warehouse_scoped_product_list(db, category):
+    """Bug réel : ProductService.list(warehouse_id=...) — utilisé par l'écran
+    Caisse — affichait toujours 0 pour un produit composé, car _stock_map
+    agrège StockMovement.product_id directement, jamais renseigné pour un
+    composé (voir record_stock_movement : le mouvement cible le composant).
+    Le stock affiché doit être dérivé du composant, comme Product.stock."""
+    from api.services.product_service import ProductService
+
+    boite = _make_product(db, category, name="Boîte lait")
+    caisse = _make_product(
+        db, category, name="Caisse lait",
+        component_product_id=boite.id, component_quantity=Decimal("12"),
+    )
+    db.add(StockMovement(
+        product_id=boite.id, type=StockType.in_, quantity=24, warehouse_id="wh1",
+    ))
+    db.commit()
+
+    result = ProductService(db).list(warehouse_id="wh1")
+    stocks = {p.name: p.stock for p in result["data"]}
+
+    assert stocks["Boîte lait"] == 24
+    assert stocks["Caisse lait"] == 2  # 24 boîtes // 12 par caisse

@@ -82,44 +82,56 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
               3: pw.FixedColumnWidth(totalColW),
             },
             children: [
-              pw.TableRow(children: [
-                pw.Text('ARTICLE', style: bold),
-                pw.Center(child: pw.Text('QTÉ', style: bold)),
-                pw.Align(
-                    alignment: pw.Alignment.centerRight,
-                    child: pw.Text('P.U.', style: bold)),
-                pw.Align(
-                    alignment: pw.Alignment.centerRight,
-                    child: pw.Text('TOTAL', style: bold)),
-              ]),
-              pw.TableRow(children: [
-                pw.SizedBox(height: 3),
-                pw.SizedBox(height: 3),
-                pw.SizedBox(height: 3),
-                pw.SizedBox(height: 3),
-              ]),
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(
+                  border: pw.Border(
+                      bottom: pw.BorderSide(width: 0.5, color: PdfColors.black)),
+                ),
+                children: [
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(bottom: 2),
+                    child: pw.Text('ARTICLE', style: bold),
+                  ),
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(bottom: 2),
+                    child: pw.Center(child: pw.Text('QTÉ', style: bold)),
+                  ),
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(bottom: 2),
+                    child: pw.Align(
+                        alignment: pw.Alignment.centerRight,
+                        child: pw.Text('P.U.', style: bold)),
+                  ),
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(bottom: 2),
+                    child: pw.Align(
+                        alignment: pw.Alignment.centerRight,
+                        child: pw.Text('TOTAL', style: bold)),
+                  ),
+                ],
+              ),
               ...sale.items.map((item) => pw.TableRow(children: [
                     pw.Padding(
-                      padding: const pw.EdgeInsets.symmetric(vertical: 1),
+                      padding: const pw.EdgeInsets.symmetric(vertical: 2),
                       child: pw.Text(item.productName ?? '', style: base),
                     ),
                     pw.Center(
                       child: pw.Padding(
-                        padding: const pw.EdgeInsets.symmetric(vertical: 1),
+                        padding: const pw.EdgeInsets.symmetric(vertical: 2),
                         child: pw.Text(_fmtQty(item.quantity), style: base),
                       ),
                     ),
                     pw.Align(
                       alignment: pw.Alignment.centerRight,
                       child: pw.Padding(
-                        padding: const pw.EdgeInsets.symmetric(vertical: 1),
+                        padding: const pw.EdgeInsets.symmetric(vertical: 2),
                         child: pw.Text(numFmt.format(item.unitPrice), style: base),
                       ),
                     ),
                     pw.Align(
                       alignment: pw.Alignment.centerRight,
                       child: pw.Padding(
-                        padding: const pw.EdgeInsets.symmetric(vertical: 1),
+                        padding: const pw.EdgeInsets.symmetric(vertical: 2),
                         child: pw.Text(numFmt.format(item.subtotal), style: bold),
                       ),
                     ),
@@ -138,10 +150,13 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
             pw.Center(child: pw.Text('Tél: ${settings.phone}', style: small)),
           if (logoImage != null) ...[
             pw.SizedBox(height: 4),
+            // Petite icône (~4x4), pas une bannière — voir _logoToEscPos
+            // (bluetooth_print_service.dart) et _printSunmiLogo
+            // (thermal_printer_service.dart) pour la même réduction.
             pw.Align(
                 alignment: pw.Alignment.centerLeft,
                 child: pw.Image(logoImage,
-                    height: settings.paperWidth == 48 ? 30 : settings.paperWidth == 58 ? 40 : 50,
+                    height: settings.paperWidth == 48 ? 16 : settings.paperWidth == 58 ? 20 : 24,
                     fit: pw.BoxFit.contain)),
           ],
           pw.SizedBox(height: 4),

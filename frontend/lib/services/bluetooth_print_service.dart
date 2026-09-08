@@ -25,6 +25,16 @@ int _escposByte(int codeUnit) {
   return codeUnit <= 0xFF ? codeUnit : 0x3F;
 }
 
+// Centrage calculé par espaces de remplissage plutôt que par la commande
+// native ESC a (1B 61 01) : certaines imprimantes/clones ESC/POS ignorent
+// cette commande de justification (constaté sur le terrain — en-tête resté
+// à gauche malgré ESC a), alors que le padding manuel des colonnes du
+// tableau d'articles s'affiche correctement partout. Même logique ici.
+String _center(String s, int width) {
+  if (s.length >= width) return s;
+  return ' ' * ((width - s.length) ~/ 2) + s;
+}
+
 class BluetoothPrintService {
   BluetoothPrintService._();
   static final BluetoothPrintService instance = BluetoothPrintService._();
@@ -139,8 +149,10 @@ class BluetoothPrintService {
       final decoded = img.decodeImage(rawBytes);
       if (decoded == null) return [];
 
-      // Target width: ~40% of paper dot width (203 dpi ≈ 8 dots/mm)
-      final targetW = settings.paperWidth == 80 ? 200 : 128;
+      // Petite icône (~4x4, pas une bannière) — largeur fixe, indépendante
+      // de la largeur du papier. Même valeur que _printSunmiLogo
+      // (thermal_printer_service.dart) et cohérente avec receipt_pdf.dart.
+      const targetW = 96;
       final aspect = decoded.height / decoded.width;
       final targetH = (targetW * aspect).round();
       final resized = img.copyResize(decoded, width: targetW, height: targetH,
@@ -231,20 +243,22 @@ class BluetoothPrintService {
                                             // imprimantes (dont celle testée) impriment trop pâle même avec double-strike
 
     // ── En-tête ────────────────────────────────────────────────────────────
-    esc([0x1B, 0x61, 0x01]);
-    esc([0x1D, 0x21, 0x10]); // double hauteur
-    text(settings.businessName);
+    // GS ! 0x10 = double LARGEUR (pas hauteur — bits 4-6 = largeur, bits 0-2 =
+    // hauteur) : chaque caractère prend 2 colonnes, d'où cols ~/ 2 ci-dessous
+    // pour éviter un débordement qui fait retourner la ligne à la ligne
+    // suivante et casse l'affichage du nom.
+    esc([0x1D, 0x21, 0x10]);
+    text(_center(settings.businessName, cols ~/ 2));
     nl();
     esc([0x1D, 0x21, 0x00]);
     if (settings.address.isNotEmpty) {
-      text(settings.address);
+      text(_center(settings.address, cols));
       nl();
     }
     if (settings.phone.isNotEmpty) {
-      text('Tél: ${settings.phone}');
+      text(_center('Tél: ${settings.phone}', cols));
       nl();
     }
-    esc([0x1B, 0x61, 0x00]);
 
     // ── Logo (si disponible, sous l'en-tête) ─────────────────────────────────
     if (logoBytes.isNotEmpty) {
@@ -276,6 +290,7 @@ class BluetoothPrintService {
         'P.U.'.padLeft(puW) +
         'TOTAL'.padLeft(totW));
     nl();
+    dash();
     for (final item in sale.items) {
       final name =
           (item.productName ?? 'Article').padRight(nameW).substring(0, nameW);
@@ -283,7 +298,7 @@ class BluetoothPrintService {
       final pu = numFmt.format(item.unitPrice).padLeft(puW);
       final total = '$sym ${numFmt.format(item.subtotal)}'.padLeft(totW);
       text('$name$qty$pu$total');
-      nl();
+      nl(2); // petit espace entre chaque article
     }
     dash();
     nl();
@@ -359,21 +374,20 @@ class BluetoothPrintService {
     nl();
 
     // ── Statut ─────────────────────────────────────────────────────────────
-    esc([0x1B, 0x61, 0x01]);
     esc([0x1B, 0x45, 0x01]);
     final statusLabel = switch (sale.status) {
       'PAID' => '*** PAYÉ ***',
       'PARTIAL' => '*** PAIEMENT PARTIEL ***',
       _ => '*** NON PAYÉ ***',
     };
-    text(statusLabel);
+    text(_center(statusLabel, cols));
     nl();
     esc([0x1B, 0x45, 0x00]);
 
     if (settings.receiptFooter.isNotEmpty) {
       nl();
       dash();
-      text(settings.receiptFooter);
+      text(_center(settings.receiptFooter, cols));
       nl();
     }
 
@@ -419,20 +433,18 @@ class BluetoothPrintService {
     esc([0x1B, 0x47, 0x01]);
     esc([0x1B, 0x45, 0x01]);
 
-    esc([0x1B, 0x61, 0x01]);
-    esc([0x1D, 0x21, 0x10]);
-    text(settings.businessName);
+    esc([0x1D, 0x21, 0x10]); // double largeur (GS ! 0x10, voir _buildEscPos)
+    text(_center(settings.businessName, cols ~/ 2));
     nl();
     esc([0x1D, 0x21, 0x00]);
     if (settings.address.isNotEmpty) {
-      text(settings.address);
+      text(_center(settings.address, cols));
       nl();
     }
     if (settings.phone.isNotEmpty) {
-      text('Tél: ${settings.phone}');
+      text(_center('Tél: ${settings.phone}', cols));
       nl();
     }
-    esc([0x1B, 0x61, 0x00]);
 
     if (logoBytes.isNotEmpty) {
       buf.addAll(logoBytes);
@@ -442,13 +454,11 @@ class BluetoothPrintService {
     dash();
     nl();
 
-    esc([0x1B, 0x61, 0x01]);
-    esc([0x1D, 0x21, 0x10]);
+    esc([0x1D, 0x21, 0x10]); // double largeur (GS ! 0x10, voir _buildEscPos)
     final typeLabel = ret.returnType == 'sale' ? 'RETOUR VENTE' : 'RETOUR ACHAT';
-    text(typeLabel);
+    text(_center(typeLabel, cols ~/ 2));
     nl();
     esc([0x1D, 0x21, 0x00]);
-    esc([0x1B, 0x61, 0x00]);
     nl();
 
     text('Réf: ${ret.docReference}');
@@ -466,12 +476,13 @@ class BluetoothPrintService {
         'QTE'.padLeft(qtyW) +
         'TOTAL'.padLeft(totW));
     nl();
+    dash();
     for (final item in ret.items) {
       final name = item.productName.padRight(nameW).substring(0, nameW);
       final qty = '${item.quantity.toStringAsFixed(item.quantity % 1 == 0 ? 0 : 2)}x'.padLeft(qtyW);
       final total = '$sym ${numFmt.format(item.subtotal)}'.padLeft(totW);
       text('$name$qty$total');
-      nl();
+      nl(2); // petit espace entre chaque article
     }
     dash();
     nl();
@@ -487,15 +498,13 @@ class BluetoothPrintService {
     dash();
     nl();
 
-    esc([0x1B, 0x61, 0x01]);
-    text('*** RETOUR ACCEPTÉ ***');
+    text(_center('*** RETOUR ACCEPTÉ ***', cols));
     nl();
-    esc([0x1B, 0x61, 0x00]);
 
     if (settings.receiptFooter.isNotEmpty) {
       nl();
       dash();
-      text(settings.receiptFooter);
+      text(_center(settings.receiptFooter, cols));
       nl();
     }
 
@@ -543,25 +552,21 @@ class BluetoothPrintService {
     esc([0x1B, 0x45, 0x01]);               // Bold ON global
 
     // Header
-    esc([0x1B, 0x61, 0x01]);
-    esc([0x1D, 0x21, 0x10]);
-    text(settings.businessName);
+    esc([0x1D, 0x21, 0x10]); // double largeur (GS ! 0x10, voir _buildEscPos)
+    text(_center(settings.businessName, cols ~/ 2));
     nl();
     esc([0x1D, 0x21, 0x00]);
-    if (settings.address.isNotEmpty) { text(settings.address); nl(); }
-    if (settings.phone.isNotEmpty) { text('Tél: ${settings.phone}'); nl(); }
-    esc([0x1B, 0x61, 0x00]);
+    if (settings.address.isNotEmpty) { text(_center(settings.address, cols)); nl(); }
+    if (settings.phone.isNotEmpty) { text(_center('Tél: ${settings.phone}', cols)); nl(); }
     if (logoBytes.isNotEmpty) {
       buf.addAll(logoBytes);
       nl();
     }
-    esc([0x1B, 0x61, 0x01]);
     nl();
     esc([0x1B, 0x45, 0x01]);
-    text(isPaid ? 'RECU' : 'ADDITION');
+    text(_center(isPaid ? 'RECU' : 'ADDITION', cols));
     nl();
     esc([0x1B, 0x45, 0x00]);
-    esc([0x1B, 0x61, 0x00]);
     dash();
     nl();
 
@@ -579,6 +584,7 @@ class BluetoothPrintService {
         'QTE'.padLeft(qtyW) +
         'TOTAL'.padLeft(totW));
     nl();
+    dash();
     for (final item in order.items) {
       final name = item.productName.padRight(nameW).substring(0, nameW);
       final qtyStr = item.quantity == item.quantity.truncateToDouble()
@@ -590,6 +596,7 @@ class BluetoothPrintService {
       if (item.notes != null && item.notes!.isNotEmpty) {
         text('  ${item.notes}'); nl();
       }
+      nl(); // petit espace entre chaque article
     }
     dash();
     nl();
@@ -632,16 +639,14 @@ class BluetoothPrintService {
     dash();
     nl();
 
-    esc([0x1B, 0x61, 0x01]);
     esc([0x1B, 0x45, 0x01]);
-    if (isPaid) { text('*** PAYE ***'); nl(); }
+    if (isPaid) { text(_center('*** PAYE ***', cols)); nl(); }
     esc([0x1B, 0x45, 0x00]);
-    esc([0x1B, 0x61, 0x00]);
 
     if (settings.receiptFooter.isNotEmpty) {
       nl();
       dash();
-      text(settings.receiptFooter); nl();
+      text(_center(settings.receiptFooter, cols)); nl();
     }
 
     nl(4);

@@ -63,11 +63,12 @@ class ThermalPrinterService {
       // (_logoToEscPos), l'image était envoyée brute (taille d'upload
       // d'origine) directement au SDK Sunmi, qui la réduit lui-même sans
       // interpolation soignée : rendu pixelisé/dégradé sur le papier
-      // thermique. Même largeur cible que le Bluetooth (~40% de la largeur
-      // papier en points, 203 dpi ≈ 8 points/mm).
+      // thermique. Petite icône (~4x4, pas une bannière) — même largeur
+      // fixe que le chemin Bluetooth (_logoToEscPos), indépendante de la
+      // largeur du papier.
       final decoded = img.decodeImage(rawBytes);
       if (decoded == null) return;
-      final targetW = settings.paperWidth == 80 ? 200 : 128;
+      const targetW = 96;
       final targetH = (targetW * decoded.height / decoded.width).round();
       final resized = img.copyResize(decoded, width: targetW, height: targetH,
           interpolation: img.Interpolation.average);
@@ -190,6 +191,7 @@ class ThermalPrinterService {
       SunmiColumn(text: 'TOTAL', width: 8,
           style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.RIGHT)),
     ]);
+    await SunmiPrinter.line();
 
     for (final item in sale.items) {
       const maxName = 12;
@@ -207,6 +209,7 @@ class ThermalPrinterService {
         SunmiColumn(text: fmt.format(item.subtotal), width: 8,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
+      await SunmiPrinter.lineWrap(1); // petit espace entre chaque article
     }
     await SunmiPrinter.line();
     await SunmiPrinter.lineWrap(1);
@@ -398,6 +401,7 @@ class ThermalPrinterService {
       SunmiColumn(text: 'TOTAL', width: 10,
           style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.RIGHT)),
     ]);
+    await SunmiPrinter.line();
     for (final item in order.items) {
       const maxName = 17;
       final raw = item.productName;
@@ -418,6 +422,7 @@ class ThermalPrinterService {
         await SunmiPrinter.printText('  ${item.notes}\n',
             style: SunmiTextStyle(fontSize: 20, align: SunmiPrintAlign.LEFT));
       }
+      await SunmiPrinter.lineWrap(1); // petit espace entre chaque article
     }
     await SunmiPrinter.line();
     await SunmiPrinter.lineWrap(1);
