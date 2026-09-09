@@ -94,9 +94,15 @@ class Product(UUIDBase):
         pratique). None pour un produit non composé."""
         if self.is_composite:
             if not self.component_quantity:
-                return 0
+                return 0.0
             comp_stock = sum(m.quantity for m in self.component.stock_movements) if self.component else 0
-            return comp_stock % self.component_quantity
+            # float() explicite : component_quantity est Numeric (Decimal) —
+            # le modulo reste un Decimal, que product_service.list() assigne
+            # via model_copy(update=...) SANS repasser par la coercion de
+            # type du schéma (contrairement à un model_validate normal).
+            # Un Decimal brut sérialise en JSON comme une CHAÎNE ("8.0000"),
+            # ce que le cast Flutter `as num?` ne peut pas gérer (TypeError).
+            return float(comp_stock % self.component_quantity)
         return None
 
     @hybrid_method
@@ -104,12 +110,12 @@ class Product(UUIDBase):
         """Équivalent de `composite_remainder` mais limité à un dépôt précis."""
         if self.is_composite:
             if not self.component_quantity:
-                return 0
+                return 0.0
             comp_stock = sum(
                 m.quantity for m in self.component.stock_movements
                 if m.warehouse_id == warehouse_id
             ) if self.component else 0
-            return comp_stock % self.component_quantity
+            return float(comp_stock % self.component_quantity)
         return None
 
     @hybrid_method
