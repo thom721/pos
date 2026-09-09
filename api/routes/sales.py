@@ -80,7 +80,18 @@ def store_sale(
         detail={"total": float(sale.final_amount or 0)},
     )
     db.commit()
-    return {"message": "Vente enregistrée avec succès", "sale_id": sale.id}
+    db.refresh(sale)
+    # La vente complète (dont `reference`, généré côté serveur — voir
+    # sale_service._next_sale_reference) est renvoyée pour que le client
+    # mobile (offline-first, voir sale_repository.dart::createSale) puisse
+    # remplacer intégralement sa ligne locale provisoire ("HL-xxxxxxxx" +
+    # loyalty_earned estimé) au lieu de laisser ces champs obsolètes jusqu'au
+    # prochain sync complet.
+    return {
+        "message": "Vente enregistrée avec succès",
+        "sale_id": sale.id,
+        "sale": SaleRead.model_validate(sale).model_dump(mode="json"),
+    }
 
 
 @router.get("/", response_model=PaginatedResponse[SaleRead])

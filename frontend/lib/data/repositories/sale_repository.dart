@@ -102,9 +102,23 @@ class SaleRepository {
           data: {...data, 'client_id': localId},
           options: Options(extra: {'skipOfflineQueue': true}),
         );
-        final serverId  = res.data['sale_id']?.toString() ?? localId;
-        final reference = res.data['reference']?.toString() ?? '';
-        await LocalDbService.instance.markSaleSynced(localId, reference);
+        final serverId = res.data['sale_id']?.toString() ?? localId;
+        // Le serveur renvoie désormais la vente complète (voir routes/sales.py
+        // ::store_sale) — remplace intégralement la ligne locale provisoire
+        // (référence "HL-xxxxxxxx", loyalty_earned estimé) au lieu de ne
+        // mettre à jour que la référence et laisser les autres champs
+        // obsolètes jusqu'au prochain sync complet.
+        final saleJson = res.data['sale'] as Map<String, dynamic>?;
+        String reference;
+        if (saleJson != null) {
+          final saleModel = SaleModel.fromJson(saleJson);
+          reference = saleModel.reference;
+          await LocalDbService.instance.upsertSales([saleModel]);
+        } else {
+          // Compat descendante si le serveur ne renvoie pas "sale" (ancienne version API)
+          reference = res.data['reference']?.toString() ?? '';
+          await LocalDbService.instance.markSaleSynced(localId, reference);
+        }
         return {'sale_id': serverId, 'reference': reference, 'offline': false};
       } catch (e) {
         if (_isOffline(e)) {

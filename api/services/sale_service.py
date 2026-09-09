@@ -2,7 +2,7 @@ import logging
 from decimal import Decimal
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, cast, Integer
 from fastapi import HTTPException
 from datetime import datetime, timezone
 
@@ -386,6 +386,32 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
     return sale
 
 
+def _next_sale_reference(db: Session, tenant_id: str | None, warehouse_id: str | None) -> str:
+    """Numéro de reçu séquentiel, formaté "VNT-00001", scopé par (tenant_id,
+    warehouse_id) — pas par tenant seul : un tenant multi-dépôts peut avoir
+    une installation locale distincte par dépôt (voir PlatformConfig /
+    entrepôts), chacune génère alors ses reçus offline avant synchro ; un
+    compteur par (tenant, dépôt) évite tout conflit entre deux dépôts qui,
+    eux, ne partagent jamais la même série.
+
+    LIKE 'VNT-_____' (5 underscores = exactement 5 caractères) ne matche que
+    le nouveau format à 5 chiffres, jamais les anciennes références
+    horodatées ("VNT-1786827154", 10 chiffres) — celles-ci restent
+    inchangées et n'influencent jamais le calcul du prochain numéro.
+
+    MAX() plutôt que COUNT() — voir le bug identique corrigé dans
+    _generate_and_commit_payments (billing.py) : COUNT() sous-évalue le
+    prochain numéro dès qu'un trou existe dans la séquence."""
+    prefix = "VNT-"
+    q = db.query(func.max(cast(func.substr(Sale.reference, len(prefix) + 1), Integer))).filter(
+        Sale.reference.like(f"{prefix}_____"),
+    )
+    q = q.filter(Sale.tenant_id == tenant_id) if tenant_id else q.filter(Sale.tenant_id.is_(None))
+    q = q.filter(Sale.warehouse_id == warehouse_id) if warehouse_id else q.filter(Sale.warehouse_id.is_(None))
+    next_num = (q.scalar() or 0) + 1
+    return f"{prefix}{next_num:05d}"
+
+
 def create_sale(
     db: Session,
     data,
@@ -551,42 +577,51 @@ def create_sale(
         customer.loyalty_balance = Decimal(customer.loyalty_balance or 0) - loyalty_redeemed
 
     # 2️⃣ Création vente (wh_id déjà résolu plus haut, avant la vérification de stock)
-    sale = Sale(
-        customer_id=str(data.customer_id) if data.customer_id else None,
-        user_id=user_id,
-        warehouse_id=wh_id,
-        reference=f"VNT-{int(datetime.now(timezone.utc).timestamp())}",
-        total_amount=total,
-        discount=discount,
-        discount_id=receipt_discount_id,
-        final_amount=total_after_discount,
-        paid_amount=collected,
-        change_due=change_due,
-        loyalty_earned=loyalty_earned,
-        loyalty_redeemed=loyalty_redeemed,
-        customer_loyalty_balance=customer.loyalty_balance if customer else None,
-        status="UNPAID"
-    )
-    if tenant_id:
-        sale.tenant_id = tenant_id
-    # Utiliser l'UUID généré par le client (offline-first) si fourni et valide
-    if getattr(data, 'client_id', None):
-        import re
-        _UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
-        if _UUID_RE.match(data.client_id):
-            sale.id = data.client_id
-    db.add(sale)
-    try:
-        db.flush()
-    except IntegrityError:
-        db.rollback()
-        # client_id déjà utilisé → retourner la vente existante (idempotence)
+    _MAX_REFERENCE_ATTEMPTS = 5
+    for _attempt in range(_MAX_REFERENCE_ATTEMPTS):
+        sale = Sale(
+            customer_id=str(data.customer_id) if data.customer_id else None,
+            user_id=user_id,
+            warehouse_id=wh_id,
+            reference=_next_sale_reference(db, tenant_id, wh_id),
+            total_amount=total,
+            discount=discount,
+            discount_id=receipt_discount_id,
+            final_amount=total_after_discount,
+            paid_amount=collected,
+            change_due=change_due,
+            loyalty_earned=loyalty_earned,
+            loyalty_redeemed=loyalty_redeemed,
+            customer_loyalty_balance=customer.loyalty_balance if customer else None,
+            status="UNPAID"
+        )
+        if tenant_id:
+            sale.tenant_id = tenant_id
+        # Utiliser l'UUID généré par le client (offline-first) si fourni et valide
         if getattr(data, 'client_id', None):
-            existing = db.query(Sale).filter_by(id=data.client_id).first()
-            if existing:
-                db.refresh(existing)
-                return existing
-        raise
+            import re
+            _UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+            if _UUID_RE.match(data.client_id):
+                sale.id = data.client_id
+        db.add(sale)
+        try:
+            db.flush()
+            break
+        except IntegrityError:
+            db.rollback()
+            # client_id déjà utilisé → retourner la vente existante (idempotence)
+            if getattr(data, 'client_id', None):
+                existing = db.query(Sale).filter_by(id=data.client_id).first()
+                if existing:
+                    db.refresh(existing)
+                    return existing
+            if _attempt == _MAX_REFERENCE_ATTEMPTS - 1:
+                raise
+            # Collision de numéro de reçu (rare : deux ventes quasi simultanées
+            # sur le même dépôt) — reconstruit un nouvel objet Sale avec un
+            # numéro recalculé depuis un MAX() frais plutôt que de réutiliser
+            # l'instance précédente (état indéterminé côté SQLAlchemy une fois
+            # évincée de la session par le rollback).
 
     # 3️⃣ Items + mouvements stock OUT (réutilise le dict déjà chargé)
     for idx, item in enumerate(data.items):

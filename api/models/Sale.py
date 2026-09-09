@@ -80,7 +80,12 @@ class Sale(UUIDBase):
     )
 
     __table_args__ = (
-        UniqueConstraint("reference", "tenant_id", name="uq_sale_ref_tenant"),
+        # Numéro de reçu séquentiel (voir sale_service._next_sale_reference)
+        # scopé par (tenant_id, warehouse_id) — pas par tenant seul (ancien
+        # uq_sale_ref_tenant) : un tenant multi-dépôts peut avoir une
+        # installation locale distincte par dépôt, chacune génère alors ses
+        # propres numéros offline avant synchro.
+        UniqueConstraint("reference", "tenant_id", "warehouse_id", name="uq_sale_ref_tenant_warehouse"),
         Index("idx_sale_customer_id", "customer_id"),
         Index("idx_sale_status",      "status"),
         Index("idx_sale_created_at",  "created_at"),

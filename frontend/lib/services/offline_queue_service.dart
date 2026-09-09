@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/services/local_db_service.dart';
 
 // ── Item ─────────────────────────────────────────────────────────────────────
@@ -162,13 +163,20 @@ class OfflineQueueService {
   Future<void> _handleSyncResponse(OfflineQueueItem item, dynamic responseData) async {
     if (responseData is! Map) return;
 
-    // Vente créée offline → marquer comme synchronisée
+    // Vente créée offline → remplace intégralement la ligne locale
+    // provisoire (référence "HL-xxxxxxxx", loyalty_earned estimé) avec la
+    // vente complète renvoyée par le serveur (voir routes/sales.py::store_sale)
+    // — auparavant "reference" était cherché à la racine de la réponse, qui
+    // ne l'a jamais contenu (seulement sale_id) : markSaleSynced n'était donc
+    // jamais appelé pour une vente réellement mise en file d'attente hors-
+    // ligne, laissant sa référence locale figée jusqu'au prochain sync complet.
     if (item.method == 'POST' && item.path == '/api/sales/') {
-      final clientId  = (item.data is Map) ? item.data['client_id'] as String? : null;
-      final reference = responseData['reference'] as String?;
-      if (clientId != null && reference != null) {
-        await LocalDbService.instance.markSaleSynced(clientId, reference);
-        debugPrint('[OfflineQueue] sale $clientId synced → $reference');
+      final clientId = (item.data is Map) ? item.data['client_id'] as String? : null;
+      final saleJson = responseData['sale'] as Map<String, dynamic>?;
+      if (clientId != null && saleJson != null) {
+        final saleModel = SaleModel.fromJson(saleJson);
+        await LocalDbService.instance.upsertSales([saleModel]);
+        debugPrint('[OfflineQueue] sale $clientId synced → ${saleModel.reference}');
       }
     }
 

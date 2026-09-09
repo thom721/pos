@@ -913,6 +913,106 @@ def _repair_role_uniqueness(active_engine=None) -> None:
             _log.warning("roles: ajout de uq_role_tenant_name échoué: %s", exc)
 
 
+def _repair_sale_reference_uniqueness(active_engine=None) -> None:
+    """
+    Migration ponctuelle : Sale déclarait UniqueConstraint("reference",
+    "tenant_id", name="uq_sale_ref_tenant"), mais _sync_schema_from_models()
+    n'ajoute que des colonnes, jamais de contraintes/index — cette contrainte
+    n'a donc jamais été réellement appliquée sur une table sales déjà
+    existante en production (même bug que pos_registers/roles, voir
+    _repair_duplicate_registers / _repair_role_uniqueness ci-dessus).
+
+    Élargie à (reference, tenant_id, warehouse_id) pour accompagner le
+    nouveau numéro de reçu séquentiel PAR DÉPÔT (sale_service.
+    _next_sale_reference, format "VNT-00001") qui remplace l'ancien
+    horodatage ("VNT-<timestamp>") — un tenant multi-dépôts peut avoir une
+    installation locale distincte par dépôt, chacune génère alors ses
+    propres numéros offline avant synchro ; sans cette contrainte réelle en
+    base, un conflit entre deux ventes ne serait jamais détecté, seulement
+    évité dans l'usage normal par le calcul côté application.
+
+    Renomme (append "-DUPn", jamais destructif — la vente elle-même,
+    montants et articles compris, n'est jamais touchée) les doublons
+    préexistants avant d'ajouter la contrainte, puis bascule
+    uq_sale_ref_tenant → uq_sale_ref_tenant_warehouse. Idempotente, MySQL
+    uniquement (SQLite est toujours mono-tenant en pratique), s'exécute à
+    chaque démarrage.
+    """
+    from sqlalchemy import text as _text, inspect as _inspect
+
+    import api.database as _db_mod
+    _eng = active_engine or _db_mod.engine
+    if _eng.dialect.name != "mysql":
+        return
+
+    try:
+        inspector = _inspect(_eng)
+        if "sales" not in inspector.get_table_names():
+            return
+        indexes = inspector.get_indexes("sales")
+    except Exception as exc:
+        _log.warning("sales-reference: impossible d'inspecter le schéma: %s", exc)
+        return
+
+    has_old_unique = any(idx["name"] == "uq_sale_ref_tenant" for idx in indexes)
+    has_new_unique = any(idx["name"] == "uq_sale_ref_tenant_warehouse" for idx in indexes)
+    if not has_old_unique and has_new_unique:
+        return  # déjà migré
+
+    with _eng.connect() as conn:
+        try:
+            dupes = conn.execute(_text(
+                "SELECT reference, tenant_id, warehouse_id, COUNT(*) AS n "
+                "FROM sales "
+                "GROUP BY reference, tenant_id, warehouse_id HAVING COUNT(*) > 1"
+            )).fetchall()
+        except Exception as exc:
+            _log.warning("sales-reference: vérification des doublons impossible: %s", exc)
+            dupes = []
+
+        for reference, tenant_id, warehouse_id, _n in dupes:
+            try:
+                rows = conn.execute(_text(
+                    "SELECT id FROM sales "
+                    "WHERE reference = :ref AND tenant_id <=> :tid AND warehouse_id <=> :wid "
+                    "ORDER BY created_at"
+                ), {"ref": reference, "tid": tenant_id, "wid": warehouse_id}).fetchall()
+                for dup_idx, (sid,) in enumerate(rows[1:], start=1):
+                    new_ref = f"{reference}-DUP{dup_idx}"
+                    conn.execute(_text(
+                        "UPDATE sales SET reference = :new_ref WHERE id = :sid"
+                    ), {"new_ref": new_ref, "sid": sid})
+                conn.commit()
+                _log.warning(
+                    "sales-reference: doublon '%s' (tenant=%s, dépôt=%s) — %d ligne(s) renommée(s)",
+                    reference, tenant_id, warehouse_id, len(rows) - 1,
+                )
+            except Exception as exc:
+                conn.rollback()
+                _log.warning("sales-reference: correction du doublon '%s' échouée: %s", reference, exc)
+
+        try:
+            if has_old_unique:
+                conn.execute(_text("ALTER TABLE `sales` DROP INDEX `uq_sale_ref_tenant`"))
+                conn.commit()
+                _log.info("sales-reference: ancienne contrainte uq_sale_ref_tenant supprimée")
+        except Exception as exc:
+            conn.rollback()
+            _log.warning("sales-reference: suppression de uq_sale_ref_tenant échouée: %s", exc)
+
+        try:
+            if not has_new_unique:
+                conn.execute(_text(
+                    "ALTER TABLE `sales` "
+                    "ADD UNIQUE KEY `uq_sale_ref_tenant_warehouse` (`reference`, `tenant_id`, `warehouse_id`)"
+                ))
+                conn.commit()
+                _log.info("sales-reference: contrainte uq_sale_ref_tenant_warehouse ajoutée")
+        except Exception as exc:
+            conn.rollback()
+            _log.warning("sales-reference: ajout de uq_sale_ref_tenant_warehouse échoué (nouveaux doublons ?): %s", exc)
+
+
 def _owning_tenants_for_role(role_name: str, all_users: list[tuple]) -> list[str]:
     """Tenants distincts (triés) dont au moins un utilisateur porte
     `role_name` dans User.roles (JSON). Extrait de _backfill_custom_role_
@@ -1649,6 +1749,10 @@ def on_startup():
         # leurs codes d'installation existants — l'entrepôt n'est pas un
         # poste de vente installable (one-shot, voir docstring de la fonction)
         _repair_entrepot_is_claimed(_active_engine)
+        # 2m. Bascule la contrainte unique sales (reference, tenant_id) vers
+        # (reference, tenant_id, warehouse_id) — accompagne le nouveau
+        # numéro de reçu séquentiel par dépôt (one-shot, MySQL uniquement)
+        _repair_sale_reference_uniqueness(_active_engine)
     else:
         _log.info("DB lecture seule — create_all / migrations ignorés.")
 
