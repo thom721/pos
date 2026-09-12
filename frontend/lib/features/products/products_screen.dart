@@ -99,6 +99,16 @@ class _ProductsBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // La page revient à 1 dès que le résultat filtré change de forme —
+    // sinon on peut se retrouver bloqué sur une page 3 qui n'existe plus
+    // pour la nouvelle recherche/le nouveau dépôt.
+    ref.listen<String>(productSearchProvider, (prev, next) {
+      if (prev != next) ref.read(productsPageProvider.notifier).state = 1;
+    });
+    ref.listen<WarehouseModel?>(activeWarehouseProvider, (prev, next) {
+      if (prev?.id != next?.id) ref.read(productsPageProvider.notifier).state = 1;
+    });
+
     final productsAsync = ref.watch(productsProvider);
 
     return productsAsync.when(
@@ -115,6 +125,15 @@ class _ProductsBody extends ConsumerWidget {
         }
 
         if (products.data.isEmpty) {
+          // Page au-delà de la dernière (ex. suppression du dernier produit
+          // d'une page) — revenir automatiquement en arrière plutôt que
+          // d'afficher un "aucun produit trouvé" trompeur.
+          if (products.meta.page > 1) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              ref.read(productsPageProvider.notifier).state = products.meta.page - 1;
+            });
+            return const Center(child: CircularProgressIndicator());
+          }
           if (!isWide) {
             return RefreshIndicator(
               onRefresh: onRefresh,
@@ -136,23 +155,83 @@ class _ProductsBody extends ConsumerWidget {
               child: Text('Aucun produit trouvé',
                   style: TextStyle(color: AppColors.textSecondary)));
         }
-        if (isWide) return _ProductTable(products: products.data);
-        return RefreshIndicator(
-          onRefresh: onRefresh,
-          child: ListView.separated(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            itemCount: products.data.length,
-            separatorBuilder: (ctx, i) => const SizedBox(height: 8),
-            itemBuilder: (ctx, i) =>
-                _ProductCard(product: products.data[i]),
-          ),
+        if (isWide) {
+          return Column(
+            children: [
+              Expanded(child: _ProductTable(products: products.data)),
+              _PaginationBar(meta: products.meta),
+            ],
+          );
+        }
+        return Column(
+          children: [
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: onRefresh,
+                child: ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  itemCount: products.data.length,
+                  separatorBuilder: (ctx, i) => const SizedBox(height: 8),
+                  itemBuilder: (ctx, i) =>
+                      _ProductCard(product: products.data[i]),
+                ),
+              ),
+            ),
+            _PaginationBar(meta: products.meta),
+          ],
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(
           child: Text('Erreur: $e',
               style: const TextStyle(color: AppColors.error))),
+    );
+  }
+}
+
+class _PaginationBar extends ConsumerWidget {
+  final PaginationMeta meta;
+  const _PaginationBar({required this.meta});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (meta.pages <= 1) return const SizedBox.shrink();
+    final page = meta.page;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.divider)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('${meta.total} produit${meta.total > 1 ? 's' : ''}',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left_rounded),
+                tooltip: 'Page précédente',
+                onPressed: page > 1
+                    ? () => ref.read(productsPageProvider.notifier).state = page - 1
+                    : null,
+              ),
+              Text('Page $page / ${meta.pages}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              IconButton(
+                icon: const Icon(Icons.chevron_right_rounded),
+                tooltip: 'Page suivante',
+                onPressed: page < meta.pages
+                    ? () => ref.read(productsPageProvider.notifier).state = page + 1
+                    : null,
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

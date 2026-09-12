@@ -9,14 +9,23 @@ final productRepositoryProvider = Provider((ref) => ProductRepository());
 
 final productSearchProvider = StateProvider<String>((ref) => '');
 
+/// Page courante de la liste "Produits" — remise à 1 par _ProductsBody dès
+/// que la recherche ou le dépôt actif change (voir ref.listen).
+final productsPageProvider = StateProvider.autoDispose<int>((ref) => 1);
+
+const productsPageSize = 20;
+
 final productsProvider =
     FutureProvider.autoDispose<PaginatedResponse<ProductModel>>((ref) async {
   ref.watch(syncEpochProvider); // rebuild après chaque sync SQLite
   final search = ref.watch(productSearchProvider);
   // Le stock affiché reflète le dépôt actif ("Tous les business" = global).
   final warehouseId = ref.watch(activeWarehouseProvider)?.id;
+  final page = ref.watch(productsPageProvider);
   final repo = ref.read(productRepositoryProvider);
   return repo.getProducts(
+    page: page,
+    limit: productsPageSize,
     search: search.isEmpty ? null : search,
     warehouseId: warehouseId,
   );
