@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
@@ -131,6 +132,8 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
 
   Future<void> _confirmHotelCheckIn() async {
     final table = _table!;
+    final settings = ref.read(settingsProvider);
+    final sym = settings.currencySymbol.trim();
     final today = haitiNow();
     DateTime checkOut = today.add(const Duration(days: 1));
     final guestCtrl = TextEditingController();
@@ -228,18 +231,20 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
                       const SizedBox(height: 6),
                       Wrap(spacing: 8, children: [
                         if (table.price > 0) ChoiceChip(
-                          label: Text('${NumberFormat('#,##0').format(table.price)} HTG/nuit'),
+                          label: Text(
+                              '${NumberFormat('#,##0').format(toDisplayAmount(table.price, settings))} $sym/nuit'),
                           selected: rateType == 'nuit',
                           onSelected: (v) { if (v) setInner(() => rateType = 'nuit'); },
                         ),
                         if (table.pricePerDay > 0) ChoiceChip(
-                          label: Text('${NumberFormat('#,##0').format(table.pricePerDay)} HTG/jour'),
+                          label: Text(
+                              '${NumberFormat('#,##0').format(toDisplayAmount(table.pricePerDay, settings))} $sym/jour'),
                           selected: rateType == 'jour',
                           onSelected: (v) { if (v) setInner(() => rateType = 'jour'); },
                         ),
                         if (table.pricePerMoment > 0) ChoiceChip(
                           label: Text(
-                              '${NumberFormat('#,##0').format(table.pricePerMoment)} HTG/moment'),
+                              '${NumberFormat('#,##0').format(toDisplayAmount(table.pricePerMoment, settings))} $sym/moment'),
                           selected: rateType == 'moment',
                           onSelected: (v) { if (v) setInner(() => rateType = 'moment'); },
                         ),
@@ -258,11 +263,11 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '$nights $rateType(s) × ${NumberFormat('#,##0').format(rate)} HTG',
+                            '$nights $rateType(s) × ${NumberFormat('#,##0').format(toDisplayAmount(rate, settings))} $sym',
                             style: const TextStyle(color: AppColors.textSecondary),
                           ),
                           Text(
-                            '${NumberFormat('#,##0.00').format(total)} HTG',
+                            '${NumberFormat('#,##0.00').format(toDisplayAmount(total, settings))} $sym',
                             style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: AppColors.primary,
@@ -326,7 +331,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
       final r = result['rate'] as double;
       final rt = result['rate_type'] as String;
       final label =
-          'Séjour chambre — $n $rt(s) × ${NumberFormat('#,##0.00').format(r)} HTG';
+          'Séjour chambre — $n $rt(s) × ${NumberFormat('#,##0.00').format(toDisplayAmount(r, settings))} $sym';
       _order = await _repo.addItem(_order!.id,
           label: label, quantity: n.toDouble(), unitPrice: r);
     } catch (e) {
@@ -410,6 +415,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
   }
 
   Future<Map<String, dynamic>?> _pickVariant(MenuItemModel item) {
+    final settings = ref.read(settingsProvider);
     final rows =
         item.variantRows.where((r) => r['available'] as bool? ?? true).toList();
     return showDialog<Map<String, dynamic>>(
@@ -432,7 +438,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
                 title: Text(name,
                     style: const TextStyle(fontWeight: FontWeight.w500)),
                 trailing: Text(
-                  '${NumberFormat('#,##0.00').format(finalPrice)} HTG',
+                  formatMoney(finalPrice, settings),
                   style: const TextStyle(
                       color: AppColors.primary, fontWeight: FontWeight.bold),
                 ),
@@ -502,7 +508,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) =>
-          _CheckoutDialog(total: total, symbol: symbol, covers: _order!.covers),
+          _CheckoutDialog(total: total, symbol: symbol, covers: _order!.covers, settings: settings),
     );
     if (result == null) return;
 
@@ -542,14 +548,14 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
                 const SizedBox(height: 16),
                 if (tableName.isNotEmpty) _receiptRow('Table', tableName),
                 _receiptRow('Couverts', '$covers'),
-                _receiptRow('Sous-total', '$symbol${_fmt.format(subtotal)}'),
+                _receiptRow('Sous-total', '$symbol${_fmt.format(toDisplayAmount(subtotal, settings))}'),
                 if ((result['discount'] as double) > 0)
                   _receiptRow('Remise',
-                      '-$symbol${_fmt.format(result['discount'] as double)}'),
+                      '-$symbol${_fmt.format(toDisplayAmount(result['discount'] as double, settings))}'),
                 if (tip > 0)
-                  _receiptRow('Pourboire', '+$symbol${_fmt.format(tip)}'),
+                  _receiptRow('Pourboire', '+$symbol${_fmt.format(toDisplayAmount(tip, settings))}'),
                 const Divider(),
-                _receiptRow('Total', '$symbol${_fmt.format(total)}',
+                _receiptRow('Total', '$symbol${_fmt.format(toDisplayAmount(total, settings))}',
                     bold: true),
                 if (change > 0) ...[
                   const SizedBox(height: 8),
@@ -564,7 +570,7 @@ class _TableOrderScreenState extends ConsumerState<TableOrderScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Monnaie à rendre :'),
-                        Text('$symbol${_fmt.format(change)}',
+                        Text('$symbol${_fmt.format(toDisplayAmount(change, settings))}',
                             style: const TextStyle(
                                 color: AppColors.success,
                                 fontWeight: FontWeight.bold)),
@@ -963,7 +969,7 @@ class _ProductSearch extends StatelessWidget {
   }
 }
 
-class _OrderItemTile extends StatelessWidget {
+class _OrderItemTile extends ConsumerWidget {
   final RestaurantOrderItemModel item;
   final String symbol;
   final VoidCallback onRemove;
@@ -978,7 +984,8 @@ class _OrderItemTile extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -1038,7 +1045,7 @@ class _OrderItemTile extends StatelessWidget {
               ],
             ),
           ),
-          Text('$symbol${NumberFormat('#,##0.00').format(item.subtotal)}',
+          Text(formatMoney(item.subtotal, settings),
               style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(width: 4),
           IconButton(
@@ -1054,7 +1061,7 @@ class _OrderItemTile extends StatelessWidget {
   }
 }
 
-class _BottomBar extends StatelessWidget {
+class _BottomBar extends ConsumerWidget {
   final RestaurantOrderModel order;
   final String symbol;
   final bool submitting;
@@ -1072,7 +1079,8 @@ class _BottomBar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1095,7 +1103,7 @@ class _BottomBar extends StatelessWidget {
                   style: TextStyle(
                       fontWeight: FontWeight.w600, fontSize: 16)),
               Text(
-                '$symbol${NumberFormat('#,##0.00').format(order.total)}',
+                formatMoney(order.total, settings),
                 style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 20,
@@ -1144,11 +1152,13 @@ class _BottomBar extends StatelessWidget {
 }
 
 class _CheckoutDialog extends StatefulWidget {
-  final double total;
+  final double total; // HTG (source de vérité)
   final String symbol;
   final int covers;
+  final AppSettings settings;
   const _CheckoutDialog(
-      {required this.total, required this.symbol, required this.covers});
+      {required this.total, required this.symbol, required this.covers,
+       required this.settings});
 
   @override
   State<_CheckoutDialog> createState() => _CheckoutDialogState();
@@ -1160,17 +1170,21 @@ class _CheckoutDialogState extends State<_CheckoutDialog> {
   final _tipCtrl = TextEditingController(text: '0');
   String _method = 'CASH';
 
+  // Tout ce qui suit (saisie + affichage) est en devise d'affichage — la
+  // conversion vers/depuis HTG ne se fait qu'aux deux frontières : ici
+  // (widget.total, HTG entrant) et à la confirmation (HTG sortant).
+  double get _displayTotal => toDisplayAmount(widget.total, widget.settings);
   double get _discount => double.tryParse(_discountCtrl.text) ?? 0.0;
   double get _tip => double.tryParse(_tipCtrl.text) ?? 0.0;
   double get _finalAmount =>
-      (widget.total - _discount + _tip).clamp(0, double.infinity);
+      (_displayTotal - _discount + _tip).clamp(0, double.infinity);
   double get _paid => double.tryParse(_paidCtrl.text) ?? 0.0;
   double get _change => (_paid - _finalAmount).clamp(0, double.infinity);
 
   @override
   void initState() {
     super.initState();
-    _paidCtrl.text = widget.total.toStringAsFixed(2);
+    _paidCtrl.text = _displayTotal.toStringAsFixed(2);
   }
 
   @override
@@ -1295,10 +1309,10 @@ class _CheckoutDialogState extends State<_CheckoutDialog> {
         FilledButton(
           onPressed: _paid >= _finalAmount
               ? () => Navigator.pop(context, {
-                    'paid': _paid,
+                    'paid': toHtgAmount(_paid, widget.settings),
                     'method': _method,
-                    'discount': _discount,
-                    'tip': _tip,
+                    'discount': toHtgAmount(_discount, widget.settings),
+                    'tip': toHtgAmount(_tip, widget.settings),
                   })
               : null,
           child: const Text('Confirmer'),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
@@ -8,13 +9,12 @@ import 'package:pos_connect/data/models/purchase_model.dart';
 import 'package:pos_connect/data/models/supplier_model.dart';
 import 'package:pos_connect/data/repositories/purchase_repository.dart';
 import 'package:pos_connect/providers/purchase_provider.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/supplier_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/shared/widgets/status_badge.dart';
 
-final _fmt =
-    NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
 final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
 
 class PurchasesScreen extends ConsumerStatefulWidget {
@@ -166,13 +166,14 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
   }
 }
 
-class _PurchaseCard extends StatelessWidget {
+class _PurchaseCard extends ConsumerWidget {
   final PurchaseModel purchase;
 
   const _PurchaseCard({required this.purchase});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     return Card(
       child: ExpansionTile(
         tilePadding:
@@ -200,7 +201,7 @@ class _PurchaseCard extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text(_fmt.format(purchase.totalAmount),
+            Text(formatMoney(purchase.totalAmount, settings),
                 style: const TextStyle(
                     fontWeight: FontWeight.w700, fontSize: 14)),
             const SizedBox(height: 4),
@@ -228,12 +229,12 @@ class _PurchaseCard extends StatelessWidget {
                           style: const TextStyle(fontSize: 13)),
                     ),
                     Text(
-                      '${item.orderedQty.toStringAsFixed(0)} × ${_fmt.format(item.unitPrice)}',
+                      '${item.orderedQty.toStringAsFixed(0)} × ${formatMoney(item.unitPrice, settings)}',
                       style: const TextStyle(
                           color: AppColors.textSecondary, fontSize: 12),
                     ),
                     const SizedBox(width: 12),
-                    Text(_fmt.format(item.subtotal),
+                    Text(formatMoney(item.subtotal, settings),
                         style: const TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 13)),
                   ],
@@ -262,10 +263,10 @@ class _PurchaseCard extends StatelessWidget {
                 const SizedBox.shrink(),
               Row(
                 children: [
-                  Text('Total: ${_fmt.format(purchase.totalAmount)}  ',
+                  Text('Total: ${formatMoney(purchase.totalAmount, settings)}  ',
                       style: const TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 13)),
-                  Text('Payé: ${_fmt.format(purchase.paidAmount)}',
+                  Text('Payé: ${formatMoney(purchase.paidAmount, settings)}',
                       style: TextStyle(
                           color: purchase.balance > 0
                               ? AppColors.error
@@ -309,6 +310,7 @@ class _CreatePurchaseDialogState
   Widget build(BuildContext context) {
     final suppliersAsync = ref.watch(suppliersProvider);
     final productsAsync = ref.watch(productsProvider);
+    final settings = ref.watch(settingsProvider);
 
     return AlertDialog(
       title: const Text('Nouvel achat fournisseur'),
@@ -371,7 +373,8 @@ class _CreatePurchaseDialogState
               TextField(
                 controller: _paidCtrl,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Montant versé (HTG)'),
+                decoration: InputDecoration(
+                    labelText: 'Montant versé (${settings.currencySymbol.trim()})'),
               ),
 
               if (_error != null) ...[
@@ -420,7 +423,8 @@ class _CreatePurchaseDialogState
       final warehouseId = ref.read(activeWarehouseProvider)?.id;
       await PurchaseRepository().createPurchase({
         if (_supplier != null) 'supplier_id': _supplier!.id,
-        'paid_amount': double.tryParse(_paidCtrl.text) ?? 0,
+        'paid_amount': toHtgAmount(
+            double.tryParse(_paidCtrl.text) ?? 0, ref.read(settingsProvider)),
         'items': _items,
         if (warehouseId != null) 'warehouse_id': warehouseId,
       });
@@ -435,7 +439,7 @@ class _CreatePurchaseDialogState
   }
 }
 
-class _ItemRow extends StatefulWidget {
+class _ItemRow extends ConsumerStatefulWidget {
   final Map<String, dynamic> item;
   final List products;
   final VoidCallback onRemove;
@@ -449,10 +453,10 @@ class _ItemRow extends StatefulWidget {
   });
 
   @override
-  State<_ItemRow> createState() => _ItemRowState();
+  ConsumerState<_ItemRow> createState() => _ItemRowState();
 }
 
-class _ItemRowState extends State<_ItemRow> {
+class _ItemRowState extends ConsumerState<_ItemRow> {
   late final TextEditingController _qtyCtrl;
   late final TextEditingController _priceCtrl;
 
@@ -462,7 +466,9 @@ class _ItemRowState extends State<_ItemRow> {
     _qtyCtrl = TextEditingController(
         text: widget.item['ordered_qty'].toString());
     _priceCtrl = TextEditingController(
-        text: widget.item['unit_price'].toString());
+        text: toDisplayAmount((widget.item['unit_price'] as num).toDouble(),
+                ref.read(settingsProvider))
+            .toString());
   }
 
   @override
@@ -474,6 +480,7 @@ class _ItemRowState extends State<_ItemRow> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
     final productDropdown = DropdownButtonFormField<String>(
       value: widget.item['product_id'],
       decoration: const InputDecoration(hintText: 'Produit', isDense: true),
@@ -508,10 +515,11 @@ class _ItemRowState extends State<_ItemRow> {
       child: TextField(
         controller: _priceCtrl,
         keyboardType: TextInputType.number,
-        decoration: const InputDecoration(hintText: 'Prix (HTG)', isDense: true),
+        decoration: InputDecoration(
+            hintText: 'Prix (${settings.currencySymbol.trim()})', isDense: true),
         onChanged: (v) {
           final updated = Map<String, dynamic>.from(widget.item);
-          updated['unit_price'] = double.tryParse(v) ?? 0;
+          updated['unit_price'] = toHtgAmount(double.tryParse(v) ?? 0, settings);
           widget.onUpdate(updated);
         },
       ),

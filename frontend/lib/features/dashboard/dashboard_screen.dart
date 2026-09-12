@@ -16,17 +16,17 @@ import 'package:pos_connect/data/models/low_stock_product_model.dart';
 import 'package:pos_connect/providers/entrepot_provider.dart';
 import 'package:pos_connect/providers/permission_provider.dart';
 import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/shared/widgets/stat_card.dart';
 import 'package:pos_connect/shared/widgets/status_badge.dart';
-
-final _fmt = NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final businessType = ref.watch(settingsProvider).businessType;
+    final settings = ref.watch(settingsProvider);
+    final businessType = settings.businessType;
     // Système de Sabotage : pas de ventes/stock/dettes — vue dédiée (clients,
     // dépôts, retraits, solde en circulation).
     if (businessType == 'sabotage') return const _SabotageDashboard();
@@ -144,26 +144,26 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                   StatCard(
                     label: 'Chiffre d\'affaires',
-                    value: _fmt.format(totalRevenue),
+                    value: formatMoney(totalRevenue, settings),
                     icon: Icons.trending_up_rounded,
                     color: AppColors.accent,
                   ),
                   StatCard(
                     label: 'Montant encaissé',
-                    value: _fmt.format(totalPaid),
+                    value: formatMoney(totalPaid, settings),
                     icon: Icons.account_balance_wallet_rounded,
                     color: AppColors.info,
                   ),
                   StatCard(
                     label: 'Solde à recouvrer',
-                    value: _fmt.format((totalRevenue - totalPaid).clamp(0.0, double.infinity)),
+                    value: formatMoney((totalRevenue - totalPaid).clamp(0.0, double.infinity), settings),
                     icon: Icons.warning_amber_rounded,
                     color: AppColors.warning,
                   ),
                   if (totalDiscount > 0)
                     StatCard(
                       label: 'Remises accordées',
-                      value: _fmt.format(totalDiscount),
+                      value: formatMoney(totalDiscount, settings),
                       icon: Icons.local_offer_rounded,
                       color: AppColors.error,
                     ),
@@ -266,7 +266,7 @@ class DashboardScreen extends ConsumerWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Text(_fmt.format(sale.finalAmount),
+                              Text(formatMoney(sale.finalAmount, settings),
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w700, fontSize: 14)),
                               const SizedBox(height: 2),
@@ -357,7 +357,7 @@ class DashboardScreen extends ConsumerWidget {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    Text(_fmt.format(debt.balance),
+                                    Text(formatMoney(debt.balance, settings),
                                         style: const TextStyle(
                                             fontWeight: FontWeight.w700,
                                             fontSize: 14,
@@ -580,6 +580,7 @@ class _SabotageDashboard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final clientsAsync = ref.watch(clientsSabotageProvider);
+    final settings = ref.watch(settingsProvider);
     final pad = context.hPad;
 
     return SingleChildScrollView(
@@ -614,7 +615,7 @@ class _SabotageDashboard extends ConsumerWidget {
                   ),
                   StatCard(
                     label: 'Solde en circulation',
-                    value: _fmt.format(totalBalance),
+                    value: formatMoney(totalBalance, settings),
                     icon: Icons.account_balance_rounded,
                     color: AppColors.accent,
                   ),

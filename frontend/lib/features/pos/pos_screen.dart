@@ -39,9 +39,7 @@ import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/bluetooth_print_service.dart';
 import 'package:pos_connect/services/thermal_printer_service.dart';
 import 'package:pos_connect/shared/widgets/customer_picker_field.dart';
-
-final _fmt =
-    NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
+import 'package:pos_connect/core/currency.dart';
 
 String _fmtQty(double q) =>
     q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
@@ -235,12 +233,13 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
   }
 }
 
-class _ReceiptPreview extends StatelessWidget {
+class _ReceiptPreview extends ConsumerWidget {
   final SaleModel sale;
   const _ReceiptPreview({required this.sale});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     final dateFmt = DateFormat('dd/MM/yyyy à HH:mm');
     final lbl = TextStyle(fontSize: 12, color: AppColors.textSecondary);
     final val = const TextStyle(fontSize: 12, fontWeight: FontWeight.w500);
@@ -271,12 +270,12 @@ class _ReceiptPreview extends StatelessWidget {
                           style: const TextStyle(fontSize: 12)),
                     ),
                     Text(
-                      '${_fmtQty(item.quantity)} × ${_fmt.format(item.unitPrice)}',
+                      '${_fmtQty(item.quantity)} × ${formatMoney(item.unitPrice, settings)}',
                       style: const TextStyle(
                           fontSize: 11, color: AppColors.textSecondary),
                     ),
                     const SizedBox(width: 8),
-                    Text(_fmt.format(item.subtotal),
+                    Text(formatMoney(item.subtotal, settings),
                         style: const TextStyle(
                             fontSize: 12, fontWeight: FontWeight.w600)),
                   ],
@@ -287,10 +286,10 @@ class _ReceiptPreview extends StatelessWidget {
               sale.totalCatalogItemDiscount > 0 ||
               sale.discount > 0) ...[
             _total('Sous-total',
-                _fmt.format(sale.totalAmount + sale.totalItemsDiscount),
+                formatMoney(sale.totalAmount + sale.totalItemsDiscount, settings),
                 lbl, val),
             if (sale.totalItemsDiscount > 0)
-              _total('Remises articles', '-${_fmt.format(sale.totalItemsDiscount)}',
+              _total('Remises articles', '-${formatMoney(sale.totalItemsDiscount, settings)}',
                   lbl,
                   const TextStyle(
                       fontSize: 12,
@@ -298,7 +297,7 @@ class _ReceiptPreview extends StatelessWidget {
                       fontWeight: FontWeight.w500)),
             if (sale.totalCatalogItemDiscount > 0)
               _total('Rabais articles (catalogue)',
-                  '-${_fmt.format(sale.totalCatalogItemDiscount)}', lbl,
+                  '-${formatMoney(sale.totalCatalogItemDiscount, settings)}', lbl,
                   const TextStyle(
                       fontSize: 12,
                       color: AppColors.success,
@@ -308,14 +307,14 @@ class _ReceiptPreview extends StatelessWidget {
                   sale.discountName != null
                       ? 'Remise caisse (${sale.discountName})'
                       : 'Remise caisse',
-                  '-${_fmt.format(sale.discount)}',
+                  '-${formatMoney(sale.discount, settings)}',
                   lbl,
                   const TextStyle(
                       fontSize: 12,
                       color: AppColors.error,
                       fontWeight: FontWeight.w500)),
           ],
-          _total('Total', _fmt.format(sale.finalAmount), lbl, big),
+          _total('Total', formatMoney(sale.finalAmount, settings), lbl, big),
           const SizedBox(height: 4),
           ...() {
             // change_due (create_sale) plafonne paidAmount au montant dû et
@@ -328,11 +327,11 @@ class _ReceiptPreview extends StatelessWidget {
                 ? sale.paidAmount + sale.changeDue
                 : sale.paidAmount;
             return [
-              _total('Montant reçu', _fmt.format(tendered), lbl, val),
+              _total('Montant reçu', formatMoney(tendered, settings), lbl, val),
               if (sale.balance > 0.001)
                 _total(
                   'Reste à payer',
-                  _fmt.format(sale.balance),
+                  formatMoney(sale.balance, settings),
                   lbl,
                   const TextStyle(
                     fontSize: 12,
@@ -343,7 +342,7 @@ class _ReceiptPreview extends StatelessWidget {
               if (change > 0.001)
                 _total(
                   'Monnaie',
-                  _fmt.format(change),
+                  formatMoney(change, settings),
                   lbl,
                   const TextStyle(
                     fontSize: 12,
@@ -354,7 +353,7 @@ class _ReceiptPreview extends StatelessWidget {
               if (sale.loyaltyRedeemed > 0.001)
                 _total(
                   'Fidélité utilisée',
-                  '-${_fmt.format(sale.loyaltyRedeemed)}',
+                  '-${formatMoney(sale.loyaltyRedeemed, settings)}',
                   lbl,
                   const TextStyle(
                     fontSize: 12,
@@ -365,7 +364,7 @@ class _ReceiptPreview extends StatelessWidget {
               if (sale.loyaltyEarned > 0.001)
                 _total(
                   'Fidélité gagnée',
-                  '+${_fmt.format(sale.loyaltyEarned)}',
+                  '+${formatMoney(sale.loyaltyEarned, settings)}',
                   lbl,
                   const TextStyle(
                     fontSize: 12,
@@ -376,7 +375,7 @@ class _ReceiptPreview extends StatelessWidget {
               if ((sale.customerLoyaltyBalance ?? 0) > 0.001)
                 _total(
                   'Solde fidélité',
-                  _fmt.format(sale.customerLoyaltyBalance!),
+                  formatMoney(sale.customerLoyaltyBalance!, settings),
                   lbl,
                   const TextStyle(
                     fontSize: 12,
@@ -495,6 +494,7 @@ class _DraftsBottomSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final drafts = ref.watch(draftsProvider);
+    final settings = ref.watch(settingsProvider);
     final timeFmt = DateFormat('HH:mm');
 
     return Column(
@@ -556,7 +556,7 @@ class _DraftsBottomSheet extends ConsumerWidget {
                   title: Text(draft.label,
                       style: const TextStyle(fontSize: 13)),
                   subtitle: Text(
-                    '${timeFmt.format(draft.savedAt)} — ${_fmt.format(draft.total)}',
+                    '${timeFmt.format(draft.savedAt)} — ${formatMoney(draft.total, settings)}',
                     style: const TextStyle(fontSize: 11),
                   ),
                   trailing: Row(
@@ -890,6 +890,7 @@ class _ProductCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     final inCart = ref
         .watch(posProvider)
         .items
@@ -984,7 +985,7 @@ class _ProductCard extends ConsumerWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _fmt.format(product.salePrice),
+                    formatMoney(product.salePrice, settings),
                     style: const TextStyle(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w700,
@@ -1348,7 +1349,8 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   }
 
   void _syncFields(PosState pos) {
-    final disc = pos.discount > 0 ? pos.discount.toStringAsFixed(2) : '0';
+    final displayDiscount = toDisplayAmount(pos.discount, ref.read(settingsProvider));
+    final disc = displayDiscount > 0 ? displayDiscount.toStringAsFixed(2) : '0';
     if (_discountCtrl.text != disc) _discountCtrl.text = disc;
     if (_paidCtrl.text.isNotEmpty) _paidCtrl.text = '';
   }
@@ -1470,6 +1472,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   Widget _buildCart(BuildContext context, PosState pos, PosNotifier notifier,
       List<DraftCart> drafts, bool isEdit, double paymentMaxH, bool canDiscount,
       List<DiscountModel> discounts) {
+    final settings = ref.watch(settingsProvider);
     return Column(
       children: [
         // ── Auto-print banner ─────────────────────────────────────────
@@ -1542,8 +1545,8 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                 Expanded(
                   child: Text(
                     _offlineSession
-                        ? 'Hors-ligne — Fond: ${_fmt.format((_session!['opening_balance'] as num?)?.toDouble() ?? 0)}  (sync auto au retour réseau)'
-                        : 'Session ouverte — Fond: ${_fmt.format((_session!['opening_balance'] as num?)?.toDouble() ?? 0)}',
+                        ? 'Hors-ligne — Fond: ${formatMoney((_session!['opening_balance'] as num?)?.toDouble() ?? 0, settings)}  (sync auto au retour réseau)'
+                        : 'Session ouverte — Fond: ${formatMoney((_session!['opening_balance'] as num?)?.toDouble() ?? 0, settings)}',
                     style: TextStyle(
                         color: _offlineSession
                             ? AppColors.warning
@@ -1789,7 +1792,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '${pos.selectedDiscount!.name} (-${_fmt.format(pos.receiptDiscountAmount)})',
+                          '${pos.selectedDiscount!.name} (-${formatMoney(pos.receiptDiscountAmount, settings)})',
                           style: const TextStyle(fontSize: 13, color: AppColors.success, fontWeight: FontWeight.w600),
                         ),
                       ),
@@ -1806,8 +1809,8 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                     Expanded(
                       child: Row(
                         children: [
-                          const Text('Remise caisse (HTG)',
-                              style: TextStyle(
+                          Text('Remise caisse (${settings.currencySymbol.trim()})',
+                              style: const TextStyle(
                                   color: AppColors.textSecondary, fontSize: 13)),
                           if (!canDiscount && !_discountUnlocked) ...[
                             const SizedBox(width: 6),
@@ -1827,6 +1830,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                                 context,
                                 discounts: discounts,
                                 forItem: false,
+                                settings: settings,
                               );
                               if (result is DiscountModel) {
                                 notifier.applyReceiptDiscount(result);
@@ -1853,8 +1857,8 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                               horizontal: 10, vertical: 8),
                           isDense: true,
                         ),
-                        onChanged: (v) =>
-                            notifier.setDiscount(double.tryParse(v) ?? 0),
+                        onChanged: (v) => notifier.setDiscount(
+                            toHtgAmount(double.tryParse(v) ?? 0, settings)),
                       ),
                     ),
                   ],
@@ -1862,36 +1866,36 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
               const SizedBox(height: 8),
 
               // Totals
-              _TotalRow('Sous-total', _fmt.format(pos.subtotal)),
+              _TotalRow('Sous-total', formatMoney(pos.subtotal, settings)),
               if (pos.itemsDiscount > 0)
                 _TotalRow(
                   'Remises articles (prix)',
-                  '-${_fmt.format(pos.itemsDiscount)}',
+                  '-${formatMoney(pos.itemsDiscount, settings)}',
                   color: AppColors.warning,
                 ),
               if (pos.catalogItemDiscountTotal > 0)
                 _TotalRow(
                   'Rabais articles (catalogue)',
-                  '-${_fmt.format(pos.catalogItemDiscountTotal)}',
+                  '-${formatMoney(pos.catalogItemDiscountTotal, settings)}',
                   color: AppColors.success,
                 ),
               if (pos.receiptDiscountAmount > 0)
                 _TotalRow(
                   'Remise caisse',
-                  '-${_fmt.format(pos.receiptDiscountAmount)}',
+                  '-${formatMoney(pos.receiptDiscountAmount, settings)}',
                   color: AppColors.error,
                 ),
               const Divider(height: 16),
-              _TotalRow('Total', _fmt.format(pos.total), bold: true),
+              _TotalRow('Total', formatMoney(pos.total, settings), bold: true),
               if (pos.loyaltyRedeemed > 0) ...[
                 _TotalRow(
                   'Fidélité utilisée',
-                  '-${_fmt.format(pos.loyaltyRedeemed)}',
+                  '-${formatMoney(pos.loyaltyRedeemed, settings)}',
                   color: AppColors.primary,
                 ),
                 _TotalRow(
                   'Net à payer',
-                  _fmt.format(pos.total - pos.loyaltyRedeemed),
+                  formatMoney(pos.total - pos.loyaltyRedeemed, settings),
                   bold: true,
                 ),
               ],
@@ -1969,7 +1973,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                 // Show original paid (non-editable)
                 _TotalRow(
                   'Déjà payé',
-                  _fmt.format(pos.editingSale!.paidAmount),
+                  formatMoney(pos.editingSale!.paidAmount, settings),
                   color: AppColors.accent,
                 ),
                 const SizedBox(height: 8),
@@ -1979,14 +1983,14 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                   if (diff < 0) {
                     return _TotalRow(
                       'Monnaie à rendre',
-                      _fmt.format(diff.abs()),
+                      formatMoney(diff.abs(), settings),
                       color: AppColors.accent,
                       bold: true,
                     );
                   } else if (diff > 0) {
                     return _TotalRow(
                       'Supplément dû',
-                      _fmt.format(diff),
+                      formatMoney(diff, settings),
                       color: AppColors.warning,
                       bold: true,
                     );
@@ -1998,9 +2002,9 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                 if (pos.total > pos.editingSale!.paidAmount) ...[
                   Row(
                     children: [
-                      const Expanded(
-                        child: Text('Paiement reçu (HTG)',
-                            style: TextStyle(
+                      Expanded(
+                        child: Text('Paiement reçu (${settings.currencySymbol.trim()})',
+                            style: const TextStyle(
                                 color: AppColors.textSecondary,
                                 fontSize: 13)),
                       ),
@@ -2016,8 +2020,8 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                                 horizontal: 10, vertical: 8),
                             isDense: true,
                           ),
-                          onChanged: (v) =>
-                              notifier.setPaidAmount(double.tryParse(v) ?? 0),
+                          onChanged: (v) => notifier.setPaidAmount(
+                              toHtgAmount(double.tryParse(v) ?? 0, settings)),
                         ),
                       ),
                     ],
@@ -2029,8 +2033,8 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                       onPressed: () {
                         final diff = pos.total - pos.editingSale!.paidAmount;
                         notifier.setPaidAmount(diff > 0 ? diff : 0);
-                        _paidCtrl.text =
-                            (diff > 0 ? diff : 0).toStringAsFixed(2);
+                        _paidCtrl.text = toDisplayAmount(diff > 0 ? diff : 0, settings)
+                            .toStringAsFixed(2);
                       },
                       style: TextButton.styleFrom(
                           padding: EdgeInsets.zero,
@@ -2046,14 +2050,14 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                     if (credit > 0.005) {
                       return _TotalRow(
                         'Crédit (solde restant)',
-                        _fmt.format(credit),
+                        formatMoney(credit, settings),
                         color: AppColors.error,
                       );
                     }
                     if (pos.paidAmount > diff + 0.005) {
                       return _TotalRow(
                         'Monnaie à rendre',
-                        _fmt.format(pos.paidAmount - diff),
+                        formatMoney(pos.paidAmount - diff, settings),
                         color: AppColors.accent,
                       );
                     }
@@ -2064,9 +2068,9 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                 // ── New sale payment section ───────────────────────────
                 Row(
                   children: [
-                    const Expanded(
-                      child: Text('Montant reçu (HTG)',
-                          style: TextStyle(
+                    Expanded(
+                      child: Text('Montant reçu (${settings.currencySymbol.trim()})',
+                          style: const TextStyle(
                               color: AppColors.textSecondary, fontSize: 13)),
                     ),
                     SizedBox(
@@ -2081,8 +2085,8 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                               horizontal: 10, vertical: 8),
                           isDense: true,
                         ),
-                        onChanged: (v) =>
-                            notifier.setPaidAmount(double.tryParse(v) ?? 0),
+                        onChanged: (v) => notifier.setPaidAmount(
+                            toHtgAmount(double.tryParse(v) ?? 0, settings)),
                       ),
                     ),
                   ],
@@ -2093,8 +2097,9 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                   child: TextButton(
                     onPressed: () {
                       notifier.payFull();
-                      _paidCtrl.text =
-                          (pos.total - pos.loyaltyRedeemed).toStringAsFixed(2);
+                      _paidCtrl.text = toDisplayAmount(
+                              pos.total - pos.loyaltyRedeemed, settings)
+                          .toStringAsFixed(2);
                     },
                     style: TextButton.styleFrom(
                         padding: EdgeInsets.zero,
@@ -2106,7 +2111,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                 if (pos.paidAmount > 0)
                   _TotalRow(
                     pos.balance > 0 ? 'Reste à payer' : 'Monnaie',
-                    _fmt.format(pos.balance.abs()),
+                    formatMoney(pos.balance.abs(), settings),
                     color: pos.balance > 0
                         ? AppColors.error
                         : AppColors.accent,
@@ -2302,7 +2307,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                       ? 'Traitement...'
                       : isEdit
                           ? 'Modifier la vente'
-                          : 'Encaisser ${_fmt.format(pos.paidAmount)}'),
+                          : 'Encaisser ${formatMoney(pos.paidAmount, settings)}'),
                 ),
               ),
             ],
@@ -2324,6 +2329,7 @@ Future<Object?> _selectDiscount(
   BuildContext context, {
   required List<DiscountModel> discounts,
   required bool forItem,
+  required AppSettings settings,
   DiscountModel? current,
 }) {
   // Les rabais liés à des produits précis ne sont jamais sélectionnables ici —
@@ -2377,7 +2383,7 @@ Future<Object?> _selectDiscount(
                   Text(
                     d.isPercentage
                         ? '${d.value.toStringAsFixed(0)}%'
-                        : '${d.value.toStringAsFixed(0)} HTG',
+                        : formatMoney(d.value, settings),
                     style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                   ),
                 ],
@@ -2388,7 +2394,7 @@ Future<Object?> _selectDiscount(
   );
 }
 
-class _CartItemTile extends StatelessWidget {
+class _CartItemTile extends ConsumerWidget {
   final CartItem item;
   final PosNotifier notifier;
   final List<DiscountModel> discounts;
@@ -2415,11 +2421,12 @@ class _CartItemTile extends StatelessWidget {
   bool _linkedConditionMet(DiscountModel d) =>
       d.minQuantity == null || item.quantity >= d.minQuantity!;
 
-  Future<void> _pickDiscount(BuildContext context) async {
+  Future<void> _pickDiscount(BuildContext context, AppSettings settings) async {
     final result = await _selectDiscount(
       context,
       discounts: discounts,
       forItem: true,
+      settings: settings,
       current: item.catalogDiscount,
     );
     if (result == _clearDiscountSentinel) {
@@ -2509,7 +2516,8 @@ class _CartItemTile extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
@@ -2531,7 +2539,7 @@ class _CartItemTile extends StatelessWidget {
                   children: [
                     if (item.isPriceModified) ...[
                       Text(
-                        _fmt.format(item.product.salePrice),
+                        formatMoney(item.product.salePrice, settings),
                         style: const TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 10,
@@ -2541,7 +2549,7 @@ class _CartItemTile extends StatelessWidget {
                       const SizedBox(width: 4),
                     ],
                     Text(
-                      _fmt.format(item.unitPrice),
+                      formatMoney(item.unitPrice, settings),
                       style: TextStyle(
                         color: item.isPriceModified
                             ? AppColors.warning
@@ -2565,7 +2573,7 @@ class _CartItemTile extends StatelessWidget {
                     }
                     final label = linked.isPercentage
                         ? '${linked.value.toStringAsFixed(0)}%'
-                        : '${linked.value.toStringAsFixed(0)} HTG';
+                        : formatMoney(linked.value, settings);
                     return GestureDetector(
                       onTap: () => notifier.applyItemDiscount(
                           item.product.id, applied ? null : linked),
@@ -2578,7 +2586,7 @@ class _CartItemTile extends StatelessWidget {
                           const SizedBox(width: 3),
                           Text(
                             applied
-                                ? '${linked.name} (-${_fmt.format(item.catalogDiscountAmount)})'
+                                ? '${linked.name} (-${formatMoney(item.catalogDiscountAmount, settings)})'
                                 : 'Rabais dispo: -$label',
                             style: TextStyle(
                               fontSize: 10,
@@ -2599,7 +2607,7 @@ class _CartItemTile extends StatelessWidget {
                     );
                   }
                   return GestureDetector(
-                    onTap: () => _pickDiscount(context),
+                    onTap: () => _pickDiscount(context, settings),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -2613,7 +2621,7 @@ class _CartItemTile extends StatelessWidget {
                         const SizedBox(width: 3),
                         Text(
                           item.catalogDiscount != null
-                              ? '${item.catalogDiscount!.name} (-${_fmt.format(item.catalogDiscountAmount)})'
+                              ? '${item.catalogDiscount!.name} (-${formatMoney(item.catalogDiscountAmount, settings)})'
                               : 'Rabais',
                           style: TextStyle(
                             fontSize: 10,
@@ -2634,7 +2642,7 @@ class _CartItemTile extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            _fmt.format(item.subtotal - item.catalogDiscountAmount),
+            formatMoney(item.subtotal - item.catalogDiscountAmount, settings),
             style:
                 const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           ),
@@ -2806,11 +2814,11 @@ class _LoyaltyRedeemRow extends ConsumerWidget {
           controlAffinity: ListTileControlAffinity.leading,
           dense: true,
           title: Text(
-            'Utiliser le solde fidélité (${_fmt.format(balance)} disponible)',
+            'Utiliser le solde fidélité (${formatMoney(balance, settings)} disponible)',
             style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
           ),
           subtitle: isUsed
-              ? Text('${_fmt.format(pos.loyaltyRedeemed)} appliqué sur cette vente',
+              ? Text('${formatMoney(pos.loyaltyRedeemed, settings)} appliqué sur cette vente',
                   style: const TextStyle(fontSize: 11, color: AppColors.primary))
               : null,
         ),
@@ -3110,16 +3118,16 @@ class _SupervisorAuthDialogState extends State<_SupervisorAuthDialog> {
 }
 
 // ─── Close session dialog ─────────────────────────────────────────────────────
-class _CloseSessionDialog extends StatefulWidget {
+class _CloseSessionDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic> session;
   final VoidCallback onClosed;
   const _CloseSessionDialog({required this.session, required this.onClosed});
 
   @override
-  State<_CloseSessionDialog> createState() => _CloseSessionDialogState();
+  ConsumerState<_CloseSessionDialog> createState() => _CloseSessionDialogState();
 }
 
-class _CloseSessionDialogState extends State<_CloseSessionDialog> {
+class _CloseSessionDialogState extends ConsumerState<_CloseSessionDialog> {
   late final TextEditingController _balanceCtrl;
   bool _loading   = false;
   bool _loadingSummary = true;
@@ -3183,7 +3191,8 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
     try {
       final sessionId = widget.session['id'] as String;
       await dio.post('/api/sessions/$sessionId/close', data: {
-        'closing_balance': double.tryParse(_balanceCtrl.text) ?? 0,
+        'closing_balance': toHtgAmount(
+            double.tryParse(_balanceCtrl.text) ?? 0, ref.read(settingsProvider)),
       });
       // Pop BEFORE onClosed: onClosed calls _promptOpenSession which pushes a new
       // dialog; if we pop after, Navigator.pop() removes the wrong (newest) dialog
@@ -3214,20 +3223,21 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
     final openedAt = widget.session['opened_at'] != null
         ? DateFormat('HH:mm').format(
             DateTime.tryParse(widget.session['opened_at'].toString()) ?? haitiNow())
         : '—';
 
-    final closing  = double.tryParse(_balanceCtrl.text) ?? 0;
+    final closing  = toHtgAmount(double.tryParse(_balanceCtrl.text) ?? 0, settings);
     final diff     = closing - _expected;
     final diffColor = diff == 0
         ? AppColors.success
         : diff > 0 ? const Color(0xFF2196F3) : AppColors.error;
     final diffLabel = diff > 0
-        ? '+${_fmt.format(diff)} (surplus)'
+        ? '+${formatMoney(diff, settings)} (surplus)'
         : diff < 0
-            ? '${_fmt.format(diff)} (manque)'
+            ? '${formatMoney(diff, settings)} (manque)'
             : 'Équilibré';
 
     return AlertDialog(
@@ -3263,15 +3273,15 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
                           color: AppColors.textSecondary)),
                   const SizedBox(height: 8),
-                  _InfoRow('Fond initial',  _fmt.format(_opening)),
-                  if (_cash   > 0) _InfoRow('Ventes cash',   '+ ${_fmt.format(_cash)}',   color: AppColors.success),
-                  if (_card   > 0) _InfoRow('Ventes carte',  '+ ${_fmt.format(_card)}',   color: AppColors.success),
-                  if (_mobile > 0) _InfoRow('Ventes mobile', '+ ${_fmt.format(_mobile)}', color: AppColors.success),
-                  if (_bank   > 0) _InfoRow('Ventes banque', '+ ${_fmt.format(_bank)}',   color: AppColors.success),
-                  if (_refunds > 0) _InfoRow('Remboursements cash', '- ${_fmt.format(_refunds)}',
+                  _InfoRow('Fond initial',  formatMoney(_opening, settings)),
+                  if (_cash   > 0) _InfoRow('Ventes cash',   '+ ${formatMoney(_cash, settings)}',   color: AppColors.success),
+                  if (_card   > 0) _InfoRow('Ventes carte',  '+ ${formatMoney(_card, settings)}',   color: AppColors.success),
+                  if (_mobile > 0) _InfoRow('Ventes mobile', '+ ${formatMoney(_mobile, settings)}', color: AppColors.success),
+                  if (_bank   > 0) _InfoRow('Ventes banque', '+ ${formatMoney(_bank, settings)}',   color: AppColors.success),
+                  if (_refunds > 0) _InfoRow('Remboursements cash', '- ${formatMoney(_refunds, settings)}',
                       color: AppColors.error),
                   const Divider(height: 16),
-                  _InfoRow('Solde théorique', _fmt.format(_expected),
+                  _InfoRow('Solde théorique', formatMoney(_expected, settings),
                       bold: true),
                   const SizedBox(height: 16),
 
@@ -3279,10 +3289,10 @@ class _CloseSessionDialogState extends State<_CloseSessionDialog> {
                   TextField(
                     controller: _balanceCtrl,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Solde réel en caisse *',
+                    decoration: InputDecoration(
+                      labelText: 'Solde réel en caisse (${settings.currencySymbol.trim()}) *',
                       hintText: 'Comptez et saisissez le montant',
-                      prefixIcon: Icon(Icons.payments_outlined, size: 20),
+                      prefixIcon: const Icon(Icons.payments_outlined, size: 20),
                       isDense: true,
                     ),
                   ),

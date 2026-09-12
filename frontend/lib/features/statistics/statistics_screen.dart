@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
@@ -613,6 +614,8 @@ class StatisticsScreen extends ConsumerWidget {
     final settings   = ref.watch(settingsProvider);
     final fmt = NumberFormat.currency(
         locale: 'fr_HT', symbol: settings.currencySymbol, decimalDigits: 0);
+    // Convertit HTG (valeur stockée) → devise d'affichage avant formatage.
+    String money(double htg) => fmt.format(toDisplayAmount(htg, settings));
 
     return statsAsync.when(
       data: (data) => SingleChildScrollView(
@@ -627,7 +630,7 @@ class StatisticsScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
 
-            _KpiRow(data: data, fmt: fmt),
+            _KpiRow(data: data, money: money),
             const SizedBox(height: 24),
 
             // Revenue chart with period selector
@@ -656,7 +659,7 @@ class StatisticsScreen extends ConsumerWidget {
                   data: (points) {
                     final hasData = points.any((p) => p.value > 0);
                     return hasData
-                        ? _RevenueLineChart(points: points, fmt: fmt)
+                        ? _RevenueLineChart(points: points, money: money)
                         : _noData();
                   },
                   loading: () => const Center(
@@ -676,7 +679,7 @@ class StatisticsScreen extends ConsumerWidget {
                 height: 260,
                 child: data.revenueByProduct.isEmpty
                     ? _noData()
-                    : _TopProductsBar(data: data, fmt: fmt),
+                    : _TopProductsBar(data: data, money: money),
               );
               final paymentMethods = _ChartCard(
                 title: 'Modes de paiement',
@@ -883,8 +886,8 @@ class _PeriodTabs extends StatelessWidget {
 
 class _KpiRow extends StatelessWidget {
   final _StatsData data;
-  final NumberFormat fmt;
-  const _KpiRow({required this.data, required this.fmt});
+  final String Function(double) money;
+  const _KpiRow({required this.data, required this.money});
 
   @override
   Widget build(BuildContext context) {
@@ -892,15 +895,15 @@ class _KpiRow extends StatelessWidget {
       spacing: 12,
       runSpacing: 12,
       children: [
-        _Kpi(label: 'Chiffre d\'affaires', value: fmt.format(data.totalRevenue),
+        _Kpi(label: 'Chiffre d\'affaires', value: money(data.totalRevenue),
             icon: Icons.trending_up_rounded, color: AppColors.primary),
-        _Kpi(label: 'Encaissé', value: fmt.format(data.totalPaid),
+        _Kpi(label: 'Encaissé', value: money(data.totalPaid),
             icon: Icons.check_circle_outline_rounded, color: AppColors.success),
-        _Kpi(label: 'Panier moyen', value: fmt.format(data.avgBasket),
+        _Kpi(label: 'Panier moyen', value: money(data.avgBasket),
             icon: Icons.shopping_cart_rounded, color: AppColors.info),
         _Kpi(label: 'Nb transactions', value: '${data.sales.length}',
             icon: Icons.receipt_rounded, color: AppColors.warning),
-        _Kpi(label: 'Rabais accordés', value: fmt.format(data.totalDiscount),
+        _Kpi(label: 'Rabais accordés', value: money(data.totalDiscount),
             icon: Icons.sell_outlined, color: AppColors.error),
       ],
     );
@@ -997,8 +1000,8 @@ class _ChartCard extends StatelessWidget {
 
 class _RevenueLineChart extends StatelessWidget {
   final List<_ChartPoint> points;
-  final NumberFormat fmt;
-  const _RevenueLineChart({required this.points, required this.fmt});
+  final String Function(double) money;
+  const _RevenueLineChart({required this.points, required this.money});
 
   @override
   Widget build(BuildContext context) {
@@ -1023,7 +1026,7 @@ class _RevenueLineChart extends StatelessWidget {
             final idx = spot.x.toInt();
             final lbl = idx < points.length ? points[idx].tooltipLabel : '';
             return LineTooltipItem(
-              '$lbl\n${fmt.format(spot.y)}',
+              '$lbl\n${money(spot.y)}',
               const TextStyle(color: Colors.white, fontSize: 11,
                   fontWeight: FontWeight.w600),
             );
@@ -1040,7 +1043,7 @@ class _RevenueLineChart extends StatelessWidget {
               if (v == 0 || v >= meta.max * 0.99) return const SizedBox.shrink();
               return Padding(
                 padding: const EdgeInsets.only(right: 4),
-                child: Text(fmt.format(v),
+                child: Text(money(v),
                     style: const TextStyle(
                         fontSize: 9, color: AppColors.textSecondary)),
               );
@@ -1107,8 +1110,8 @@ class _RevenueLineChart extends StatelessWidget {
 
 class _TopProductsBar extends StatelessWidget {
   final _StatsData data;
-  final NumberFormat fmt;
-  const _TopProductsBar({required this.data, required this.fmt});
+  final String Function(double) money;
+  const _TopProductsBar({required this.data, required this.money});
 
   @override
   Widget build(BuildContext context) {
@@ -1128,7 +1131,7 @@ class _TopProductsBar extends StatelessWidget {
       barTouchData: BarTouchData(
         touchTooltipData: BarTouchTooltipData(
           getTooltipItem: (group, gIdx, rod, rIdx) => BarTooltipItem(
-            '${top[gIdx].key}\n${fmt.format(rod.toY)}',
+            '${top[gIdx].key}\n${money(rod.toY)}',
             const TextStyle(color: Colors.white, fontSize: 11,
                 fontWeight: FontWeight.w600),
           ),

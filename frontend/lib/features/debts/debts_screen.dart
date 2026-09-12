@@ -3,14 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/models/debt_model.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
 import 'package:pos_connect/providers/debt_provider.dart';
 import 'package:pos_connect/providers/payment_provider.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/shared/widgets/status_badge.dart';
-
-final _fmt =
-    NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
 final _dateFmt = DateFormat('dd/MM/yyyy');
 final _dtFmt = DateFormat('dd/MM/yyyy HH:mm');
 
@@ -28,6 +27,7 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
   @override
   Widget build(BuildContext context) {
     final debtsAsync = ref.watch(debtsProvider);
+    final settings = ref.watch(settingsProvider);
 
     return Column(
       children: [
@@ -105,7 +105,7 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
                           color: AppColors.textSecondary, fontSize: 13)),
                   const Spacer(),
                   Text(
-                    'Solde total: ${_fmt.format(totalBalance)}',
+                    'Solde total: ${formatMoney(totalBalance, settings)}',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
@@ -229,6 +229,7 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
   @override
   Widget build(BuildContext context) {
     final d = widget.debt;
+    final settings = ref.watch(settingsProvider);
     final isCustomer = d.partnerType == 'CUSTOMER';
     final displayName = d.partnerName ??
         (isCustomer ? 'Client' : 'Fournisseur');
@@ -297,7 +298,7 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Total: ${_fmt.format(d.totalAmount)}  •  Payé: ${_fmt.format(d.paidAmount)}',
+                        'Total: ${formatMoney(d.totalAmount, settings)}  •  Payé: ${formatMoney(d.paidAmount, settings)}',
                         style: const TextStyle(
                             color: AppColors.textSecondary, fontSize: 12),
                       ),
@@ -316,7 +317,7 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      _fmt.format(d.balance),
+                      formatMoney(d.balance, settings),
                       style: const TextStyle(
                         color: AppColors.error,
                         fontWeight: FontWeight.w700,
@@ -396,8 +397,9 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
   }
 
   void _showPaymentDialog(BuildContext context) {
+    final dialogSettings = ref.read(settingsProvider);
     final ctrl = TextEditingController(
-        text: widget.debt.balance.toStringAsFixed(2));
+        text: toDisplayAmount(widget.debt.balance, dialogSettings).toStringAsFixed(2));
     final messenger = ScaffoldMessenger.of(context);
 
     showDialog(
@@ -410,8 +412,8 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
             TextField(
               controller: ctrl,
               keyboardType: TextInputType.number,
-              decoration:
-                  const InputDecoration(labelText: 'Montant (HTG)'),
+              decoration: InputDecoration(
+                  labelText: 'Montant (${dialogSettings.currencySymbol.trim()})'),
             ),
           ],
         ),
@@ -421,14 +423,15 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
               child: const Text('Annuler')),
           ElevatedButton(
             onPressed: () async {
-              final amount = double.tryParse(ctrl.text) ?? 0;
+              final amount = toHtgAmount(
+                  double.tryParse(ctrl.text) ?? 0, dialogSettings);
               if (amount <= 0) return;
               if (amount > widget.debt.balance + 0.005) {
                 Navigator.pop(dialogCtx);
                 messenger.showSnackBar(
                   SnackBar(
                     content: Text(
-                      'Le montant ne peut pas dépasser le solde dû (${widget.debt.balance.toStringAsFixed(2)}).'),
+                      'Le montant ne peut pas dépasser le solde dû (${formatMoney(widget.debt.balance, dialogSettings)}).'),
                     backgroundColor: AppColors.error,
                   ),
                 );
@@ -477,6 +480,7 @@ class _PaymentHistoryDialog extends ConsumerWidget {
     final paymentsAsync = ref.watch(
       paymentHistoryProvider((debt.referenceType, debt.referenceId)),
     );
+    final settings = ref.watch(settingsProvider);
     final isCustomer = debt.partnerType == 'CUSTOMER';
     final displayName =
         debt.partnerName ?? (isCustomer ? 'Client' : 'Fournisseur');
@@ -547,19 +551,19 @@ class _PaymentHistoryDialog extends ConsumerWidget {
                 children: [
                   _SummaryChip(
                     label: 'Total',
-                    value: _fmt.format(debt.totalAmount),
+                    value: formatMoney(debt.totalAmount, settings),
                     color: AppColors.textPrimary,
                   ),
                   const SizedBox(width: 16),
                   _SummaryChip(
                     label: 'Payé',
-                    value: _fmt.format(debt.paidAmount),
+                    value: formatMoney(debt.paidAmount, settings),
                     color: AppColors.success,
                   ),
                   const SizedBox(width: 16),
                   _SummaryChip(
                     label: 'Reste',
-                    value: _fmt.format(debt.balance),
+                    value: formatMoney(debt.balance, settings),
                     color: debt.balance > 0
                         ? AppColors.error
                         : AppColors.success,
@@ -673,7 +677,7 @@ class _PaymentHistoryDialog extends ConsumerWidget {
                                 ),
                                 // Amount
                                 Text(
-                                  _fmt.format(p.amount),
+                                  formatMoney(p.amount, settings),
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 14,

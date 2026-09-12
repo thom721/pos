@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/services/logo_cache_service.dart';
@@ -125,14 +126,14 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
                       alignment: pw.Alignment.centerRight,
                       child: pw.Padding(
                         padding: const pw.EdgeInsets.symmetric(vertical: 2),
-                        child: pw.Text(numFmt.format(item.unitPrice), style: base),
+                        child: pw.Text(numFmt.format(toDisplayAmount(item.unitPrice, settings)), style: base),
                       ),
                     ),
                     pw.Align(
                       alignment: pw.Alignment.centerRight,
                       child: pw.Padding(
                         padding: const pw.EdgeInsets.symmetric(vertical: 2),
-                        child: pw.Text(numFmt.format(item.subtotal), style: bold),
+                        child: pw.Text(numFmt.format(toDisplayAmount(item.subtotal, settings)), style: bold),
                       ),
                     ),
                   ])),
@@ -187,22 +188,22 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
             if (!hasDisc) return <pw.Widget>[];
             return [
               totalRow('Sous-total',
-                  '$sym${numFmt.format(sale.totalAmount + itemsDisc)}'),
+                  '$sym${numFmt.format(toDisplayAmount(sale.totalAmount + itemsDisc, settings))}'),
               if (itemsDisc > 0.001)
                 totalRow('Remises articles',
-                    '-$sym${numFmt.format(itemsDisc)}'),
+                    '-$sym${numFmt.format(toDisplayAmount(itemsDisc, settings))}'),
               if (catalogItemsDisc > 0.001)
                 totalRow('Rabais articles (catalogue)',
-                    '-$sym${numFmt.format(catalogItemsDisc)}'),
+                    '-$sym${numFmt.format(toDisplayAmount(catalogItemsDisc, settings))}'),
               if (sale.discount > 0.001)
                 totalRow(
                     sale.discountName != null
                         ? 'Remise caisse (${sale.discountName})'
                         : 'Remise caisse',
-                    '-$sym${numFmt.format(sale.discount)}'),
+                    '-$sym${numFmt.format(toDisplayAmount(sale.discount, settings))}'),
             ];
           }(),
-          totalRow('TOTAL', '$sym${numFmt.format(sale.finalAmount)}',
+          totalRow('TOTAL', '$sym${numFmt.format(toDisplayAmount(sale.finalAmount, settings))}',
               isBold: true),
           pw.SizedBox(height: 2),
           ...() {
@@ -215,11 +216,11 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
             final tendered =
                 sale.changeDue > 0.001 ? sale.paidAmount + sale.changeDue : sale.paidAmount;
             return [
-              totalRow('Montant reçu', '$sym${numFmt.format(tendered)}'),
+              totalRow('Montant reçu', '$sym${numFmt.format(toDisplayAmount(tendered, settings))}'),
               if (sale.balance > 0.001)
-                totalRow('Reste à payer', '$sym${numFmt.format(sale.balance)}'),
+                totalRow('Reste à payer', '$sym${numFmt.format(toDisplayAmount(sale.balance, settings))}'),
               if (change > 0.001)
-                totalRow('Monnaie', '$sym${numFmt.format(change)}'),
+                totalRow('Monnaie', '$sym${numFmt.format(toDisplayAmount(change, settings))}'),
             ];
           }(),
           if (sale.loyaltyEarned > 0.001 ||
@@ -228,13 +229,13 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
             pw.SizedBox(height: 2),
             if (sale.loyaltyRedeemed > 0.001)
               totalRow('Fidélité utilisée',
-                  '-$sym${numFmt.format(sale.loyaltyRedeemed)}'),
+                  '-$sym${numFmt.format(toDisplayAmount(sale.loyaltyRedeemed, settings))}'),
             if (sale.loyaltyEarned > 0.001)
               totalRow('Fidélité gagnée',
-                  '+$sym${numFmt.format(sale.loyaltyEarned)}'),
+                  '+$sym${numFmt.format(toDisplayAmount(sale.loyaltyEarned, settings))}'),
             if ((sale.customerLoyaltyBalance ?? 0) > 0.001)
               totalRow('Solde fidélité',
-                  '$sym${numFmt.format(sale.customerLoyaltyBalance!)}'),
+                  '$sym${numFmt.format(toDisplayAmount(sale.customerLoyaltyBalance!, settings))}'),
           ],
           divider(),
 

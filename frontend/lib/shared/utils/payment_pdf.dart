@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 
 /// Generates an 80 mm thermal receipt PDF for a credit payment.
@@ -88,18 +89,18 @@ Future<Uint8List> buildPaymentPdf({
           divider(),
 
           // Payment detail
-          row('Total de la dette', '$sym${numFmt.format(totalDebt)}'),
-          row('Déjà payé', '$sym${numFmt.format(previouslyPaid)}'),
+          row('Total de la dette', '$sym${numFmt.format(toDisplayAmount(totalDebt, settings))}'),
+          row('Déjà payé', '$sym${numFmt.format(toDisplayAmount(previouslyPaid, settings))}'),
           pw.SizedBox(height: 3),
           row(
             'Montant encaissé',
-            '$sym${numFmt.format(amountPaid)}',
+            '$sym${numFmt.format(toDisplayAmount(amountPaid, settings))}',
             isBold: true,
           ),
           divider(),
           row(
             remainingAfter <= 0.001 ? 'Solde' : 'Reste à payer',
-            '$sym${numFmt.format(remainingAfter.abs())}',
+            '$sym${numFmt.format(toDisplayAmount(remainingAfter.abs(), settings))}',
             isBold: remainingAfter <= 0.001,
             valueColor: remainingAfter <= 0.001
                 ? PdfColors.green700

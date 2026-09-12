@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/models/return_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 
@@ -86,7 +87,7 @@ Future<Uint8List> buildReturnPdf(
                       child: pw.Padding(
                         padding: const pw.EdgeInsets.symmetric(vertical: 1),
                         child:
-                            pw.Text(numFmt.format(item.subtotal), style: bold),
+                            pw.Text(numFmt.format(toDisplayAmount(item.subtotal, settings)), style: bold),
                       ),
                     ),
                   ])),
@@ -121,13 +122,13 @@ Future<Uint8List> buildReturnPdf(
           // Totals
           totalRow(
             'Total retourné',
-            '$sym${numFmt.format(ret.totalReturned)}',
+            '$sym${numFmt.format(toDisplayAmount(ret.totalReturned, settings))}',
             isBold: true,
           ),
           if (ret.refundAmount > 0)
             totalRow(
               'Montant remboursé',
-              '$sym${numFmt.format(ret.refundAmount)}',
+              '$sym${numFmt.format(toDisplayAmount(ret.refundAmount, settings))}',
             ),
 
           // Reason

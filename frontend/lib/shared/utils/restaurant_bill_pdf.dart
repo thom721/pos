@@ -5,6 +5,7 @@ import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/services/logo_cache_service.dart';
@@ -134,7 +135,7 @@ Future<Uint8List> buildRestaurantBillPdf(
                     alignment: pw.Alignment.centerRight,
                     child: pw.Padding(
                       padding: const pw.EdgeInsets.symmetric(vertical: 1),
-                      child: pw.Text(numFmt.format(item.subtotal), style: bold),
+                      child: pw.Text(numFmt.format(toDisplayAmount(item.subtotal, settings)), style: bold),
                     ),
                   ),
                 ]);
@@ -189,13 +190,13 @@ Future<Uint8List> buildRestaurantBillPdf(
           divider(),
 
           // ── Totaux ───────────────────────────────────────────────────
-          totalRow('Sous-total', '$sym${numFmt.format(subtotal)}'),
+          totalRow('Sous-total', '$sym${numFmt.format(toDisplayAmount(subtotal, settings))}'),
           if (tip > 0)
-            totalRow('Pourboire', '+$sym${numFmt.format(tip)}'),
+            totalRow('Pourboire', '+$sym${numFmt.format(toDisplayAmount(tip, settings))}'),
           if (discount > 0)
-            totalRow('Remise caisse', '-$sym${numFmt.format(discount)}'),
+            totalRow('Remise caisse', '-$sym${numFmt.format(toDisplayAmount(discount, settings))}'),
           totalRow('TOTAL',
-              '$sym${numFmt.format(isPaid ? finalTotal : total)}',
+              '$sym${numFmt.format(toDisplayAmount(isPaid ? finalTotal : total, settings))}',
               isBold: true),
           if (isPaid) ...[
             pw.SizedBox(height: 2),
@@ -208,9 +209,9 @@ Future<Uint8List> buildRestaurantBillPdf(
                   _ => 'Espèces',
                 },
               ),
-            totalRow('Reçu', '$sym${numFmt.format(paidAmount)}'),
+            totalRow('Reçu', '$sym${numFmt.format(toDisplayAmount(paidAmount, settings))}'),
             if (change > 0.001)
-              totalRow('Monnaie', '$sym${numFmt.format(change)}',
+              totalRow('Monnaie', '$sym${numFmt.format(toDisplayAmount(change.toDouble(), settings))}',
                   isBold: true),
           ],
           divider(),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:printing/printing.dart';
 import 'package:pos_connect/core/theme.dart';
@@ -58,6 +59,8 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen>
     final state = ref.watch(returnsProvider);
     final settings = ref.watch(settingsProvider);
     final fmt = _fmtCurrency(settings.currencySymbol);
+    // Convertit HTG (valeur stockée) → devise d'affichage avant formatage.
+    String money(double htg) => fmt.format(toDisplayAmount(htg, settings));
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -137,12 +140,12 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen>
                     children: [
                       _ReturnsList(
                         returns: state.saleReturns,
-                        fmt: fmt,
+                        money: money,
                         type: 'sale',
                       ),
                       _ReturnsList(
                         returns: state.purchaseReturns,
-                        fmt: fmt,
+                        money: money,
                         type: 'purchase',
                       ),
                     ],
@@ -211,11 +214,11 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen>
 
 class _ReturnsList extends StatelessWidget {
   final List<ReturnModel> returns;
-  final NumberFormat fmt;
+  final String Function(double) money;
   final String type;
 
   const _ReturnsList(
-      {required this.returns, required this.fmt, required this.type});
+      {required this.returns, required this.money, required this.type});
 
   @override
   Widget build(BuildContext context) {
@@ -259,7 +262,7 @@ class _ReturnsList extends StatelessWidget {
       itemCount: returns.length,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (ctx, i) =>
-          _ReturnCard(ret: returns[i], fmt: fmt, type: type),
+          _ReturnCard(ret: returns[i], money: money, type: type),
     );
   }
 }
@@ -268,11 +271,11 @@ class _ReturnsList extends StatelessWidget {
 
 class _ReturnCard extends ConsumerStatefulWidget {
   final ReturnModel ret;
-  final NumberFormat fmt;
+  final String Function(double) money;
   final String type;
 
   const _ReturnCard(
-      {required this.ret, required this.fmt, required this.type});
+      {required this.ret, required this.money, required this.type});
 
   @override
   ConsumerState<_ReturnCard> createState() => _ReturnCardState();
@@ -342,7 +345,7 @@ class _ReturnCardState extends ConsumerState<_ReturnCard> {
   @override
   Widget build(BuildContext context) {
     final ret = widget.ret;
-    final fmt = widget.fmt;
+    final money = widget.money;
     final isSale = widget.type == 'sale';
 
     return Material(
@@ -400,13 +403,13 @@ class _ReturnCardState extends ConsumerState<_ReturnCard> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  fmt.format(ret.totalReturned),
+                  money(ret.totalReturned),
                   style: const TextStyle(
                       fontWeight: FontWeight.w700, fontSize: 14),
                 ),
                 if (isSale && ret.refundAmount > 0)
                   Text(
-                    'Remboursé : ${fmt.format(ret.refundAmount)}',
+                    'Remboursé : ${money(ret.refundAmount)}',
                     style: const TextStyle(
                         fontSize: 11, color: AppColors.success),
                   ),
@@ -453,12 +456,12 @@ class _ReturnCardState extends ConsumerState<_ReturnCard> {
                         style: const TextStyle(fontSize: 13)),
                   ),
                   Text(
-                    '${_fmtQty(item.quantity)} × ${fmt.format(item.unitPrice)}',
+                    '${_fmtQty(item.quantity)} × ${money(item.unitPrice)}',
                     style: const TextStyle(
                         fontSize: 12, color: AppColors.textSecondary),
                   ),
                   const SizedBox(width: 12),
-                  Text(fmt.format(item.subtotal),
+                  Text(money(item.subtotal),
                       style: const TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 13)),
                 ],
@@ -559,7 +562,8 @@ class _NewSaleReturnDialogState extends ConsumerState<_NewSaleReturnDialog> {
   }
 
   void _updateRefund() {
-    _refundCtrl.text = _computedRefund.toStringAsFixed(2);
+    _refundCtrl.text =
+        toDisplayAmount(_computedRefund, ref.read(settingsProvider)).toStringAsFixed(2);
   }
 
   List<Map<String, dynamic>> get _selectedItems {
@@ -581,7 +585,11 @@ class _NewSaleReturnDialogState extends ConsumerState<_NewSaleReturnDialog> {
       _sale != null && _selectedItems.isNotEmpty && !_submitting;
 
   ReturnModel _buildLocalReturn() {
-    final refund = double.tryParse(_refundCtrl.text) ?? _computedRefund;
+    final settings = ref.read(settingsProvider);
+    final typedRefund = double.tryParse(_refundCtrl.text);
+    final refund = typedRefund != null
+        ? toHtgAmount(typedRefund, settings)
+        : _computedRefund;
     final items = <ReturnItemModel>[];
     for (var i = 0; i < _sale!.items.length; i++) {
       final qty = double.tryParse(_qtyCtrls[i]?.text ?? '0') ?? 0;
@@ -612,10 +620,14 @@ class _NewSaleReturnDialogState extends ConsumerState<_NewSaleReturnDialog> {
     if (items.isEmpty) return;
     final local = _buildLocalReturn();
     setState(() => _submitting = true);
+    final typedRefund = double.tryParse(_refundCtrl.text);
+    final refund = typedRefund != null
+        ? toHtgAmount(typedRefund, ref.read(settingsProvider))
+        : _computedRefund;
     final ok = await widget.onSubmit(
       _sale!.id,
       items,
-      double.tryParse(_refundCtrl.text) ?? _computedRefund,
+      refund,
       _reasonCtrl.text.trim().isEmpty ? null : _reasonCtrl.text.trim(),
     );
     if (mounted) {
@@ -689,6 +701,7 @@ class _NewSaleReturnDialogState extends ConsumerState<_NewSaleReturnDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
     return Dialog(
       backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -826,9 +839,10 @@ class _NewSaleReturnDialogState extends ConsumerState<_NewSaleReturnDialog> {
                                   const TextInputType.numberWithOptions(
                                       decimal: true),
                               textAlign: TextAlign.right,
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
+                                prefixText: '${settings.currencySymbol.trim()} ',
                                 isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
+                                contentPadding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 8),
                               ),
                             ),
@@ -1116,7 +1130,7 @@ class _NewPurchaseReturnDialogState
 
 // ── Receipt phase (shown after successful return creation) ─────────────────
 
-class _ReceiptPhase extends StatelessWidget {
+class _ReceiptPhase extends ConsumerWidget {
   final ReturnModel ret;
   final bool printing;
   final VoidCallback onPrint;
@@ -1130,9 +1144,8 @@ class _ReceiptPhase extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final fmt = NumberFormat.currency(
-        locale: 'fr_HT', symbol: '', decimalDigits: 2);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -1161,7 +1174,7 @@ class _ReceiptPhase extends StatelessWidget {
             if (ret.refundAmount > 0) ...[
               const SizedBox(height: 4),
               Text(
-                'Remboursé : ${fmt.format(ret.refundAmount)}',
+                'Remboursé : ${formatMoney(ret.refundAmount, settings)}',
                 style: const TextStyle(
                     color: AppColors.success,
                     fontWeight: FontWeight.w600,

@@ -3,15 +3,18 @@ import 'dart:io';
 import 'package:dio/dio.dart' show DioException, DioExceptionType;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/core/register_date_crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/shared/widgets/limit_exceeded_dialog.dart';
 
-class OpenSessionDialog extends StatefulWidget {
+class OpenSessionDialog extends ConsumerStatefulWidget {
   final String deviceId;
   final String userId;
   final String? warehouseId;
@@ -32,10 +35,10 @@ class OpenSessionDialog extends StatefulWidget {
   });
 
   @override
-  State<OpenSessionDialog> createState() => _OpenSessionDialogState();
+  ConsumerState<OpenSessionDialog> createState() => _OpenSessionDialogState();
 }
 
-class _OpenSessionDialogState extends State<OpenSessionDialog> {
+class _OpenSessionDialogState extends ConsumerState<OpenSessionDialog> {
   final _balanceCtrl = TextEditingController(text: '0');
   bool _loading = false;
   String? _error;
@@ -48,7 +51,8 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
 
   Future<void> _open({bool force = false}) async {
     setState(() { _loading = true; _error = null; });
-    final openingBalance = double.tryParse(_balanceCtrl.text) ?? 0;
+    final openingBalance = toHtgAmount(
+        double.tryParse(_balanceCtrl.text) ?? 0, ref.read(settingsProvider));
     try {
       final res = await dio.post('/api/sessions/open', data: {
         'device_id': widget.deviceId,
@@ -183,6 +187,7 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final sym = ref.watch(settingsProvider).currencySymbol.trim();
     return AlertDialog(
       title: Row(children: [
         Container(
@@ -223,9 +228,9 @@ class _OpenSessionDialogState extends State<OpenSessionDialog> {
             controller: _balanceCtrl,
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Fond de caisse',
-              prefixIcon: Icon(Icons.payments_outlined, size: 20),
+            decoration: InputDecoration(
+              labelText: 'Fond de caisse ($sym)',
+              prefixIcon: const Icon(Icons.payments_outlined, size: 20),
               isDense: true,
             ),
             onSubmitted: (_) => _open(),

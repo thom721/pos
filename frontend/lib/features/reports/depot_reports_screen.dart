@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/theme.dart';
@@ -426,6 +427,9 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
       symbol: settings.currencySymbol,
       decimalDigits: 0,
     );
+    // Convertit HTG (valeur stockée) → devise d'affichage avant formatage —
+    // fmt seul ne fait que choisir le symbole, jamais la conversion.
+    String money(double htg) => fmt.format(toDisplayAmount(htg, settings));
 
     if (!canRead) {
       return const Scaffold(
@@ -487,7 +491,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
             statsAsync.when(
               loading: () => const _LoadingSection(label: 'Chargement des stats…'),
               error:   (e, _) => _ErrorSection(error: e, onRetry: () => ref.invalidate(_warehouseStatsProvider)),
-              data: (data) => _GlobalSummary(global: data.global, fmt: fmt),
+              data: (data) => _GlobalSummary(global: data.global, money: money),
             ),
             const SizedBox(height: 24),
 
@@ -503,7 +507,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
               error:   (e, _) => _ErrorSection(error: e, onRetry: () => ref.invalidate(_warehouseStatsProvider)),
               data: (data) => data.byWarehouse.isEmpty
                   ? _emptyState('Aucune vente enregistrée pour cette période')
-                  : _WarehouseRanking(stats: data.byWarehouse, fmt: fmt),
+                  : _WarehouseRanking(stats: data.byWarehouse, money: money),
             ),
             const SizedBox(height: 32),
 
@@ -542,7 +546,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
               error:   (e, _) => _ErrorSection(error: e, onRetry: () => ref.invalidate(_topProductsProvider)),
               data: (products) => products.isEmpty
                   ? _emptyState('Aucun produit vendu sur cette période')
-                  : _TopProductsTable(products: products, fmt: fmt),
+                  : _TopProductsTable(products: products, money: money),
             ),
 
             // ── Dépenses ─────────────────────────────────────────────────
@@ -561,7 +565,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
                   error:   (e, _) => _ErrorSection(error: e, onRetry: () => ref.invalidate(_expensesReportProvider)),
                   data: (report) => report.count == 0
                       ? _emptyState('Aucune dépense enregistrée pour cette période')
-                      : _ExpensesSection(report: report, fmt: fmt),
+                      : _ExpensesSection(report: report, money: money),
                 );
               }),
             ],
@@ -582,7 +586,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
                   error:   (e, _) => _ErrorSection(error: e, onRetry: () => ref.invalidate(_payrollReportProvider)),
                   data: (report) => report.periodsCount == 0
                       ? _emptyState('Aucune période de paie sur cette période')
-                      : _PayrollSection(report: report, fmt: fmt),
+                      : _PayrollSection(report: report, money: money),
                 );
               }),
             ],
@@ -603,7 +607,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
                   error:   (e, _) => _ErrorSection(error: e, onRetry: () => ref.invalidate(_loansReportProvider)),
                   data: (report) => report.count == 0
                       ? _emptyState('Aucun prêt accordé sur cette période')
-                      : _LoansSection(report: report, fmt: fmt),
+                      : _LoansSection(report: report, money: money),
                 );
               }),
             ],
@@ -679,9 +683,9 @@ class _PeriodSelector extends StatelessWidget {
 
 class _GlobalSummary extends StatelessWidget {
   final _GlobalStat global;
-  final NumberFormat fmt;
+  final String Function(double) money;
 
-  const _GlobalSummary({required this.global, required this.fmt});
+  const _GlobalSummary({required this.global, required this.money});
 
   @override
   Widget build(BuildContext context) {
@@ -706,14 +710,14 @@ class _GlobalSummary extends StatelessWidget {
             children: [
               _KpiCard(
                 label: 'Chiffre d\'affaires',
-                value: fmt.format(global.revenue),
+                value: money(global.revenue),
                 icon: Icons.attach_money_rounded,
                 color: AppColors.primary,
               ),
               _KpiCard(
                 label: 'Marge brute',
                 value:
-                    '${fmt.format(global.profit)}  (${global.margin.toStringAsFixed(1)} %)',
+                    '${money(global.profit)}  (${global.margin.toStringAsFixed(1)} %)',
                 icon: Icons.trending_up_rounded,
                 color: AppColors.success,
               ),
@@ -731,7 +735,7 @@ class _GlobalSummary extends StatelessWidget {
               ),
               _KpiCard(
                 label: 'Rabais accordés',
-                value: fmt.format(global.discount),
+                value: money(global.discount),
                 icon: Icons.sell_outlined,
                 color: AppColors.error,
               ),
@@ -749,9 +753,9 @@ class _GlobalSummary extends StatelessWidget {
 
 class _WarehouseRanking extends StatelessWidget {
   final List<_WarehouseStat> stats;
-  final NumberFormat fmt;
+  final String Function(double) money;
 
-  const _WarehouseRanking({required this.stats, required this.fmt});
+  const _WarehouseRanking({required this.stats, required this.money});
 
   @override
   Widget build(BuildContext context) {
@@ -795,7 +799,7 @@ class _WarehouseRanking extends StatelessWidget {
             final pct  = best > 0 ? stat.revenue / best : 0.0;
             return _WarehouseRow(
               stat: stat,
-              fmt: fmt,
+              money: money,
               barPct: pct,
               isLast: i == stats.length - 1,
             );
@@ -840,12 +844,12 @@ class _WarehouseRanking extends StatelessWidget {
 
 class _WarehouseRow extends StatelessWidget {
   final _WarehouseStat stat;
-  final NumberFormat fmt;
+  final String Function(double) money;
   final double barPct;
   final bool isLast;
 
   const _WarehouseRow({
-    required this.stat, required this.fmt,
+    required this.stat, required this.money,
     required this.barPct, required this.isLast,
   });
 
@@ -905,7 +909,7 @@ class _WarehouseRow extends StatelessWidget {
                 Expanded(
                   flex: 4,
                   child: Text(
-                    fmt.format(stat.revenue),
+                    money(stat.revenue),
                     textAlign: TextAlign.right,
                     style: const TextStyle(
                         fontSize: 13,
@@ -950,7 +954,7 @@ class _WarehouseRow extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: Text(
-                    fmt.format(stat.discount),
+                    money(stat.discount),
                     textAlign: TextAlign.right,
                     style: const TextStyle(
                         fontSize: 13, color: AppColors.error),
@@ -987,9 +991,9 @@ class _WarehouseRow extends StatelessWidget {
 
 class _TopProductsTable extends StatelessWidget {
   final List<_ProductStat> products;
-  final NumberFormat fmt;
+  final String Function(double) money;
 
-  const _TopProductsTable({required this.products, required this.fmt});
+  const _TopProductsTable({required this.products, required this.money});
 
   @override
   Widget build(BuildContext context) {
@@ -1056,7 +1060,7 @@ class _TopProductsTable extends StatelessWidget {
                   ),
                   Expanded(
                     flex: 3,
-                    child: Text(fmt.format(p.revenue),
+                    child: Text(money(p.revenue),
                         textAlign: TextAlign.right,
                         style: const TextStyle(
                             fontSize: 13,
@@ -1388,9 +1392,9 @@ Widget _breakdownRow(String label, String value, {String? subLabel}) => Padding(
 
 class _ExpensesSection extends StatelessWidget {
   final _ExpenseReport report;
-  final NumberFormat fmt;
+  final String Function(double) money;
 
-  const _ExpensesSection({required this.report, required this.fmt});
+  const _ExpensesSection({required this.report, required this.money});
 
   @override
   Widget build(BuildContext context) {
@@ -1409,7 +1413,7 @@ class _ExpensesSection extends StatelessWidget {
             children: [
               _KpiCard(
                 label: 'Total dépensé',
-                value: fmt.format(report.totalAmount),
+                value: money(report.totalAmount),
                 icon: Icons.payments_rounded,
                 color: AppColors.error,
               ),
@@ -1429,7 +1433,7 @@ class _ExpensesSection extends StatelessWidget {
           const SizedBox(height: 8),
           _BreakdownCard(
             rows: report.byCategory
-                .map((c) => _breakdownRow(c.category, fmt.format(c.totalAmount), subLabel: '${c.count}'))
+                .map((c) => _breakdownRow(c.category, money(c.totalAmount), subLabel: '${c.count}'))
                 .toList(),
           ),
         ],
@@ -1440,7 +1444,7 @@ class _ExpensesSection extends StatelessWidget {
           const SizedBox(height: 8),
           _BreakdownCard(
             rows: report.byWarehouse
-                .map((w) => _breakdownRow(w.warehouseName, fmt.format(w.totalAmount), subLabel: '${w.count}'))
+                .map((w) => _breakdownRow(w.warehouseName, money(w.totalAmount), subLabel: '${w.count}'))
                 .toList(),
           ),
         ],
@@ -1451,9 +1455,9 @@ class _ExpensesSection extends StatelessWidget {
 
 class _PayrollSection extends StatelessWidget {
   final _PayrollReport report;
-  final NumberFormat fmt;
+  final String Function(double) money;
 
-  const _PayrollSection({required this.report, required this.fmt});
+  const _PayrollSection({required this.report, required this.money});
 
   @override
   Widget build(BuildContext context) {
@@ -1472,19 +1476,19 @@ class _PayrollSection extends StatelessWidget {
             children: [
               _KpiCard(
                 label: 'Brut versé',
-                value: fmt.format(report.totalGross),
+                value: money(report.totalGross),
                 icon: Icons.attach_money_rounded,
                 color: AppColors.primary,
               ),
               _KpiCard(
                 label: 'Déductions',
-                value: fmt.format(report.totalDeductions),
+                value: money(report.totalDeductions),
                 icon: Icons.remove_circle_outline_rounded,
                 color: AppColors.error,
               ),
               _KpiCard(
                 label: 'Net versé',
-                value: fmt.format(report.totalNet),
+                value: money(report.totalNet),
                 icon: Icons.account_balance_wallet_rounded,
                 color: AppColors.success,
               ),
@@ -1504,7 +1508,7 @@ class _PayrollSection extends StatelessWidget {
           const SizedBox(height: 8),
           _BreakdownCard(
             rows: report.byPeriod
-                .map((p) => _breakdownRow(p.label, fmt.format(p.totalNet), subLabel: p.status))
+                .map((p) => _breakdownRow(p.label, money(p.totalNet), subLabel: p.status))
                 .toList(),
           ),
         ],
@@ -1515,9 +1519,9 @@ class _PayrollSection extends StatelessWidget {
 
 class _LoansSection extends StatelessWidget {
   final _LoanReport report;
-  final NumberFormat fmt;
+  final String Function(double) money;
 
-  const _LoansSection({required this.report, required this.fmt});
+  const _LoansSection({required this.report, required this.money});
 
   @override
   Widget build(BuildContext context) {
@@ -1536,19 +1540,19 @@ class _LoansSection extends StatelessWidget {
             children: [
               _KpiCard(
                 label: 'Total accordé',
-                value: fmt.format(report.totalAmount),
+                value: money(report.totalAmount),
                 icon: Icons.request_quote_rounded,
                 color: AppColors.primary,
               ),
               _KpiCard(
                 label: 'Solde restant dû',
-                value: fmt.format(report.totalBalance),
+                value: money(report.totalBalance),
                 icon: Icons.hourglass_bottom_rounded,
                 color: AppColors.error,
               ),
               _KpiCard(
                 label: 'Déjà remboursé',
-                value: fmt.format(report.totalRepaid),
+                value: money(report.totalRepaid),
                 icon: Icons.check_circle_outline_rounded,
                 color: AppColors.success,
               ),
@@ -1568,7 +1572,7 @@ class _LoansSection extends StatelessWidget {
           const SizedBox(height: 8),
           _BreakdownCard(
             rows: report.byStatus
-                .map((s) => _breakdownRow(s.status, fmt.format(s.totalAmount), subLabel: '${s.count}'))
+                .map((s) => _breakdownRow(s.status, money(s.totalAmount), subLabel: '${s.count}'))
                 .toList(),
           ),
         ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/discount_model.dart';
@@ -7,6 +8,7 @@ import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/repositories/discount_repository.dart';
 import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:pos_connect/providers/discount_provider.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
 
 const List<String> _dayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
@@ -24,8 +26,8 @@ Future<List<ProductModel>> _fetchAllProducts() async {
   return all;
 }
 
-String _formatValue(DiscountModel d) =>
-    d.isPercentage ? '${d.value.toStringAsFixed(0)}%' : '${d.value.toStringAsFixed(0)} HTG';
+String _formatValue(DiscountModel d, AppSettings settings) =>
+    d.isPercentage ? '${d.value.toStringAsFixed(0)}%' : formatMoney(d.value, settings);
 
 String _formatScope(String scope) {
   switch (scope) {
@@ -128,6 +130,7 @@ class _DiscountCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -145,7 +148,7 @@ class _DiscountCard extends ConsumerWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${_formatValue(discount)} — ${_formatScope(discount.scope)}',
+            Text('${_formatValue(discount, settings)} — ${_formatScope(discount.scope)}',
                 style: const TextStyle(fontSize: 12)),
             if (discount.minQuantity != null && discount.minQuantity! > 0)
               Text(
@@ -245,7 +248,12 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
     super.initState();
     final d = widget.discount;
     _nameCtrl = TextEditingController(text: d?.name ?? '');
-    _valueCtrl = TextEditingController(text: d != null ? d.value.toString() : '');
+    _valueCtrl = TextEditingController(
+        text: d != null
+            ? (d.type == 'percentage'
+                ? d.value.toString()
+                : toDisplayAmount(d.value, ref.read(settingsProvider)).toString())
+            : '');
     _minQuantityCtrl = TextEditingController(
         text: d?.minQuantity != null ? d!.minQuantity!.toString() : '');
     _type = d?.type ?? 'percentage';
@@ -314,6 +322,7 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
     return AlertDialog(
       title: Text(isEdit ? 'Modifier le rabais' : 'Nouveau rabais'),
       content: SizedBox(
@@ -350,7 +359,9 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
                         controller: _valueCtrl,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         decoration: InputDecoration(
-                            labelText: _type == 'percentage' ? 'Valeur (%)' : 'Valeur (HTG)'),
+                            labelText: _type == 'percentage'
+                                ? 'Valeur (%)'
+                                : 'Valeur (${settings.currencySymbol.trim()})'),
                         validator: (v) {
                           final n = double.tryParse(v ?? '');
                           if (n == null || n <= 0) return 'Invalide';
@@ -528,7 +539,9 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
       final data = {
         'name': _nameCtrl.text.trim(),
         'type': _type,
-        'value': double.parse(_valueCtrl.text.trim()),
+        'value': _type == 'percentage'
+            ? double.parse(_valueCtrl.text.trim())
+            : toHtgAmount(double.parse(_valueCtrl.text.trim()), ref.read(settingsProvider)),
         'scope': _scope,
         'is_automatic': _isAutomatic,
         'is_active': _isActive,

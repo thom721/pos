@@ -5,6 +5,7 @@ import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/return_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
@@ -295,8 +296,8 @@ class BluetoothPrintService {
       final name =
           (item.productName ?? 'Article').padRight(nameW).substring(0, nameW);
       final qty = '${_fmtQty(item.quantity)}x'.padLeft(qtyW);
-      final pu = numFmt.format(item.unitPrice).padLeft(puW);
-      final total = '$sym ${numFmt.format(item.subtotal)}'.padLeft(totW);
+      final pu = numFmt.format(toDisplayAmount(item.unitPrice, settings)).padLeft(puW);
+      final total = '$sym ${numFmt.format(toDisplayAmount(item.subtotal, settings))}'.padLeft(totW);
       text('$name$qty$pu$total');
       nl(2); // petit espace entre chaque article
     }
@@ -309,29 +310,29 @@ class BluetoothPrintService {
     final hasDisc = itemsDisc > 0.001 || catalogItemsDisc > 0.001 || sale.discount > 0.001;
     if (hasDisc) {
       text('Sous-total'.padRight(labelW) +
-          '$sym ${numFmt.format(sale.totalAmount + itemsDisc)}'.padLeft(16));
+          '$sym ${numFmt.format(toDisplayAmount(sale.totalAmount + itemsDisc, settings))}'.padLeft(16));
       nl();
       if (itemsDisc > 0.001) {
         text('Remises articles'.padRight(labelW) +
-            '-$sym ${numFmt.format(itemsDisc)}'.padLeft(16));
+            '-$sym ${numFmt.format(toDisplayAmount(itemsDisc, settings))}'.padLeft(16));
         nl();
       }
       if (catalogItemsDisc > 0.001) {
         text('Rabais articles'.padRight(labelW) +
-            '-$sym ${numFmt.format(catalogItemsDisc)}'.padLeft(16));
+            '-$sym ${numFmt.format(toDisplayAmount(catalogItemsDisc, settings))}'.padLeft(16));
         nl();
       }
       if (sale.discount > 0.001) {
         var label = sale.discountName != null ? 'Remise (${sale.discountName})' : 'Remise';
         if (label.length > labelW) label = label.substring(0, labelW);
         text(label.padRight(labelW) +
-            '-$sym ${numFmt.format(sale.discount)}'.padLeft(16));
+            '-$sym ${numFmt.format(toDisplayAmount(sale.discount, settings))}'.padLeft(16));
         nl();
       }
     }
     esc([0x1B, 0x45, 0x01]);
     text('TOTAL'.padRight(labelW) +
-        '$sym ${numFmt.format(sale.finalAmount)}'.padLeft(16));
+        '$sym ${numFmt.format(toDisplayAmount(sale.finalAmount, settings))}'.padLeft(16));
     nl();
     esc([0x1B, 0x45, 0x00]);
     // change_due (create_sale) plafonne paidAmount au montant dû et stocke
@@ -343,31 +344,31 @@ class BluetoothPrintService {
     final tendered =
         sale.changeDue > 0.001 ? sale.paidAmount + sale.changeDue : sale.paidAmount;
     text('Payé'.padRight(labelW) +
-        '$sym ${numFmt.format(tendered)}'.padLeft(16));
+        '$sym ${numFmt.format(toDisplayAmount(tendered, settings))}'.padLeft(16));
     nl();
     if (sale.balance > 0.01) {
       text('Reste'.padRight(labelW) +
-          '$sym ${numFmt.format(sale.balance)}'.padLeft(16));
+          '$sym ${numFmt.format(toDisplayAmount(sale.balance, settings))}'.padLeft(16));
       nl();
     }
     if (change > 0.01) {
       text('Monnaie'.padRight(labelW) +
-          '$sym ${numFmt.format(change)}'.padLeft(16));
+          '$sym ${numFmt.format(toDisplayAmount(change, settings))}'.padLeft(16));
       nl();
     }
     if (sale.loyaltyRedeemed > 0.01) {
       text('Fidélité utilisée'.padRight(labelW) +
-          '-$sym ${numFmt.format(sale.loyaltyRedeemed)}'.padLeft(16));
+          '-$sym ${numFmt.format(toDisplayAmount(sale.loyaltyRedeemed, settings))}'.padLeft(16));
       nl();
     }
     if (sale.loyaltyEarned > 0.01) {
       text('Fidélité gagnée'.padRight(labelW) +
-          '+$sym ${numFmt.format(sale.loyaltyEarned)}'.padLeft(16));
+          '+$sym ${numFmt.format(toDisplayAmount(sale.loyaltyEarned, settings))}'.padLeft(16));
       nl();
     }
     if ((sale.customerLoyaltyBalance ?? 0) > 0.01) {
       text('Solde fidélité'.padRight(labelW) +
-          '$sym ${numFmt.format(sale.customerLoyaltyBalance!)}'.padLeft(16));
+          '$sym ${numFmt.format(toDisplayAmount(sale.customerLoyaltyBalance!, settings))}'.padLeft(16));
       nl();
     }
     dash();
@@ -480,7 +481,7 @@ class BluetoothPrintService {
     for (final item in ret.items) {
       final name = item.productName.padRight(nameW).substring(0, nameW);
       final qty = '${item.quantity.toStringAsFixed(item.quantity % 1 == 0 ? 0 : 2)}x'.padLeft(qtyW);
-      final total = '$sym ${numFmt.format(item.subtotal)}'.padLeft(totW);
+      final total = '$sym ${numFmt.format(toDisplayAmount(item.subtotal, settings))}'.padLeft(totW);
       text('$name$qty$total');
       nl(2); // petit espace entre chaque article
     }
@@ -488,11 +489,11 @@ class BluetoothPrintService {
     nl();
 
     text('Total retourné'.padRight(labelW) +
-        '$sym ${numFmt.format(ret.totalReturned)}'.padLeft(16));
+        '$sym ${numFmt.format(toDisplayAmount(ret.totalReturned, settings))}'.padLeft(16));
     nl();
     esc([0x1B, 0x45, 0x01]);
     text('Remboursement'.padRight(labelW) +
-        '$sym ${numFmt.format(ret.refundAmount)}'.padLeft(16));
+        '$sym ${numFmt.format(toDisplayAmount(ret.refundAmount, settings))}'.padLeft(16));
     nl();
     esc([0x1B, 0x45, 0x00]);
     dash();
@@ -591,7 +592,7 @@ class BluetoothPrintService {
           ? '${item.quantity.toInt()}x'
           : '${item.quantity.toStringAsFixed(1)}x';
       final qty = qtyStr.padLeft(qtyW);
-      final total = '$sym${numFmt.format(item.subtotal)}'.padLeft(totW);
+      final total = '$sym${numFmt.format(toDisplayAmount(item.subtotal, settings))}'.padLeft(totW);
       text('$name$qty$total'); nl();
       if (item.notes != null && item.notes!.isNotEmpty) {
         text('  ${item.notes}'); nl();
@@ -604,18 +605,18 @@ class BluetoothPrintService {
     // Totals
     final finalTotal = order.total - discount;
     text('Sous-total'.padRight(labelW) +
-        '$sym${numFmt.format(order.subtotal)}'.padLeft(16)); nl();
+        '$sym${numFmt.format(toDisplayAmount(order.subtotal, settings))}'.padLeft(16)); nl();
     if (order.tip > 0) {
       text('Pourboire'.padRight(labelW) +
-          '+$sym${numFmt.format(order.tip)}'.padLeft(16)); nl();
+          '+$sym${numFmt.format(toDisplayAmount(order.tip, settings))}'.padLeft(16)); nl();
     }
     if (discount > 0) {
       text('Remise'.padRight(labelW) +
-          '-$sym${numFmt.format(discount)}'.padLeft(16)); nl();
+          '-$sym${numFmt.format(toDisplayAmount(discount, settings))}'.padLeft(16)); nl();
     }
     esc([0x1B, 0x45, 0x01]);
     text('TOTAL'.padRight(labelW) +
-        '$sym${numFmt.format(isPaid ? finalTotal : order.total)}'.padLeft(16)); nl();
+        '$sym${numFmt.format(toDisplayAmount(isPaid ? finalTotal : order.total, settings))}'.padLeft(16)); nl();
     esc([0x1B, 0x45, 0x00]);
     if (isPaid) {
       if (paymentMethod != null) {
@@ -627,12 +628,12 @@ class BluetoothPrintService {
         text('Mode'.padRight(labelW) + modeLabel.padLeft(16)); nl();
       }
       text('Recu'.padRight(labelW) +
-          '$sym${numFmt.format(paidAmount)}'.padLeft(16)); nl();
+          '$sym${numFmt.format(toDisplayAmount(paidAmount, settings))}'.padLeft(16)); nl();
       final change = (paidAmount - finalTotal).clamp(0.0, double.infinity);
       if (change > 0.001) {
         esc([0x1B, 0x45, 0x01]);
         text('Monnaie'.padRight(labelW) +
-            '$sym${numFmt.format(change)}'.padLeft(16)); nl();
+            '$sym${numFmt.format(toDisplayAmount(change, settings))}'.padLeft(16)); nl();
         esc([0x1B, 0x45, 0x00]);
       }
     }

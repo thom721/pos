@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart' show dio, extractAnyError;
@@ -163,8 +164,6 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
     }
 
     final ordersAsync = ref.watch(openOrdersProvider);
-    final symbol = ref.watch(settingsProvider).currencySymbol;
-    final fmt = NumberFormat('#,##0.00');
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -216,8 +215,6 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
                 separatorBuilder: (_, __) => const SizedBox(height: 10),
                 itemBuilder: (_, i) => _OrderCard(
                   order: orders[i],
-                  symbol: symbol,
-                  fmt: fmt,
                   onTap: () => context.push('/restaurant/commande/${orders[i].id}'),
                 ),
               ),
@@ -397,16 +394,12 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
 
 // ── Order card ────────────────────────────────────────────────────────────────
 
-class _OrderCard extends StatelessWidget {
+class _OrderCard extends ConsumerWidget {
   final RestaurantOrderModel order;
-  final String symbol;
-  final NumberFormat fmt;
   final VoidCallback onTap;
 
   const _OrderCard({
     required this.order,
-    required this.symbol,
-    required this.fmt,
     required this.onTap,
   });
 
@@ -431,7 +424,8 @@ class _OrderCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     final tableLabel = order.hasTable ? (order.tableName ?? 'Table') : 'Comptoir / Bar';
 
     return Material(
@@ -525,7 +519,7 @@ class _OrderCard extends StatelessWidget {
                         ),
                         const Spacer(),
                         Text(
-                          '$symbol${fmt.format(order.total)}',
+                          formatMoney(order.total, settings),
                           style: const TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 16,

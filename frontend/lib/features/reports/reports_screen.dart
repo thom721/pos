@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
@@ -172,7 +173,7 @@ const _kReportColWidths = {
   'product': 200.0,
 };
 
-String _reportCellValue(String key, SaleModel s, NumberFormat fmt) {
+String _reportCellValue(String key, SaleModel s, NumberFormat fmt, AppSettings settings) {
   switch (key) {
     case 'reference':
       return s.reference;
@@ -183,15 +184,15 @@ String _reportCellValue(String key, SaleModel s, NumberFormat fmt) {
     case 'cashier':
       return s.userFullName ?? '-';
     case 'total':
-      return fmt.format(s.finalAmount);
+      return fmt.format(toDisplayAmount(s.finalAmount, settings));
     case 'paid':
-      return fmt.format(s.paidAmount);
+      return fmt.format(toDisplayAmount(s.paidAmount, settings));
     case 'discount':
       final d = s.discount + s.totalItemsDiscount + s.totalCatalogItemDiscount;
-      return d > 0 ? fmt.format(d) : '—';
+      return d > 0 ? fmt.format(toDisplayAmount(d, settings)) : '—';
     case 'credit':
       final c = s.balance.clamp(0.0, double.maxFinite);
-      return c > 0 ? fmt.format(c) : '—';
+      return c > 0 ? fmt.format(toDisplayAmount(c, settings)) : '—';
     case 'status':
       return _statusLabel(s.status);
     case 'category':
@@ -518,25 +519,25 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
             children: [
               _KpiCard(
                 label: "Chiffre d'affaires",
-                value: fmt.format(totalRevenue),
+                value: fmt.format(toDisplayAmount(totalRevenue, settings)),
                 icon: Icons.trending_up_rounded,
                 color: AppColors.primary,
               ),
               _KpiCard(
                 label: 'Encaissé',
-                value: fmt.format(totalPaid),
+                value: fmt.format(toDisplayAmount(totalPaid, settings)),
                 icon: Icons.payments_rounded,
                 color: AppColors.success,
               ),
               _KpiCard(
                 label: 'Reste à encaisser',
-                value: fmt.format(totalBalance),
+                value: fmt.format(toDisplayAmount(totalBalance, settings)),
                 icon: Icons.hourglass_bottom_rounded,
                 color: AppColors.warning,
               ),
               _KpiCard(
                 label: 'Remises accordées',
-                value: fmt.format(totalDiscount),
+                value: fmt.format(toDisplayAmount(totalDiscount, settings)),
                 icon: Icons.local_offer_rounded,
                 color: AppColors.info,
               ),
@@ -611,7 +612,7 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
                         _tableHeader(cols.map((c) => c.$2).toList()),
                         ...sales.map((s) => _tableRow(
                               cols
-                                  .map((c) => _reportCellValue(c.$1, s, fmt))
+                                  .map((c) => _reportCellValue(c.$1, s, fmt, settings))
                                   .toList(),
                               statusKeys: cols.map((c) => c.$1).toList(),
                               statusColor: _statusColor(s.status),
@@ -925,7 +926,8 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
     final dateFmt = DateFormat('dd/MM/yyyy HH:mm', 'fr');
     const sep = ';';
     final buf = StringBuffer();
-    final reportColumns = ref.read(settingsProvider).reportColumns;
+    final settings = ref.read(settingsProvider);
+    final reportColumns = settings.reportColumns;
     final cols = kReportColumnDefs
         .where((c) => reportColumns.contains(c.$1))
         .toList();
@@ -949,13 +951,13 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
           case 'cashier':
             return s.userFullName ?? '';
           case 'total':
-            return s.finalAmount.toStringAsFixed(2);
+            return toDisplayAmount(s.finalAmount, settings).toStringAsFixed(2);
           case 'paid':
-            return s.paidAmount.toStringAsFixed(2);
+            return toDisplayAmount(s.paidAmount, settings).toStringAsFixed(2);
           case 'discount':
-            return disc.toStringAsFixed(2);
+            return toDisplayAmount(disc, settings).toStringAsFixed(2);
           case 'credit':
-            return credit.toStringAsFixed(2);
+            return toDisplayAmount(credit, settings).toStringAsFixed(2);
           case 'status':
             return _statusFr(s.status);
           case 'category':
@@ -1096,7 +1098,7 @@ Future<void> generateSalesReportPdf(
   final sym = settings.currencySymbol.trim();
 
   String mon(double v) {
-    final n = NumberFormat('#,##0.00').format(v);
+    final n = NumberFormat('#,##0.00').format(toDisplayAmount(v, settings));
     return '$sym $n';
   }
 

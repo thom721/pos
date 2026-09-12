@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:pos_connect/data/models/client_sabotage_model.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/repositories/client_sabotage_repository.dart';
 import 'package:pos_connect/providers/client_sabotage_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
-
-final _fmt = NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
 
 class ClientsSabotageScreen extends ConsumerStatefulWidget {
   const ClientsSabotageScreen({super.key});
@@ -92,6 +90,7 @@ class _ClientCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -116,7 +115,7 @@ class _ClientCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text('Solde', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-            Text(_fmt.format(client.balance),
+            Text(formatMoney(client.balance, settings),
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary)),
           ],
         ),

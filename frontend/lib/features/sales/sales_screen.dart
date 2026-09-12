@@ -18,9 +18,7 @@ import 'package:pos_connect/services/thermal_printer_service.dart';
 import 'package:pos_connect/shared/utils/receipt_pdf.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/shared/widgets/status_badge.dart';
-
-final _fmt =
-    NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
+import 'package:pos_connect/core/currency.dart';
 final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
 
 class SalesScreen extends ConsumerStatefulWidget {
@@ -123,6 +121,7 @@ class _SalesList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     return Column(
       children: [
         // Summary bar
@@ -136,7 +135,7 @@ class _SalesList extends ConsumerWidget {
                       color: AppColors.textSecondary, fontSize: 13)),
               const Spacer(),
               Text(
-                'Total: ${_fmt.format(sales.fold(0.0, (s, e) => s + e.finalAmount))}',
+                'Total: ${formatMoney(sales.fold(0.0, (s, e) => s + e.finalAmount), settings)}',
                 style: const TextStyle(
                     fontWeight: FontWeight.w600, fontSize: 13),
               ),
@@ -424,7 +423,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
             ),
             if (sale.discount > 0)
               Text(
-                'Rabais: -${_fmt.format(sale.discount)}',
+                'Rabais: -${formatMoney(sale.discount, settings)}',
                 style: const TextStyle(
                     color: AppColors.warning,
                     fontSize: 11,
@@ -441,7 +440,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(_fmt.format(sale.finalAmount),
+                  Text(formatMoney(sale.finalAmount, settings),
                       style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 14)),
                   const SizedBox(height: 2),
@@ -492,7 +491,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
                             ),
                           ),
                         ),
-                        Text(_fmt.format(item.subtotal),
+                        Text(formatMoney(item.subtotal, settings),
                             style: const TextStyle(
                                 fontWeight: FontWeight.w600, fontSize: 13)),
                       ],
@@ -504,7 +503,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
                         children: [
                           if (item.hasDiscount) ...[
                             Text(
-                              '${item.quantity.toStringAsFixed(0)} × ${_fmt.format(item.originalPrice!)}',
+                              '${item.quantity.toStringAsFixed(0)} × ${formatMoney(item.originalPrice!, settings)}',
                               style: const TextStyle(
                                 color: AppColors.textSecondary,
                                 fontSize: 11,
@@ -513,7 +512,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              '${item.quantity.toStringAsFixed(0)} × ${_fmt.format(item.unitPrice)}',
+                              '${item.quantity.toStringAsFixed(0)} × ${formatMoney(item.unitPrice, settings)}',
                               style: const TextStyle(
                                   color: AppColors.warning,
                                   fontSize: 11,
@@ -521,7 +520,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              'Rabais: -${_fmt.format(item.itemDiscount + item.catalogDiscount)}',
+                              'Rabais: -${formatMoney(item.itemDiscount + item.catalogDiscount, settings)}',
                               style: const TextStyle(
                                   color: AppColors.warning,
                                   fontSize: 11,
@@ -529,7 +528,7 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
                             ),
                           ] else
                             Text(
-                              '${item.quantity.toStringAsFixed(0)} × ${_fmt.format(item.unitPrice)}',
+                              '${item.quantity.toStringAsFixed(0)} × ${formatMoney(item.unitPrice, settings)}',
                               style: const TextStyle(
                                   color: AppColors.textSecondary, fontSize: 12),
                             ),
@@ -595,13 +594,14 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
 
 // ── Sale summary row ───────────────────────────────────────────────────────
 
-class _SaleSummaryRow extends StatelessWidget {
+class _SaleSummaryRow extends ConsumerWidget {
   final SaleModel sale;
 
   const _SaleSummaryRow({required this.sale});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     // Rabais par article (cumul)
     final itemsDiscount =
         sale.items.fold(0.0, (s, i) => s + i.itemDiscount);
@@ -621,7 +621,7 @@ class _SaleSummaryRow extends StatelessWidget {
                   style: TextStyle(
                       color: AppColors.textSecondary, fontSize: 12)),
               Text(
-                _fmt.format(sale.totalAmount + itemsDiscount),
+                formatMoney(sale.totalAmount + itemsDiscount, settings),
                 style: const TextStyle(
                     color: AppColors.textSecondary, fontSize: 12),
               ),
@@ -636,7 +636,7 @@ class _SaleSummaryRow extends StatelessWidget {
                         color: AppColors.warning,
                         fontSize: 12)),
                 Text(
-                  '-${_fmt.format(itemsDiscount)}',
+                  '-${formatMoney(itemsDiscount, settings)}',
                   style: const TextStyle(
                       color: AppColors.warning,
                       fontWeight: FontWeight.w600,
@@ -653,7 +653,7 @@ class _SaleSummaryRow extends StatelessWidget {
                         color: AppColors.warning,
                         fontSize: 12)),
                 Text(
-                  '-${_fmt.format(globalDiscount)}',
+                  '-${formatMoney(globalDiscount, settings)}',
                   style: const TextStyle(
                       color: AppColors.warning,
                       fontWeight: FontWeight.w600,
@@ -668,12 +668,12 @@ class _SaleSummaryRow extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             Text(
-              'Total: ${_fmt.format(sale.finalAmount)}  ',
+              'Total: ${formatMoney(sale.finalAmount, settings)}  ',
               style: const TextStyle(
                   fontWeight: FontWeight.w700, fontSize: 13),
             ),
             Text(
-              'Payé: ${_fmt.format(sale.paidAmount)}',
+              'Payé: ${formatMoney(sale.paidAmount, settings)}',
               style: TextStyle(
                   color: sale.balance > 0
                       ? AppColors.error
@@ -685,7 +685,7 @@ class _SaleSummaryRow extends StatelessWidget {
         ),
         if (sale.balance > 0)
           Text(
-            'Reste: ${_fmt.format(sale.balance)}',
+            'Reste: ${formatMoney(sale.balance, settings)}',
             style: const TextStyle(
                 color: AppColors.error,
                 fontWeight: FontWeight.w600,
@@ -693,7 +693,7 @@ class _SaleSummaryRow extends StatelessWidget {
           ),
         if (sale.loyaltyRedeemed > 0.001)
           Text(
-            'Fidélité utilisée: -${_fmt.format(sale.loyaltyRedeemed)}',
+            'Fidélité utilisée: -${formatMoney(sale.loyaltyRedeemed, settings)}',
             style: const TextStyle(
                 color: AppColors.error,
                 fontWeight: FontWeight.w500,
@@ -701,7 +701,7 @@ class _SaleSummaryRow extends StatelessWidget {
           ),
         if (sale.loyaltyEarned > 0.001)
           Text(
-            'Fidélité gagnée: +${_fmt.format(sale.loyaltyEarned)}',
+            'Fidélité gagnée: +${formatMoney(sale.loyaltyEarned, settings)}',
             style: const TextStyle(
                 color: AppColors.success,
                 fontWeight: FontWeight.w500,
@@ -709,7 +709,7 @@ class _SaleSummaryRow extends StatelessWidget {
           ),
         if ((sale.customerLoyaltyBalance ?? 0) > 0.001)
           Text(
-            'Solde fidélité: ${_fmt.format(sale.customerLoyaltyBalance!)}',
+            'Solde fidélité: ${formatMoney(sale.customerLoyaltyBalance!, settings)}',
             style: const TextStyle(
                 color: AppColors.textSecondary,
                 fontWeight: FontWeight.w600,
@@ -722,7 +722,7 @@ class _SaleSummaryRow extends StatelessWidget {
 
 // ── Quick return dialog (pre-loaded sale, no search) ───────────────────────
 
-class _QuickReturnDialog extends StatefulWidget {
+class _QuickReturnDialog extends ConsumerStatefulWidget {
   final SaleModel sale;
   final Future<void> Function(
       List<Map<String, dynamic>> items, double refund, String? reason) onSubmit;
@@ -730,10 +730,10 @@ class _QuickReturnDialog extends StatefulWidget {
   const _QuickReturnDialog({required this.sale, required this.onSubmit});
 
   @override
-  State<_QuickReturnDialog> createState() => _QuickReturnDialogState();
+  ConsumerState<_QuickReturnDialog> createState() => _QuickReturnDialogState();
 }
 
-class _QuickReturnDialogState extends State<_QuickReturnDialog> {
+class _QuickReturnDialogState extends ConsumerState<_QuickReturnDialog> {
   final _reasonCtrl = TextEditingController();
   final _refundCtrl = TextEditingController();
   final Map<int, TextEditingController> _qtyCtrls = {};
@@ -772,8 +772,8 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
     return total;
   }
 
-  void _updateRefund() =>
-      _refundCtrl.text = _computedRefund.toStringAsFixed(2);
+  void _updateRefund() => _refundCtrl.text =
+      toDisplayAmount(_computedRefund, ref.read(settingsProvider)).toStringAsFixed(2);
 
   void _onCheck(int i, bool? val) {
     final checked = val ?? false;
@@ -803,9 +803,13 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
   Future<void> _submit() async {
     setState(() { _submitting = true; _error = null; });
     try {
+      final typedRefund = double.tryParse(_refundCtrl.text);
+      final refund = typedRefund != null
+          ? toHtgAmount(typedRefund, ref.read(settingsProvider))
+          : _computedRefund;
       await widget.onSubmit(
         _selectedItems,
-        double.tryParse(_refundCtrl.text) ?? _computedRefund,
+        refund,
         _reasonCtrl.text.trim().isEmpty ? null : _reasonCtrl.text.trim(),
       );
       if (mounted) Navigator.pop(context, true);
@@ -817,6 +821,7 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
   @override
   Widget build(BuildContext context) {
     final sale = widget.sale;
+    final settings = ref.watch(settingsProvider);
     return Dialog(
       backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -974,7 +979,7 @@ class _QuickReturnDialogState extends State<_QuickReturnDialog> {
                                       ? 'Vendu : ${_fmtQty(item.quantity)}  •  Entièrement retourné'
                                       : item.returnedQty > 0
                                           ? 'Vendu : ${_fmtQty(item.quantity)}  •  Déjà retourné : ${_fmtQty(item.returnedQty)}  •  Reste : ${_fmtQty(maxQty)}'
-                                          : 'Vendu : ${_fmtQty(item.quantity)}  •  Prix : ${_fmt.format(item.unitPrice)}',
+                                          : 'Vendu : ${_fmtQty(item.quantity)}  •  Prix : ${formatMoney(item.unitPrice, settings)}',
                                   style: const TextStyle(
                                       fontSize: 11,
                                       color: AppColors.textSecondary),

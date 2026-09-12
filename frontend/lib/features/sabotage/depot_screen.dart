@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:pos_connect/data/models/client_sabotage_model.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/repositories/depot_repository.dart';
 import 'package:pos_connect/providers/client_sabotage_provider.dart';
-
-final _fmt = NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
+import 'package:pos_connect/providers/settings_provider.dart';
 
 class DepotScreen extends ConsumerStatefulWidget {
   const DepotScreen({super.key});
@@ -42,7 +41,8 @@ class _DepotScreenState extends ConsumerState<DepotScreen> {
     try {
       await DepotRepository().createDepot({
         'client_id': _selectedClient!.id,
-        'amount': double.parse(_amountCtrl.text.trim()),
+        'amount': toHtgAmount(
+            double.parse(_amountCtrl.text.trim()), ref.read(settingsProvider)),
         if (_noteCtrl.text.trim().isNotEmpty) 'note': _noteCtrl.text.trim(),
       });
       ref.invalidate(clientsSabotageProvider);
@@ -64,6 +64,7 @@ class _DepotScreenState extends ConsumerState<DepotScreen> {
   @override
   Widget build(BuildContext context) {
     final clientsAsync = ref.watch(clientsSabotageProvider);
+    final settings = ref.watch(settingsProvider);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -88,14 +89,15 @@ class _DepotScreenState extends ConsumerState<DepotScreen> {
               ),
               if (_selectedClient != null) ...[
                 const SizedBox(height: 8),
-                Text('Solde actuel : ${_fmt.format(_selectedClient!.balance)}',
+                Text('Solde actuel : ${formatMoney(_selectedClient!.balance, settings)}',
                     style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
               ],
               const SizedBox(height: 16),
               TextFormField(
                 controller: _amountCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Montant *'),
+                decoration: InputDecoration(
+                    labelText: 'Montant (${settings.currencySymbol.trim()}) *'),
                 validator: (v) {
                   final n = double.tryParse(v ?? '');
                   if (n == null || n <= 0) return 'Montant invalide';

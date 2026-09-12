@@ -1,10 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/date_utils.dart' show toHaitiTime;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -536,6 +540,7 @@ class _SessionHistoryTabState extends ConsumerState<_SessionHistoryTab> {
   Widget build(BuildContext context) {
     final params   = ref.watch(_sessionHistoryParamsProvider);
     final async    = ref.watch(_sessionHistoryProvider(params));
+    final settings = ref.watch(settingsProvider);
     final dateFmt  = DateFormat('dd/MM/yyyy HH:mm', 'fr');
     final moneyFmt = NumberFormat('#,##0.00', 'fr');
 
@@ -716,7 +721,7 @@ class _SessionHistoryTabState extends ConsumerState<_SessionHistoryTab> {
                           Row(
                             children: [
                               Text(
-                                'Ouv. ${moneyFmt.format(openBal)} HTG',
+                                'Ouv. ${moneyFmt.format(toDisplayAmount(openBal, settings))} ${settings.currencySymbol.trim()}',
                                 style: const TextStyle(fontSize: 10),
                               ),
                               if (closeBal != null) ...[
@@ -724,7 +729,7 @@ class _SessionHistoryTabState extends ConsumerState<_SessionHistoryTab> {
                                     style: TextStyle(fontSize: 10,
                                         color: AppColors.textSecondary)),
                                 Text(
-                                  'Ferm. ${moneyFmt.format(closeBal)} HTG',
+                                  'Ferm. ${moneyFmt.format(toDisplayAmount(closeBal, settings))} ${settings.currencySymbol.trim()}',
                                   style: const TextStyle(fontSize: 10),
                                 ),
                               ],
@@ -750,17 +755,51 @@ class _SessionHistoryTabState extends ConsumerState<_SessionHistoryTab> {
 
 // ── Single audit row ──────────────────────────────────────────────────────────
 
-class _AuditRow extends StatelessWidget {
+// Clés de `detail` (voir api/services/audit_service.py, appelées depuis
+// cashier_sessions.py, sales.py, product.py) qui contiennent un montant HTG
+// — le reste (ids, dates ISO, quantités, texte) s'affiche tel quel.
+const _kAuditMoneyKeys = {
+  'opening_balance', 'closing_balance', 'cash_difference',
+  'total', 'purchase_price', 'sale_price',
+};
+
+/// `detail` est stocké côté serveur comme une chaîne JSON brute
+/// (json.dumps d'un dict) — jamais convertie ni mise en forme jusqu'ici,
+/// d'où les montants systématiquement affichés en gourdes brutes quelle
+/// que soit la devise configurée. Reformate chaque paire clé/valeur,
+/// convertissant les montants connus vers la devise d'affichage.
+String _formatAuditDetail(String? raw, AppSettings settings) {
+  if (raw == null || raw.isEmpty) return '';
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is Map) {
+      return decoded.entries.map((e) {
+        final key = e.key.toString();
+        final value = e.value;
+        if (_kAuditMoneyKeys.contains(key) && value is num) {
+          return '$key: ${formatMoney(value.toDouble(), settings)}';
+        }
+        return '$key: $value';
+      }).join(', ');
+    }
+  } catch (_) {
+    // Pas du JSON valide (ancien format ?) — affiche tel quel.
+  }
+  return raw;
+}
+
+class _AuditRow extends ConsumerWidget {
   final Map<String, dynamic> entry;
   const _AuditRow({required this.entry});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     final action       = entry['action'] as String? ?? '';
     final resourceType = entry['resource_type'] as String? ?? '';
     final resourceId   = entry['resource_id'] as String?;
     final userName     = entry['user_name'] as String? ?? 'Système';
-    final detail       = entry['detail'] as String?;
+    final detail       = _formatAuditDetail(entry['detail'] as String?, settings);
     final rawCreated   = entry['created_at'] != null
         ? DateTime.tryParse(entry['created_at'].toString())
         : null;
@@ -800,7 +839,7 @@ class _AuditRow extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 10, color: AppColors.textSecondary),
                 overflow: TextOverflow.ellipsis),
-          if (detail != null && detail.isNotEmpty)
+          if (detail.isNotEmpty)
             Text(detail,
                 style: const TextStyle(
                     fontSize: 10, color: AppColors.textSecondary),

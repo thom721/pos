@@ -7,6 +7,7 @@ import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:printing/printing.dart';
 import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
 
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
@@ -204,9 +205,9 @@ class ThermalPrinterService {
             style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
         SunmiColumn(text: _fmtQty(item.quantity), width: 4,
             style: SunmiTextStyle(align: SunmiPrintAlign.CENTER)),
-        SunmiColumn(text: fmt.format(item.unitPrice), width: 7,
+        SunmiColumn(text: fmt.format(toDisplayAmount(item.unitPrice, settings)), width: 7,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
-        SunmiColumn(text: fmt.format(item.subtotal), width: 8,
+        SunmiColumn(text: fmt.format(toDisplayAmount(item.subtotal, settings)), width: 8,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
       await SunmiPrinter.lineWrap(1); // petit espace entre chaque article
@@ -222,14 +223,14 @@ class ThermalPrinterService {
       await SunmiPrinter.printRow(cols: [
         SunmiColumn(text: 'Sous-total', width: 20,
             style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-        SunmiColumn(text: '$sym${fmt.format(sale.totalAmount + itemsDisc)}', width: 12,
+        SunmiColumn(text: '$sym${fmt.format(toDisplayAmount(sale.totalAmount + itemsDisc, settings))}', width: 12,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
       if (itemsDisc > 0.001) {
         await SunmiPrinter.printRow(cols: [
           SunmiColumn(text: 'Remises articles', width: 20,
               style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-          SunmiColumn(text: '-$sym${fmt.format(itemsDisc)}', width: 12,
+          SunmiColumn(text: '-$sym${fmt.format(toDisplayAmount(itemsDisc, settings))}', width: 12,
               style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
         ]);
       }
@@ -237,7 +238,7 @@ class ThermalPrinterService {
         await SunmiPrinter.printRow(cols: [
           SunmiColumn(text: 'Rabais catalogue', width: 20,
               style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-          SunmiColumn(text: '-$sym${fmt.format(catalogItemsDisc)}', width: 12,
+          SunmiColumn(text: '-$sym${fmt.format(toDisplayAmount(catalogItemsDisc, settings))}', width: 12,
               style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
         ]);
       }
@@ -249,7 +250,7 @@ class ThermalPrinterService {
         await SunmiPrinter.printRow(cols: [
           SunmiColumn(text: label, width: 20,
               style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-          SunmiColumn(text: '-$sym${fmt.format(sale.discount)}', width: 12,
+          SunmiColumn(text: '-$sym${fmt.format(toDisplayAmount(sale.discount, settings))}', width: 12,
               style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
         ]);
       }
@@ -257,7 +258,7 @@ class ThermalPrinterService {
     await SunmiPrinter.printRow(cols: [
       SunmiColumn(text: 'TOTAL', width: 20,
           style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.LEFT)),
-      SunmiColumn(text: '$sym${fmt.format(sale.finalAmount)}', width: 12,
+      SunmiColumn(text: '$sym${fmt.format(toDisplayAmount(sale.finalAmount, settings))}', width: 12,
           style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.RIGHT)),
     ]);
     // change_due (create_sale) plafonne paidAmount au montant dû et stocke
@@ -271,14 +272,14 @@ class ThermalPrinterService {
     await SunmiPrinter.printRow(cols: [
       SunmiColumn(text: 'Montant reçu', width: 20,
           style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-      SunmiColumn(text: '$sym${fmt.format(tendered)}', width: 12,
+      SunmiColumn(text: '$sym${fmt.format(toDisplayAmount(tendered, settings))}', width: 12,
           style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
     ]);
     if (sale.balance > 0.001) {
       await SunmiPrinter.printRow(cols: [
         SunmiColumn(text: 'Reste à payer', width: 20,
             style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-        SunmiColumn(text: '$sym${fmt.format(sale.balance)}', width: 12,
+        SunmiColumn(text: '$sym${fmt.format(toDisplayAmount(sale.balance, settings))}', width: 12,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
     }
@@ -286,7 +287,7 @@ class ThermalPrinterService {
       await SunmiPrinter.printRow(cols: [
         SunmiColumn(text: 'Monnaie', width: 20,
             style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-        SunmiColumn(text: '$sym${fmt.format(change)}', width: 12,
+        SunmiColumn(text: '$sym${fmt.format(toDisplayAmount(change, settings))}', width: 12,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
     }
@@ -294,7 +295,7 @@ class ThermalPrinterService {
       await SunmiPrinter.printRow(cols: [
         SunmiColumn(text: 'Fidélité utilisée', width: 20,
             style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-        SunmiColumn(text: '-$sym${fmt.format(sale.loyaltyRedeemed)}', width: 12,
+        SunmiColumn(text: '-$sym${fmt.format(toDisplayAmount(sale.loyaltyRedeemed, settings))}', width: 12,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
     }
@@ -302,7 +303,7 @@ class ThermalPrinterService {
       await SunmiPrinter.printRow(cols: [
         SunmiColumn(text: 'Fidélité gagnée', width: 20,
             style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-        SunmiColumn(text: '+$sym${fmt.format(sale.loyaltyEarned)}', width: 12,
+        SunmiColumn(text: '+$sym${fmt.format(toDisplayAmount(sale.loyaltyEarned, settings))}', width: 12,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
     }
@@ -310,7 +311,7 @@ class ThermalPrinterService {
       await SunmiPrinter.printRow(cols: [
         SunmiColumn(text: 'Solde fidélité', width: 20,
             style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-        SunmiColumn(text: '$sym${fmt.format(sale.customerLoyaltyBalance!)}', width: 12,
+        SunmiColumn(text: '$sym${fmt.format(toDisplayAmount(sale.customerLoyaltyBalance!, settings))}', width: 12,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
     }
@@ -415,7 +416,7 @@ class ThermalPrinterService {
                 : item.quantity.toStringAsFixed(1),
             width: 4,
             style: SunmiTextStyle(align: SunmiPrintAlign.CENTER)),
-        SunmiColumn(text: fmt.format(item.subtotal), width: 10,
+        SunmiColumn(text: fmt.format(toDisplayAmount(item.subtotal, settings)), width: 10,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
       if (item.notes != null && item.notes!.isNotEmpty) {
@@ -430,14 +431,14 @@ class ThermalPrinterService {
     await SunmiPrinter.printRow(cols: [
       SunmiColumn(text: 'Sous-total', width: 20,
           style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-      SunmiColumn(text: '$sym${fmt.format(order.subtotal)}', width: 12,
+      SunmiColumn(text: '$sym${fmt.format(toDisplayAmount(order.subtotal, settings))}', width: 12,
           style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
     ]);
     if (order.tip > 0) {
       await SunmiPrinter.printRow(cols: [
         SunmiColumn(text: 'Pourboire', width: 20,
             style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-        SunmiColumn(text: '+$sym${fmt.format(order.tip)}', width: 12,
+        SunmiColumn(text: '+$sym${fmt.format(toDisplayAmount(order.tip, settings))}', width: 12,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
     }
@@ -445,7 +446,7 @@ class ThermalPrinterService {
       await SunmiPrinter.printRow(cols: [
         SunmiColumn(text: 'Remise', width: 20,
             style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-        SunmiColumn(text: '-$sym${fmt.format(discount)}', width: 12,
+        SunmiColumn(text: '-$sym${fmt.format(toDisplayAmount(discount, settings))}', width: 12,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
     }
@@ -454,7 +455,7 @@ class ThermalPrinterService {
       SunmiColumn(text: 'TOTAL', width: 20,
           style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.LEFT)),
       SunmiColumn(
-          text: '$sym${fmt.format(isPaid ? finalTotal : order.total)}',
+          text: '$sym${fmt.format(toDisplayAmount(isPaid ? finalTotal : order.total, settings))}',
           width: 12,
           style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.RIGHT)),
     ]);
@@ -475,7 +476,7 @@ class ThermalPrinterService {
       await SunmiPrinter.printRow(cols: [
         SunmiColumn(text: 'Reçu', width: 20,
             style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-        SunmiColumn(text: '$sym${fmt.format(paidAmount)}', width: 12,
+        SunmiColumn(text: '$sym${fmt.format(toDisplayAmount(paidAmount, settings))}', width: 12,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
       final change = (paidAmount - finalTotal).clamp(0.0, double.infinity);
@@ -483,7 +484,7 @@ class ThermalPrinterService {
         await SunmiPrinter.printRow(cols: [
           SunmiColumn(text: 'Monnaie', width: 20,
               style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.LEFT)),
-          SunmiColumn(text: '$sym${fmt.format(change)}', width: 12,
+          SunmiColumn(text: '$sym${fmt.format(toDisplayAmount(change, settings))}', width: 12,
               style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.RIGHT)),
         ]);
       }

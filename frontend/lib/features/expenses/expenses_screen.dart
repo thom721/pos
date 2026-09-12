@@ -6,10 +6,10 @@ import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:pos_connect/data/models/expense_model.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/repositories/expense_repository.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/providers/expense_provider.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
-
-final _fmt = NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
 final _dateFmt = DateFormat('dd/MM/yyyy');
 
 class ExpensesScreen extends ConsumerWidget {
@@ -80,6 +80,7 @@ class _ExpenseCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     return Card(
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -113,7 +114,7 @@ class _ExpenseCard extends ConsumerWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_fmt.format(expense.amount),
+            Text(formatMoney(expense.amount, settings),
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
             IconButton(
               icon: const Icon(Icons.edit_outlined, color: AppColors.textSecondary, size: 18),
@@ -188,7 +189,10 @@ class _ExpenseFormDialogState extends ConsumerState<_ExpenseFormDialog> {
     _descriptionCtrl = TextEditingController(text: widget.expense?.description ?? '');
     _categoryCtrl = TextEditingController(text: widget.expense?.category ?? '');
     _amountCtrl = TextEditingController(
-        text: widget.expense != null ? widget.expense!.amount.toStringAsFixed(2) : '');
+        text: widget.expense != null
+            ? toDisplayAmount(widget.expense!.amount, ref.read(settingsProvider))
+                .toStringAsFixed(2)
+            : '');
     _date = widget.expense?.expenseDate ?? DateTime.now();
     _warehouseId = widget.expense?.warehouseId;
   }
@@ -204,6 +208,7 @@ class _ExpenseFormDialogState extends ConsumerState<_ExpenseFormDialog> {
   @override
   Widget build(BuildContext context) {
     final warehousesAsync = ref.watch(warehouseListProvider);
+    final settings = ref.watch(settingsProvider);
 
     return AlertDialog(
       title: Text(isEdit ? 'Modifier la dépense' : 'Nouvelle dépense'),
@@ -229,7 +234,8 @@ class _ExpenseFormDialogState extends ConsumerState<_ExpenseFormDialog> {
               TextFormField(
                 controller: _amountCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Montant (HTG) *'),
+                decoration: InputDecoration(
+                    labelText: 'Montant (${settings.currencySymbol.trim()}) *'),
                 validator: (v) {
                   final n = double.tryParse(v ?? '');
                   if (n == null || n <= 0) return 'Montant invalide';
@@ -299,7 +305,7 @@ class _ExpenseFormDialogState extends ConsumerState<_ExpenseFormDialog> {
       final data = {
         'description': _descriptionCtrl.text.trim(),
         'category': _categoryCtrl.text.trim().isEmpty ? null : _categoryCtrl.text.trim(),
-        'amount': double.parse(_amountCtrl.text),
+        'amount': toHtgAmount(double.parse(_amountCtrl.text), ref.read(settingsProvider)),
         'expense_date': _date.toIso8601String(),
         'warehouse_id': _warehouseId,
       };

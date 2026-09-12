@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/features/reports/reports_screen.dart'
@@ -103,8 +104,9 @@ class _MobileReportScreenState extends ConsumerState<MobileReportScreen> {
     final totalSales = sales.fold<double>(0, (s, e) => s + e.finalAmount);
     final totalDiscount = sales.fold<double>(0, (s, e) => s + e.discount);
     final count = sales.length;
-    final sym = ref.watch(settingsProvider).currencySymbol.trim();
-    String mon(double v) => '$sym ${v.toStringAsFixed(2)}';
+    final settings = ref.watch(settingsProvider);
+    final sym = settings.currencySymbol.trim();
+    String mon(double v) => '$sym ${toDisplayAmount(v, settings).toStringAsFixed(2)}';
 
     return Scaffold(
       body: RefreshIndicator(

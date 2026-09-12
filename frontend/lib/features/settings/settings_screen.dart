@@ -179,6 +179,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     onTap: () => notifier.save(
                         settings.copyWith(currency: 'EUR', currencySymbol: '€ ')),
                   ),
+                  const Divider(height: 1),
+                  _CurrencyTile(
+                    currency: 'HTD',
+                    symbol: '\$HT ',
+                    label: 'Dollar Haïtien (\$HT — 1 \$HT = 5 HTG)',
+                    selected: settings.currency == 'HTD',
+                    onTap: () => notifier.save(
+                        settings.copyWith(currency: 'HTD', currencySymbol: '\$HT ')),
+                  ),
                 ],
               ),
             ),

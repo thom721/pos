@@ -1,10 +1,12 @@
 import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/product_model.dart';
@@ -24,9 +26,6 @@ import 'package:pos_connect/providers/entrepot_provider.dart';
 import 'package:pos_connect/shared/widgets/barcode_scanner_sheet.dart';
 import 'package:pos_connect/shared/widgets/transfer_to_entrepot_dialog.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
-
-final _fmt =
-    NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
 
 String _imgUrl(String path) => '${dio.options.baseUrl}$path';
 
@@ -181,9 +180,9 @@ class _VRow {
     for (final c in extra) c.dispose();
   }
 
-  Map<String, dynamic> toMap(List<String> colNames) => {
+  Map<String, dynamic> toMap(List<String> colNames, AppSettings settings) => {
         'name': name.text.trim(),
-        'price_delta': double.tryParse(price.text) ?? 0.0,
+        'price_delta': toHtgAmount(double.tryParse(price.text) ?? 0.0, settings),
         'available': available,
         for (int i = 0; i < colNames.length && i < extra.length; i++)
           colNames[i]: extra[i].text.trim(),
@@ -288,6 +287,7 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
             items: _items,
             canEdit: canEdit,
             canDelete: canDelete,
+            settings: ref.watch(settingsProvider),
             onEdit: (m) => _showForm(m),
             onDelete: (m) => _confirmDelete(context, m),
             onToggle: _toggleAvailable,
@@ -302,6 +302,7 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
                 item: _items[i],
                 canEdit: canEdit,
                 canDelete: canDelete,
+                settings: ref.watch(settingsProvider),
                 onEdit: () => _showForm(_items[i]),
                 onDelete: () => _confirmDelete(context, _items[i]),
                 onToggle: () => _toggleAvailable(_items[i]),
@@ -338,10 +339,13 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
       warehouses = results[1] as List<WarehouseModel>;
     } catch (_) {}
     if (!mounted) return;
+    final settings = ref.read(settingsProvider);
     final nameCtrl  = TextEditingController(text: m?.name ?? '');
     final descCtrl  = TextEditingController(text: m?.description ?? '');
     final priceCtrl = TextEditingController(
-        text: m != null ? m.price.toStringAsFixed(2) : '');
+        text: m != null
+            ? toDisplayAmount(m.price, settings).toStringAsFixed(2)
+            : '');
     String? selectedCatId = m?.categoryId;
     String? selectedWarehouseId = m?.warehouseId;
     bool available = m?.available ?? true;
@@ -358,7 +362,9 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
         .map((r) => _VRow(
               available: r['available'] as bool? ?? true,
               nameText:  r['name']?.toString() ?? '',
-              priceText: (r['price_delta'] ?? 0).toString(),
+              priceText: toDisplayAmount(
+                  (r['price_delta'] as num?)?.toDouble() ?? 0, settings,
+              ).toString(),
               extraTexts: existingCols
                   .map((c) => r[c]?.toString() ?? '')
                   .toList(),
@@ -601,7 +607,7 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
                                       ),
                                     ],
                                   )),
-                                  hdr('Δ Prix (HTG)', kPrix),
+                                  hdr('Δ Prix (${settings.currencySymbol.trim()})', kPrix),
                                   hdr('Dispo', kDispo),
                                   // Placeholder aligning with row-delete btn
                                   SizedBox(width: kDel),
@@ -718,8 +724,9 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
                             controller: priceCtrl,
                             keyboardType: const TextInputType.numberWithOptions(
                                 decimal: true),
-                            decoration: const InputDecoration(
-                                labelText: 'Prix de base (HTG) *'),
+                            decoration: InputDecoration(
+                                labelText:
+                                    'Prix de base (${settings.currencySymbol.trim()}) *'),
                           ),
                         ),
                         const SizedBox(width: 24),
@@ -812,7 +819,8 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
               ElevatedButton(
                 onPressed: () async {
                   final name  = nameCtrl.text.trim();
-                  final price = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
+                  final price = toHtgAmount(
+                      double.tryParse(priceCtrl.text.trim()) ?? 0.0, settings);
                   if (name.isEmpty) return;
                   Navigator.pop(ctx);
 
@@ -820,7 +828,7 @@ class _MenuPanelState extends ConsumerState<_MenuPanel> {
                   Map<String, dynamic>? variantsPayload;
                   if (hasVariants) {
                     final rows = vRows
-                        .map((r) => r.toMap(names))
+                        .map((r) => r.toMap(names, settings))
                         .where((r) =>
                             (r['name'] as String).isNotEmpty)
                         .toList();
@@ -920,14 +928,14 @@ class _MenuTable extends StatelessWidget {
   final List<MenuItemModel> items;
   final bool canEdit;
   final bool canDelete;
+  final AppSettings settings;
   final void Function(MenuItemModel) onEdit;
   final void Function(MenuItemModel) onDelete;
   final void Function(MenuItemModel) onToggle;
-  const _MenuTable({required this.items, this.canEdit = true, this.canDelete = true, required this.onEdit, required this.onDelete, required this.onToggle});
+  const _MenuTable({required this.items, this.canEdit = true, this.canDelete = true, required this.settings, required this.onEdit, required this.onDelete, required this.onToggle});
 
   @override
   Widget build(BuildContext context) {
-    final fmt = NumberFormat('#,##0.00');
     return SingleChildScrollView(
       child: Table(
         columnWidths: const {
@@ -957,7 +965,7 @@ class _MenuTable extends StatelessWidget {
                   _TD(m.name,
                       style: const TextStyle(fontWeight: FontWeight.w600)),
                   _TD(m.categoryName ?? '—'),
-                  _TD(fmt.format(m.price),
+                  _TD(formatMoney(m.price, settings),
                       style: const TextStyle(color: AppColors.primary)),
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1002,10 +1010,11 @@ class _MenuItemTile extends StatelessWidget {
   final MenuItemModel item;
   final bool canEdit;
   final bool canDelete;
+  final AppSettings settings;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onToggle;
-  const _MenuItemTile({required this.item, this.canEdit = true, this.canDelete = true, required this.onEdit, required this.onDelete, required this.onToggle});
+  const _MenuItemTile({required this.item, this.canEdit = true, this.canDelete = true, required this.settings, required this.onEdit, required this.onDelete, required this.onToggle});
 
   @override
   Widget build(BuildContext context) {
@@ -1026,7 +1035,7 @@ class _MenuItemTile extends StatelessWidget {
         title: Text(item.name,
             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
         subtitle: Text(
-            '${item.categoryName ?? '—'} · ${NumberFormat('#,##0.00').format(item.price)} HTG',
+            '${item.categoryName ?? '—'} · ${formatMoney(item.price, settings)}',
             style:
                 const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
         trailing: Row(
@@ -1362,6 +1371,7 @@ class _ProductTable extends ConsumerWidget {
     final canAdjustStock = ref.watch(hasPermissionProvider(Perm.stockAdjust));
     final canViewHistory = ref.watch(hasPermissionProvider(Perm.stockRead));
     final activeWarehouse = ref.watch(activeWarehouseProvider);
+    final settings = ref.watch(settingsProvider);
     final hasEntrepots =
         (ref.watch(entrepotsProvider).valueOrNull?.isNotEmpty) ?? false;
     final canReturnToEntrepot =
@@ -1430,9 +1440,9 @@ class _ProductTable extends ConsumerWidget {
                 )),
                 DataCell(Text(p.category?.name ?? '—',
                     style: const TextStyle(fontSize: 13))),
-                DataCell(Text(_fmt.format(p.purchasePrice),
+                DataCell(Text(formatMoney(p.purchasePrice, settings),
                     style: const TextStyle(fontSize: 13))),
-                DataCell(Text(_fmt.format(p.salePrice),
+                DataCell(Text(formatMoney(p.salePrice, settings),
                     style: const TextStyle(
                         color: AppColors.primary,
                         fontWeight: FontWeight.w600,
@@ -1616,6 +1626,7 @@ class _ProductCard extends ConsumerWidget {
     final canAdjust = ref.watch(hasPermissionProvider(Perm.stockAdjust));
     final canViewHistory = ref.watch(hasPermissionProvider(Perm.stockRead));
     final activeWarehouse = ref.watch(activeWarehouseProvider);
+    final settings = ref.watch(settingsProvider);
     final hasEntrepots =
         (ref.watch(entrepotsProvider).valueOrNull?.isNotEmpty) ?? false;
     final canReturnToEntrepot =
@@ -1666,7 +1677,7 @@ class _ProductCard extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(_fmt.format(product.salePrice),
+                Text(formatMoney(product.salePrice, settings),
                     style: const TextStyle(
                         color: AppColors.primary,
                         fontWeight: FontWeight.w700,
@@ -1763,10 +1774,15 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
         TextEditingController(text: widget.product?.barcode ?? '');
     _descCtrl =
         TextEditingController(text: widget.product?.description ?? '');
+    final initSettings = ref.read(settingsProvider);
     _salePriceCtrl = TextEditingController(
-        text: widget.product?.salePrice.toString() ?? '0');
+        text: widget.product != null
+            ? toDisplayAmount(widget.product!.salePrice, initSettings).toString()
+            : '0');
     _purchasePriceCtrl = TextEditingController(
-        text: widget.product?.purchasePrice.toString() ?? '0');
+        text: widget.product != null
+            ? toDisplayAmount(widget.product!.purchasePrice, initSettings).toString()
+            : '0');
     _alertCtrl = TextEditingController(
         text: widget.product?.alertStock.toString() ?? '5');
     _categoryId = widget.product?.category?.id;
@@ -1862,6 +1878,8 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final sym = settings.currencySymbol.trim();
     return AlertDialog(
       title: Text(isEdit ? 'Modifier le produit' : 'Nouveau produit'),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
@@ -1976,7 +1994,7 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                         controller: _purchasePriceCtrl,
                         keyboardType: TextInputType.number,
                         decoration:
-                            const InputDecoration(labelText: 'Prix achat *'),
+                            InputDecoration(labelText: 'Prix achat ($sym) *'),
                         validator: (v) => v!.isEmpty ? 'Requis' : null,
                       ),
                     ),
@@ -1986,7 +2004,7 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                         controller: _salePriceCtrl,
                         keyboardType: TextInputType.number,
                         decoration:
-                            const InputDecoration(labelText: 'Prix vente *'),
+                            InputDecoration(labelText: 'Prix vente ($sym) *'),
                         validator: (v) => v!.isEmpty ? 'Requis' : null,
                       ),
                     ),
@@ -2069,6 +2087,13 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
         ),
       ),
       actions: [
+        if (isEdit && ref.watch(hasPermissionProvider(Perm.productsDelete)))
+          TextButton(
+            onPressed: _loading ? null : _confirmDeleteProduct,
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Supprimer'),
+          ),
+        const Spacer(),
         TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Annuler')),
@@ -2086,6 +2111,230 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
     );
   }
 
+  Future<void> _confirmDeleteProduct() async {
+    final product = widget.product;
+    if (product == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Supprimer le produit ?'),
+        content: Text(
+            'Supprimer "${product.name}" ? Cette action est irréversible.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await ProductRepository().deleteProduct(product.id);
+      ref.invalidate(productsProvider);
+      if (mounted) Navigator.pop(context);
+    } on DioException catch (e) {
+      setState(() => _loading = false);
+      final detail = e.response?.data is Map
+          ? (e.response!.data as Map)['detail']
+          : null;
+      if (detail is Map && detail['blocked'] == true) {
+        if (mounted) await _showDeleteBlockedDialog(product, detail);
+      } else {
+        setState(() => _error = extractAnyError(e));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = extractAnyError(e);
+        });
+      }
+    }
+  }
+
+  /// Suppression bloquée par de l'historique — propose de verrouiller le
+  /// produit (recommandé, réversible) ou de tout supprimer (irréversible),
+  /// avec le détail exact de chaque raison de blocage (voir ProductService.
+  /// _delete_blockers côté serveur).
+  Future<void> _showDeleteBlockedDialog(
+      ProductModel product, Map detail) async {
+    final reasons = (detail['reasons'] as List? ?? [])
+        .cast<Map>()
+        .map((r) => r['message']?.toString() ?? '')
+        .where((m) => m.isNotEmpty)
+        .toList();
+    final reasonTypes =
+        (detail['reasons'] as List? ?? []).cast<Map>().map((r) => r['type']).toSet();
+
+    if (!mounted) return;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text('Impossible de supprimer « ${product.name} »'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Ce produit ne peut pas être supprimé :'),
+              const SizedBox(height: 8),
+              for (final r in reasons)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('•  '),
+                      Expanded(child: Text(r)),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 12),
+              const Text(
+                'Vous pouvez soit verrouiller ce produit (il reste dans '
+                'l\'historique mais disparaît de la caisse — réversible), '
+                'soit tout supprimer définitivement.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('Annuler')),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(dialogCtx, 'lock'),
+            child: const Text('Verrouiller à la place'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, 'force'),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Tout supprimer'),
+          ),
+        ],
+      ),
+    );
+
+    if (action == 'lock') {
+      await _lockProductInstead(product);
+    } else if (action == 'force') {
+      await _confirmAndForceDelete(product, reasonTypes);
+    }
+  }
+
+  Future<void> _lockProductInstead(ProductModel product) async {
+    setState(() => _loading = true);
+    try {
+      await ProductRepository().updateProduct(product.id, {
+        'name': product.name,
+        'barcode': product.barcode,
+        'description': product.description,
+        'category_id': product.category?.id,
+        'sale_price': product.salePrice,
+        'purchase_price': product.purchasePrice,
+        'alert_stock': product.alertStock,
+        'warehouse_id': product.warehouseId,
+        'is_locked': true,
+      });
+      ref.invalidate(productsProvider);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = extractAnyError(e);
+        });
+      }
+    }
+  }
+
+  /// Deuxième confirmation, distincte de la première — détaille précisément
+  /// les conséquences (irréversibles) avant de déclencher force_delete.
+  Future<void> _confirmAndForceDelete(
+      ProductModel product, Set reasonTypes) async {
+    final consequences = <String>[];
+    if (reasonTypes.contains('stock_movements')) {
+      consequences.add(
+          'Tout l\'historique des mouvements de stock (achats, ajustements) sera supprimé définitivement.');
+    }
+    if (reasonTypes.contains('sales')) {
+      consequences.add(
+          'Les ventes existantes seront conservées (montants, quantités inchangés), mais ne seront plus rattachées à ce produit — seul son nom sera conservé sur les reçus.');
+    }
+    if (reasonTypes.contains('composite_component')) {
+      consequences.add(
+          'Le(s) produit(s) composé(s) qui utilisaient celui-ci comme composant redeviendront des produits normaux et perdront leur stock dérivé.');
+    }
+
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: Text('Tout supprimer — « ${product.name} » ?'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Cette action est IRRÉVERSIBLE. Conséquences :',
+                style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.error),
+              ),
+              const SizedBox(height: 8),
+              for (final c in consequences)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('•  '),
+                      Expanded(child: Text(c)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Oui, tout supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _loading = true);
+    try {
+      await ProductRepository().forceDeleteProduct(product.id);
+      ref.invalidate(productsProvider);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = extractAnyError(e);
+        });
+      }
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_isComposite && _componentProductId == null) {
@@ -2099,6 +2348,7 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
 
     final ProductModel saved;
     try {
+      final submitSettings = ref.read(settingsProvider);
       final data = {
         'name': _nameCtrl.text.trim(),
         'barcode': _barcodeCtrl.text.trim().isEmpty
@@ -2108,8 +2358,10 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
             ? null
             : _descCtrl.text.trim(),
         'category_id': _categoryId,
-        'sale_price': double.tryParse(_salePriceCtrl.text) ?? 0,
-        'purchase_price': double.tryParse(_purchasePriceCtrl.text) ?? 0,
+        'sale_price': toHtgAmount(
+            double.tryParse(_salePriceCtrl.text) ?? 0, submitSettings),
+        'purchase_price': toHtgAmount(
+            double.tryParse(_purchasePriceCtrl.text) ?? 0, submitSettings),
         'alert_stock': int.tryParse(_alertCtrl.text) ?? 5,
         'warehouse_id': _warehouseId,
         'component_product_id': _isComposite ? _componentProductId : null,
@@ -2154,15 +2406,15 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
 
 // ─── Prix par dépôt ───────────────────────────────────────────────────────
 
-class _WarehousePricesSection extends StatefulWidget {
+class _WarehousePricesSection extends ConsumerStatefulWidget {
   final String productId;
   const _WarehousePricesSection({required this.productId});
 
   @override
-  State<_WarehousePricesSection> createState() => _WarehousePricesSectionState();
+  ConsumerState<_WarehousePricesSection> createState() => _WarehousePricesSectionState();
 }
 
-class _WarehousePricesSectionState extends State<_WarehousePricesSection> {
+class _WarehousePricesSectionState extends ConsumerState<_WarehousePricesSection> {
   List<WarehousePriceModel>? _prices;
   final Map<String, TextEditingController> _ctrls = {};
   bool _loading = true;
@@ -2178,11 +2430,14 @@ class _WarehousePricesSectionState extends State<_WarehousePricesSection> {
     try {
       final prices = await ProductRepository().getWarehousePrices(widget.productId);
       if (!mounted) return;
+      final loadSettings = ref.read(settingsProvider);
       setState(() {
         _prices = prices;
         for (final p in prices) {
-          _ctrls[p.warehouseId] =
-              TextEditingController(text: p.salePrice?.toStringAsFixed(2) ?? '');
+          _ctrls[p.warehouseId] = TextEditingController(
+              text: p.salePrice != null
+                  ? toDisplayAmount(p.salePrice!, loadSettings).toStringAsFixed(2)
+                  : '');
         }
         _loading = false;
       });
@@ -2206,11 +2461,12 @@ class _WarehousePricesSectionState extends State<_WarehousePricesSection> {
       if (text.isEmpty) {
         await ProductRepository().deleteWarehousePrice(widget.productId, warehouseId);
       } else {
-        final price = double.tryParse(text.replaceAll(',', '.'));
-        if (price == null || price <= 0) {
+        final typed = double.tryParse(text.replaceAll(',', '.'));
+        if (typed == null || typed <= 0) {
           if (mounted) setState(() => _saving.remove(warehouseId));
           return;
         }
+        final price = toHtgAmount(typed, ref.read(settingsProvider));
         await ProductRepository().setWarehousePrice(widget.productId, warehouseId, price);
       }
       if (mounted) {
@@ -2913,14 +3169,14 @@ class _AdjustStockDialogState extends ConsumerState<_AdjustStockDialog> {
 
 // ─── Modifier Manager Dialog ──────────────────────────────────────────────────
 
-class _ModifierManagerDialog extends StatefulWidget {
+class _ModifierManagerDialog extends ConsumerStatefulWidget {
   const _ModifierManagerDialog();
 
   @override
-  State<_ModifierManagerDialog> createState() => _ModifierManagerDialogState();
+  ConsumerState<_ModifierManagerDialog> createState() => _ModifierManagerDialogState();
 }
 
-class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
+class _ModifierManagerDialogState extends ConsumerState<_ModifierManagerDialog> {
   List<ModifierGroupModel> _groups = [];
   List<CategoryModel> _categories = [];
   List<MenuItemModel> _menuItems = [];
@@ -2970,6 +3226,7 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
     return AlertDialog(
       title: const Row(
         children: [
@@ -3066,7 +3323,7 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
                                             const TextStyle(fontSize: 12)),
                                     subtitle: opt.extraPrice > 0
                                         ? Text(
-                                            '+${opt.extraPrice.toStringAsFixed(0)} HTG',
+                                            '+${formatMoney(opt.extraPrice, settings)}',
                                             style: const TextStyle(
                                                 fontSize: 11,
                                                 color: AppColors.primary))
@@ -3257,6 +3514,8 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
     final nameCtrl = TextEditingController();
     final priceCtrl = TextEditingController(text: '0');
     final messenger = ScaffoldMessenger.of(context);
+    final formSettings = ref.read(settingsProvider);
+    final sym = formSettings.currencySymbol.trim();
 
     showDialog(
       context: context,
@@ -3277,8 +3536,8 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
                 controller: priceCtrl,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                    labelText: 'Supplément (HTG)',
+                decoration: InputDecoration(
+                    labelText: 'Supplément ($sym)',
                     hintText: '0'),
               ),
             ],
@@ -3292,8 +3551,8 @@ class _ModifierManagerDialogState extends State<_ModifierManagerDialog> {
             onPressed: () async {
               final name = nameCtrl.text.trim();
               if (name.isEmpty) return;
-              final price =
-                  double.tryParse(priceCtrl.text.trim()) ?? 0.0;
+              final price = toHtgAmount(
+                  double.tryParse(priceCtrl.text.trim()) ?? 0.0, formSettings);
               Navigator.pop(ctx);
               try {
                 await RestaurantRepository().addOption(groupId, name, price);

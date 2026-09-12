@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/models/debt_model.dart';
 import 'package:pos_connect/data/repositories/customer_repository.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/repositories/debt_repository.dart';
 import 'package:pos_connect/providers/customer_provider.dart';
-
-final _fmt =
-    NumberFormat.currency(locale: 'fr_HT', symbol: 'HTG ', decimalDigits: 2);
+import 'package:pos_connect/providers/settings_provider.dart';
 
 class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key});
@@ -91,6 +89,7 @@ class _CustomerCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     return Card(
       child: ListTile(
         contentPadding:
@@ -136,13 +135,13 @@ class _CustomerCard extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('Limite: ${_fmt.format(customer.creditLimit)}',
+                Text('Limite: ${formatMoney(customer.creditLimit, settings)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         fontSize: 12, color: AppColors.textSecondary)),
                 if (customer.loyaltyBalance > 0)
-                  Text('Fidélité: ${_fmt.format(customer.loyaltyBalance)}',
+                  Text('Fidélité: ${formatMoney(customer.loyaltyBalance, settings)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -198,6 +197,7 @@ class _CustomerDetailsDialogState
   @override
   Widget build(BuildContext context) {
     final c = widget.customer;
+    final settings = ref.watch(settingsProvider);
     return AlertDialog(
       title: Text(c.fullName),
       content: SizedBox(
@@ -210,9 +210,9 @@ class _CustomerDetailsDialogState
             if (c.nif != null && c.nif!.isNotEmpty) _detailRow('NIF/CIN', c.nif!),
             if (c.email != null && c.email!.isNotEmpty) _detailRow('Email', c.email!),
             if (c.address.isNotEmpty) _detailRow('Adresse', c.address),
-            _detailRow('Limite de crédit', _fmt.format(c.creditLimit)),
+            _detailRow('Limite de crédit', formatMoney(c.creditLimit, settings)),
             if (c.loyaltyBalance > 0)
-              _detailRow('Solde fidélité', _fmt.format(c.loyaltyBalance)),
+              _detailRow('Solde fidélité', formatMoney(c.loyaltyBalance, settings)),
             const SizedBox(height: 16),
             const Text('Dettes en cours',
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
@@ -249,7 +249,7 @@ class _CustomerDetailsDialogState
                             children: [
                               Text(d.referenceType,
                                   style: const TextStyle(fontSize: 13)),
-                              Text(_fmt.format(d.balance),
+                              Text(formatMoney(d.balance, settings),
                                   style: const TextStyle(
                                       fontSize: 13,
                                       color: AppColors.error,
@@ -263,7 +263,7 @@ class _CustomerDetailsDialogState
                       children: [
                         const Text('Total dû',
                             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                        Text(_fmt.format(total),
+                        Text(formatMoney(total, settings),
                             style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13,
@@ -343,7 +343,10 @@ class CustomerFormDialogState
     _addressCtrl =
         TextEditingController(text: widget.customer?.address ?? '');
     _limitCtrl = TextEditingController(
-        text: widget.customer?.creditLimit.toString() ?? '0');
+        text: widget.customer != null
+            ? toDisplayAmount(widget.customer!.creditLimit, ref.read(settingsProvider))
+                .toString()
+            : '0');
   }
 
   @override
@@ -360,6 +363,7 @@ class CustomerFormDialogState
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
     return AlertDialog(
       title: Text(isEdit ? 'Modifier le client' : 'Nouveau client'),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
@@ -409,8 +413,9 @@ class CustomerFormDialogState
                 TextFormField(
                   controller: _limitCtrl,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                      labelText: 'Limite de crédit (HTG)'),
+                  decoration: InputDecoration(
+                      labelText:
+                          'Limite de crédit (${settings.currencySymbol.trim()})'),
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 8),
@@ -455,7 +460,8 @@ class CustomerFormDialogState
         'phone': _phoneCtrl.text.trim(),
         'email': _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
         'address': _addressCtrl.text.trim(),
-        'credit_limit': double.tryParse(_limitCtrl.text) ?? 0,
+        'credit_limit':
+            toHtgAmount(double.tryParse(_limitCtrl.text) ?? 0, ref.read(settingsProvider)),
       };
       final repo = CustomerRepository();
       if (isEdit) {

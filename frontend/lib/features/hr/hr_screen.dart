@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
+import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/core/permissions.dart';
 
 // ── Formatters ────────────────────────────────────────────────────────────────
-final _money = NumberFormat('#,##0.00', 'fr');
-String _fmt(dynamic v) => v == null ? '0.00' : _money.format(double.tryParse(v.toString()) ?? 0);
+// Montant HTG (valeur brute reçue de l'API, JSON dynamique) → devise
+// d'affichage configurée, symbole inclus (remplace l'ancien " HTG" codé en
+// dur ajouté à chaque site d'appel).
+String _fmt(dynamic v, AppSettings settings) =>
+    formatMoney(v == null ? 0 : double.tryParse(v.toString()) ?? 0, settings);
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Main HR Screen
@@ -142,14 +147,15 @@ class _EmployeesTabState extends ConsumerState<_EmployeesTab> {
   }
 }
 
-class _EmployeeCard extends StatelessWidget {
+class _EmployeeCard extends ConsumerWidget {
   final Map<String, dynamic> profile;
   final VoidCallback onEdit;
 
   const _EmployeeCard({required this.profile, required this.onEdit});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     final active = profile['is_active'] as bool? ?? true;
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -170,7 +176,7 @@ class _EmployeeCard extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('${_fmt(profile['base_salary'])} HTG',
+            Text(_fmt(profile['base_salary'], settings),
                 style: const TextStyle(fontWeight: FontWeight.w600,
                     color: AppColors.primary)),
             const SizedBox(width: 8),
@@ -252,7 +258,7 @@ class _LoansTabState extends ConsumerState<_LoansTab> {
   }
 }
 
-class _LoanCard extends StatelessWidget {
+class _LoanCard extends ConsumerWidget {
   final Map<String, dynamic> loan;
   final bool canApprove;
   final VoidCallback onRefresh;
@@ -278,7 +284,8 @@ class _LoanCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     final balance = double.tryParse(loan['balance']?.toString() ?? '0') ?? 0;
     final total   = double.tryParse(loan['total_amount']?.toString() ?? '0') ?? 0;
     final progress = total > 0 ? (total - balance) / total : 0.0;
@@ -321,9 +328,9 @@ class _LoanCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _InfoChip('Total',    '${_fmt(loan['total_amount'])} HTG'),
-                _InfoChip('Solde',    '${_fmt(loan['balance'])} HTG'),
-                _InfoChip('Mensualité', '${_fmt(loan['monthly_deduction'])} HTG'),
+                _InfoChip('Total',    _fmt(loan['total_amount'], settings)),
+                _InfoChip('Solde',    _fmt(loan['balance'], settings)),
+                _InfoChip('Mensualité', _fmt(loan['monthly_deduction'], settings)),
               ],
             ),
             const SizedBox(height: 8),
@@ -384,17 +391,17 @@ class _LoanCard extends StatelessWidget {
   }
 }
 
-class _RepayLoanDialog extends StatefulWidget {
+class _RepayLoanDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic> loan;
   final VoidCallback onSaved;
 
   const _RepayLoanDialog({required this.loan, required this.onSaved});
 
   @override
-  State<_RepayLoanDialog> createState() => _RepayLoanDialogState();
+  ConsumerState<_RepayLoanDialog> createState() => _RepayLoanDialogState();
 }
 
-class _RepayLoanDialogState extends State<_RepayLoanDialog> {
+class _RepayLoanDialogState extends ConsumerState<_RepayLoanDialog> {
   final _formKey = GlobalKey<FormState>();
   final _amountCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
@@ -425,7 +432,7 @@ class _RepayLoanDialogState extends State<_RepayLoanDialog> {
     });
     try {
       await dio.post('/api/hr/loans/${widget.loan['id']}/repay', data: {
-        'amount': double.parse(_amountCtrl.text),
+        'amount': toHtgAmount(double.parse(_amountCtrl.text), ref.read(settingsProvider)),
         'method': _method,
         'note': _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
       });
@@ -441,7 +448,8 @@ class _RepayLoanDialogState extends State<_RepayLoanDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final balance = widget.loan['balance']?.toString() ?? '0';
+    final settings = ref.watch(settingsProvider);
+    final balance = double.tryParse(widget.loan['balance']?.toString() ?? '0') ?? 0;
 
     return AlertDialog(
       title: const Text('Rembourser le prêt'),
@@ -452,13 +460,14 @@ class _RepayLoanDialogState extends State<_RepayLoanDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Solde restant dû : $balance HTG',
+              Text('Solde restant dû : ${formatMoney(balance, settings)}',
                   style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _amountCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Montant remboursé (HTG) *'),
+                decoration: InputDecoration(
+                    labelText: 'Montant remboursé (${settings.currencySymbol.trim()}) *'),
                 validator: (v) {
                   final n = double.tryParse(v ?? '');
                   if (n == null || n <= 0) return 'Montant invalide';
@@ -569,7 +578,7 @@ class _PayrollTabState extends ConsumerState<_PayrollTab> {
   }
 }
 
-class _PayrollPeriodCard extends StatelessWidget {
+class _PayrollPeriodCard extends ConsumerWidget {
   final Map<String, dynamic> period;
   final VoidCallback onRefresh;
 
@@ -592,7 +601,8 @@ class _PayrollPeriodCard extends StatelessWidget {
   };
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
@@ -633,9 +643,9 @@ class _PayrollPeriodCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _InfoChip('Brut',       '${_fmt(period['total_gross'])} HTG'),
-                  _InfoChip('Déductions', '${_fmt(period['total_deductions'])} HTG'),
-                  _InfoChip('Net',        '${_fmt(period['total_net'])} HTG',
+                  _InfoChip('Brut',       _fmt(period['total_gross'], settings)),
+                  _InfoChip('Déductions', _fmt(period['total_deductions'], settings)),
+                  _InfoChip('Net',        _fmt(period['total_net'], settings),
                       highlight: true),
                 ],
               ),
@@ -661,17 +671,17 @@ class _PayrollPeriodCard extends StatelessWidget {
 
 // ── Payroll Period Detail Bottom Sheet ────────────────────────────────────────
 
-class _PayrollPeriodDetail extends StatefulWidget {
+class _PayrollPeriodDetail extends ConsumerStatefulWidget {
   final Map<String, dynamic> period;
   final VoidCallback onRefresh;
 
   const _PayrollPeriodDetail({required this.period, required this.onRefresh});
 
   @override
-  State<_PayrollPeriodDetail> createState() => _PayrollPeriodDetailState();
+  ConsumerState<_PayrollPeriodDetail> createState() => _PayrollPeriodDetailState();
 }
 
-class _PayrollPeriodDetailState extends State<_PayrollPeriodDetail> {
+class _PayrollPeriodDetailState extends ConsumerState<_PayrollPeriodDetail> {
   Map<String, dynamic>? _detail;
   bool _loading = true;
 
@@ -721,6 +731,7 @@ class _PayrollPeriodDetailState extends State<_PayrollPeriodDetail> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
     final status = widget.period['status'] ?? 'draft';
     return DraggableScrollableSheet(
       expand: false,
@@ -780,9 +791,9 @@ class _PayrollPeriodDetailState extends State<_PayrollPeriodDetail> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _InfoChip('Brut', '${_fmt(widget.period['total_gross'])} HTG'),
-                _InfoChip('Déductions', '${_fmt(widget.period['total_deductions'])} HTG'),
-                _InfoChip('Net', '${_fmt(widget.period['total_net'])} HTG',
+                _InfoChip('Brut', _fmt(widget.period['total_gross'], settings)),
+                _InfoChip('Déductions', _fmt(widget.period['total_deductions'], settings)),
+                _InfoChip('Net', _fmt(widget.period['total_net'], settings),
                     highlight: true),
               ],
             ),
@@ -810,12 +821,13 @@ class _PayrollPeriodDetailState extends State<_PayrollPeriodDetail> {
   }
 }
 
-class _EntryCard extends StatelessWidget {
+class _EntryCard extends ConsumerWidget {
   final Map<String, dynamic> entry;
   const _EntryCard({required this.entry});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
     final loans = (entry['loan_deductions'] as List?) ?? [];
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -832,7 +844,7 @@ class _EntryCard extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
-                Text('Net: ${_fmt(entry['net_salary'])} HTG',
+                Text('Net: ${_fmt(entry['net_salary'], settings)}',
                     style: const TextStyle(fontWeight: FontWeight.w700,
                         color: AppColors.primary)),
               ],
@@ -840,13 +852,13 @@ class _EntryCard extends StatelessWidget {
             const SizedBox(height: 6),
             Row(
               children: [
-                _MiniChip('Brut', _fmt(entry['gross_salary'])),
+                _MiniChip('Brut', _fmt(entry['gross_salary'], settings)),
                 const SizedBox(width: 6),
-                _MiniChip('Prêts', _fmt(entry['loan_deduction']),
+                _MiniChip('Prêts', _fmt(entry['loan_deduction'], settings),
                     color: AppColors.error),
                 if ((double.tryParse(entry['other_deductions']?.toString() ?? '0') ?? 0) > 0) ...[
                   const SizedBox(width: 6),
-                  _MiniChip('Autres', _fmt(entry['other_deductions']),
+                  _MiniChip('Autres', _fmt(entry['other_deductions'], settings),
                       color: AppColors.warning),
                 ],
               ],
@@ -859,7 +871,7 @@ class _EntryCard extends StatelessWidget {
                   children: [
                     const Icon(Icons.arrow_right, size: 14,
                         color: AppColors.textSecondary),
-                    Text('${ld['reference'] ?? 'Prêt'}: -${_fmt(ld['amount'])} HTG',
+                    Text('${ld['reference'] ?? 'Prêt'}: -${_fmt(ld['amount'], settings)}',
                         style: const TextStyle(fontSize: 11,
                             color: AppColors.textSecondary)),
                   ],
@@ -877,7 +889,7 @@ class _EntryCard extends StatelessWidget {
 // Dialogs
 // ═════════════════════════════════════════════════════════════════════════════
 
-class _EmployeeDialog extends StatefulWidget {
+class _EmployeeDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic>? existing;
   final List<dynamic> users;
   final VoidCallback onSaved;
@@ -885,10 +897,10 @@ class _EmployeeDialog extends StatefulWidget {
   const _EmployeeDialog({this.existing, required this.users, required this.onSaved});
 
   @override
-  State<_EmployeeDialog> createState() => _EmployeeDialogState();
+  ConsumerState<_EmployeeDialog> createState() => _EmployeeDialogState();
 }
 
-class _EmployeeDialogState extends State<_EmployeeDialog> {
+class _EmployeeDialogState extends ConsumerState<_EmployeeDialog> {
   final _formKey = GlobalKey<FormState>();
   String? _selectedUserId;
   final _posCtrl  = TextEditingController();
@@ -906,7 +918,10 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
       _selectedUserId = widget.existing!['user_id']?.toString();
       _posCtrl.text   = widget.existing!['position']   ?? '';
       _deptCtrl.text  = widget.existing!['department'] ?? '';
-      _salCtrl.text   = widget.existing!['base_salary']?.toString() ?? '0';
+      _salCtrl.text   = toDisplayAmount(
+              double.tryParse(widget.existing!['base_salary']?.toString() ?? '0') ?? 0,
+              ref.read(settingsProvider))
+          .toString();
       _salaryType     = widget.existing!['salary_type'] ?? 'monthly';
     }
   }
@@ -925,7 +940,8 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
         'user_id':     _selectedUserId,
         'position':    _posCtrl.text.trim(),
         'department':  _deptCtrl.text.trim(),
-        'base_salary': double.tryParse(_salCtrl.text) ?? 0,
+        'base_salary':
+            toHtgAmount(double.tryParse(_salCtrl.text) ?? 0, ref.read(settingsProvider)),
         'salary_type': _salaryType,
         'is_active':   true,
       };
@@ -949,6 +965,7 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
@@ -1004,8 +1021,9 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
                     child: TextFormField(
                       controller: _salCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                          labelText: 'Salaire de base (HTG)'),
+                      decoration: InputDecoration(
+                          labelText:
+                              'Salaire de base (${settings.currencySymbol.trim()})'),
                       validator: (v) =>
                           (v == null || v.isEmpty) ? 'Requis' : null,
                     ),
@@ -1043,15 +1061,15 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
 
 // ── Loan Dialog ───────────────────────────────────────────────────────────────
 
-class _LoanDialog extends StatefulWidget {
+class _LoanDialog extends ConsumerStatefulWidget {
   final VoidCallback onSaved;
   const _LoanDialog({required this.onSaved});
 
   @override
-  State<_LoanDialog> createState() => _LoanDialogState();
+  ConsumerState<_LoanDialog> createState() => _LoanDialogState();
 }
 
-class _LoanDialogState extends State<_LoanDialog> {
+class _LoanDialogState extends ConsumerState<_LoanDialog> {
   final _formKey = GlobalKey<FormState>();
   List<dynamic> _employees = [];
   String? _employeeId;
@@ -1084,12 +1102,13 @@ class _LoanDialogState extends State<_LoanDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
+      final loanSettings = ref.read(settingsProvider);
       await dio.post('/api/hr/loans/', data: {
         'employee_id':       _employeeId,
         'loan_type':         _loanType,
         'description':       _descCtrl.text.trim(),
-        'total_amount':      double.parse(_amountCtrl.text),
-        'monthly_deduction': double.parse(_monthlyCtrl.text),
+        'total_amount':      toHtgAmount(double.parse(_amountCtrl.text), loanSettings),
+        'monthly_deduction': toHtgAmount(double.parse(_monthlyCtrl.text), loanSettings),
       });
       widget.onSaved();
       if (mounted) Navigator.pop(context);
@@ -1106,6 +1125,7 @@ class _LoanDialogState extends State<_LoanDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
@@ -1156,7 +1176,8 @@ class _LoanDialogState extends State<_LoanDialog> {
                     child: TextFormField(
                       controller: _amountCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Montant total (HTG)'),
+                      decoration: InputDecoration(
+                          labelText: 'Montant total (${settings.currencySymbol.trim()})'),
                       validator: (v) => (v == null || v.isEmpty) ? 'Requis' : null,
                     ),
                   ),
@@ -1165,7 +1186,9 @@ class _LoanDialogState extends State<_LoanDialog> {
                     child: TextFormField(
                       controller: _monthlyCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Déduction / période (HTG)'),
+                      decoration: InputDecoration(
+                          labelText:
+                              'Déduction / période (${settings.currencySymbol.trim()})'),
                       validator: (v) => (v == null || v.isEmpty) ? 'Requis' : null,
                     ),
                   ),
@@ -1390,7 +1413,7 @@ class _MiniChip extends StatelessWidget {
         color: (color ?? AppColors.textSecondary).withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text('$label: $value HTG',
+      child: Text('$label: $value',
           style: TextStyle(fontSize: 10, color: color ?? AppColors.textSecondary,
               fontWeight: FontWeight.w500)),
     );
