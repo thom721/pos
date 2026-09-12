@@ -2166,25 +2166,38 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
         ),
       ),
       actions: [
-        if (isEdit && ref.watch(hasPermissionProvider(Perm.productsDelete)))
-          TextButton(
-            onPressed: _loading ? null : _confirmDeleteProduct,
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Supprimer'),
+        // AlertDialog.actions est mis en page par un OverflowBar, pas un Row —
+        // Spacer/Expanded n'y fonctionnent pas (TypeError "_OverflowBarParentData
+        // is not a subtype of FlexParentData", uniquement en build --release/
+        // minifié). On enveloppe donc tout dans notre propre Row pour garder
+        // "Supprimer" à gauche et "Annuler"/"Enregistrer" à droite.
+        SizedBox(
+          width: double.infinity,
+          child: Row(
+            children: [
+              if (isEdit && ref.watch(hasPermissionProvider(Perm.productsDelete)))
+                TextButton(
+                  onPressed: _loading ? null : _confirmDeleteProduct,
+                  style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                  child: const Text('Supprimer'),
+                ),
+              const Spacer(),
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Annuler')),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: _loading ? null : _submit,
+                child: _loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2))
+                    : Text(isEdit ? 'Enregistrer' : 'Créer'),
+              ),
+            ],
           ),
-        const Spacer(),
-        TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annuler')),
-        ElevatedButton(
-          onPressed: _loading ? null : _submit,
-          child: _loading
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                      color: Colors.white, strokeWidth: 2))
-              : Text(isEdit ? 'Enregistrer' : 'Créer'),
         ),
       ],
     );
