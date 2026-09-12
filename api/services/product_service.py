@@ -192,10 +192,98 @@ class ProductService(TenantService):
         self.db.refresh(product)
         return product
 
+    def _delete_blockers(self, product_id: str) -> List[dict]:
+        """Recense TOUTES les raisons (pas seulement la première) qui
+        empêchent une suppression définitive — SaleItem.product_id et
+        StockMovement.product_id référencent products.id sans ON DELETE
+        CASCADE, donc sans ce contrôle une suppression remonterait une
+        IntegrityError SQL brute. Réutilisé par delete() (bloque) et par la
+        route (affiche le choix verrouiller/tout supprimer au tenant)."""
+        from api.models.SaleItem import SaleItem
+        from api.models.StockMovement import StockMovement
+
+        reasons = []
+        sales_count = self.db.query(SaleItem).filter(SaleItem.product_id == product_id).count()
+        if sales_count:
+            reasons.append({
+                "type": "sales", "count": sales_count,
+                "message": f"{sales_count} article(s) de vente lié(s) à ce produit",
+            })
+        movements_count = self.db.query(StockMovement).filter(
+            StockMovement.product_id == product_id
+        ).count()
+        if movements_count:
+            reasons.append({
+                "type": "stock_movements", "count": movements_count,
+                "message": f"{movements_count} mouvement(s) de stock lié(s) (achats, ajustements...)",
+            })
+        dependents = self._q(Product).filter(Product.component_product_id == product_id).all()
+        if dependents:
+            names = ", ".join(f"« {d.name} »" for d in dependents)
+            reasons.append({
+                "type": "composite_component", "count": len(dependents),
+                "products": [d.name for d in dependents],
+                "message": f"Utilisé comme composant de {names}",
+            })
+        return reasons
+
     def delete(self, product_id: str) -> bool:
         product = self.get(product_id)
         if not product:
             return False
+
+        reasons = self._delete_blockers(product_id)
+        if reasons:
+            raise HTTPException(400, {
+                "blocked": True,
+                "product_name": product.name,
+                "reasons": reasons,
+            })
+
+        self.db.delete(product)
+        self.db.commit()
+        return True
+
+    def force_delete(self, product_id: str) -> bool:
+        """Supprime le produit MALGRÉ son historique — action destructive et
+        irréversible, déclenchée uniquement par un choix explicite du tenant
+        après avoir vu le détail des conséquences (voir delete()/_delete_
+        blockers). Ne détruit PAS l'historique financier :
+        - les mouvements de stock sont supprimés (ils n'ont pas de valeur
+          d'audit indépendante du produit qu'ils concernent) ;
+        - les articles de vente sont conservés tels quels (montants, quantités
+          inchangés) — seule la référence au produit est détachée, avec son
+          nom figé sur `label` (déjà utilisé pour les plats resto sans
+          product_id) pour que les reçus/l'historique restent lisibles ;
+        - un produit composé qui utilisait celui-ci comme composant redevient
+          un produit normal (son propre stock reparlant à 0 tant qu'aucun
+          mouvement direct n'est enregistré pour lui)."""
+        product = self.get(product_id)
+        if not product:
+            return False
+
+        from api.models.SaleItem import SaleItem
+        from api.models.StockMovement import StockMovement
+
+        # Suppressions/modifications au niveau ORM (pas de bulk update/delete)
+        # pour garder la session cohérente — un bulk delete(synchronize_
+        # session=False) laisse les objets déjà chargés en mémoire (ex: via
+        # self.get() ci-dessus, qui charge product.stock_movements) désynchro-
+        # nisés de la DB, et le cascade implicite de self.db.delete(product)
+        # tente alors de les mettre à jour une seconde fois → StaleDataError.
+        for item in self.db.query(SaleItem).filter(SaleItem.product_id == product_id).all():
+            item.label = product.name
+            item.product_id = None
+        for movement in self.db.query(StockMovement).filter(
+            StockMovement.product_id == product_id
+        ).all():
+            self.db.delete(movement)
+        for dependent in self._q(Product).filter(
+            Product.component_product_id == product_id
+        ).all():
+            dependent.component_product_id = None
+            dependent.component_quantity = None
+
         self.db.delete(product)
         self.db.commit()
         return True

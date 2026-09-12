@@ -106,6 +106,14 @@ class ProductRepository {
     await dio.delete('/api/products/$id');
   }
 
+  /// Supprime malgré l'historique (ventes/mouvements/composant) — action
+  /// destructive, déclenchée uniquement après confirmation explicite du
+  /// tenant face au détail des conséquences (voir ProductService.force_delete
+  /// côté serveur pour ce qui est préservé vs. détruit).
+  Future<void> forceDeleteProduct(String id) async {
+    await dio.delete('/api/products/$id/force');
+  }
+
   Future<String?> uploadProductImage(
     String productId,
     Uint8List bytes,

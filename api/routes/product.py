@@ -111,6 +111,27 @@ def delete_product(
     return {"ok": True}
 
 
+@router.delete("/products/{product_id}/force", response_model=dict)
+def force_delete_product(
+    product_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.PRODUCTS_DELETE)),
+):
+    """Suppression malgré l'historique — voir ProductService.force_delete()
+    pour le détail exact de ce qui est détruit vs. préservé. Déclenchée
+    uniquement après que le tenant a explicitement choisi cette option face
+    au détail des conséquences affiché suite à un DELETE bloqué."""
+    success = ProductService(db, tenant_id=current_user.tenant_id).force_delete(product_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Product not found")
+    audit_service.log(db, user_id=current_user.id, tenant_id=current_user.tenant_id,
+                      action="FORCE_DELETE", resource_type="product", resource_id=product_id)
+    db.commit()
+    background_tasks.add_task(manager.notify, current_user.tenant_id)
+    return {"ok": True}
+
+
 @router.post("/products/{product_id}/adjust-stock", response_model=ProductRead)
 def adjust_stock(
     product_id: str,
