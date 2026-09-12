@@ -1,8 +1,8 @@
 # PPRD — Product & Project Requirements Document
 # POS Connect — Système de Caisse Multi-Plateforme
 
-**Date :** 2026-08-15
-**Version :** 0.9 (en développement actif) — app 2.0.0+33, tag v2.0.29
+**Date :** 2026-09-12
+**Version :** 0.9 (en développement actif) — app 2.0.0+44, tag v2.0.39
 **Stack backend :** Python 3.11 · FastAPI · SQLAlchemy · MySQL / SQLite · JWT
 **Stack frontend :** Flutter 3.x · Riverpod · go_router · Dio · SharedPreferences
 
@@ -103,6 +103,10 @@ Le backend lit sa configuration dans cet ordre de priorité :
 - [x] CRUD Fournisseurs
 - [x] Recherche produits avec pagination (caisse)
 - [x] Images produits servies via l'API, URL dynamique (`dio.options.baseUrl`)
+- [x] Pagination navigable sur l'écran Produits (précédent/suivant, retour auto si page vide)
+- [x] Multi-devise d'affichage/saisie ($HT/USD/EUR) — HTG reste l'unique source de vérité en base, conversion à l'affichage et à la saisie (`core/currency.dart`)
+- [x] Suppression sécurisée d'un produit : verrouillage (réversible) si historique bloquant, sinon suppression totale
+- [x] Produits composés : reste d'unités du composant affiché (ex: "3 (+8)") au lieu d'une fraction décimale trompeuse
 
 ### 3.4 Ventes
 
@@ -474,6 +478,7 @@ room_attributes   ← attributs clé/valeur des chambres hôtel (FK restaurant_t
 | F30 | Résolu | Logo entreprise jamais affiché sur l'écran Profil même après upload réussi — `Image.network(settings.logoPath, ...)` utilisait un chemin relatif, sans `errorBuilder` → URL absolue via `dio.options.baseUrl` + fallback icône |
 | F31 | Résolu | Upload logo (`POST /api/config/logo`) n'envoyait pas `warehouse_id` (contrairement à `_load()`/`save()`) → pouvait atterrir sur une ligne `AppConfig` différente de celle affichée à l'écran (dépôt par défaut de l'utilisateur ≠ business sélectionné) |
 | F32 | Résolu | Logo jamais imprimé sur reçu via imprimante Sunmi intégrée (seuls PDF et Bluetooth l'avaient) → `SunmiPrinter.printImage()` ajouté dans `thermal_printer_service.dart` |
+| F33 | Résolu | Modal "Modifier le produit" : écran gris (aucun champ affiché) uniquement en build `--release`/web déployé, jamais en `--debug` → `Spacer()` (= `Expanded` déguisé) dans `AlertDialog.actions`, mis en page par un `OverflowBar` depuis Flutter 3.x (pas un `Row`) → `TypeError: _OverflowBarParentData is not a subtype of FlexParentData` ; actions enveloppées dans un `Row` dédié |
 
 ---
 
