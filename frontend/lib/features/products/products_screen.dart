@@ -1584,7 +1584,7 @@ class _ProductTable extends ConsumerWidget {
                           tooltip: p.isLocked
                               ? 'Verrouillé — masqué de la caisse. Cliquer pour déverrouiller'
                               : 'Verrouiller — masquer ce produit de la caisse',
-                          onPressed: () => _toggleLock(context, ref, p),
+                          onPressed: () => _toggleProductLock(context, ref, p),
                         ),
                       if (canEdit)
                         IconButton(
@@ -1607,28 +1607,29 @@ class _ProductTable extends ConsumerWidget {
     );
   }
 
-  Future<void> _toggleLock(
-      BuildContext context, WidgetRef ref, ProductModel p) async {
-    try {
-      await ProductRepository().updateProduct(p.id, {
-        'name': p.name,
-        'barcode': p.barcode,
-        'description': p.description,
-        'category_id': p.category?.id,
-        'sale_price': p.salePrice,
-        'purchase_price': p.purchasePrice,
-        'alert_stock': p.alertStock,
-        'warehouse_id': p.warehouseId,
-        'is_locked': !p.isLocked,
-      });
-      ref.invalidate(productsProvider);
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: ${extractAnyError(e)}'),
-              backgroundColor: AppColors.error),
-        );
-      }
+}
+
+Future<void> _toggleProductLock(
+    BuildContext context, WidgetRef ref, ProductModel p) async {
+  try {
+    await ProductRepository().updateProduct(p.id, {
+      'name': p.name,
+      'barcode': p.barcode,
+      'description': p.description,
+      'category_id': p.category?.id,
+      'sale_price': p.salePrice,
+      'purchase_price': p.purchasePrice,
+      'alert_stock': p.alertStock,
+      'warehouse_id': p.warehouseId,
+      'is_locked': !p.isLocked,
+    });
+    ref.invalidate(productsProvider);
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: ${extractAnyError(e)}'),
+            backgroundColor: AppColors.error),
+      );
     }
   }
 }
@@ -1749,6 +1750,23 @@ class _ProductCard extends ConsumerWidget {
                           onDone: () => ref.invalidate(productsProvider),
                         )
                     : null,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            if (canEdit)
+              IconButton(
+                icon: Icon(
+                    product.isLocked
+                        ? Icons.lock_outline
+                        : Icons.lock_open_outlined,
+                    size: 18,
+                    color: product.isLocked
+                        ? AppColors.error
+                        : AppColors.textSecondary),
+                tooltip: product.isLocked
+                    ? 'Verrouillé — masqué de la caisse. Toucher pour déverrouiller'
+                    : 'Verrouiller — masquer ce produit de la caisse',
+                onPressed: () => _toggleProductLock(context, ref, product),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               ),
@@ -2165,39 +2183,41 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
           ),
         ),
       ),
+      // AlertDialog.actions est mis en page par un OverflowBar, pas un Row —
+      // Spacer/Expanded n'y fonctionnent pas (TypeError "_OverflowBarParentData
+      // is not a subtype of FlexParentData", uniquement en build --release/
+      // minifié) et un Row à largeur infinie déborde sur mobile (pas de retour
+      // à la ligne automatique). On garde donc deux items top-level — "Supprimer"
+      // et un petit groupe "Annuler"/"Enregistrer" — espacés par actionsAlignment,
+      // ce qui laisse OverflowBar gérer lui-même le retour à la ligne si besoin.
+      actionsAlignment: MainAxisAlignment.spaceBetween,
       actions: [
-        // AlertDialog.actions est mis en page par un OverflowBar, pas un Row —
-        // Spacer/Expanded n'y fonctionnent pas (TypeError "_OverflowBarParentData
-        // is not a subtype of FlexParentData", uniquement en build --release/
-        // minifié). On enveloppe donc tout dans notre propre Row pour garder
-        // "Supprimer" à gauche et "Annuler"/"Enregistrer" à droite.
-        SizedBox(
-          width: double.infinity,
-          child: Row(
-            children: [
-              if (isEdit && ref.watch(hasPermissionProvider(Perm.productsDelete)))
-                TextButton(
-                  onPressed: _loading ? null : _confirmDeleteProduct,
-                  style: TextButton.styleFrom(foregroundColor: AppColors.error),
-                  child: const Text('Supprimer'),
-                ),
-              const Spacer(),
-              TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Annuler')),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: _loading ? null : _submit,
-                child: _loading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2))
-                    : Text(isEdit ? 'Enregistrer' : 'Créer'),
-              ),
-            ],
-          ),
+        if (isEdit && ref.watch(hasPermissionProvider(Perm.productsDelete)))
+          TextButton(
+            onPressed: _loading ? null : _confirmDeleteProduct,
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Supprimer'),
+          )
+        else
+          const SizedBox.shrink(),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Annuler')),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: _loading ? null : _submit,
+              child: _loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : Text(isEdit ? 'Enregistrer' : 'Créer'),
+            ),
+          ],
         ),
       ],
     );
