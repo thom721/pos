@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:pos_connect/core/date_utils.dart' show parseApiDate;
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:pos_connect/core/constants.dart';
+import 'package:pos_connect/core/currency.dart' show kHtdLabelOptions;
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart' show dio, extractAnyError;
 import 'package:pos_connect/providers/license_provider.dart' show billingEpochProvider;
@@ -182,12 +183,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   const Divider(height: 1),
                   _CurrencyTile(
                     currency: 'HTD',
-                    symbol: '\$HT ',
-                    label: 'Dollar Haïtien (\$HT — 1 \$HT = 5 HTG)',
+                    symbol: settings.currency == 'HTD' ? settings.currencySymbol : '\$HT ',
+                    label: 'Dollar Haïtien (1 \$HT = 5 HTG)',
                     selected: settings.currency == 'HTD',
-                    onTap: () => notifier.save(
-                        settings.copyWith(currency: 'HTD', currencySymbol: '\$HT ')),
+                    onTap: () => notifier.save(settings.copyWith(
+                        currency: 'HTD',
+                        currencySymbol: kHtdLabelOptions.contains(settings.currencySymbol)
+                            ? settings.currencySymbol
+                            : '\$HT ')),
                   ),
+                  if (settings.currency == 'HTD') ...[
+                    const Divider(height: 1),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 40),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text('Libellé affiché',
+                                style: TextStyle(
+                                    fontSize: 13, color: AppColors.textSecondary)),
+                          ),
+                          DropdownButton<String>(
+                            value: kHtdLabelOptions.contains(settings.currencySymbol)
+                                ? settings.currencySymbol
+                                : kHtdLabelOptions.first,
+                            underline: const SizedBox.shrink(),
+                            items: kHtdLabelOptions
+                                .map((s) => DropdownMenuItem(
+                                    value: s, child: Text(s.trim())))
+                                .toList(),
+                            onChanged: (v) {
+                              if (v != null) {
+                                notifier.save(settings.copyWith(currencySymbol: v));
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

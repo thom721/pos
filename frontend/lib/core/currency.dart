@@ -1,6 +1,12 @@
 import 'package:intl/intl.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 
+/// Pas de convention officielle pour le dollar haïtien — variantes de
+/// libellé proposées dans Réglages (menu déroulant fermé plutôt qu'un champ
+/// libre, pour éviter qu'un tenant tape n'importe quoi). Purement cosmétique :
+/// le taux de conversion (1 $HT = 5 HTG) est fixe quel que soit le libellé.
+const List<String> kHtdLabelOptions = ['\$HT ', 'HTD ', '\$ HTD '];
+
 /// Conversion HTG ↔ devise d'affichage configurée par le tenant.
 ///
 /// La gourde (HTG) reste l'UNIQUE source de vérité en base — tous les
@@ -45,7 +51,7 @@ NumberFormat currencyFormatter(AppSettings s, {int decimalDigits = 2}) {
           locale: 'fr_FR', symbol: '€ ', decimalDigits: decimalDigits);
     case 'HTD':
       return NumberFormat.currency(
-          locale: 'fr_HT', symbol: '\$HT ', decimalDigits: decimalDigits);
+          locale: 'fr_HT', symbol: s.currencySymbol, decimalDigits: decimalDigits);
     default:
       return NumberFormat.currency(
           locale: 'fr_HT', symbol: s.currencySymbol, decimalDigits: decimalDigits);
