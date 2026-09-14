@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Parrainage — POS Connect</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand">POS <span>Connect</span> · Parrainage</div>
+    <nav id="topNav">
+      <button class="ghost" onclick="showView('login')">Connexion</button>
+      <button class="primary" style="width:auto;margin:0" onclick="showView('register')">Créer un compte</button>
+    </nav>
+  </div>
+
+  <div class="container">
+
+    <!-- ── Explication du programme (toujours visible sauf dashboard) ── -->
+    <section id="explainer" class="hero">
+      <h1>Gagnez une commission sur chaque tenant que vous amenez</h1>
+      <p>
+        Partagez votre lien de parrainage. Pour chaque nouvelle entreprise qui
+        s'inscrit sur POS Connect grâce à vous, vous touchez une commission
+        récurrente sur chacune de ses caisses, à chaque renouvellement.
+      </p>
+      <div class="rates">
+        <div class="rate-chip"><div class="pct">20%</div><div class="label">1ère caisse</div></div>
+        <div class="rate-chip"><div class="pct">16%</div><div class="label">2e caisse</div></div>
+        <div class="rate-chip"><div class="pct">12.8%</div><div class="label">3e caisse</div></div>
+        <div class="rate-chip"><div class="pct">10.24%</div><div class="label">4e caisse</div></div>
+        <div class="rate-chip"><div class="pct">8.19%</div><div class="label">5e caisse</div></div>
+      </div>
+      <p style="font-size:13px">Le taux baisse de 20% à chaque caisse supplémentaire d'un même client, jusqu'à la 5e — au-delà, plus de commission sur cette caisse-là.</p>
+    </section>
+
+    <!-- ── Connexion ── -->
+    <section id="view-login" class="card" hidden>
+      <h2>Connexion</h2>
+      <form id="loginForm">
+        <label>Email</label>
+        <input type="email" id="loginEmail" required>
+        <label>Mot de passe</label>
+        <input type="password" id="loginPassword" required>
+        <button class="primary" type="submit">Se connecter</button>
+        <div id="loginMsg" class="msg"></div>
+      </form>
+      <div class="switch-row">Pas encore de compte ? <button class="link" onclick="showView('register')">S'inscrire</button></div>
+    </section>
+
+    <!-- ── Inscription ── -->
+    <section id="view-register" class="card" hidden>
+      <h2>Devenir parrain</h2>
+      <form id="registerForm">
+        <label>Nom complet</label>
+        <input type="text" id="regName" required>
+        <label>Email</label>
+        <input type="email" id="regEmail" required>
+        <label>Téléphone (optionnel)</label>
+        <input type="text" id="regPhone">
+        <label>Mot de passe</label>
+        <input type="password" id="regPassword" required minlength="6">
+        <button class="primary" type="submit">Créer mon compte</button>
+        <div id="registerMsg" class="msg"></div>
+      </form>
+      <div class="switch-row">Déjà inscrit ? <button class="link" onclick="showView('login')">Se connecter</button></div>
+    </section>
+
+    <!-- ── Vérification email ── -->
+    <section id="view-verify" class="card" hidden>
+      <h2>Vérifiez votre email</h2>
+      <p style="color:var(--text-secondary);font-size:13px">Un code à 6 chiffres a été envoyé à <strong id="verifyEmailLabel"></strong>.</p>
+      <form id="verifyForm">
+        <label>Code de vérification</label>
+        <input type="text" id="verifyCode" maxlength="6" required>
+        <button class="primary" type="submit">Vérifier</button>
+        <div id="verifyMsg" class="msg"></div>
+      </form>
+      <div class="switch-row"><button class="link" onclick="resendCode()">Renvoyer le code</button></div>
+    </section>
+
+    <!-- ── Dashboard ── -->
+    <section id="view-dashboard" hidden>
+      <div class="dashboard-header">
+        <h1 style="margin:0;font-size:22px">Bonjour, <span id="dashName"></span></h1>
+        <button class="ghost" onclick="logout()">Déconnexion</button>
+      </div>
+
+      <div class="balance-card">
+        <div class="label">Solde disponible pour retrait</div>
+        <div class="amount" id="dashBalance">0 HTG</div>
+        <div class="ref-link-box">
+          <input type="text" id="refLinkInput" readonly>
+          <button onclick="copyRefLink()">Copier le lien</button>
+        </div>
+      </div>
+
+      <div class="card" style="max-width:none">
+        <h2>Demander un retrait</h2>
+        <form id="withdrawForm">
+          <label>Montant (HTG)</label>
+          <input type="number" id="wdAmount" min="1" step="0.01" required>
+          <label>Moyen de paiement (numéro MonCash, etc.)</label>
+          <input type="text" id="wdMethod" required>
+          <button class="primary" type="submit">Demander le retrait</button>
+          <div id="wdMsg" class="msg"></div>
+        </form>
+      </div>
+
+      <div class="section-title">Tenants parrainés</div>
+      <div class="card" style="max-width:none">
+        <table id="tenantsTable">
+          <thead><tr><th>Entreprise</th><th>Inscrit le</th><th>Gagné (HTG)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="tenantsEmpty" class="empty" hidden>Aucun tenant parrainé pour l'instant — partagez votre lien !</div>
+      </div>
+
+      <div class="section-title">Historique des retraits</div>
+      <div class="card" style="max-width:none">
+        <table id="withdrawalsTable">
+          <thead><tr><th>Date</th><th>Montant</th><th>Statut</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="withdrawalsEmpty" class="empty" hidden>Aucun retrait demandé pour l'instant.</div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

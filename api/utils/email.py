@@ -143,6 +143,45 @@ demande, ignorez cet email — votre mot de passe reste inchangé.</p>
     threading.Thread(target=_send, daemon=True).start()
 
 
+def send_affiliate_verification_email(
+    to_addr: str,
+    code: str,
+    smtp_host: str,
+    smtp_port: int,
+    smtp_user: str,
+    smtp_password: str,
+    smtp_from: str,
+) -> None:
+    """Lance l'envoi en arrière-plan — ne bloque pas la requête."""
+    if not smtp_host or not smtp_from:
+        _log.warning("Email non envoyé — SMTP non configuré (PlatformConfig.smtp_host/smtp_from vide)")
+        return
+
+    subject = "POS Connect — Vérifiez votre adresse email (Programme de parrainage)"
+    html = f"""
+<html><body style="font-family:sans-serif;color:#222">
+<h2>Bienvenue dans le programme de parrainage POS Connect</h2>
+<p>Voici votre code de vérification :</p>
+<p style="font-size:28px;font-weight:bold;letter-spacing:4px">{code}</p>
+<p>Ce code expire dans 15 minutes. Si vous n'êtes pas à l'origine de cette
+inscription, ignorez cet email.</p>
+<p style="color:#888;font-size:12px">
+  POS Connect &mdash; posconnect.ht<br>
+  Cet email a été envoyé automatiquement.
+</p>
+</body></html>
+"""
+
+    def _send():
+        try:
+            _send_via_smtp(smtp_host, smtp_port, smtp_user, smtp_password,
+                           smtp_from, to_addr, subject, html)
+        except Exception:
+            _log.exception("Échec envoi email (vérification affilié) vers %s", to_addr)
+
+    threading.Thread(target=_send, daemon=True).start()
+
+
 def send_low_stock_digest_email(
     to_addr: str,
     business_name: str,

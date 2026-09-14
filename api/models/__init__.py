@@ -40,3 +40,6 @@ from api.models.Depot import Depot
 from api.models.Retrait import Retrait
 from api.models.Expense import Expense
 from api.models.LoanRepayment import LoanRepayment
+from api.models.Affiliate import Affiliate
+from api.models.AffiliateCommission import AffiliateCommission
+from api.models.AffiliateWithdrawal import AffiliateWithdrawal

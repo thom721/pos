@@ -82,7 +82,8 @@ def _unique_slug(db: Session, base: str) -> str:
 
 
 def register_tenant(db: Session, business_name: str, owner_email: str,
-                    password: str, phone: str | None = None) -> tuple[Tenant, User]:
+                    password: str, phone: str | None = None,
+                    referral_code: str | None = None) -> tuple[Tenant, User]:
     """
     Creates a new Tenant + admin User.
     Called from the public /register endpoint and from payment webhooks.
@@ -108,6 +109,17 @@ def register_tenant(db: Session, business_name: str, owner_email: str,
     )
     db.add(tenant)
     db.flush()  # get tenant.id
+
+    # Programme de parrainage — code invalide/inconnu ignoré silencieusement,
+    # ne doit jamais bloquer l'inscription (voir api/routes/affiliate.py).
+    if referral_code:
+        from api.models.Affiliate import Affiliate
+        affiliate = db.query(Affiliate).filter(
+            Affiliate.referral_code == referral_code.strip().upper(),
+            Affiliate.is_email_verified == True,  # noqa: E712
+        ).first()
+        if affiliate:
+            tenant.referred_by_affiliate_id = affiliate.id
 
     auth = Auth(db)
     username = slug  # unique because slug is unique

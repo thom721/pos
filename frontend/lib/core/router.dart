@@ -155,7 +155,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/register',
-        builder: (context, state) => const RegisterScreen(),
+        builder: (context, state) => RegisterScreen(
+          referralCode: state.uri.queryParameters['ref'],
+        ),
       ),
       GoRoute(
         path: '/admin',

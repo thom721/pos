@@ -11,7 +11,7 @@ logging.basicConfig(
 )
 _log = logging.getLogger("pos.migration")
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from api.database import engine, Base
@@ -36,6 +36,7 @@ from api.routes import depot as depot_router
 from api.routes import retrait as retrait_router
 from api.routes import entrepot as entrepot_router
 from api.routes import expense as expense_router
+from api.routes import affiliate as affiliate_router
 from api.ws_manager import manager as _ws_manager
 from api.core.security import verify_token as _verify_token
 # Import models so create_all picks them up
@@ -116,6 +117,23 @@ async def _write_sync_trigger(request: Request, call_next):
 
 app.mount("/static", StaticFiles(directory="api/static"), name="static")
 
+# Programme de parrainage — page autonome, complètement découplée du build
+# Flutter web. Doit être montée AVANT le catch-all SPA Flutter (tout en bas
+# de ce fichier), sinon ce dernier avale la route et sert index.html à la
+# place.
+import os as _os
+_affiliate_static_dir = _os.path.join(_os.path.dirname(__file__), "static_affiliate")
+if _os.path.isdir(_affiliate_static_dir):
+    # StaticFiles ne matche que "/parrainage/..." (avec slash) — "/parrainage"
+    # nu (ce que tout le monde tape) ne passe PAS par le mount et retombait
+    # sur le catch-all SPA Flutter plus bas (page d'accueil au lieu de la
+    # page de parrainage). Route explicite pour rediriger vers le slash.
+    @app.get("/parrainage")
+    def _affiliate_page_redirect():
+        return RedirectResponse(url="/parrainage/")
+
+    app.mount("/parrainage", StaticFiles(directory=_affiliate_static_dir, html=True), name="parrainage")
+
 app.include_router(user.router, prefix="/api")
 app.include_router(login.router)
 app.include_router(auth.router)
@@ -155,6 +173,7 @@ app.include_router(depot_router.router)
 app.include_router(retrait_router.router)
 app.include_router(entrepot_router.router)
 app.include_router(expense_router.router)
+app.include_router(affiliate_router.router)
 
 # ── Built-in role definitions ─────────────────────────────────────────────────
 _BUILTIN_ROLES = [

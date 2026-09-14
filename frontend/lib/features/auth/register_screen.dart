@@ -11,7 +11,11 @@ import 'package:pos_connect/providers/pricing_provider.dart';
 import 'package:pos_connect/shared/widgets/pos_logo.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
-  const RegisterScreen({super.key});
+  // Code du programme de parrainage, capturé depuis ?ref=CODE sur l'URL
+  // (voir router.dart) — transmis tel quel à l'inscription, silencieusement
+  // ignoré côté serveur s'il est invalide.
+  final String? referralCode;
+  const RegisterScreen({super.key, this.referralCode});
 
   @override
   ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
@@ -129,6 +133,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         email: _emailCtrl.text.trim(),
         password: _passwordCtrl.text,
         phone: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+        referralCode: widget.referralCode,
       );
       if (mounted) setState(() { _loading = false; _success = true; });
     } on DioException catch (e) {

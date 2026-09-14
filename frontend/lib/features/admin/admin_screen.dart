@@ -47,6 +47,13 @@ final _platformConfigProvider =
   return res.data as Map<String, dynamic>;
 });
 
+final _affiliateWithdrawalsProvider =
+    FutureProvider.autoDispose<List<dynamic>>((ref) async {
+  final d = await ref.watch(adminDioProvider.future);
+  final res = await d.get('/api/admin/affiliate-withdrawals');
+  return res.data as List<dynamic>;
+});
+
 // ── Main screen ─────────────────────────────────────────────────────────────
 
 class AdminScreen extends ConsumerWidget {
@@ -188,7 +195,7 @@ class _AdminDashboard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
@@ -201,9 +208,11 @@ class _AdminDashboard extends ConsumerWidget {
             ),
           ],
           bottom: const TabBar(
+            isScrollable: true,
             tabs: [
               Tab(icon: Icon(Icons.store), text: 'Boutiques'),
               Tab(icon: Icon(Icons.payments), text: 'Paiements'),
+              Tab(icon: Icon(Icons.group_add), text: 'Parrainage'),
               Tab(icon: Icon(Icons.settings), text: 'Paramètres'),
             ],
           ),
@@ -212,6 +221,7 @@ class _AdminDashboard extends ConsumerWidget {
           children: [
             _TenantsTab(),
             _PaymentsTab(),
+            _AffiliateWithdrawalsTab(),
             _PlatformConfigTab(),
           ],
         ),
@@ -1712,6 +1722,153 @@ class _PaymentRow extends ConsumerWidget {
 }
 
 // ── Tab 3 — Paramètres plateforme ────────────────────────────────────────────
+
+// ── Tab 3 — Parrainage (retraits) ────────────────────────────────────────────
+
+class _AffiliateWithdrawalsTab extends ConsumerWidget {
+  const _AffiliateWithdrawalsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final withdrawalsAsync = ref.watch(_affiliateWithdrawalsProvider);
+
+    return withdrawalsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => _ErrorView(
+        message: extractAnyError(e),
+        onRetry: () => ref.invalidate(_affiliateWithdrawalsProvider),
+      ),
+      data: (withdrawals) => withdrawals.isEmpty
+          ? const Center(child: Text('Aucune demande de retrait'))
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: withdrawals.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 6),
+              itemBuilder: (context, i) =>
+                  _WithdrawalRow(withdrawal: withdrawals[i] as Map<String, dynamic>),
+            ),
+    );
+  }
+}
+
+class _WithdrawalRow extends ConsumerWidget {
+  final Map<String, dynamic> withdrawal;
+  const _WithdrawalRow({required this.withdrawal});
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'approved':
+        return AppColors.info;
+      case 'paid':
+        return AppColors.success;
+      case 'rejected':
+        return AppColors.error;
+      default:
+        return Colors.orange;
+    }
+  }
+
+  String _fmt(String? iso) {
+    if (iso == null) return '';
+    try {
+      return DateFormat('dd/MM/yyyy HH:mm').format(parseApiDate(iso));
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<void> _act(BuildContext context, WidgetRef ref, String action, String label) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('$label ce retrait ?'),
+        content: Text(
+            '${withdrawal['affiliate_name']} — ${withdrawal['amount']} HTG'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: Text(label)),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      await d.patch('/api/admin/affiliate-withdrawals/${withdrawal['id']}',
+          data: {'action': action});
+      ref.invalidate(_affiliateWithdrawalsProvider);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(extractAnyError(e)), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = withdrawal['status'] as String? ?? 'pending';
+    final isPending = status == 'pending';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${withdrawal['affiliate_name']} (${withdrawal['affiliate_email']})',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _statusColor(status).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(status,
+                      style: TextStyle(fontSize: 11, color: _statusColor(status), fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text('${withdrawal['amount']} HTG — ${withdrawal['payout_method'] ?? '—'}',
+                style: const TextStyle(fontSize: 13)),
+            Text(_fmt(withdrawal['created_at'] as String?),
+                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            if (isPending) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => _act(context, ref, 'reject', 'Rejeter'),
+                    style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                    child: const Text('Rejeter'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: () => _act(context, ref, 'approve', 'Approuver'),
+                    child: const Text('Approuver'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () => _act(context, ref, 'mark_paid', 'Marquer payé'),
+                    child: const Text('Marquer payé'),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _PlatformConfigTab extends ConsumerStatefulWidget {
   const _PlatformConfigTab();

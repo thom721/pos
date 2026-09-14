@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text, ForeignKey
 from .base import UUIDBase
 
 
@@ -43,3 +43,8 @@ class Tenant(UUIDBase):
 
     # Suivi des notifications d'expiration envoyées
     last_warning_sent_at = Column(DateTime(timezone=False), nullable=True)
+
+    # Parrain (programme d'affiliation, indépendant du système Tenant/User) —
+    # NULL si ce tenant ne vient pas d'un lien de parrainage. Posé une seule
+    # fois à l'inscription (register_tenant), jamais modifié ensuite.
+    referred_by_affiliate_id = Column(String(36), ForeignKey('affiliates.id'), nullable=True, index=True)

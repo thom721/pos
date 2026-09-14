@@ -8,6 +8,9 @@ class TenantRegister(BaseModel):
     owner_email: EmailStr
     password: str
     phone: Optional[str] = None
+    # Code du programme de parrainage (?ref=CODE) — ignoré silencieusement
+    # si invalide/inconnu, ne bloque jamais l'inscription.
+    referral_code: Optional[str] = None
 
 
 class TenantRead(BaseModel):

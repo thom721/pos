@@ -24,6 +24,11 @@ from api.models.PosRegister import PosRegister
 from api.models.CashierSession import CashierSession
 from api.models.Warehouse import Warehouse
 from api.models.InstallationCode import InstallationCode, generate_installation_code
+from api.models.Affiliate import Affiliate
+from api.models.AffiliateCommission import AffiliateCommission
+from api.models.AffiliateWithdrawal import AffiliateWithdrawal
+from api.routes.billing import _renewal_pricing
+from api.services.affiliate_service import record_commission, available_balance
 
 router = APIRouter(prefix="/api/admin", tags=["SuperAdmin"])
 _log = logging.getLogger("pos.admin")
@@ -1052,6 +1057,10 @@ def confirm_payment(
             reg = db.query(PosRegister).filter_by(id=reg_id, tenant_id=tenant.id).first()
             if not reg:
                 continue
+            # Capturé AVANT que la ligne ci-dessous n'écrase subscription_started_at —
+            # _renewal_pricing() a besoin de la valeur PRÉ-renouvellement pour
+            # décider si le prix "1ère année" ou "renouvellement" s'applique.
+            started_before = reg.subscription_started_at
             current_end = reg.subscription_ends_at
             if current_end and current_end > now:
                 # Renouvellement en cours de cycle : prolonger depuis la fin actuelle
@@ -1068,6 +1077,20 @@ def confirm_payment(
                 base = now
             reg.subscription_started_at = reg.subscription_started_at or now
             reg.subscription_ends_at    = base + timedelta(days=days)
+
+            # ── Commission de parrainage (programme d'affiliation) ──
+            # Pas de commission si ce tenant n'a pas été amené par un lien
+            # de parrainage (record_commission renvoie None dans ce cas).
+            unit_price, _ = _renewal_pricing(
+                started_before, now,
+                float(cfg.price_per_extra_caisse_htg) if cfg else 500.0,
+                float(cfg.renewal_price_per_caisse_htg) if cfg else 500.0,
+            )
+            record_commission(
+                db, tenant=tenant, register=reg,
+                billing_payment_id=payment.id, base_amount=unit_price,
+            )
+
             register_results.append({
                 "register_id":              reg.id,
                 "name":                     reg.name,
@@ -1158,6 +1181,90 @@ def list_payments(
         _serialize_payment(p, tenant_map.get(p.tenant_id, "—"))
         for p in payments
     ]
+
+
+# ── Programme de parrainage — retraits ───────────────────────────────────────
+
+@router.get("/affiliate-withdrawals")
+def list_affiliate_withdrawals(
+    status: str | None = None,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    query = db.query(AffiliateWithdrawal, Affiliate).join(
+        Affiliate, Affiliate.id == AffiliateWithdrawal.affiliate_id
+    )
+    if status:
+        query = query.filter(AffiliateWithdrawal.status == status)
+    rows = query.order_by(AffiliateWithdrawal.created_at.desc()).all()
+    return [
+        {
+            "id":             w.id,
+            "amount":         float(w.amount),
+            "status":         w.status,
+            "payout_method":  w.payout_method,
+            "admin_note":     w.admin_note,
+            "created_at":     w.created_at.isoformat(),
+            "processed_at":   w.processed_at.isoformat() if w.processed_at else None,
+            "affiliate_id":   a.id,
+            "affiliate_name": a.full_name,
+            "affiliate_email": a.email,
+        }
+        for w, a in rows
+    ]
+
+
+class AffiliateWithdrawalActionPayload(BaseModel):
+    action: str  # 'approve' | 'reject' | 'mark_paid'
+    note: str | None = None
+
+
+@router.patch("/affiliate-withdrawals/{withdrawal_id}")
+def update_affiliate_withdrawal(
+    withdrawal_id: str,
+    body: AffiliateWithdrawalActionPayload,
+    db: Session = Depends(get_db),
+    admin: dict = Depends(require_superadmin),
+):
+    withdrawal = db.query(AffiliateWithdrawal).filter(AffiliateWithdrawal.id == withdrawal_id).first()
+    if not withdrawal:
+        raise HTTPException(status_code=404, detail="Retrait introuvable")
+    if withdrawal.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Retrait déjà en statut '{withdrawal.status}'")
+
+    if body.action == "approve":
+        withdrawal.status = "approved"
+    elif body.action == "reject":
+        withdrawal.status = "rejected"
+    elif body.action == "mark_paid":
+        withdrawal.status = "paid"
+        # Ledger simple : on marque comme "consommées" les commissions
+        # disponibles de cet affilié, à hauteur du montant retiré — pas de
+        # lien centime-par-centime avec ce retrait précis (suffisant pour
+        # solde + historique, pas un audit comptable détaillé).
+        remaining = withdrawal.amount
+        commissions = (
+            db.query(AffiliateCommission)
+            .filter(
+                AffiliateCommission.affiliate_id == withdrawal.affiliate_id,
+                AffiliateCommission.status == "available",
+            )
+            .order_by(AffiliateCommission.created_at.asc())
+            .all()
+        )
+        for c in commissions:
+            if remaining <= 0:
+                break
+            c.status = "withdrawn"
+            remaining -= c.commission_amount
+    else:
+        raise HTTPException(status_code=400, detail="Action invalide")
+
+    withdrawal.admin_note   = body.note
+    withdrawal.processed_at = now_local()
+    withdrawal.processed_by = admin.get("sub") if isinstance(admin, dict) else None
+    db.commit()
+    return {"status": "ok", "withdrawal_status": withdrawal.status}
 
 
 # ── Platform config ─────────────────────────────────────────────────────────

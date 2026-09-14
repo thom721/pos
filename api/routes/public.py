@@ -81,6 +81,7 @@ def register(payload: TenantRegister, db: Session = Depends(get_db)):
         owner_email=payload.owner_email,
         password=payload.password,
         phone=payload.phone,
+        referral_code=payload.referral_code,
     )
     from api.models.PlatformConfig import PlatformConfig as _PC
     cfg = db.query(_PC).first()

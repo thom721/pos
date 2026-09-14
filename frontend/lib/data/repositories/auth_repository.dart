@@ -101,12 +101,14 @@ class AuthRepository {
     required String email,
     required String password,
     String? phone,
+    String? referralCode,
   }) async {
     final response = await dio.post('/api/public/register', data: {
       'business_name': businessName,
       'owner_email': email,
       'password': password,
       if (phone != null && phone.isNotEmpty) 'phone': phone,
+      if (referralCode != null && referralCode.isNotEmpty) 'referral_code': referralCode,
     });
 
     return response.data as Map<String, dynamic>;

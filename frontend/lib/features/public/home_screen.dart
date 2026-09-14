@@ -7,6 +7,7 @@ import 'package:pos_connect/providers/pricing_provider.dart'
 import 'package:pos_connect/features/public/public_nav_bar.dart';
 import 'package:pos_connect/shared/widgets/pos_logo.dart';
 import 'package:pos_connect/data/api/api_client.dart' show dio;
+import 'package:pos_connect/core/constants.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // Liens de téléchargement Windows (client/serveur) — saisis dans le panneau
@@ -1156,7 +1157,14 @@ class _Footer extends StatelessWidget {
           ])),
           if (isWide) ...[
             const SizedBox(width: 40),
-            Expanded(child: _FooterCol('Navigation', [('Accueil', '/home'), ('Connexion', '/login'), ('Créer un compte', '/register')])),
+            Expanded(child: _FooterCol('Navigation', [
+              ('Accueil', '/home'),
+              ('Connexion', '/login'),
+              ('Créer un compte', '/register'),
+              // Page autonome (hors app Flutter, servie par le backend) —
+              // pas une route go_router, voir _FooterCol ci-dessous.
+              ('Parrainage', '${AppConstants.cloudUrl}/parrainage'),
+            ])),
             const SizedBox(width: 20),
             Expanded(child: _FooterCol('Légal', [('Conditions générales', '/terms'), ('Politique de confidentialité', '/privacy'), ('Contact', '/contact')])),
             const SizedBox(width: 20),
@@ -1207,7 +1215,12 @@ class _FooterCol extends StatelessWidget {
     ...links.map((l) => Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GestureDetector(
-        onTap: () => context.go(l.$2),
+        // Lien absolu (http...) = page hors app Flutter (ex: /parrainage,
+        // servie par le backend) → ouverture navigateur, pas de navigation
+        // go_router qui ne connaît pas cette route.
+        onTap: () => l.$2.startsWith('http')
+            ? launchUrl(Uri.parse(l.$2))
+            : context.go(l.$2),
         child: Text(l.$1, style: TextStyle(fontSize: 13, color: const Color(0xFF90A4BE))),
       ),
     )),
