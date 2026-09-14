@@ -9,6 +9,7 @@ class ConfigRead(BaseModel):
     email: str = ''
     address: str = ''
     logo_path: str = ''
+    show_logo_on_receipt: bool = True
     business_type: str = 'commerce'
     currency: str = 'HTG'
     currency_symbol: str = 'HTG '
@@ -56,6 +57,7 @@ class ConfigUpdate(BaseModel):
     email: Optional[str] = None
     address: Optional[str] = None
     logo_path: Optional[str] = None
+    show_logo_on_receipt: Optional[bool] = None
     business_type: Optional[str] = None
     currency: Optional[str] = None
     currency_symbol: Optional[str] = None

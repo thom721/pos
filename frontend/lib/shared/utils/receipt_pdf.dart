@@ -24,9 +24,11 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
   // Logo mis en cache localement — évite un aller-retour réseau à chaque
   // impression et reste disponible hors ligne (voir LogoCacheService).
   pw.MemoryImage? logoImage;
-  final logoBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
-  if (logoBytes != null) {
-    logoImage = pw.MemoryImage(logoBytes);
+  if (settings.showLogoOnReceipt) {
+    final logoBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
+    if (logoBytes != null) {
+      logoImage = pw.MemoryImage(logoBytes);
+    }
   }
 
   final numFmt =

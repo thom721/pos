@@ -142,7 +142,7 @@ class BluetoothPrintService {
   // ── Logo → ESC/POS bitmap ─────────────────────────────────────────────────
 
   Future<List<int>> _logoToEscPos(AppSettings settings) async {
-    if (settings.logoPath.isEmpty) return [];
+    if (!settings.showLogoOnReceipt || settings.logoPath.isEmpty) return [];
     try {
       final rawBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
       if (rawBytes == null) return [];

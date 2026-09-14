@@ -719,17 +719,44 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             _SectionHeader(icon: Icons.receipt_rounded, title: 'Reçu de caisse'),
             const SizedBox(height: 16),
             _Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: TextFormField(
-                  controller: _footerCtrl,
-                  maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'Message de pied de reçu',
-                    hintText: 'Merci pour votre achat !',
-                    prefixIcon: Icon(Icons.message_rounded),
+              child: Column(
+                children: [
+                  ListTile(
+                    title: const Text('Afficher le logo sur le reçu',
+                        style: TextStyle(fontSize: 14)),
+                    subtitle: const Text(
+                        'Le logo se configure depuis l\'écran Profil',
+                        style: TextStyle(fontSize: 12)),
+                    trailing: Switch(
+                      value: settings.showLogoOnReceipt,
+                      thumbColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? Colors.white
+                            : null,
+                      ),
+                      trackColor: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.selected)
+                            ? AppColors.primary
+                            : null,
+                      ),
+                      onChanged: (v) =>
+                          notifier.save(settings.copyWith(showLogoOnReceipt: v)),
+                    ),
                   ),
-                ),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: TextFormField(
+                      controller: _footerCtrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Message de pied de reçu',
+                        hintText: 'Merci pour votre achat !',
+                        prefixIcon: Icon(Icons.message_rounded),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
 

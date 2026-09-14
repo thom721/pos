@@ -13,6 +13,7 @@ class AppConfig(UUIDBase):
     email           = Column(String(200), default='')
     address         = Column(Text,        default='')
     logo_path       = Column(String(500), default='')
+    show_logo_on_receipt = Column(Boolean, nullable=False, default=True)
 
     # Operational settings
     business_type   = Column(String(50),  default='commerce')

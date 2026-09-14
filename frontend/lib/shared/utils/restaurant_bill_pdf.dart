@@ -29,9 +29,11 @@ Future<Uint8List> buildRestaurantBillPdf(
   final fontBold = pw.Font.helveticaBold();
 
   pw.MemoryImage? logoImage;
-  final logoBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
-  if (logoBytes != null) {
-    logoImage = pw.MemoryImage(logoBytes);
+  if (settings.showLogoOnReceipt) {
+    final logoBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
+    if (logoBytes != null) {
+      logoImage = pw.MemoryImage(logoBytes);
+    }
   }
 
   final numFmt =

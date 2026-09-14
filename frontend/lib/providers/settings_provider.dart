@@ -44,6 +44,7 @@ class AppSettings {
   final String email;
   final String address;
   final String logoPath;
+  final bool showLogoOnReceipt;
   final double taxRate;
   final bool showTax;
   final String receiptFooter;
@@ -98,6 +99,7 @@ class AppSettings {
     this.email = '',
     this.address = '',
     this.logoPath = '',
+    this.showLogoOnReceipt = true,
     this.taxRate = 0.0,
     this.showTax = false,
     this.receiptFooter = 'Merci pour votre achat !',
@@ -135,6 +137,7 @@ class AppSettings {
     String? email,
     String? address,
     String? logoPath,
+    bool? showLogoOnReceipt,
     double? taxRate,
     bool? showTax,
     String? receiptFooter,
@@ -171,6 +174,7 @@ class AppSettings {
         email: email ?? this.email,
         address: address ?? this.address,
         logoPath: logoPath ?? this.logoPath,
+        showLogoOnReceipt: showLogoOnReceipt ?? this.showLogoOnReceipt,
         taxRate: taxRate ?? this.taxRate,
         showTax: showTax ?? this.showTax,
         receiptFooter: receiptFooter ?? this.receiptFooter,
@@ -209,6 +213,7 @@ class AppSettings {
         'email': email,
         'address': address,
         'logo_path': logoPath,
+        'show_logo_on_receipt': showLogoOnReceipt,
         'tax_rate': taxRate,
         'show_tax': showTax,
         'receipt_footer': receiptFooter,
@@ -255,6 +260,7 @@ class AppSettings {
         email: j['email'] as String? ?? '',
         address: j['address'] as String? ?? '',
         logoPath: j['logo_path'] as String? ?? '',
+        showLogoOnReceipt: j['show_logo_on_receipt'] as bool? ?? true,
         taxRate: (j['tax_rate'] as num?)?.toDouble() ?? 0.0,
         showTax: j['show_tax'] as bool? ?? false,
         receiptFooter: j['receipt_footer'] as String? ?? 'Merci pour votre achat !',
@@ -330,6 +336,7 @@ class AppSettings {
         'email': email,
         'address': address,
         'logoPath': logoPath,
+        'showLogoOnReceipt': showLogoOnReceipt,
         'taxRate': taxRate,
         'showTax': showTax,
         'receiptFooter': receiptFooter,
@@ -367,6 +374,7 @@ class AppSettings {
         email: j['email'] as String? ?? '',
         address: j['address'] as String? ?? '',
         logoPath: j['logoPath'] as String? ?? '',
+        showLogoOnReceipt: j['showLogoOnReceipt'] as bool? ?? true,
         taxRate: (j['taxRate'] as num?)?.toDouble() ?? 0.0,
         showTax: j['showTax'] as bool? ?? false,
         receiptFooter: j['receiptFooter'] as String? ?? 'Merci pour votre achat !',
@@ -600,6 +608,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
           email: apiSettings.email,
           address: apiSettings.address,
           logoPath: apiSettings.logoPath,
+          showLogoOnReceipt: apiSettings.showLogoOnReceipt,
           taxRate: apiSettings.taxRate,
           showTax: apiSettings.showTax,
           receiptFooter: apiSettings.receiptFooter,

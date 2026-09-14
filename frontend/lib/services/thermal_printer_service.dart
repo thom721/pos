@@ -55,7 +55,7 @@ class ThermalPrinterService {
   Future<bool> get isSunmiAvailable => _checkSunmi();
 
   Future<void> _printSunmiLogo(AppSettings settings) async {
-    if (settings.logoPath.isEmpty) return;
+    if (!settings.showLogoOnReceipt || settings.logoPath.isEmpty) return;
     try {
       final rawBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
       if (rawBytes == null) return;
