@@ -18,10 +18,21 @@ dist/
 # ── Secrets & config locale ────────────────────────────────────────────────
 .env
 pos_server.ini
+docker-compose.override.yml
+certificat/nginx.local.conf
 
 # ── Bases de données locales ───────────────────────────────────────────────
 *.sqlite
 *.db
+*.db-shm
+*.db-wal
+
+# ── Contenu uploadé à l'exécution (pas du code source) ─────────────────────
+api/static/logos/
+
+# ── Espace de travail local (assets volumineux, jamais versionnés) ─────────
+/publication android/
+tutorials/_tmp/
 
 # ── Flutter ────────────────────────────────────────────────────────────────
 frontend/.dart_tool/
