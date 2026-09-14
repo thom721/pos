@@ -574,6 +574,43 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   /// et par app.dart à chaque push WebSocket "sync" — voir _triggerSync()).
   Future<void> reload() => _refreshAll();
 
+  /// Résout l'identité du commerce (nom, email, adresse, logo, devise, taxe...)
+  /// du dépôt/business propriétaire d'UNE vente donnée, pour l'impression du
+  /// reçu — sans dépendre du dépôt actuellement actif dans l'UI. Sur un tenant
+  /// multi-business, imprimer une vente du dépôt B pendant qu'on travaille sur
+  /// le dépôt A affichait sinon toujours l'identité de A (voire du tout
+  /// premier dépôt assigné, cf. fallback dans _load()).
+  /// Les réglages propres à l'appareil (imprimante BT, largeur papier...)
+  /// restent ceux de l'état courant : ils décrivent le matériel qui imprime,
+  /// pas le business facturé.
+  Future<AppSettings> forSaleWarehouse(String? warehouseId) async {
+    if (warehouseId == null || warehouseId == _ref.read(activeWarehouseProvider)?.id) {
+      return state;
+    }
+    try {
+      final res = await dio.get('/api/config/?warehouse_id=$warehouseId');
+      if (res.statusCode == 200) {
+        final apiSettings = AppSettings.fromApiJson(res.data as Map<String, dynamic>);
+        return state.copyWith(
+          businessName: apiSettings.businessName,
+          businessType: apiSettings.businessType,
+          currency: apiSettings.currency,
+          currencySymbol: apiSettings.currencySymbol,
+          phone: apiSettings.phone,
+          email: apiSettings.email,
+          address: apiSettings.address,
+          logoPath: apiSettings.logoPath,
+          taxRate: apiSettings.taxRate,
+          showTax: apiSettings.showTax,
+          receiptFooter: apiSettings.receiptFooter,
+          rateUsd: apiSettings.rateUsd,
+          rateEur: apiSettings.rateEur,
+        );
+      }
+    } catch (_) {}
+    return state;
+  }
+
   Future<void> save(AppSettings settings) async {
     state = settings;
     try {

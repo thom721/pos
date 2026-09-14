@@ -175,7 +175,9 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
     if (kIsWeb) {
       setState(() => _printing = true);
       try {
-        final settings = ref.read(settingsProvider);
+        final settings = await ref
+            .read(settingsProvider.notifier)
+            .forSaleWarehouse(widget.sale.warehouseId);
         final bytes = await buildReceiptPdf(widget.sale, settings);
         await Printing.layoutPdf(
           onLayout: (_) => bytes,
@@ -202,7 +204,10 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
       if (isSunmi) {
         setState(() => _printing = true);
         try {
-          await ThermalPrinterService.instance.printReceipt(widget.sale, settings);
+          final receiptSettings = await ref
+              .read(settingsProvider.notifier)
+              .forSaleWarehouse(widget.sale.warehouseId);
+          await ThermalPrinterService.instance.printReceipt(widget.sale, receiptSettings);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
               content: Text('Impression envoyée'),
@@ -225,8 +230,11 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
       if (settings.bluetoothPrinterMac.isNotEmpty) {
         setState(() => _printing = true);
         try {
+          final receiptSettings = await ref
+              .read(settingsProvider.notifier)
+              .forSaleWarehouse(widget.sale.warehouseId);
           final ok = await BluetoothPrintService.instance.printReceipt(
-            widget.sale, settings, mac: settings.bluetoothPrinterMac);
+            widget.sale, receiptSettings, mac: settings.bluetoothPrinterMac);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(ok
@@ -256,8 +264,11 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
         settings.posPrinterName.isNotEmpty) {
       setState(() => _printing = true);
       try {
+        final receiptSettings = await ref
+            .read(settingsProvider.notifier)
+            .forSaleWarehouse(widget.sale.warehouseId);
         await ThermalPrinterService.instance.printReceipt(
-          widget.sale, settings,
+          widget.sale, receiptSettings,
           printerUrl: settings.posPrinterName,
         );
         if (mounted) {
@@ -1181,9 +1192,11 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
   }
 
   Future<void> _printSunmi() async {
-    final settings = ref.read(settingsProvider);
     setState(() { _printing = true; _error = null; });
     try {
+      final settings = await ref
+          .read(settingsProvider.notifier)
+          .forSaleWarehouse(widget.sale.warehouseId);
       await ThermalPrinterService.instance.printReceipt(widget.sale, settings);
       if (mounted) {
         Navigator.pop(context);
@@ -1226,8 +1239,11 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
     }
     setState(() => _printing = true);
     try {
+      final receiptSettings = await ref
+          .read(settingsProvider.notifier)
+          .forSaleWarehouse(widget.sale.warehouseId);
       final ok = await BluetoothPrintService.instance
-          .printReceipt(widget.sale, settings, mac: mac);
+          .printReceipt(widget.sale, receiptSettings, mac: mac);
       if (mounted) {
         if (ok) {
           Navigator.pop(context);
@@ -1257,7 +1273,10 @@ class _PrintOptionsSheetState extends ConsumerState<_PrintOptionsSheet> {
     final settings = ref.read(settingsProvider);
     setState(() => _printing = true);
     try {
-      final bytes = await buildReceiptPdf(widget.sale, settings);
+      final receiptSettings = await ref
+          .read(settingsProvider.notifier)
+          .forSaleWarehouse(widget.sale.warehouseId);
+      final bytes = await buildReceiptPdf(widget.sale, receiptSettings);
       if (!mounted) return;
       Navigator.pop(context);
       widget.onDone();
