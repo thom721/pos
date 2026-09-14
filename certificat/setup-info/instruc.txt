@@ -1,0 +1,68 @@
+$cert = New-SelfSignedCertificate -Type CodeSigningCert `
+  -Subject "CN=POS Connect, O=Infini-Software" `
+  -CertStoreLocation "Cert:\CurrentUser\My" `
+  -KeyExportPolicy Exportable -KeyUsage DigitalSignature -KeySpec Signature `
+  -NotAfter (Get-Date).AddYears(10)
+
+$pwd = Read-Host -AsSecureString "Mot de passe du .pfx"
+Export-PfxCertificate -Cert $cert -FilePath "posconnect-codesign.pfx" -Password $pwd
+Export-Certificate    -Cert $cert -FilePath "posconnect-codesign.cer"
+
+
+Option A — sans rien installer (le plus simple) : ouvrez https://github.com/thom721/pos/settings/secrets/actions dans le navigateur → "New repository secret" → nom WIN_CODESIGN_PFX_BASE64 → collez le contenu de pfx_base64.txt comme valeur → Add secret. Répétez avec WIN_CODESIGN_PFX_PASSWORD et le mot de passe.
+
+Option B — installer gh CLI :
+
+
+brew install gh
+gh auth login
+
+
+
+# Le .pfx encodé en base64 :
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("posconnect-codesign.pfx")) | Set-Content pfx_base64.txt
+
+# Dans le repo (avec gh CLI installé) :
+gh secret set WIN_CODESIGN_PFX_BASE64 < pfx_base64.txt
+gh secret set WIN_CODESIGN_PFX_PASSWORD   # collez le mot de passe quand demandé
+
+
+# Vérifier que le pfx s'ouvre avec CE mot de passe avant tout (test local) :
+$pwd = Read-Host -AsSecureString "Mot de passe du .pfx"
+Get-PfxData -FilePath "posconnect-codesign.pfx" -Password $pwd
+# Si ça affiche les infos du certificat sans erreur → le mot de passe est bon.
+# Si ça échoue ici aussi → c'est le mot de passe lui-même qu'il faut reconfirmer.
+
+# Re-générer le base64 proprement (une seule ligne, pas de certutil -encode) :
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("posconnect-codesign.pfx")) | Set-Content pfx_base64.txt -NoNewline
+
+
+Depuis le terminal (le plus simple, c'est ce qu'on a fait ensemble tout du long) :
+
+
+git tag v2.0.10
+git push origin v2.0.10
+Le push du tag déclenche automatiquement le build complet + crée la Release (privée sur thom721/pos + miroir public sur infini-software/pos).
+
+Depuis l'interface GitHub (si vous préférez ne pas toucher au terminal) :
+
+https://github.com/thom721/pos/releases/new
+Cliquez "Choose a tag" → tapez v2.0.10 → "Create new tag on publish"
+Target : main
+"Publish release" (peu importe ce que vous mettez dans le titre/description/fichiers — le workflow va tout écraser/compléter automatiquement une fois le build fini, puisqu'il republie sur ce même tag)
+Les deux méthodes reviennent au même — le push du tag est ce qui compte, pas la façon dont vous le créez. Prochaine version logique : v2.0.10 (puisque v2.0.9 est déjà pris).
+
+
+
+Il est à api/scripts/generate_user_guides.py dans le dépôt.
+
+Pour l'exécuter :
+
+
+cd /Users/kikipllc/development/pos_api
+source venv/bin/activate
+pip install reportlab   # une seule fois si pas déjà fait
+python3 api/scripts/generate_user_guides.py
+
+
+ffmpeg -y -f avfoundation -framerate 30 -i "1:none" -t 2 /tmp/test.mov

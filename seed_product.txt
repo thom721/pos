@@ -1,0 +1,45 @@
+SEED DATA - CATEGORIES & PRODUITS
+==================================
+(Basé sur les modèles api/models/Category.py et api/models/Product.py)
+Category: id, tenant_id, name (unique par tenant), description
+Product: id, tenant_id, category_id (obligatoire), supplier_id, barcode (unique global),
+         name (unique global), purchase_price, sale_price (obligatoire), alert_stock, description,
+         is_active, image_url
+
+----------------------------------
+10 CATEGORIES
+----------------------------------
+1. Boissons
+2. Snacks & Confiseries
+3. Épicerie salée
+4. Épicerie sucrée
+5. Produits laitiers
+6. Boulangerie & Pâtisserie
+7. Hygiène & Beauté
+8. Entretien & Maison
+9. Fruits & Légumes
+10. Surgelés
+
+----------------------------------
+20 PRODUITS (nom | catégorie | prix_achat | prix_vente | code_barre | stock_alerte)
+----------------------------------
+1.  Coca-Cola 33cl              | Boissons                  | 0.40 | 1.20 | 3017620422003 | 24
+2.  Eau minérale Sidi Ali 1.5L  | Boissons                  | 2.50 | 4.50 | 6111250100017 | 20
+3.  Jus d'orange Marrakech 1L   | Boissons                  | 6.00 | 9.50 | 6111234500019 | 15
+4.  Chips Lay's Nature 150g     | Snacks & Confiseries       | 4.50 | 7.00 | 6111245600028 | 15
+5.  Chocolat Twix 50g           | Snacks & Confiseries       | 1.80 | 3.00 | 5000159459228 | 30
+6.  Pâtes Spaghetti 500g        | Épicerie salée             | 3.20 | 5.50 | 6111233300012 | 20
+7.  Riz Basmati 1kg             | Épicerie salée             | 8.00 | 12.50| 6111244400021 | 15
+8.  Huile d'olive Lesieur 1L    | Épicerie salée             | 35.00| 48.00| 6111255500034 | 10
+9.  Sucre en poudre 1kg         | Épicerie sucrée            | 5.50 | 8.00 | 6111266600047 | 20
+10. Confiture Aïcha fraise 400g | Épicerie sucrée            | 9.00 | 14.00| 6111277700050 | 12
+11. Lait entier Centrale 1L     | Produits laitiers          | 6.50 | 9.00 | 6111288800063 | 25
+12. Yaourt nature Danone x4     | Produits laitiers          | 8.00 | 12.00| 6111299900076 | 18
+13. Fromage La Vache qui rit x8 | Produits laitiers          | 12.00| 18.00| 6111200000089 | 15
+14. Pain de mie complet         | Boulangerie & Pâtisserie   | 5.00 | 8.50 | 6111211100092 | 12
+15. Croissant pur beurre        | Boulangerie & Pâtisserie   | 1.20 | 2.50 | 6111222200105 | 30
+16. Savon liquide Dove 500ml    | Hygiène & Beauté           | 22.00| 32.00| 6111233300118 | 10
+17. Dentifrice Signal 100ml     | Hygiène & Beauté           | 14.00| 21.00| 6111244400121 | 10
+18. Lessive Tide 3kg            | Entretien & Maison         | 45.00| 65.00| 6111255500134 | 8
+19. Pommes Golden (kg)          | Fruits & Légumes           | 6.00 | 10.00| 6111266600147 | 15
+20. Frites surgelées McCain 1kg | Surgelés                   | 15.00| 22.00| 6111277700150 | 10

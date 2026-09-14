@@ -60,6 +60,7 @@ Pour votre projet POS Connect :
 
 
 git pull && cd .. && docker compose down && docker compose up -d --build
+cd fastapi/ && git pull  origin main && cd .. && docker compose up -d --build
 
 cd /Users/kikipllc/development/pos_api/frontend
 flutter build web --release \
@@ -71,3 +72,5 @@ scp -r build/web/* root@82.29.153.24:/var/www/pos.infini-software.cloud/
 
 ssh root@82.29.153.24 "mkdir -p /var/www/pos.infini-software.cloud"
 scp -r build/web/* root@82.29.153.24:/var/www/pos.infini-software.cloud/
+
+cd /Users/kikipllc/development/pos_api/frontend && flutter build appbundle --release

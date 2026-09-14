@@ -26,8 +26,12 @@ services:
       sh -c "pip install -r requirements.txt -q &&
              uvicorn api.main:app --host 0.0.0.0 --port 9003"
     # Port exposé uniquement à l'intérieur du réseau Docker (Nginx gère l'accès externe)
+    # TEMPORAIRE (a retirer) : "9003:9003" ajoute pour enregistrer les videos
+    # tutoriel en local (flutter run -d macos, http://127.0.0.1:9003 direct).
     expose:
       - "9003"
+    ports:
+      - "9003:9003"
     volumes:
       - .:/app
       - web_static:/app/web          # Flutter web build (optionnel)
