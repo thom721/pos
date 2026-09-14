@@ -237,7 +237,11 @@ class BluetoothPrintService {
 
     // Init + code page WPC1252 + assombrissement maximum
     esc([0x1B, 0x40]);                      // Initialize printer
-    esc([0x1B, 0x37, 0x07, 0x96, 0x02]);   // ESC 7: heating max dots=7, time=150µs×10, interval=2 → encre plus foncée
+    // ESC 7 (réglage chaleur/assombrissement) retiré : certains clones ESC/POS
+    // ne l'implémentent pas et impriment ses octets de paramètre tels quels —
+    // 0x96 s'affichait alors comme "û" en tête de reçu (police CP437 par
+    // défaut de ces imprimantes). Le double-strike + bold ci-dessous suffit
+    // à foncer l'encre sans ce risque.
     esc([0x1B, 0x74, 0x10]);               // Code page 16 = WPC1252 (é=0xE9, à=0xE0, ç=0xE7…)
     esc([0x1B, 0x47, 0x01]);               // Double-strike ON
     esc([0x1B, 0x45, 0x01]);               // Bold ON global — retiré puis restauré : sans lui, certaines
@@ -429,7 +433,8 @@ class BluetoothPrintService {
     }
 
     esc([0x1B, 0x40]);
-    esc([0x1B, 0x37, 0x07, 0x96, 0x02]);
+    // ESC 7 retiré — voir _buildEscPos ci-dessus (octet 0x96 imprimé comme "û"
+    // sur les imprimantes qui ne supportent pas cette commande).
     esc([0x1B, 0x74, 0x10]);
     esc([0x1B, 0x47, 0x01]);
     esc([0x1B, 0x45, 0x01]);
@@ -547,7 +552,8 @@ class BluetoothPrintService {
     void dash() { text('-' * cols); nl(); }
 
     esc([0x1B, 0x40]);                      // Initialize printer
-    esc([0x1B, 0x37, 0x07, 0x96, 0x02]);   // ESC 7: heating max dots=7, time=150µs×10, interval=2
+    // ESC 7 retiré — voir _buildEscPos ci-dessus (octet 0x96 imprimé comme "û"
+    // sur les imprimantes qui ne supportent pas cette commande).
     esc([0x1B, 0x74, 0x10]);               // Code page 16 = WPC1252 (é=0xE9, à=0xE0, ç=0xE7…)
     esc([0x1B, 0x47, 0x01]);               // Double-strike ON
     esc([0x1B, 0x45, 0x01]);               // Bold ON global
