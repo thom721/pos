@@ -458,6 +458,11 @@ def create_sale(
     if current_user is not None and tenant_id:
         user_wh_ids = getattr(current_user, 'warehouse_id', None) or []
         if user_wh_ids and wh_id not in user_wh_ids:
+            logger.warning(
+                "create_sale: vente refusee — user=%s (warehouse_id assigne=%s) "
+                "a tente wh_id resolu=%s (payload_wh=%s)",
+                user_id, user_wh_ids, wh_id, payload_wh,
+            )
             raise HTTPException(
                 403, "Vous n'êtes pas autorisé à enregistrer une vente pour ce dépôt."
             )
