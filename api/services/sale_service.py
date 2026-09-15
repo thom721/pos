@@ -448,6 +448,20 @@ def create_sale(
         warehouse_id or payload_wh or server_wh_id,
     ) if tenant_id else None
 
+    # Un cashier avec une liste de dépôts restreinte (User.warehouse_id non
+    # vide) ne peut vendre QUE pour l'un de ces dépôts — jusqu'ici rien ne le
+    # vérifiait côté serveur : le client (payload_wh) était fait confiance
+    # aveuglément, un cashier assigné à un seul business pouvait donc faire
+    # enregistrer une vente sur un AUTRE business du même tenant (constaté en
+    # prod : vente d'un cashier limité à "PROMESSE DE DIEU" comptabilisée sur
+    # "NES", faussant la numérotation séquentielle des deux dépôts).
+    if current_user is not None and tenant_id:
+        user_wh_ids = getattr(current_user, 'warehouse_id', None) or []
+        if user_wh_ids and wh_id not in user_wh_ids:
+            raise HTTPException(
+                403, "Vous n'êtes pas autorisé à enregistrer une vente pour ce dépôt."
+            )
+
     total = 0
     item_discounts: list[tuple[Decimal, str | None]] = []
     item_discount_total = Decimal(0)
