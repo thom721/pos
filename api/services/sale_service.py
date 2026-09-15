@@ -437,16 +437,27 @@ def create_sale(
         .all()
     }
 
-    # Warehouse : paramètre > payload > dépôt installer du serveur > défaut.
-    # Résolu ici (avant la vérification de stock) car le stock disponible est
-    # désormais vérifié PAR DÉPÔT — une caisse ne peut vendre que ce qui a été
-    # distribué à SON dépôt, pas le total du tenant (voir Product.available_quantity_at).
+    # Warehouse : paramètre > payload > DÉPÔT ASSIGNÉ AU CASHIER (si unique et
+    # restreint) > dépôt installer du serveur > défaut tenant. Résolu ici
+    # (avant la vérification de stock) car le stock disponible est désormais
+    # vérifié PAR DÉPÔT — une caisse ne peut vendre que ce qui a été distribué
+    # à SON dépôt, pas le total du tenant (voir Product.available_quantity_at).
+    #
+    # Le repli sur le dépôt PAR DÉFAUT DU TENANT (resolve_warehouse_id sans
+    # warehouse_id) est dangereux pour un cashier restreint : si le client
+    # n'envoie aucun warehouse_id (ex: activeWarehouseProvider pas encore
+    # chargé côté app — constaté en prod), la vente atterrissait sur le dépôt
+    # par défaut du TENANT au lieu du dépôt du cashier, faussant la
+    # numérotation séquentielle des deux dépôts. On tente donc SON dépôt
+    # assigné en premier quand il n'y en a qu'un seul (cas non-ambigu).
     from api.core.config import settings as _cfg
     payload_wh   = getattr(data, 'warehouse_id', None)
     server_wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
+    user_wh_ids  = (getattr(current_user, 'warehouse_id', None) or []) if current_user is not None else []
+    user_default_wh = user_wh_ids[0] if len(user_wh_ids) == 1 else None
     wh_id = resolve_warehouse_id(
         db, tenant_id,
-        warehouse_id or payload_wh or server_wh_id,
+        warehouse_id or payload_wh or user_default_wh or server_wh_id,
     ) if tenant_id else None
 
     # Un cashier avec une liste de dépôts restreinte (User.warehouse_id non
@@ -457,7 +468,6 @@ def create_sale(
     # prod : vente d'un cashier limité à "PROMESSE DE DIEU" comptabilisée sur
     # "NES", faussant la numérotation séquentielle des deux dépôts).
     if current_user is not None and tenant_id:
-        user_wh_ids = getattr(current_user, 'warehouse_id', None) or []
         if user_wh_ids and wh_id not in user_wh_ids:
             # Ecrit en base (AuditLog), pas seulement dans les logs applicatifs
             # — la capture stdout/gunicorn de ce serveur s'est averee peu

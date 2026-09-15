@@ -112,6 +112,26 @@ def test_cashier_restricted_to_depot_a_can_sell_for_depot_a(db, tenant, product,
     assert sale.warehouse_id == depot_a.id
 
 
+def test_no_warehouse_in_payload_defaults_to_cashiers_own_depot(db, tenant, product, two_depots):
+    """Bug constate en prod : le client n'envoie parfois AUCUN warehouse_id
+    (ex: etat app pas encore charge). resolve_warehouse_id(None) retombe sur
+    le depot PAR DEFAUT DU TENANT (depot_a ici) — dangereux pour un cashier
+    restreint a un AUTRE depot (depot_b, non-defaut) : sa vente atterrissait
+    sur le mauvais business. Doit desormais retomber sur SON propre depot
+    quand il n'en a qu'un seul assigne, pas celui du tenant."""
+    depot_a, depot_b = two_depots
+    assert depot_a.is_default and not depot_b.is_default
+    _stock(db, tenant, product, depot_b.id)
+    cashier = SimpleNamespace(warehouse_id=[depot_b.id])
+
+    sale = sale_service.create_sale(
+        db, _sale_data(product, None), user_id="u1", tenant_id=tenant.id,
+        current_user=cashier,
+    )
+    db.commit()
+    assert sale.warehouse_id == depot_b.id
+
+
 def test_unrestricted_user_can_sell_for_any_depot(db, tenant, product, two_depots):
     depot_a, depot_b = two_depots
     _stock(db, tenant, product, depot_b.id)
