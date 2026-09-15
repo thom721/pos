@@ -6,7 +6,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:printing/printing.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow, haitiDayStartUtc;
 import 'package:pos_connect/core/theme.dart';
+import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/api/api_client.dart' show extractAnyError;
 import 'package:pos_connect/data/repositories/return_repository.dart';
@@ -31,6 +33,7 @@ class SalesScreen extends ConsumerStatefulWidget {
 class _SalesScreenState extends ConsumerState<SalesScreen> {
   final _searchCtrl = TextEditingController();
   String? _statusFilter;
+  DateTimeRange? _dateRange;
 
   @override
   void dispose() {
@@ -41,6 +44,39 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
   @override
   Widget build(BuildContext context) {
     final salesAsync = ref.watch(salesProvider);
+    final isMobile = context.isMobile;
+
+    final searchField = TextField(
+      controller: _searchCtrl,
+      decoration: const InputDecoration(
+        hintText: 'Rechercher par référence ou client...',
+        prefixIcon: Icon(Icons.search_rounded, size: 20),
+        isDense: true,
+      ),
+      onChanged: (v) => _updateParams(search: v),
+    );
+    final statusDropdown = DropdownButtonHideUnderline(
+      child: DropdownButton<String?>(
+        value: _statusFilter,
+        hint: const Text('Statut'),
+        borderRadius: BorderRadius.circular(8),
+        items: const [
+          DropdownMenuItem(value: null, child: Text('Tous')),
+          DropdownMenuItem(value: 'PAID', child: Text('Payé')),
+          DropdownMenuItem(value: 'PARTIAL', child: Text('Partiel')),
+          DropdownMenuItem(value: 'UNPAID', child: Text('Impayé')),
+        ],
+        onChanged: (v) {
+          setState(() => _statusFilter = v);
+          _updateParams(status: v);
+        },
+      ),
+    );
+    final periodFilter = _PeriodFilterButton(
+      range: _dateRange,
+      onPick: _pickDateRange,
+      onClear: () => _setDateRange(null),
+    );
 
     return Column(
       children: [
@@ -48,39 +84,30 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
         Container(
           color: AppColors.surface,
           padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _searchCtrl,
-                  decoration: const InputDecoration(
-                    hintText: 'Rechercher par référence ou client...',
-                    prefixIcon: Icon(Icons.search_rounded, size: 20),
-                    isDense: true,
-                  ),
-                  onChanged: (v) => _updateParams(search: v),
-                ),
-              ),
-              const SizedBox(width: 12),
-              DropdownButtonHideUnderline(
-                child: DropdownButton<String?>(
-                  value: _statusFilter,
-                  hint: const Text('Statut'),
-                  borderRadius: BorderRadius.circular(8),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('Tous')),
-                    DropdownMenuItem(value: 'PAID', child: Text('Payé')),
-                    DropdownMenuItem(value: 'PARTIAL', child: Text('Partiel')),
-                    DropdownMenuItem(value: 'UNPAID', child: Text('Impayé')),
+          child: isMobile
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    searchField,
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        statusDropdown,
+                        const SizedBox(width: 12),
+                        Expanded(child: periodFilter),
+                      ],
+                    ),
                   ],
-                  onChanged: (v) {
-                    setState(() => _statusFilter = v);
-                    _updateParams(status: v);
-                  },
+                )
+              : Row(
+                  children: [
+                    Expanded(child: searchField),
+                    const SizedBox(width: 12),
+                    statusDropdown,
+                    const SizedBox(width: 12),
+                    periodFilter,
+                  ],
                 ),
-              ),
-            ],
-          ),
         ),
         const Divider(height: 1),
 
@@ -100,17 +127,137 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
             ),
           ),
         ),
+        salesAsync.maybeWhen(
+          data: (sales) => _SalesPaginationBar(meta: sales.meta),
+          orElse: () => const SizedBox.shrink(),
+        ),
       ],
     );
   }
 
+  Future<void> _pickDateRange() async {
+    final now = haitiNow();
+    final result = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 3),
+      lastDate: now,
+      initialDateRange: _dateRange,
+      locale: const Locale('fr'),
+    );
+    if (result != null) _setDateRange(result);
+  }
+
+  void _setDateRange(DateTimeRange? range) {
+    setState(() => _dateRange = range);
+    final current = ref.read(saleListParamsProvider);
+    ref.read(saleListParamsProvider.notifier).state = SaleListParams(
+      page: 1,
+      search: current.search,
+      status: current.status,
+      dateFrom: range != null ? haitiDayStartUtc(range.start) : null,
+      dateTo: range != null
+          ? haitiDayStartUtc(range.end.add(const Duration(days: 1)))
+          : null,
+    );
+  }
+
   void _updateParams({String? search, String? status}) {
+    final current = ref.read(saleListParamsProvider);
     ref.read(saleListParamsProvider.notifier).state = SaleListParams(
       page: 1,
       search: search ?? _searchCtrl.text,
       status: status ?? _statusFilter,
+      dateFrom: current.dateFrom,
+      dateTo: current.dateTo,
     );
   }
+}
+
+class _PeriodFilterButton extends StatelessWidget {
+  final DateTimeRange? range;
+  final VoidCallback onPick;
+  final VoidCallback onClear;
+
+  const _PeriodFilterButton({
+    required this.range,
+    required this.onPick,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final r = range;
+    if (r == null) {
+      return OutlinedButton.icon(
+        onPressed: onPick,
+        icon: const Icon(Icons.date_range_rounded, size: 18),
+        label: const Text('Période'),
+      );
+    }
+    final fmt = DateFormat('dd/MM/yy');
+    return InputChip(
+      avatar: const Icon(Icons.date_range_rounded, size: 18),
+      label: Text('${fmt.format(r.start)} - ${fmt.format(r.end)}'),
+      onPressed: onPick,
+      onDeleted: onClear,
+    );
+  }
+}
+
+class _SalesPaginationBar extends ConsumerWidget {
+  final PaginationMeta meta;
+  const _SalesPaginationBar({required this.meta});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (meta.pages <= 1) return const SizedBox.shrink();
+    final page = meta.page;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.divider)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('${meta.total} vente${meta.total > 1 ? 's' : ''}',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left_rounded),
+                tooltip: 'Page précédente',
+                onPressed: page > 1
+                    ? () => ref.read(saleListParamsProvider.notifier).state =
+                        _withPage(ref.read(saleListParamsProvider), page - 1)
+                    : null,
+              ),
+              Text('Page $page / ${meta.pages}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              IconButton(
+                icon: const Icon(Icons.chevron_right_rounded),
+                tooltip: 'Page suivante',
+                onPressed: page < meta.pages
+                    ? () => ref.read(saleListParamsProvider.notifier).state =
+                        _withPage(ref.read(saleListParamsProvider), page + 1)
+                    : null,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  SaleListParams _withPage(SaleListParams current, int page) => SaleListParams(
+        page: page,
+        search: current.search,
+        status: current.status,
+        dateFrom: current.dateFrom,
+        dateTo: current.dateTo,
+      );
 }
 
 class _SalesList extends ConsumerWidget {

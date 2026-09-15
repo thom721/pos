@@ -13,18 +13,28 @@ class SaleListParams {
   final int page;
   final String? search;
   final String? status;
+  final DateTime? dateFrom;
+  final DateTime? dateTo;
 
-  const SaleListParams({this.page = 1, this.search, this.status});
+  const SaleListParams({
+    this.page = 1,
+    this.search,
+    this.status,
+    this.dateFrom,
+    this.dateTo,
+  });
 
   @override
   bool operator ==(Object other) =>
       other is SaleListParams &&
       page == other.page &&
       search == other.search &&
-      status == other.status;
+      status == other.status &&
+      dateFrom == other.dateFrom &&
+      dateTo == other.dateTo;
 
   @override
-  int get hashCode => Object.hash(page, search, status);
+  int get hashCode => Object.hash(page, search, status, dateFrom, dateTo);
 }
 
 final saleListParamsProvider =
@@ -52,6 +62,8 @@ final salesProvider =
     page: params.page,
     search: params.search,
     status: params.status,
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo,
     warehouseId: warehouseId,
     cashierId: cashierId,
   );

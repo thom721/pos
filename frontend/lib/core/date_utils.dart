@@ -26,6 +26,15 @@ DateTime haitiTodayStartUtc() {
   return localMidnight.toUtc();
 }
 
+/// Début du jour donné (minuit) à Port-au-Prince, exprimé en UTC — même
+/// logique DST-aware que [haitiTodayStartUtc] mais pour une date arbitraire
+/// (ex: borne d'un filtre par période choisie dans un date range picker).
+DateTime haitiDayStartUtc(DateTime localDate) {
+  final localMidnight =
+      tz.TZDateTime(_haiti, localDate.year, localDate.month, localDate.day);
+  return localMidnight.toUtc();
+}
+
 /// Parse une date ISO renvoyée par l'API FastAPI.
 /// Le backend envoie désormais des datetimes naïfs déjà en heure locale
 /// Haiti (now_local(), sans 'Z') — on les utilise directement, sans
