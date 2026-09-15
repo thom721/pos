@@ -91,13 +91,23 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
     bool ok = false;
     String? errMsg;
     try {
+      // Identité (nom, adresse, logo...) résolue depuis le warehouse_id réel
+      // de la vente — renvoyé par le serveur, source de vérité — plutôt que
+      // l'état local de l'appareil : si la vente a fini attribuée à un autre
+      // business que celui actif sur cet appareil (ex: bug d'autorisation
+      // corrigé côté serveur), le reçu ne doit jamais afficher la mauvaise
+      // identité. Les réglages d'imprimante (settings) restent ceux du
+      // device courant.
+      final receiptSettings = await ref
+          .read(settingsProvider.notifier)
+          .forSaleWarehouse(_sale!.warehouseId);
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
         final isSunmi = await ThermalPrinterService.instance.isSunmiAvailable;
         if (isSunmi) {
-          await ThermalPrinterService.instance.printReceipt(_sale!, settings);
+          await ThermalPrinterService.instance.printReceipt(_sale!, receiptSettings);
           ok = true;
         } else if (settings.bluetoothPrinterMac.isNotEmpty) {
-          ok = await BluetoothPrintService.instance.printReceipt(_sale!, settings);
+          ok = await BluetoothPrintService.instance.printReceipt(_sale!, receiptSettings);
           if (!ok) errMsg = 'Connexion imprimante échouée — vérifiez que l\'imprimante est allumée et appairée';
         } else {
           errMsg = 'Aucune imprimante BT configurée — ouvrez les paramètres d\'impression';
@@ -105,7 +115,7 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
       } else {
         await ThermalPrinterService.instance.printReceipt(
           _sale!,
-          settings,
+          receiptSettings,
           printerUrl: settings.posPrinterName.isNotEmpty ? settings.posPrinterName : null,
         );
         ok = true;
@@ -1308,20 +1318,25 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     String? errMsg;
     try {
       final sale = await SaleRepository().getSale(saleId);
+      // Identité résolue depuis le warehouse_id réel de la vente — voir
+      // le même commentaire dans _print() ci-dessus.
+      final receiptSettings = await ref
+          .read(settingsProvider.notifier)
+          .forSaleWarehouse(sale.warehouseId);
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
         final isSunmi = await ThermalPrinterService.instance.isSunmiAvailable;
         if (isSunmi) {
-          await ThermalPrinterService.instance.printReceipt(sale, settings);
+          await ThermalPrinterService.instance.printReceipt(sale, receiptSettings);
           ok = true;
         } else if (settings.bluetoothPrinterMac.isNotEmpty) {
-          ok = await BluetoothPrintService.instance.printReceipt(sale, settings);
+          ok = await BluetoothPrintService.instance.printReceipt(sale, receiptSettings);
           if (!ok) errMsg = 'Connexion imprimante échouée — vérifiez que l\'imprimante est allumée et appairée';
         } else {
           errMsg = 'Aucune imprimante BT configurée — ouvrez les paramètres d\'impression';
         }
       } else {
         await ThermalPrinterService.instance.printReceipt(
-          sale, settings,
+          sale, receiptSettings,
           printerUrl: settings.posPrinterName.isNotEmpty ? settings.posPrinterName : null,
         );
         ok = true;
