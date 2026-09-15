@@ -23,7 +23,7 @@ class UserUpdate(BaseModel):
     fname: str
     lname: str
     username: str
-    phone: str
+    phone: Optional[str] = None
     address: Optional[str] = None
     password: Optional[str] = None   # omis = mot de passe inchangé
     email: Optional[str] = None

@@ -135,10 +135,11 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
         'fname': _fnameCtrl.text.trim(),
         'lname': _lnameCtrl.text.trim(),
         'username': _usernameCtrl.text.trim(),
-        'phone': '',
-        'address': '',
-        'email': 'user@pos.local',
-        'is_active': true,
+        // phone/address/email/is_active volontairement omis : ce formulaire
+        // ne les affiche pas, les envoyer (même vides) les écraserait côté
+        // serveur — exclude_unset=True (UserService.update) ne préserve que
+        // les champs absents du payload, pas ceux présents avec une valeur
+        // vide/bidon.
         if (_pwdCtrl.text.isNotEmpty) 'password': _pwdCtrl.text,
       };
       await dio.put('/api/users/$userId', data: body);

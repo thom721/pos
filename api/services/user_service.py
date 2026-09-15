@@ -26,7 +26,7 @@ class UserService(TenantService):
         if q_user.first():
             raise HTTPException(status_code=409, detail=f"Le nom d'utilisateur '{username}' est déjà pris.")
         if email:
-            q_email = self.db.query(User).filter(User.email == email)
+            q_email = self._q(User).filter(User.email == email)
             if exclude_id:
                 q_email = q_email.filter(User.id != exclude_id)
             if q_email.first():
