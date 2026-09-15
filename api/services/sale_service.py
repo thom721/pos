@@ -14,6 +14,7 @@ from api.models.Payment import Payment
 from api.models.Customer import Customer
 from api.models.User import User as UserModel
 from api.models.Discount import DiscountScope
+from api.models.Warehouse import Warehouse
 from api.services.warehouse_helper import resolve_warehouse_id
 from api.services.product_service import resolve_price as _resolve_price
 from api.services.discount_service import resolve_discount, get_active_automatic_receipt_discount
@@ -455,10 +456,25 @@ def create_sale(
     server_wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
     user_wh_ids  = (getattr(current_user, 'warehouse_id', None) or []) if current_user is not None else []
     user_default_wh = user_wh_ids[0] if len(user_wh_ids) == 1 else None
-    wh_id = resolve_warehouse_id(
-        db, tenant_id,
-        warehouse_id or payload_wh or user_default_wh or server_wh_id,
-    ) if tenant_id else None
+    explicit_wh = warehouse_id or payload_wh or user_default_wh or server_wh_id
+
+    # Un tenant multi-dépôts ne doit JAMAIS deviner silencieusement "le dépôt
+    # par défaut du tenant" quand rien n'a pu être déterminé (ni explicite,
+    # ni dépôt unique du cashier) — c'est précisément ce qui a fait atterrir
+    # une vente sur le mauvais business en prod. Un tenant mono-dépôt (ou
+    # sans dépôt du tout, mode local) reste inchangé : ambiguïté impossible.
+    if tenant_id and not explicit_wh:
+        active_wh_count = db.query(Warehouse).filter(
+            Warehouse.tenant_id == tenant_id, Warehouse.is_active == True,  # noqa: E712
+        ).count()
+        if active_wh_count > 1:
+            raise HTTPException(
+                400,
+                "Impossible de déterminer le dépôt de cette vente — "
+                "veuillez réessayer ou contacter un administrateur.",
+            )
+
+    wh_id = resolve_warehouse_id(db, tenant_id, explicit_wh) if tenant_id else None
 
     # Un cashier avec une liste de dépôts restreinte (User.warehouse_id non
     # vide) ne peut vendre QUE pour l'un de ces dépôts — jusqu'ici rien ne le

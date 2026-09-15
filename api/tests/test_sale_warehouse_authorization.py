@@ -132,6 +132,23 @@ def test_no_warehouse_in_payload_defaults_to_cashiers_own_depot(db, tenant, prod
     assert sale.warehouse_id == depot_b.id
 
 
+def test_no_warehouse_and_no_way_to_infer_one_is_rejected(db, tenant, product, two_depots):
+    """Un tenant multi-depots ne doit jamais deviner silencieusement lequel —
+    ni pour un cashier non-restreint (liste vide) qui n'a pas de "depot
+    unique" a inferer, ni sans current_user du tout. Doit rejeter (400)
+    plutot que de retomber sur le depot par defaut du tenant."""
+    depot_a, depot_b = two_depots
+    _stock(db, tenant, product, depot_a.id)
+    admin = SimpleNamespace(warehouse_id=[])
+
+    with pytest.raises(HTTPException) as exc:
+        sale_service.create_sale(
+            db, _sale_data(product, None), user_id="u1", tenant_id=tenant.id,
+            current_user=admin,
+        )
+    assert exc.value.status_code == 400
+
+
 def test_unrestricted_user_can_sell_for_any_depot(db, tenant, product, two_depots):
     depot_a, depot_b = two_depots
     _stock(db, tenant, product, depot_b.id)
