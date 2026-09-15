@@ -55,7 +55,11 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
     if (wh == null) {
       try {
         final list = await WarehouseRepository().listWarehouses();
-        await ref.read(activeWarehouseProvider.notifier).initFromList(list);
+        final userWarehouseIds = ref.read(authProvider).user?.warehouseIds ?? [];
+        await ref.read(activeWarehouseProvider.notifier).initFromList(
+          list,
+          userWarehouseIds: userWarehouseIds,
+        );
         wh = ref.read(activeWarehouseProvider);
       } catch (_) {}
       if (wh == null) return;
