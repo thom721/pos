@@ -16,10 +16,13 @@ from sqlalchemy.orm import sessionmaker
 
 import api.models  # noqa: F401
 from api.database import Base
+from api.core.dt_coerce import now_local
 from api.models.Tenant import Tenant
 from api.models.Category import Category
 from api.models.Product import Product
 from api.models.Warehouse import Warehouse
+from api.models.PosRegister import PosRegister
+from api.models.CashierSession import CashierSession
 from api.models.StockMovement import StockMovement, StockType
 from api.schemas.sale import SaleCreate, SaleItemInput
 from api.services import sale_service
@@ -156,6 +159,59 @@ def test_unrestricted_user_can_sell_for_any_depot(db, tenant, product, two_depot
 
     sale = sale_service.create_sale(
         db, _sale_data(product, depot_b.id), user_id="u1", tenant_id=tenant.id,
+        current_user=admin,
+    )
+    db.commit()
+    assert sale.warehouse_id == depot_b.id
+
+
+def _open_session(db, tenant, warehouse_id, cashier_id="u1"):
+    """Ouvre une session de caisse — reproduit cashier_sessions.open_session :
+    CashierSession.warehouse_id hérite de celui de la caisse (PosRegister)."""
+    reg = PosRegister(tenant_id=tenant.id, warehouse_id=warehouse_id, name="Caisse 1")
+    db.add(reg)
+    db.flush()
+    session = CashierSession(
+        tenant_id=tenant.id, register_id=reg.id, cashier_id=cashier_id,
+        warehouse_id=reg.warehouse_id, opened_at=now_local(), status="open",
+    )
+    db.add(session)
+    db.flush()
+    return session
+
+
+def test_open_session_depot_wins_over_conflicting_payload(db, tenant, product, two_depots):
+    """Peu importe ce que le client envoie (ou pas) : la caisse PHYSIQUE
+    ouverte par le cashier appartient a UN SEUL depot, connu et stable cote
+    serveur — c'est elle qui doit determiner le depot de la vente, jamais un
+    warehouse_id du payload qui peut etre absent/faux a cause d'un etat
+    d'app defaillant (bug constate en prod)."""
+    depot_a, depot_b = two_depots
+    _stock(db, tenant, product, depot_b.id)
+    _open_session(db, tenant, depot_b.id, cashier_id="u1")
+    # Le payload pretend depot_a (ou un admin non-restreint) — la session gagne quand meme.
+    admin = SimpleNamespace(warehouse_id=[])
+
+    sale = sale_service.create_sale(
+        db, _sale_data(product, depot_a.id), user_id="u1", tenant_id=tenant.id,
+        current_user=admin,
+    )
+    db.commit()
+    assert sale.warehouse_id == depot_b.id
+
+
+def test_open_session_resolves_what_would_otherwise_be_rejected(db, tenant, product, two_depots):
+    """Sans warehouse_id du tout et un utilisateur non-restreint sur un
+    tenant multi-depots, la vente serait normalement rejetee (ambigu, voir
+    test_no_warehouse_and_no_way_to_infer_one_is_rejected) — sauf si une
+    session de caisse ouverte leve l'ambiguite."""
+    depot_a, depot_b = two_depots
+    _stock(db, tenant, product, depot_b.id)
+    _open_session(db, tenant, depot_b.id, cashier_id="u1")
+    admin = SimpleNamespace(warehouse_id=[])
+
+    sale = sale_service.create_sale(
+        db, _sale_data(product, None), user_id="u1", tenant_id=tenant.id,
         current_user=admin,
     )
     db.commit()

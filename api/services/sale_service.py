@@ -15,6 +15,7 @@ from api.models.Customer import Customer
 from api.models.User import User as UserModel
 from api.models.Discount import DiscountScope
 from api.models.Warehouse import Warehouse
+from api.models.CashierSession import CashierSession
 from api.services.warehouse_helper import resolve_warehouse_id
 from api.services.product_service import resolve_price as _resolve_price
 from api.services.discount_service import resolve_discount, get_active_automatic_receipt_discount
@@ -438,17 +439,36 @@ def create_sale(
         .all()
     }
 
-    # Warehouse : paramètre > payload > DÉPÔT ASSIGNÉ AU CASHIER (si unique et
-    # restreint) > dépôt installer du serveur > défaut tenant. Résolu ici
-    # (avant la vérification de stock) car le stock disponible est désormais
-    # vérifié PAR DÉPÔT — une caisse ne peut vendre que ce qui a été distribué
-    # à SON dépôt, pas le total du tenant (voir Product.available_quantity_at).
+    # Warehouse : CAISSE OUVERTE DU CASHIER > paramètre > payload > dépôt
+    # assigné au cashier (si unique) > dépôt installer du serveur > défaut
+    # tenant. Résolu ici (avant la vérification de stock) car le stock
+    # disponible est désormais vérifié PAR DÉPÔT — une caisse ne peut vendre
+    # que ce qui a été distribué à SON dépôt, pas le total du tenant (voir
+    # Product.available_quantity_at).
     #
+    # Priorité absolue à la session de caisse ouverte : peu importe à combien
+    # de dépôts un cashier est rattaché, LA CAISSE PHYSIQUE qu'il utilise
+    # (CashierSession.warehouse_id, hérité de PosRegister à l'ouverture — voir
+    # cashier_sessions.py::open_session) appartient à UN SEUL dépôt, de façon
+    # stable et vérifiée côté serveur. store_sale exige déjà une session
+    # ouverte (_require_open_session) avant d'appeler create_sale — cette
+    # session est donc systématiquement disponible pour toute vente réelle.
+    # Contrairement au warehouse_id envoyé par le client (état d'app pouvant
+    # être vide/faux — constaté en prod), la caisse ne peut pas être "vide".
+    session_wh = None
+    if current_user is not None and tenant_id:
+        open_session = db.query(CashierSession).filter(
+            CashierSession.tenant_id == tenant_id,
+            CashierSession.cashier_id == user_id,
+            CashierSession.status == "open",
+        ).first()
+        if open_session:
+            session_wh = open_session.warehouse_id
+
     # Le repli sur le dépôt PAR DÉFAUT DU TENANT (resolve_warehouse_id sans
-    # warehouse_id) est dangereux pour un cashier restreint : si le client
-    # n'envoie aucun warehouse_id (ex: activeWarehouseProvider pas encore
-    # chargé côté app — constaté en prod), la vente atterrissait sur le dépôt
-    # par défaut du TENANT au lieu du dépôt du cashier, faussant la
+    # warehouse_id) est dangereux pour un cashier restreint : si ni la
+    # session ni le client ne fournissent de dépôt, la vente atterrissait sur
+    # le dépôt par défaut du TENANT au lieu du dépôt du cashier, faussant la
     # numérotation séquentielle des deux dépôts. On tente donc SON dépôt
     # assigné en premier quand il n'y en a qu'un seul (cas non-ambigu).
     from api.core.config import settings as _cfg
@@ -456,7 +476,7 @@ def create_sale(
     server_wh_id = _cfg.INSTALLER_WAREHOUSE_ID or None
     user_wh_ids  = (getattr(current_user, 'warehouse_id', None) or []) if current_user is not None else []
     user_default_wh = user_wh_ids[0] if len(user_wh_ids) == 1 else None
-    explicit_wh = warehouse_id or payload_wh or user_default_wh or server_wh_id
+    explicit_wh = session_wh or warehouse_id or payload_wh or user_default_wh or server_wh_id
 
     # Un tenant multi-dépôts ne doit JAMAIS deviner silencieusement "le dépôt
     # par défaut du tenant" quand rien n'a pu être déterminé (ni explicite,
