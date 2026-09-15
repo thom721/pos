@@ -51,6 +51,12 @@ services:
       SERVER_HOST: "0.0.0.0"
       SERVER_PORT: 9003
 
+      # Sans ça, stdout Python est bufferisé par bloc (pas ligne par ligne)
+      # dès qu'il n'est pas attaché à un terminal — un warning/log isolé peut
+      # rester coincé en mémoire et n'apparaître dans `docker compose logs`
+      # que bien plus tard (ou jamais avant un flush/redémarrage).
+      PYTHONUNBUFFERED: "1"
+
       # ── Sécurité JWT — OBLIGATOIRE en production ──────────────────────────
       # Générer : openssl rand -hex 32
       SECRET_KEY: ${SECRET_KEY}
