@@ -176,12 +176,19 @@ def list_warehouses(
             )
             if results:
                 return results
-            # Les dépôts assignés n'existent plus en base — fallback sur tous
-            # les dépôts actifs du tenant pour éviter un écran vide.
+            # Les dépôts assignés n'existent plus / ne sont plus actifs —
+            # échoue fermé : ne JAMAIS exposer les autres business du tenant
+            # à un utilisateur restreint (l'ancien fallback "tous les dépôts"
+            # a permis à un cashier assigné à un seul business de voir/vendre
+            # sur un AUTRE business du même tenant, voir sale_service.create_sale).
             import logging as _log
             _log.getLogger("pos.api").warning(
-                "user %s warehouse_id=%s introuvable → fallback tous dépôts",
+                "user %s warehouse_id=%s introuvable — aucun dépôt actif assigné",
                 current_user.username, current_user.warehouse_id,
+            )
+            raise HTTPException(
+                403,
+                "Aucun dépôt actif ne vous est assigné. Contactez un administrateur.",
             )
     return q.order_by(Warehouse.is_default.desc(), Warehouse.name).all()
 
