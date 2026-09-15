@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 import uuid
 
 from api.database import get_db
@@ -686,7 +687,7 @@ def checkout_order(
     from api.models.SaleItem import SaleItem
     from api.models.Payment import Payment
     from api.models.Debt import Debt
-    import random
+    from api.services.sale_service import _next_sale_reference
 
     order = db.query(RestaurantOrder).filter(
         RestaurantOrder.id == order_id,
@@ -706,22 +707,36 @@ def checkout_order(
     # Only count what the register retains; excess cash is returned as change.
     collected = min(data.paid_amount, final) if data.paid_amount > 0 else 0
 
-    reference = f"VNT-{random.randint(1000000000, 9999999999)}"
-    sale = Sale(
-        id=str(uuid.uuid4()),
-        tenant_id=current_user.tenant_id,
-        warehouse_id=order.warehouse_id,
-        user_id=current_user.id,
-        customer_id=data.customer_id,
-        reference=reference,
-        total_amount=subtotal,
-        discount=discount,
-        final_amount=final,
-        paid_amount=collected,
-        status='PAID' if data.paid_amount >= final else 'PARTIAL',
-    )
-    db.add(sale)
-    db.flush()
+    # Même numérotation séquentielle par (tenant, dépôt/business) que les
+    # ventes créées via sale_service.create_sale — avant ce correctif, une
+    # clôture de commande restaurant utilisait une référence aléatoire,
+    # jamais scopée par business (voir _next_sale_reference). Retry sur
+    # collision (uq_sale_ref_tenant_warehouse) : même mécanisme que
+    # create_sale, pour le cas rare de deux clôtures quasi simultanées sur
+    # le même dépôt.
+    _MAX_REFERENCE_ATTEMPTS = 5
+    for _attempt in range(_MAX_REFERENCE_ATTEMPTS):
+        sale = Sale(
+            id=str(uuid.uuid4()),
+            tenant_id=current_user.tenant_id,
+            warehouse_id=order.warehouse_id,
+            user_id=current_user.id,
+            customer_id=data.customer_id,
+            reference=_next_sale_reference(db, current_user.tenant_id, order.warehouse_id),
+            total_amount=subtotal,
+            discount=discount,
+            final_amount=final,
+            paid_amount=collected,
+            status='PAID' if data.paid_amount >= final else 'PARTIAL',
+        )
+        db.add(sale)
+        try:
+            db.flush()
+            break
+        except IntegrityError:
+            db.rollback()
+            if _attempt == _MAX_REFERENCE_ATTEMPTS - 1:
+                raise
 
     for oi in order.items:
         # Résoudre product_id et label depuis le MenuItem

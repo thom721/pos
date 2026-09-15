@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from api.models.Tenant import Tenant
+from api.models.AffiliateCommission import AffiliateCommission
 from api.models.AppConfig import AppConfig
 from api.models.AuditLog import AuditLog
 from api.models.BillingExtra import BillingExtra
@@ -74,7 +75,7 @@ _log = logging.getLogger("pos.tenant_deletion")
 # ordre indifférent en pratique (FK désactivées pendant la suppression)
 # mais gardé lisible/cohérent.
 TENANT_SCOPED_MODELS = [
-    AuditLog, BillingExtra, BillingPayment, CashierSession,
+    AffiliateCommission, AuditLog, BillingExtra, BillingPayment, CashierSession,
     ClientSabotage, Debt, Depot, Discount, EmployeeLoan, EmployeeProfile, Expense,
     HousekeepingTask, Ingredient, InstallationCode, InventoryRecord,
     InvoiceItem, Invoice, LoanRepayment, MenuItem, ModifierOption, ModifierGroup,
