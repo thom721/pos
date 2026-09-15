@@ -1883,7 +1883,14 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
     _alertCtrl = TextEditingController(
         text: widget.product?.alertStock.toString() ?? '5');
     _categoryId = widget.product?.category?.id;
-    _warehouseId = widget.product?.warehouseId;
+    // Nouveau produit : pré-sélectionne le business actif plutôt que "Tous
+    // les dépôts" — sinon chaque produit créé finit partagé entre tous les
+    // business du tenant par défaut, sauf si l'admin pense à changer ce
+    // champ manuellement. En édition, on garde le dépôt déjà enregistré
+    // (y compris s'il vaut explicitement "Tous les dépôts" = null).
+    _warehouseId = isEdit
+        ? widget.product?.warehouseId
+        : ref.read(activeWarehouseProvider)?.id;
     _isComposite = widget.product?.isComposite ?? false;
     _componentProductId = widget.product?.componentProductId;
     _componentQtyCtrl = TextEditingController(
