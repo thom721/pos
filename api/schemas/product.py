@@ -37,6 +37,9 @@ class ProductRead(ProductBase):
     composite_remainder: Optional[float] = None
     category: Optional[CategoryRead] = None
     is_locked: bool = False
+    # Présent uniquement juste après un changement de dépôt qui a migré du
+    # stock existant (voir ProductService.update) — jamais persisté.
+    stock_migration_note: Optional[str] = None
 
     class Config:
         from_attributes = True

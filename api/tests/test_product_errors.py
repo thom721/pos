@@ -13,6 +13,7 @@ from api.models.Tenant import Tenant
 from api.models.Category import Category
 from api.models.Product import Product
 from api.models.Warehouse import Warehouse
+from api.models.StockMovement import StockMovement, StockType
 from api.schemas.product import ProductCreate, ProductUpdate
 from api.services.product_service import ProductService
 
@@ -46,6 +47,14 @@ def category(db, tenant):
 @pytest.fixture()
 def warehouse(db, tenant):
     w = Warehouse(tenant_id=tenant.id, name="Dépôt", is_active=True, is_default=True)
+    db.add(w)
+    db.flush()
+    return w
+
+
+@pytest.fixture()
+def warehouse2(db, tenant):
+    w = Warehouse(tenant_id=tenant.id, name="Dépôt 2", is_active=True, is_default=False)
     db.add(w)
     db.flush()
     return w
@@ -119,3 +128,43 @@ def test_update_keeping_same_barcode_is_allowed(db, tenant, category, warehouse)
     ))
 
     assert updated.sale_price == 25
+
+
+def test_change_warehouse_blocked_once_a_sale_exists(db, tenant, category, warehouse, warehouse2):
+    p = _make_product(db, tenant, category, "Produit A", warehouse.id)
+    db.add(StockMovement(
+        product_id=p.id, tenant_id=tenant.id, warehouse_id=warehouse.id,
+        type=StockType.out, quantity=-2, source_type="SALE",
+    ))
+    db.commit()
+    svc = ProductService(db, tenant_id=tenant.id)
+
+    with pytest.raises(HTTPException) as exc:
+        svc.update(p.id, ProductUpdate(
+            name="Produit A", purchase_price=15, sale_price=25,
+            alert_stock=5, category_id=category.id, warehouse_id=warehouse2.id,
+        ))
+
+    assert exc.value.status_code == 400
+    db.refresh(p)
+    assert p.warehouse_id == warehouse.id  # inchangé
+
+
+def test_change_warehouse_migrates_stock_when_no_sale_yet(db, tenant, category, warehouse, warehouse2):
+    p = _make_product(db, tenant, category, "Produit A", warehouse.id)
+    db.add(StockMovement(
+        product_id=p.id, tenant_id=tenant.id, warehouse_id=warehouse.id,
+        type=StockType.in_, quantity=10, source_type="adjustment",
+    ))
+    db.commit()
+    svc = ProductService(db, tenant_id=tenant.id)
+
+    updated = svc.update(p.id, ProductUpdate(
+        name="Produit A", purchase_price=15, sale_price=25,
+        alert_stock=5, category_id=category.id, warehouse_id=warehouse2.id,
+    ))
+
+    assert updated.warehouse_id == warehouse2.id
+    assert updated.stock_migration_note is not None
+    movements = db.query(StockMovement).filter(StockMovement.product_id == p.id).all()
+    assert all(m.warehouse_id == warehouse2.id for m in movements)

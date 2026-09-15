@@ -2530,7 +2530,16 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
     }
 
     ref.invalidate(productsProvider);
-    if (mounted) Navigator.pop(context);
+    if (mounted) {
+      if (saved.stockMigrationNote != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(saved.stockMigrationNote!),
+          backgroundColor: AppColors.info,
+          duration: const Duration(seconds: 4),
+        ));
+      }
+      Navigator.pop(context);
+    }
   }
 }
 

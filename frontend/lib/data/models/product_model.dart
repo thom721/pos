@@ -62,6 +62,9 @@ class ProductModel {
   // composé — ex: 44 unités / 12 par caisse → stock=3, compositeRemainder=8.
   // Évite d'afficher une fraction décimale trompeuse ("3.67 caisses").
   final double? compositeRemainder;
+  // Présent uniquement juste après un changement de dépôt qui a migré du
+  // stock existant — jamais persisté, à usage unique (afficher un message).
+  final String? stockMigrationNote;
 
   ProductModel({
     required this.id,
@@ -80,6 +83,7 @@ class ProductModel {
     this.componentProductId,
     this.componentQuantity,
     this.compositeRemainder,
+    this.stockMigrationNote,
   });
 
   bool get isLowStock => stock != null && stock! <= alertStock;
@@ -111,6 +115,7 @@ class ProductModel {
         compositeRemainder: json['composite_remainder'] != null
             ? (json['composite_remainder'] as num?)?.toDouble()
             : null,
+        stockMigrationNote: json['stock_migration_note']?.toString(),
       );
 
   Map<String, dynamic> toJson() => {

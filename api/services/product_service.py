@@ -8,6 +8,7 @@ from api.models.Category import Category
 from api.models.Supplier import Supplier
 from api.models.ProductWarehousePrice import ProductWarehousePrice
 from api.models.Warehouse import Warehouse
+from api.models.StockMovement import StockMovement
 from api.schemas.product import ProductCreate, ProductUpdate, ProductRead
 from api.services.base_service import TenantService
 from api.services.stock_service import stock_map as _stock_map
@@ -190,8 +191,39 @@ class ProductService(TenantService):
                 raise HTTPException(400, f"Le code-barres '{new_barcode}' est déjà utilisé par un autre produit")
 
         new_wh_id = payload.get("warehouse_id")
-        if new_wh_id and not self._q(Warehouse).filter(Warehouse.id == new_wh_id).first():
-            raise HTTPException(400, "Dépôt introuvable")
+        stock_migration_note = None
+        if new_wh_id and new_wh_id != product.warehouse_id:
+            if not self._q(Warehouse).filter(Warehouse.id == new_wh_id).first():
+                raise HTTPException(400, "Dépôt introuvable")
+
+            # Une vente a déjà été enregistrée pour ce produit : son stock au
+            # moment de la vente fait partie de l'historique de CE dépôt —
+            # le migrer fausserait les rapports passés. Changement de dépôt
+            # bloqué dans ce cas (créer un nouveau produit à la place).
+            has_sale = self.db.query(StockMovement).filter(
+                StockMovement.product_id == product_id,
+                StockMovement.source_type == "SALE",
+            ).first()
+            if has_sale:
+                raise HTTPException(
+                    400,
+                    "Ce produit a déjà des ventes enregistrées — impossible "
+                    "de changer son dépôt (créez un nouveau produit à la place).",
+                )
+
+            # Pas encore de vente : le stock existant (achats/ajustements) est
+            # entièrement transféré vers le nouveau dépôt plutôt que de rester
+            # orphelin sur l'ancien (voir bug constaté en prod : stock affiché
+            # à 0 après un changement de dépôt).
+            qty = product.stock
+            if qty:
+                self.db.query(StockMovement).filter(
+                    StockMovement.product_id == product_id,
+                ).update({"warehouse_id": new_wh_id}, synchronize_session=False)
+                stock_migration_note = (
+                    f"Stock existant ({qty:g} unité{'s' if qty != 1 else ''}) "
+                    "migré vers le nouveau dépôt."
+                )
 
         for field, value in payload.items():
             setattr(product, field, value)
@@ -202,6 +234,9 @@ class ProductService(TenantService):
             logger.error("Erreur mise à jour produit: %s", e, exc_info=True)
             raise HTTPException(500, "Erreur lors de la mise à jour du produit")
         self.db.refresh(product)
+        # Attribut transitoire (non persisté) — lu par ProductRead pour
+        # informer l'admin côté client, voir schemas/product.py.
+        product.stock_migration_note = stock_migration_note
         return product
 
     def _delete_blockers(self, product_id: str) -> List[dict]:
