@@ -18,6 +18,7 @@ from api.services.warehouse_helper import resolve_warehouse_id
 from api.services.product_service import resolve_price as _resolve_price
 from api.services.discount_service import resolve_discount, get_active_automatic_receipt_discount
 from api.services.stock_service import record_stock_movement
+from api.services import audit_service
 
 logger = logging.getLogger(__name__)
 
@@ -458,11 +459,23 @@ def create_sale(
     if current_user is not None and tenant_id:
         user_wh_ids = getattr(current_user, 'warehouse_id', None) or []
         if user_wh_ids and wh_id not in user_wh_ids:
-            logger.warning(
-                "create_sale: vente refusee — user=%s (warehouse_id assigne=%s) "
-                "a tente wh_id resolu=%s (payload_wh=%s)",
-                user_id, user_wh_ids, wh_id, payload_wh,
+            # Ecrit en base (AuditLog), pas seulement dans les logs applicatifs
+            # — la capture stdout/gunicorn de ce serveur s'est averee peu
+            # fiable pour diagnostiquer ce refus en prod (voir session du
+            # 2026-09-15). AuditLog est deja persiste/lu de facon fiable
+            # ailleurs dans ce projet.
+            audit_service.log(
+                db, user_id=user_id, tenant_id=tenant_id,
+                action="SALE_WAREHOUSE_DENIED", resource_type="sale",
+                detail={
+                    "user_warehouse_ids": user_wh_ids,
+                    "wh_id_resolu": wh_id,
+                    "payload_wh": payload_wh,
+                    "explicit_warehouse_id": warehouse_id,
+                    "server_wh_id": server_wh_id,
+                },
             )
+            db.commit()
             raise HTTPException(
                 403, "Vous n'êtes pas autorisé à enregistrer une vente pour ce dépôt."
             )
