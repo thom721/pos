@@ -12,6 +12,7 @@ from api.database import Base
 from api.models.Tenant import Tenant
 from api.models.Category import Category
 from api.models.Product import Product
+from api.models.Warehouse import Warehouse
 from api.schemas.product import ProductCreate, ProductUpdate
 from api.services.product_service import ProductService
 
@@ -42,37 +43,48 @@ def category(db, tenant):
     return cat
 
 
-def _make_product(db, tenant, category, name, barcode=None):
+@pytest.fixture()
+def warehouse(db, tenant):
+    w = Warehouse(tenant_id=tenant.id, name="Dépôt", is_active=True, is_default=True)
+    db.add(w)
+    db.flush()
+    return w
+
+
+def _make_product(db, tenant, category, name, warehouse_id=None, barcode=None):
     p = Product(name=name, category_id=category.id, sale_price=100,
-                purchase_price=50, tenant_id=tenant.id, barcode=barcode)
+                purchase_price=50, tenant_id=tenant.id, barcode=barcode,
+                warehouse_id=warehouse_id)
     db.add(p)
     db.flush()
     return p
 
 
-def test_create_duplicate_barcode_rejected_with_clear_message(db, tenant, category):
-    _make_product(db, tenant, category, "Produit A", barcode="123456")
+def test_create_duplicate_barcode_rejected_with_clear_message(db, tenant, category, warehouse):
+    _make_product(db, tenant, category, "Produit A", warehouse.id, barcode="123456")
     svc = ProductService(db, tenant_id=tenant.id)
 
     with pytest.raises(HTTPException) as exc:
         svc.create(ProductCreate(
             name="Produit B", purchase_price=10, sale_price=20,
-            alert_stock=5, category_id=category.id, barcode="123456",
+            alert_stock=5, category_id=category.id, warehouse_id=warehouse.id,
+            barcode="123456",
         ))
 
     assert exc.value.status_code == 400
     assert "123456" in exc.value.detail
 
 
-def test_update_duplicate_barcode_rejected_with_clear_message(db, tenant, category):
-    _make_product(db, tenant, category, "Produit A", barcode="123456")
-    p2 = _make_product(db, tenant, category, "Produit B", barcode="789")
+def test_update_duplicate_barcode_rejected_with_clear_message(db, tenant, category, warehouse):
+    _make_product(db, tenant, category, "Produit A", warehouse.id, barcode="123456")
+    p2 = _make_product(db, tenant, category, "Produit B", warehouse.id, barcode="789")
     svc = ProductService(db, tenant_id=tenant.id)
 
     with pytest.raises(HTTPException) as exc:
         svc.update(p2.id, ProductUpdate(
             name="Produit B", purchase_price=10, sale_price=20,
-            alert_stock=5, category_id=category.id, barcode="123456",
+            alert_stock=5, category_id=category.id, warehouse_id=warehouse.id,
+            barcode="123456",
         ))
 
     assert exc.value.status_code == 400
@@ -81,28 +93,29 @@ def test_update_duplicate_barcode_rejected_with_clear_message(db, tenant, catego
     assert p2.barcode == "789"  # inchangé, pas de commit partiel
 
 
-def test_update_duplicate_name_rejected_with_clear_message(db, tenant, category):
-    _make_product(db, tenant, category, "Produit A")
-    p2 = _make_product(db, tenant, category, "Produit B")
+def test_update_duplicate_name_rejected_with_clear_message(db, tenant, category, warehouse):
+    _make_product(db, tenant, category, "Produit A", warehouse.id)
+    p2 = _make_product(db, tenant, category, "Produit B", warehouse.id)
     svc = ProductService(db, tenant_id=tenant.id)
 
     with pytest.raises(HTTPException) as exc:
         svc.update(p2.id, ProductUpdate(
             name="Produit A", purchase_price=10, sale_price=20,
-            alert_stock=5, category_id=category.id,
+            alert_stock=5, category_id=category.id, warehouse_id=warehouse.id,
         ))
 
     assert exc.value.status_code == 400
     assert "Produit A" in exc.value.detail
 
 
-def test_update_keeping_same_barcode_is_allowed(db, tenant, category):
-    p = _make_product(db, tenant, category, "Produit A", barcode="123456")
+def test_update_keeping_same_barcode_is_allowed(db, tenant, category, warehouse):
+    p = _make_product(db, tenant, category, "Produit A", warehouse.id, barcode="123456")
     svc = ProductService(db, tenant_id=tenant.id)
 
     updated = svc.update(p.id, ProductUpdate(
         name="Produit A", purchase_price=15, sale_price=25,
-        alert_stock=5, category_id=category.id, barcode="123456",
+        alert_stock=5, category_id=category.id, warehouse_id=warehouse.id,
+        barcode="123456",
     ))
 
     assert updated.sale_price == 25

@@ -1620,7 +1620,8 @@ Future<void> _toggleProductLock(
       'sale_price': p.salePrice,
       'purchase_price': p.purchasePrice,
       'alert_stock': p.alertStock,
-      'warehouse_id': p.warehouseId,
+      // Voir _lockProductInstead : warehouse_id est obligatoire côté serveur.
+      'warehouse_id': p.warehouseId ?? ref.read(activeWarehouseProvider)?.id,
       'is_locked': !p.isLocked,
     });
     ref.invalidate(productsProvider);
@@ -2045,47 +2046,53 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                 ),
                 if (_warehouses.isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String?>(
+                  DropdownButtonFormField<String>(
                     initialValue: _warehouseId,
+                    // Pas d'option "Tous les dépôts" : le stock est suivi
+                    // par (produit, dépôt) via StockMovement, indépendamment
+                    // de ce champ — un produit "partagé" affiche un stock
+                    // par dépôt qui n'a de sens que sur UN dépôt à la fois.
+                    // Un dépôt précis est donc obligatoire, à la création
+                    // comme à la modification.
                     decoration: const InputDecoration(
-                      labelText: 'Dépôt (optionnel)',
+                      labelText: 'Dépôt',
                       prefixIcon: Icon(Icons.warehouse_outlined, size: 18),
                     ),
-                    items: [
-                      const DropdownMenuItem(
-                          value: null, child: Text('— Tous les dépôts —')),
-                      ..._warehouses.map((w) => DropdownMenuItem(
-                            value: w.id,
-                            child: Row(
-                              children: [
-                                Text(w.name),
-                                if (w.isDefault) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 5, vertical: 1),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary
-                                          .withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(4),
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Choisissez un dépôt' : null,
+                    items: _warehouses
+                        .map((w) => DropdownMenuItem(
+                              value: w.id,
+                              child: Row(
+                                children: [
+                                  Text(w.name),
+                                  if (w.isDefault) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary
+                                            .withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text('défaut',
+                                          style: TextStyle(
+                                              fontSize: 10,
+                                              color: AppColors.primary)),
                                     ),
-                                    child: const Text('défaut',
-                                        style: TextStyle(
-                                            fontSize: 10,
-                                            color: AppColors.primary)),
-                                  ),
+                                  ],
                                 ],
-                              ],
-                            ),
-                          )),
-                    ],
+                              ),
+                            ))
+                        .toList(),
                     onChanged: (v) => setState(() => _warehouseId = v),
                   ),
                   const Padding(
                     padding: EdgeInsets.only(top: 4, left: 4),
                     child: Text(
-                      'Si choisi, ce produit est masqué des autres dépôts '
-                      '(Produits et Caisse) — reste visible à l\'Entrepôt.',
+                      'Ce produit est masqué des autres dépôts (Produits et '
+                      'Caisse) — reste visible à l\'Entrepôt.',
                       style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
                     ),
                   ),
@@ -2363,7 +2370,11 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
         'sale_price': product.salePrice,
         'purchase_price': product.purchasePrice,
         'alert_stock': product.alertStock,
-        'warehouse_id': product.warehouseId,
+        // warehouse_id est désormais obligatoire côté serveur (voir
+        // ProductUpdate) — un vieux produit "tous les dépôts" (null) retombe
+        // sur le business actuellement affiché plutôt que d'échouer.
+        'warehouse_id':
+            product.warehouseId ?? ref.read(activeWarehouseProvider)?.id,
         'is_locked': true,
       });
       ref.invalidate(productsProvider);

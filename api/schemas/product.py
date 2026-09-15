@@ -23,7 +23,9 @@ class ProductBase(BaseModel):
 
 
 class ProductCreate(ProductBase):
-    pass
+    # Surcharge ProductBase.warehouse_id (Optional) : obligatoire à la
+    # création — voir le commentaire équivalent sur ProductUpdate.
+    warehouse_id: str
 
 class ProductRead(ProductBase):
     id: str
@@ -48,7 +50,12 @@ class ProductUpdate(BaseModel):
     barcode: Optional[str] = None
     supplier_id: Optional[str] = None
     category_id: Optional[str]
-    warehouse_id: Optional[str] = None
+    # Obligatoire (pas de "tous les dépôts") : le stock est suivi par
+    # (product_id, warehouse_id) via StockMovement, indépendamment de ce
+    # champ — un produit "partagé" (warehouse_id=None) affiche un stock par
+    # dépôt qui n'a de sens que sur un seul à la fois (constaté en prod : le
+    # stock accroché à l'ancien dépôt, le "nouveau" affichait 0).
+    warehouse_id: str
     is_locked: Optional[bool] = None
     component_product_id: Optional[str] = None
     component_quantity: Optional[float] = None

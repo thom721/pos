@@ -7,6 +7,7 @@ from api.models.Product import Product
 from api.models.Category import Category
 from api.models.Supplier import Supplier
 from api.models.ProductWarehousePrice import ProductWarehousePrice
+from api.models.Warehouse import Warehouse
 from api.schemas.product import ProductCreate, ProductUpdate, ProductRead
 from api.services.base_service import TenantService
 from api.services.stock_service import stock_map as _stock_map
@@ -67,6 +68,13 @@ class ProductService(TenantService):
             supplier_id = payload.get("supplier_id")
             if supplier_id and not self.db.get(Supplier, str(supplier_id)):
                 raise HTTPException(400, "Fournisseur introuvable")
+
+            # Vérifie que le dépôt existe et appartient à ce tenant (sinon un
+            # warehouse_id d'un autre tenant pourrait finir stocké ici — même
+            # bug déjà corrigé ailleurs, cf. config.py::_wh_id).
+            wh_id = payload.get("warehouse_id")
+            if wh_id and not self._q(Warehouse).filter(Warehouse.id == wh_id).first():
+                raise HTTPException(400, "Dépôt introuvable")
 
             product = Product(**payload)
             self._set_tenant(product)
@@ -180,6 +188,10 @@ class ProductService(TenantService):
             ).first()
             if exists:
                 raise HTTPException(400, f"Le code-barres '{new_barcode}' est déjà utilisé par un autre produit")
+
+        new_wh_id = payload.get("warehouse_id")
+        if new_wh_id and not self._q(Warehouse).filter(Warehouse.id == new_wh_id).first():
+            raise HTTPException(400, "Dépôt introuvable")
 
         for field, value in payload.items():
             setattr(product, field, value)
