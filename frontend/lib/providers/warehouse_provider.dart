@@ -55,14 +55,34 @@ class ActiveWarehouseNotifier extends StateNotifier<WarehouseModel?> {
     List<String> userWarehouseIds = const [],
   }) async {
     if (warehouses.isEmpty) return;
-    // User explicitly chose "Tous les dépôts" — respect the choice
-    if (_userChoseAll) return;
 
     // Filter to user-assigned warehouses when the user has restrictions
     final allowed = userWarehouseIds.isEmpty
         ? warehouses
         : warehouses.where((w) => userWarehouseIds.contains(w.id)).toList();
     final pool = allowed.isEmpty ? warehouses : allowed;
+
+    // "Tous les dépôts" n'a de sens que pour un utilisateur non-restreint —
+    // un cashier limité à UN SEUL dépôt n'a pas de choix "tous" valide.
+    // _userChoseAll est un simple drapeau device-level (SharedPreferences),
+    // persistant à travers logout/login — y compris un logout AUTOMATIQUE
+    // sur session expirée (voir authProvider.logoutDueToExpiry, appelé par
+    // ex. quand un admin réinitialise le mot de passe de ce cashier). Sans
+    // ce garde-fou, ce drapeau restait bloqué à "true" indéfiniment (même
+    // après réinstallation de l'app, restauré depuis le stockage persistant)
+    // et le dépôt actif ne se réinitialisait plus jamais tout seul — bug
+    // constaté en prod, à l'origine de ventes attribuées au mauvais business.
+    if (userWarehouseIds.length == 1) {
+      final only = pool.firstWhere(
+        (w) => w.id == userWarehouseIds.first,
+        orElse: () => pool.first,
+      );
+      if (state?.id != only.id) await setWarehouse(only);
+      return;
+    }
+
+    // User explicitly chose "Tous les dépôts" — respect the choice
+    if (_userChoseAll) return;
 
     // If persisted warehouse is in the allowed pool, keep it
     if (state != null && pool.any((w) => w.id == state!.id)) return;
