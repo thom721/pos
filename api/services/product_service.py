@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 from typing import List, Optional, Union
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import or_
@@ -173,6 +174,26 @@ class ProductService(TenantService):
         if not product:
             return None
         payload = data.dict(exclude_unset=True)
+
+        # Un produit verrouillé ne peut plus être modifié — seul le
+        # déverrouillage (is_locked True → False) reste autorisé. Les
+        # formulaires de verrouillage/déverrouillage réenvoient toujours
+        # TOUS les champs (pas seulement is_locked), d'où la comparaison de
+        # valeur plutôt qu'un simple "is_locked est la seule clé du payload".
+        if product.is_locked:
+            for field, value in payload.items():
+                if field == "is_locked":
+                    continue
+                current = getattr(product, field)
+                if isinstance(current, (int, float, Decimal)) or isinstance(value, (int, float)):
+                    try:
+                        if round(float(current or 0), 4) != round(float(value or 0), 4):
+                            raise HTTPException(400, "Ce produit est verrouillé — déverrouillez-le avant de le modifier.")
+                        continue
+                    except (TypeError, ValueError):
+                        pass
+                if current != value:
+                    raise HTTPException(400, "Ce produit est verrouillé — déverrouillez-le avant de le modifier.")
 
         new_name = payload.get("name")
         if new_name and new_name != product.name:

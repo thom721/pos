@@ -575,7 +575,8 @@ class _SaleCardState extends ConsumerState<_SaleCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${sale.customerName ?? 'Client comptoir'} • ${_dateFmt.format(sale.createdAt)}',
+              '${sale.customerName ?? 'Client comptoir'} • ${_dateFmt.format(sale.createdAt)}'
+              '${(sale.userFullName?.isNotEmpty ?? false) ? ' • ${sale.userFullName}' : ''}',
               style: const TextStyle(
                   color: AppColors.textSecondary, fontSize: 12),
             ),

@@ -168,3 +168,38 @@ def test_change_warehouse_migrates_stock_when_no_sale_yet(db, tenant, category, 
     assert updated.stock_migration_note is not None
     movements = db.query(StockMovement).filter(StockMovement.product_id == p.id).all()
     assert all(m.warehouse_id == warehouse2.id for m in movements)
+
+
+def test_locked_product_cannot_be_modified(db, tenant, category, warehouse):
+    p = _make_product(db, tenant, category, "Produit A", warehouse.id)
+    p.is_locked = True
+    db.commit()
+    svc = ProductService(db, tenant_id=tenant.id)
+
+    with pytest.raises(HTTPException) as exc:
+        svc.update(p.id, ProductUpdate(
+            name="Produit A", purchase_price=15, sale_price=999,
+            alert_stock=5, category_id=category.id, warehouse_id=warehouse.id,
+            is_locked=True,
+        ))
+
+    assert exc.value.status_code == 400
+    db.refresh(p)
+    assert p.sale_price == 100  # inchangé
+
+
+def test_locked_product_can_still_be_unlocked(db, tenant, category, warehouse):
+    p = _make_product(db, tenant, category, "Produit A", warehouse.id)
+    p.is_locked = True
+    db.commit()
+    svc = ProductService(db, tenant_id=tenant.id)
+
+    # Reenvoie les memes valeurs (comme le fait l'UI de deverrouillage),
+    # seul is_locked change effectivement.
+    updated = svc.update(p.id, ProductUpdate(
+        name="Produit A", purchase_price=50, sale_price=100,
+        alert_stock=p.alert_stock, category_id=category.id, warehouse_id=warehouse.id,
+        is_locked=False,
+    ))
+
+    assert updated.is_locked is False
