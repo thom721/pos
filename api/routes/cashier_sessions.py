@@ -372,6 +372,20 @@ def open_session(
     if isinstance(reg, JSONResponse):
         return reg
 
+    # Un cashier restreint à un sous-ensemble de dépôts (User.warehouse_id
+    # non vide) ne peut ouvrir une session QUE sur une caisse de l'un de ces
+    # dépôts — même faille que celle fermée dans sale_service.create_sale,
+    # jamais reproduite ici (rien ne comparait la caisse obtenue aux dépôts
+    # réellement autorisés pour l'utilisateur connecté).
+    _user_wh_ids = current_user.warehouse_id if isinstance(current_user.warehouse_id, list) else []
+    if _user_wh_ids and reg.warehouse_id not in _user_wh_ids:
+        return JSONResponse(status_code=403, content={
+            "detail": "register_warehouse_forbidden",
+            "message": f"Cette caisse appartient au dépôt « "
+                       f"{reg.warehouse.name if reg.warehouse else '?'} », "
+                       "auquel vous n'avez pas accès. Contactez un administrateur.",
+        })
+
     # Appareil différent de celui déjà connu pour cette caisse → un admin
     # doit l'approuver avant qu'on puisse transiger dessus (voir
     # bind_register_device). Les admins/managers restent exemptés.

@@ -12,6 +12,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from fastapi import HTTPException
+
 import api.models  # noqa: F401
 from api.database import Base
 from api.core.dt_coerce import now_local
@@ -216,6 +218,52 @@ def test_login_returns_no_register_when_only_claimed_ones_exist(db, tenant):
     assert result["register_id"] is None
     db.refresh(caisse_collegue)
     assert caisse_collegue.device_id == "dev-collegue"
+
+
+def test_login_rejected_when_devices_register_is_outside_users_depots(db, tenant):
+    """Un appareil deja lie (device_id) a la caisse d'un depot HORS de la
+    liste autorisee de l'utilisateur doit refuser la CONNEXION elle-meme,
+    plutot que de renvoyer silencieusement un register_id du mauvais depot
+    que le client pourrait utiliser pour preremplir son depot actif — meme
+    faille que celle fermee dans open_session et create_sale, jamais
+    reproduite ici jusqu'a present."""
+    wh_a = Warehouse(tenant_id=tenant.id, name="NES", is_active=True, is_default=True)
+    wh_b = Warehouse(tenant_id=tenant.id, name="PROMESSE DE DIEU", is_active=True)
+    db.add_all([wh_a, wh_b])
+    db.flush()
+
+    reg_a = PosRegister(
+        tenant_id=tenant.id, warehouse_id=wh_a.id, name="Caisse A",
+        is_active=True, device_id="dev-shared", is_device_approved=True,
+    )
+    db.add(reg_a)
+    db.commit()
+
+    # Restreint a wh_b uniquement — pas d'acces a wh_a.
+    user = _make_user(db, tenant, warehouse_id=wh_b.id)
+
+    with pytest.raises(HTTPException) as exc:
+        cloud_login(db, user.email, "secret123", "dev-shared", None)
+
+    assert exc.value.status_code == 403
+
+
+def test_login_allowed_when_device_matches_users_depot(db, tenant):
+    wh = Warehouse(tenant_id=tenant.id, name="Dépôt", is_active=True, is_default=True)
+    db.add(wh)
+    db.flush()
+    reg = PosRegister(
+        tenant_id=tenant.id, warehouse_id=wh.id, name="Caisse",
+        is_active=True, device_id="dev-1", is_device_approved=True,
+    )
+    db.add(reg)
+    db.commit()
+
+    user = _make_user(db, tenant, warehouse_id=wh.id)
+
+    result = cloud_login(db, user.email, "secret123", "dev-1", None)
+
+    assert result["register_id"] == reg.id
 
 
 def test_login_falls_back_to_unusable_register_when_none_are_active(db, tenant):

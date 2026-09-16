@@ -221,6 +221,24 @@ def cloud_login(db: Session, email: str, password: str,
             PosRegister.is_active == True,  # noqa: E712
         ).first()
 
+        # Cet appareil est déjà lié à un dépôt — un utilisateur restreint à un
+        # sous-ensemble de dépôts (user.warehouse_id non vide) qui ne s'y
+        # trouve pas doit être refusé ICI, à la connexion, plutôt que de
+        # silencieusement renvoyer un register_id du mauvais dépôt (que le
+        # client pourrait ensuite utiliser pour préremplir son dépôt actif).
+        # Même règle que open_session/_get_or_create_register et
+        # sale_service.create_sale — non reproduite ici jusqu'ici.
+        if register:
+            user_warehouse_ids = user.warehouse_id or []
+            if user_warehouse_ids and register.warehouse_id not in user_warehouse_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Cet appareil est déjà enregistré pour le dépôt « "
+                           f"{register.warehouse.name if register.warehouse else '?'} », "
+                           "auquel vous n'avez pas accès. Utilisez un autre appareil "
+                           "ou contactez un administrateur pour le réinitialiser.",
+                )
+
         if not register:
             # 2. Prendre une caisse active sans session ouverte — restreinte
             # au(x) dépôt(s) auquel l'utilisateur est rattaché (user.warehouse_id ;
