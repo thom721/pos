@@ -12,7 +12,7 @@ import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/license_service.dart';
-import 'package:pos_connect/data/api/api_client.dart' show dio;
+import 'package:pos_connect/data/api/api_client.dart' show dio, extractAnyError;
 import 'package:pos_connect/services/local_db_service.dart';
 
 class AuthState {
@@ -244,12 +244,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
       }
 
       String msg;
-      if (e.toString().contains('401') || e.toString().contains('400')) {
+      final status = e is DioException ? e.response?.statusCode : null;
+      if (status == 401 || status == 400) {
         msg = 'Email ou mot de passe incorrect';
-      } else if (e.toString().contains('403')) {
-        msg = 'Abonnement suspendu ou expiré';
-      } else if (e.toString().contains('409')) {
-        msg = 'Erreur de connexion. Veuillez réessayer.';
+      } else if (status != null) {
+        // 403 (abonnement expiré, appareil déjà lié à un autre dépôt — voir
+        // tenant_service.cloud_login —, etc.), 409... — le serveur fournit
+        // déjà un message précis pour chaque cas. L'ancien bucket générique
+        // écrasait TOUT 403 par "Abonnement suspendu ou expiré", masquant
+        // par exemple le vrai refus lié à un appareil sur le mauvais dépôt.
+        msg = extractAnyError(e);
       } else {
         msg = 'Impossible de se connecter au cloud. Vérifiez votre connexion.';
       }
