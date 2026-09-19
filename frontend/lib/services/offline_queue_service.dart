@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
-import 'package:pos_connect/data/api/api_client.dart' show kBackgroundOptions;
+import 'package:pos_connect/data/api/api_client.dart' show extractAnyError, kBackgroundOptions;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -20,6 +20,10 @@ class OfflineQueueItem {
   final dynamic data;
   final DateTime timestamp;
   final int retries;
+  /// Message lisible de la dernière tentative ratée — permet de distinguer
+  /// "toujours hors ligne" d'une vraie erreur serveur (session fermée,
+  /// donnée invalide…) qui, elle, ne se résoudra jamais toute seule.
+  final String? lastError;
 
   const OfflineQueueItem({
     required this.id,
@@ -28,15 +32,17 @@ class OfflineQueueItem {
     required this.data,
     required this.timestamp,
     this.retries = 0,
+    this.lastError,
   });
 
-  OfflineQueueItem copyWith({int? retries}) => OfflineQueueItem(
+  OfflineQueueItem copyWith({int? retries, String? lastError}) => OfflineQueueItem(
         id: id,
         method: method,
         path: path,
         data: data,
         timestamp: timestamp,
         retries: retries ?? this.retries,
+        lastError: lastError,
       );
 
   Map<String, dynamic> toJson() => {
@@ -46,6 +52,7 @@ class OfflineQueueItem {
         'data': data,
         'timestamp': timestamp.toIso8601String(),
         'retries': retries,
+        'lastError': lastError,
       };
 
   factory OfflineQueueItem.fromJson(Map<String, dynamic> json) =>
@@ -56,6 +63,7 @@ class OfflineQueueItem {
         data: json['data'],
         timestamp: DateTime.parse(json['timestamp'] as String),
         retries: (json['retries'] as int?) ?? 0,
+        lastError: json['lastError'] as String?,
       );
 }
 
@@ -188,6 +196,38 @@ class OfflineQueueService {
   /// appeler drain() en même temps. Sans garde, deux appels concurrents
   /// liraient/écriraient la file en parallèle — c'est ce qui provoquait
   /// l'explosion de doublons (voir aussi le flag skipOfflineQueue ci-dessous).
+  /// Tente UNE requête réseau pour un item et son post-traitement local.
+  /// Ne touche jamais au stockage — c'est aux appelants (drain/retryOne) de
+  /// décider quoi faire du résultat. Lève une exception si la requête
+  /// réseau échoue ; le post-traitement, lui, ne fait jamais échouer l'appel
+  /// (voir le commentaire dans drain ci-dessous).
+  Future<void> _attemptRequest(Dio apiDio, OfflineQueueItem item) async {
+    final res = await apiDio.request<dynamic>(
+      item.path,
+      data: item.data,
+      options: Options(method: item.method,
+          // skipOfflineQueue: sans ce flag, un échec ICI (ex: toujours hors
+          // ligne) était réinterprété par OfflineInterceptor comme une
+          // TOUTE NOUVELLE mutation ratée et ré-enfilé en double — en plus
+          // de l'item déjà conservé par l'appelant. Sur des cycles répétés
+          // (chaque tentative crée un nouveau doublon d'origine), la file
+          // grossissait sans limite.
+          extra: {...?kBackgroundOptions.extra, 'skipOfflineQueue': true}),
+    );
+
+    // Le serveur a confirmé l'opération — elle est synchronisée, quoi qu'il
+    // arrive ensuite. _handleSyncResponse ne fait que mettre à jour le cache
+    // SQLite local (référence, id serveur…) ; une erreur à cette étape (ex:
+    // écriture SQLite) ne doit JAMAIS faire repasser une opération déjà
+    // synchronisée en attente — donc pas de rethrow ici.
+    try {
+      await _handleSyncResponse(item, res.data);
+    } catch (e) {
+      debugPrint('[OfflineQueue] post-traitement local échoué pour '
+          '${item.method} ${item.path} (déjà synchronisé côté serveur) : $e');
+    }
+  }
+
   Future<int> drain(Dio apiDio) async {
     if (_draining) return 0;
     _draining = true;
@@ -205,47 +245,53 @@ class OfflineQueueService {
       final remaining = <OfflineQueueItem>[];
 
       for (final item in items) {
-        dynamic responseData;
         try {
-          final res = await apiDio.request<dynamic>(
-            item.path,
-            data: item.data,
-            options: Options(method: item.method,
-                // skipOfflineQueue: sans ce flag, un échec ICI (ex: toujours
-                // hors ligne) était réinterprété par OfflineInterceptor comme
-                // une TOUTE NOUVELLE mutation ratée et ré-enfilé en double —
-                // en plus de l'item déjà conservé ci-dessous. Sur des cycles
-                // répétés (chaque tentative crée un nouveau doublon d'origine),
-                // la file grossissait sans limite.
-                extra: {...?kBackgroundOptions.extra, 'skipOfflineQueue': true}),
-          );
-          responseData = res.data;
+          await _attemptRequest(apiDio, item);
+          replayed++;
+          debugPrint('[OfflineQueue] replayed ${item.method} ${item.path}');
         } catch (e) {
-          final next = item.copyWith(retries: item.retries + 1);
-          debugPrint('[OfflineQueue] échec #${next.retries} ${item.method} ${item.path} — conservé en file');
+          final errMsg = e is DioException ? extractAnyError(e) : e.toString();
+          final next = item.copyWith(retries: item.retries + 1, lastError: errMsg);
+          debugPrint('[OfflineQueue] échec #${next.retries} ${item.method} ${item.path} — $errMsg — conservé en file');
           remaining.add(next);
-          continue;
-        }
-
-        // Le serveur a confirmé l'opération — elle est synchronisée, quoi
-        // qu'il arrive ensuite. _handleSyncResponse ne fait que mettre à
-        // jour le cache SQLite local (référence, id serveur…) ; une erreur
-        // à cette étape (ex: écriture SQLite) ne doit JAMAIS faire repasser
-        // une vente déjà synchronisée en attente — avant ce correctif, ce
-        // try/catch commun aurait re-mis l'item en file dans ce cas, alors
-        // que la vente existait déjà côté serveur.
-        replayed++;
-        debugPrint('[OfflineQueue] replayed ${item.method} ${item.path}');
-        try {
-          await _handleSyncResponse(item, responseData);
-        } catch (e) {
-          debugPrint('[OfflineQueue] post-traitement local échoué pour '
-              '${item.method} ${item.path} (déjà synchronisé côté serveur) : $e');
         }
       }
 
       await _save(remaining);
       return replayed;
+    } finally {
+      _draining = false;
+    }
+  }
+
+  /// Rejoue UNE seule opération de la file, ciblée par son id — pour l'écran
+  /// de diagnostic. Utile quand un item précis bloque avec une vraie erreur
+  /// (ex: session de caisse fermée entre-temps) : "Forcer la resynchro"
+  /// rejoue toute la file d'un coup, alors qu'ici on peut retenter un item
+  /// après avoir corrigé la cause, sans attendre/perturber les autres.
+  /// Retourne true si synchronisé avec succès (l'item est alors retiré).
+  Future<bool> retryOne(Dio apiDio, String id) async {
+    if (_draining) return false;
+    _draining = true;
+    try {
+      final items = await _load();
+      final idx = items.indexWhere((i) => i.id == id);
+      if (idx == -1) return false;
+      final item = items[idx];
+
+      try {
+        await _attemptRequest(apiDio, item);
+        items.removeAt(idx);
+        await _save(items);
+        debugPrint('[OfflineQueue] replayed (manuel) ${item.method} ${item.path}');
+        return true;
+      } catch (e) {
+        final errMsg = e is DioException ? extractAnyError(e) : e.toString();
+        items[idx] = item.copyWith(retries: item.retries + 1, lastError: errMsg);
+        await _save(items);
+        debugPrint('[OfflineQueue] échec (manuel) ${item.method} ${item.path} — $errMsg');
+        return false;
+      }
     } finally {
       _draining = false;
     }

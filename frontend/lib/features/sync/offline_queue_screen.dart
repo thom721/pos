@@ -22,6 +22,11 @@ class _OfflineQueueScreenState extends ConsumerState<OfflineQueueScreen> {
   List<OfflineQueueItem> _items = [];
   bool _loading = true;
   bool _syncing = false;
+  // Ids en cours de resynchro individuelle — permet d'afficher un spinner
+  // sur UNE ligne sans bloquer les autres, et sans relancer toute la file
+  // (voir retryOne : un item qui échoue pour une vraie raison métier ne
+  // doit pas empêcher de vérifier/retenter les autres indépendamment).
+  final Set<String> _retrying = {};
   final _dateFmt = DateFormat('dd/MM/yyyy HH:mm:ss');
 
   @override
@@ -43,17 +48,38 @@ class _OfflineQueueScreenState extends ConsumerState<OfflineQueueScreen> {
     setState(() => _syncing = true);
     try {
       final replayed = await OfflineQueueService.instance.drain(dio);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(replayed > 0
-              ? '$replayed opération(s) synchronisée(s)'
-              : 'Aucune opération synchronisée (toujours hors ligne ou serveur injoignable)'),
-        ));
+      await _refresh();
+      if (!mounted) return;
+      String message;
+      if (replayed > 0) {
+        message = '$replayed opération(s) synchronisée(s)';
+      } else if (_items.any((i) => i.lastError != null)) {
+        // Une vraie erreur serveur a été reçue (donc le réseau fonctionne) —
+        // ne pas dire "hors ligne", ça égarerait l'utilisateur qui sait très
+        // bien qu'il est connecté. Le détail exact est visible par item.
+        message = 'Échec — voir le détail de chaque opération ci-dessous (déplie-la)';
+      } else {
+        message = 'Aucune opération synchronisée — pas de réseau ou serveur injoignable';
       }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       ref.invalidate(pendingOfflineCountProvider);
       if (mounted) setState(() => _syncing = false);
+    }
+  }
+
+  Future<void> _retryOne(OfflineQueueItem item) async {
+    setState(() => _retrying.add(item.id));
+    try {
+      final ok = await OfflineQueueService.instance.retryOne(dio, item.id);
       await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(ok ? 'Synchronisé avec succès' : 'Échec — voir le détail ci-dessous'),
+      ));
+    } finally {
+      ref.invalidate(pendingOfflineCountProvider);
+      if (mounted) setState(() => _retrying.remove(item.id));
     }
   }
 
@@ -157,21 +183,46 @@ class _OfflineQueueScreenState extends ConsumerState<OfflineQueueScreen> {
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (ctx, i) {
                             final item = _items[i];
+                            final isRetrying = _retrying.contains(item.id);
                             return Card(
                               child: ExpansionTile(
                                 title: Text(_summarize(item),
                                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                                 subtitle: Text(
                                   '${_dateFmt.format(item.timestamp)}'
-                                  '${item.retries > 0 ? ' — ${item.retries} échec(s)' : ''}',
-                                  style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                  '${item.retries > 0 ? ' — ${item.retries} échec(s)' : ''}'
+                                  '${item.lastError != null ? ' — ${item.lastError}' : ''}',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 11,
+                                      color: item.lastError != null ? AppColors.error : AppColors.textSecondary),
                                 ),
+                                trailing: isRetrying
+                                    ? const SizedBox(
+                                        width: 18, height: 18,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : IconButton(
+                                        icon: const Icon(Icons.sync_rounded, size: 20),
+                                        tooltip: 'Resynchroniser cette opération',
+                                        onPressed: () => _retryOne(item),
+                                      ),
                                 children: [
                                   Padding(
                                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
+                                        if (item.lastError != null) ...[
+                                          Text('Dernière erreur :',
+                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                                                  color: AppColors.error)),
+                                          SelectableText(
+                                            item.lastError!,
+                                            style: const TextStyle(fontSize: 12, color: AppColors.error),
+                                          ),
+                                          const SizedBox(height: 8),
+                                        ],
                                         SelectableText(
                                           item.data.toString(),
                                           style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),

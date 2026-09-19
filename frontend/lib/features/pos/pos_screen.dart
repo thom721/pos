@@ -4,7 +4,7 @@ import 'package:pos_connect/core/register_date_crypto.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
-import 'package:dio/dio.dart' show FormData, Options, DioException, DioExceptionType;
+import 'package:dio/dio.dart' show FormData, Options, DioException, DioExceptionType, RequestOptions;
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
@@ -37,6 +37,7 @@ import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/bluetooth_print_service.dart';
+import 'package:pos_connect/services/offline_queue_service.dart';
 import 'package:pos_connect/services/thermal_printer_service.dart';
 import 'package:pos_connect/shared/widgets/customer_picker_field.dart';
 import 'package:pos_connect/core/currency.dart';
@@ -3219,7 +3220,14 @@ class _CloseSessionDialogState extends ConsumerState<_CloseSessionDialog> {
       widget.onClosed();
     } catch (e) {
       if (!mounted) return;
-      // Réseau indisponible → fermer localement (toutes plateformes)
+      // Réseau indisponible → la fermeture est mise en file d'attente
+      // hors-ligne (comme les ventes) pour être rejouée au retour du réseau,
+      // au lieu d'être silencieusement abandonnée. Avant ce correctif, ce
+      // catch fermait juste le dialogue comme si la session était fermée :
+      // côté serveur elle restait "open" pour toujours, et la synchro
+      // suivante recommençait à additionner les ventes dans SA session —
+      // c'est ce qui a laissé une session ouverte 10 jours d'affilée,
+      // accumulant tout dans son solde théorique.
       final isNetErr = e is DioException && (
           e.type == DioExceptionType.connectionError ||
           e.type == DioExceptionType.connectionTimeout ||
@@ -3228,6 +3236,17 @@ class _CloseSessionDialogState extends ConsumerState<_CloseSessionDialog> {
           e.type == DioExceptionType.unknown
         ) || e is SocketException;
       if (isNetErr) {
+        final sessionId = widget.session['id'] as String;
+        await OfflineQueueService.instance.enqueue(
+          RequestOptions(
+            path: '/api/sessions/$sessionId/close',
+            method: 'POST',
+            data: {
+              'closing_balance': toHtgAmount(
+                  double.tryParse(_balanceCtrl.text) ?? 0, ref.read(settingsProvider)),
+            },
+          ),
+        );
         if (mounted) Navigator.of(context).pop();
         widget.onClosed();
         return;
