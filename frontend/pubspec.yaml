@@ -1,7 +1,7 @@
 name: pos_connect
 description: POS Connect — Système de caisse moderne inspiré de QuickBooks.
 publish_to: 'none'
-version: 2.0.0+46
+version: 2.0.0+51
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -23,6 +23,9 @@ dependencies:
 
   # HTTP
   dio: ^5.7.0
+
+  # État réseau (vérifié avant de rejouer la file d'attente hors-ligne)
+  connectivity_plus: ^6.1.0
 
   # Épinglage de certificat (connexion HTTPS poste-à-poste local)
   crypto: ^3.0.5

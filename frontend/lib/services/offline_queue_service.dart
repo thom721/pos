@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:pos_connect/data/api/api_client.dart' show kBackgroundOptions;
 import 'package:flutter/foundation.dart';
@@ -64,12 +65,8 @@ class OfflineQueueService {
   static final OfflineQueueService instance = OfflineQueueService._();
   OfflineQueueService._();
 
-  static const _prefKey     = 'offline_ops_queue_v1';
-  static const _maxRetries  = 5;
-
-  // Stream d'items abandonnés (max retries atteint) — l'UI peut s'y abonner
-  static final _droppedCtrl = StreamController<OfflineQueueItem>.broadcast();
-  static Stream<OfflineQueueItem> get dropped => _droppedCtrl.stream;
+  static const _prefKey = 'offline_ops_queue_v1';
+  bool _draining = false;
 
   // Paths never queued offline (auth + sync endpoints)
   static const _skipPaths = [
@@ -85,13 +82,31 @@ class OfflineQueueService {
   Future<List<OfflineQueueItem>> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw   = prefs.getStringList(_prefKey) ?? [];
-    return raw.map((s) {
+    final items = raw.map((s) {
       try {
         return OfflineQueueItem.fromJson(jsonDecode(s) as Map<String, dynamic>);
       } catch (_) {
         return null;
       }
     }).whereType<OfflineQueueItem>().toList();
+
+    // Filet de sécurité : un item rejoué qui échouait encore était ré-ajouté
+    // en double par OfflineInterceptor (voir drain() — corrigé, mais des
+    // doublons ont pu s'accumuler avant ce correctif). On dédoublonne par
+    // contenu (method+path+data) plutôt que par id — chaque opération réelle
+    // (vente, client…) embarque son propre id local dans data, donc deux
+    // opérations légitimement identiques restent bien distinctes.
+    final seen = <String>{};
+    final deduped = <OfflineQueueItem>[];
+    for (final item in items) {
+      final key = '${item.method} ${item.path} ${jsonEncode(item.data)}';
+      if (seen.add(key)) deduped.add(item);
+    }
+    if (deduped.length != items.length) {
+      debugPrint('[OfflineQueue] ${items.length - deduped.length} doublon(s) supprimé(s)');
+      await _save(deduped);
+    }
+    return deduped;
   }
 
   Future<void> _save(List<OfflineQueueItem> items) async {
@@ -105,6 +120,22 @@ class OfflineQueueService {
   // ── Public API ─────────────────────────────────────────────────────────────
 
   Future<int> pendingCount() async => (await _load()).length;
+
+  /// Snapshot en lecture des opérations en attente — pour l'écran de
+  /// diagnostic (features/debug/offline_queue_screen.dart). Nettoie aussi
+  /// les doublons éventuels au passage (voir _load).
+  Future<List<OfflineQueueItem>> peekAll() => _load();
+
+  /// Supprime définitivement UNE opération de la file — action manuelle et
+  /// délibérée uniquement (jamais automatique, voir drain()). À utiliser
+  /// seulement quand on est certain que l'opération est irrécupérable
+  /// (ex: référence une donnée qui n'existe plus) ou déjà traitée
+  /// manuellement côté serveur.
+  Future<void> removeOne(String id) async {
+    final items = await _load();
+    items.removeWhere((i) => i.id == id);
+    await _save(items);
+  }
 
   /// Called by [OfflineInterceptor] when a mutation fails due to no connection.
   Future<void> enqueue(RequestOptions req) async {
@@ -124,39 +155,85 @@ class OfflineQueueService {
   }
 
   /// Replay all queued items. Returns the number successfully replayed.
-  /// Items that still fail increment their retry counter; after [_maxRetries]
-  /// they are dropped to avoid stale data building up indefinitely.
+  ///
+  /// Rien n'est jamais abandonné : une opération hors-ligne représente une
+  /// vente/un paiement réel qui doit finir par atteindre le serveur — la
+  /// perdre silencieusement après N essais serait une perte de donnée
+  /// métier. Un item qui échoue reste en file indéfiniment (compteur
+  /// [OfflineQueueItem.retries] gardé uniquement à titre diagnostique) et
+  /// sera rejoué au prochain appel de [drain].
+  ///
+  /// On vérifie d'abord la connectivité réseau réelle (pas seulement le
+  /// résultat de la requête) : sans ça, chaque cycle de synchro hors-ligne
+  /// tentait quand même tous les items un par un, pour échouer à coup sûr —
+  /// bruit inutile dans les logs et dans le compteur de retries.
+  ///
+  /// Non réentrant : plusieurs déclencheurs (push WebSocket, timer de
+  /// secours, retour au premier plan, bouton "synchroniser") peuvent
+  /// appeler drain() en même temps. Sans garde, deux appels concurrents
+  /// liraient/écriraient la file en parallèle — c'est ce qui provoquait
+  /// l'explosion de doublons (voir aussi le flag skipOfflineQueue ci-dessous).
   Future<int> drain(Dio apiDio) async {
-    final items = await _load();
-    if (items.isEmpty) return 0;
+    if (_draining) return 0;
+    _draining = true;
+    try {
+      final items = await _load();
+      if (items.isEmpty) return 0;
 
-    int replayed = 0;
-    final remaining = <OfflineQueueItem>[];
+      final connectivity = await Connectivity().checkConnectivity();
+      if (connectivity.contains(ConnectivityResult.none) && connectivity.length == 1) {
+        debugPrint('[OfflineQueue] pas de réseau — synchro reportée (${items.length} en attente)');
+        return 0;
+      }
 
-    for (final item in items) {
-      try {
-        final res = await apiDio.request<dynamic>(
-          item.path,
-          data: item.data,
-          options: Options(method: item.method,
-              extra: kBackgroundOptions.extra),
-        );
+      int replayed = 0;
+      final remaining = <OfflineQueueItem>[];
+
+      for (final item in items) {
+        dynamic responseData;
+        try {
+          final res = await apiDio.request<dynamic>(
+            item.path,
+            data: item.data,
+            options: Options(method: item.method,
+                // skipOfflineQueue: sans ce flag, un échec ICI (ex: toujours
+                // hors ligne) était réinterprété par OfflineInterceptor comme
+                // une TOUTE NOUVELLE mutation ratée et ré-enfilé en double —
+                // en plus de l'item déjà conservé ci-dessous. Sur des cycles
+                // répétés (chaque tentative crée un nouveau doublon d'origine),
+                // la file grossissait sans limite.
+                extra: {...?kBackgroundOptions.extra, 'skipOfflineQueue': true}),
+          );
+          responseData = res.data;
+        } catch (e) {
+          final next = item.copyWith(retries: item.retries + 1);
+          debugPrint('[OfflineQueue] échec #${next.retries} ${item.method} ${item.path} — conservé en file');
+          remaining.add(next);
+          continue;
+        }
+
+        // Le serveur a confirmé l'opération — elle est synchronisée, quoi
+        // qu'il arrive ensuite. _handleSyncResponse ne fait que mettre à
+        // jour le cache SQLite local (référence, id serveur…) ; une erreur
+        // à cette étape (ex: écriture SQLite) ne doit JAMAIS faire repasser
+        // une vente déjà synchronisée en attente — avant ce correctif, ce
+        // try/catch commun aurait re-mis l'item en file dans ce cas, alors
+        // que la vente existait déjà côté serveur.
         replayed++;
         debugPrint('[OfflineQueue] replayed ${item.method} ${item.path}');
-        await _handleSyncResponse(item, res.data);
-      } catch (e) {
-        final next = item.copyWith(retries: item.retries + 1);
-        if (next.retries < _maxRetries) {
-          remaining.add(next);
-        } else {
-          debugPrint('[OfflineQueue] dropped after $_maxRetries retries: ${item.path}');
-          _droppedCtrl.add(item);
+        try {
+          await _handleSyncResponse(item, responseData);
+        } catch (e) {
+          debugPrint('[OfflineQueue] post-traitement local échoué pour '
+              '${item.method} ${item.path} (déjà synchronisé côté serveur) : $e');
         }
       }
-    }
 
-    await _save(remaining);
-    return replayed;
+      await _save(remaining);
+      return replayed;
+    } finally {
+      _draining = false;
+    }
   }
 
   /// Met à jour le SQLite local après une sync réussie.

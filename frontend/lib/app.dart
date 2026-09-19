@@ -39,7 +39,6 @@ class PosApp extends ConsumerStatefulWidget {
 
 class _PosAppState extends ConsumerState<PosApp> {
   late final StreamSubscription<String?> _authSub;
-  late final StreamSubscription<OfflineQueueItem> _droppedSub;
   Timer? _syncTimer;
   Timer? _heartbeatTimer;
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
@@ -52,15 +51,6 @@ class _PosAppState extends ConsumerState<PosApp> {
       const kGeneric = 'Could not validate credentials';
       final showReason = message != null && message != kGeneric;
       await _forceLogout(showReason ? message : null);
-    });
-    _droppedSub = OfflineQueueService.dropped.listen((item) {
-      _messengerKey.currentState?.showSnackBar(SnackBar(
-        content: Text(
-          'Opération hors-ligne perdue : ${item.method} ${item.path}',
-        ),
-        backgroundColor: Colors.orange[800],
-        duration: const Duration(seconds: 5),
-      ));
     });
   }
 
@@ -213,7 +203,6 @@ class _PosAppState extends ConsumerState<PosApp> {
   @override
   void dispose() {
     _authSub.cancel();
-    _droppedSub.cancel();
     _stopAutoSync();
     super.dispose();
   }

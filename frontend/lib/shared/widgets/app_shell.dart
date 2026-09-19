@@ -22,8 +22,8 @@ import 'package:pos_connect/services/license_service.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/shared/widgets/pos_logo.dart';
 import 'dart:io' show Platform, Process;
+import 'package:pos_connect/features/sync/offline_queue_screen.dart';
 import 'package:pos_connect/services/bluetooth_print_service.dart';
-import 'package:pos_connect/services/offline_queue_service.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:printing/printing.dart' show Printer, Printing;
 
@@ -937,7 +937,6 @@ class _MobileShell extends ConsumerStatefulWidget {
 class _MobileShellState extends ConsumerState<_MobileShell>
     with WidgetsBindingObserver {
   Timer? _pendingRefreshTimer;
-  bool _isSyncing = false;
 
   bool get _isAndroid =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -976,17 +975,6 @@ class _MobileShellState extends ConsumerState<_MobileShell>
       isScrollControlled: true,
       builder: (_) => const _PrintSettingsSheet(),
     );
-  }
-
-  Future<void> _syncNow() async {
-    if (_isSyncing) return;
-    setState(() => _isSyncing = true);
-    try {
-      await OfflineQueueService.instance.drain(dio);
-    } finally {
-      ref.invalidate(pendingOfflineCountProvider);
-      if (mounted) setState(() => _isSyncing = false);
-    }
   }
 
   @override
@@ -1067,21 +1055,13 @@ class _MobileShellState extends ConsumerState<_MobileShell>
             ),
           // Actions Android : sync + connecté
           if (_isAndroid)
-            if (_isSyncing)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: AppColors.accent),
-                ),
-              )
-            else if (pendingCount > 0)
+            if (pendingCount > 0)
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: TextButton.icon(
-                  onPressed: _syncNow,
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const OfflineQueueScreen(),
+                  )),
                   icon: const Icon(Icons.sync_rounded, size: 16),
                   label: Text('$pendingCount en attente'),
                   style: TextButton.styleFrom(

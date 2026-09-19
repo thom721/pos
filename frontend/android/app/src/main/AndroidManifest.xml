@@ -2,6 +2,8 @@
 
     <!-- Connexion réseau -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- État du réseau (connectivity_plus — vérifié avant de rejouer la file hors-ligne) -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <!-- Lecture stockage pour picker image (API ≤ 32 uniquement — remplacé par Photo Picker sur API 33+) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <!-- Bluetooth imprimante thermique -->
