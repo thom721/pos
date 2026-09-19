@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/core/theme.dart';
@@ -94,30 +96,53 @@ class _CustomerPickerDialogState
     extends ConsumerState<_CustomerPickerDialog> {
   final _searchCtrl = TextEditingController();
   String _query = '';
+  // Liste initiale (20 premiers clients, déjà chargés par customersProvider)
+  // affichée quand la recherche est vide — dès qu'on tape, on interroge le
+  // serveur (_searchResults) au lieu de filtrer seulement ces 20-là : sans
+  // ça, un client hors de cette première page n'apparaissait jamais, peu
+  // importe ce qui était tapé.
   late List<CustomerModel> _all;
+  List<CustomerModel>? _searchResults;
+  bool _searching = false;
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
     _all = widget.customers;
-    _searchCtrl.addListener(() {
-      setState(() => _query = _searchCtrl.text.toLowerCase());
-    });
+    _searchCtrl.addListener(_onQueryChanged);
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
 
-  List<CustomerModel> get _filtered => _query.isEmpty
-      ? _all
-      : _all
-          .where((c) =>
-              c.fullName.toLowerCase().contains(_query) ||
-              c.phone.toLowerCase().contains(_query))
-          .toList();
+  void _onQueryChanged() {
+    final query = _searchCtrl.text.trim();
+    setState(() => _query = query);
+    _debounce?.cancel();
+    if (query.isEmpty) {
+      setState(() { _searchResults = null; _searching = false; });
+      return;
+    }
+    setState(() => _searching = true);
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        final res = await CustomerRepository().getCustomers(search: query, limit: 30);
+        if (mounted && _searchCtrl.text.trim() == query) {
+          setState(() { _searchResults = res.data; _searching = false; });
+        }
+      } catch (_) {
+        if (mounted) setState(() => _searching = false);
+      }
+    });
+  }
+
+  List<CustomerModel> get _filtered =>
+      _query.isEmpty ? _all : (_searchResults ?? const []);
 
   void _select(String? id, String? name) =>
       Navigator.pop(context, (id: id, name: name));
@@ -158,12 +183,20 @@ class _CustomerPickerDialogState
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 10),
-                  suffixIcon: _query.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, size: 18),
-                          onPressed: () => _searchCtrl.clear(),
+                  suffixIcon: _searching
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 14, height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
                         )
-                      : null,
+                      : _query.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 18),
+                              onPressed: () => _searchCtrl.clear(),
+                            )
+                          : null,
                 ),
               ),
             ),
@@ -179,7 +212,7 @@ class _CustomerPickerDialogState
                     icon: Icons.person_off_outlined,
                     onTap: () => _select(null, null),
                   ),
-                  if (filtered.isEmpty)
+                  if (filtered.isEmpty && !_searching)
                     Padding(
                       padding: const EdgeInsets.all(24),
                       child: Center(

@@ -76,7 +76,12 @@ class CustomerRepository {
             RequestOptions(
               path: '/api/customers/',
               method: 'POST',
-              data: {...data, 'local_id': localId},
+              // client_id : le serveur l'utilise comme id du client créé
+              // (voir CustomerService.create) — sans ça, un client créé
+              // hors-ligne recevait un id serveur différent de localId,
+              // rendant à jamais invalide toute vente qui le référençait
+              // déjà (créée dans la foulée, avant toute synchro).
+              data: {...data, 'local_id': localId, 'client_id': localId},
             ),
           );
           return CustomerModel(

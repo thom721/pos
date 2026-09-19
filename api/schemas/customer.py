@@ -13,7 +13,11 @@ class CustomerBase(BaseModel):
 
 
 class CustomerCreate(CustomerBase):
-    pass
+    # UUID généré côté client pour l'offline-first (voir SaleCreate.client_id)
+    # — utilisé comme id du client créé, pour que la vente faite dans la
+    # foulée (qui référence cet id immédiatement, avant toute synchro) reste
+    # valide même si la création du client ne synchronise que plus tard.
+    client_id: Optional[str] = None
 
 
 class CustomerRead(CustomerBase):
