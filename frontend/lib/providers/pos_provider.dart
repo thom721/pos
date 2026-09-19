@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart' show DioException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/data/models/discount_model.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
@@ -253,6 +254,12 @@ class PosNotifier extends StateNotifier<PosState> {
       }
       final data = await _repo.createSale(
         {
+          // Horodatage de la vente réelle (pas celui de l'enregistrement
+          // serveur) — sans ça, une vente faite hors-ligne qui ne
+          // synchronise que des heures/jours plus tard atterrissait avec la
+          // date DU MOMENT DE LA SYNCHRO, faussant "ventes du jour",
+          // rapports, et la fenêtre de rapprochement de caisse.
+          'created_at': haitiNow().toIso8601String(),
           'customer_id': state.customerId,
           'discount': state.receiptDiscountAmount,
           if (state.selectedDiscount != null) 'discount_id': state.selectedDiscount!.id,

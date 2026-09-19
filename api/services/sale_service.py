@@ -21,6 +21,7 @@ from api.services.product_service import resolve_price as _resolve_price
 from api.services.discount_service import resolve_discount, get_active_automatic_receipt_discount
 from api.services.stock_service import record_stock_movement
 from api.services import audit_service
+from api.core.dt_coerce import parse_dt
 
 logger = logging.getLogger(__name__)
 
@@ -655,6 +656,11 @@ def create_sale(
         customer.loyalty_balance = Decimal(customer.loyalty_balance or 0) - loyalty_redeemed
 
     # 2️⃣ Création vente (wh_id déjà résolu plus haut, avant la vérification de stock)
+    # Horodatage réel de la vente (offline-first — voir SaleCreate.created_at) :
+    # calculé une fois, hors de la boucle de retry, sinon une vente créée
+    # hors-ligne qui ne synchronise que plus tard prendrait par défaut
+    # l'heure DE LA SYNCHRO plutôt que celle de la vente elle-même.
+    _sale_created_at = parse_dt(getattr(data, 'created_at', None))
     _MAX_REFERENCE_ATTEMPTS = 5
     for _attempt in range(_MAX_REFERENCE_ATTEMPTS):
         sale = Sale(
@@ -673,6 +679,8 @@ def create_sale(
             customer_loyalty_balance=customer.loyalty_balance if customer else None,
             status="UNPAID"
         )
+        if _sale_created_at:
+            sale.created_at = _sale_created_at
         if tenant_id:
             sale.tenant_id = tenant_id
         # Utiliser l'UUID généré par le client (offline-first) si fourni et valide

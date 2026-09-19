@@ -24,6 +24,12 @@ class SaleItemInput(BaseModel):
 
 class SaleCreate(BaseModel):
     client_id: Optional[str] = None      # UUID généré côté client pour l'offline-first
+    # Horodatage de la vente réelle (heure locale Haiti, string naïve — voir
+    # api.core.dt_coerce.parse_dt) — envoyé par l'app pour qu'une vente créée
+    # hors-ligne conserve sa vraie date/heure même si elle ne synchronise que
+    # plus tard. Absent = vente en ligne classique, created_at par défaut du
+    # modèle (now_local() au moment de l'insertion) inchangé.
+    created_at: Optional[str] = None
     customer_id: Optional[UUID] = None
     warehouse_id: Optional[str] = None
     discount: float = 0
