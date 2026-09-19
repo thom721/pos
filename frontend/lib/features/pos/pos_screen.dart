@@ -2277,10 +2277,13 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                                 .map((x) => x.name)
                                 .firstOrNull;
                           });
+                          final currentUser = ref.read(authProvider).user;
                           final result = await notifier.checkout(
                               approvalCode: approvalCode,
                               warehouseId: warehouseId,
                               customerName: customerName,
+                              cashierId: currentUser?.id,
+                              cashierName: currentUser?.fullName,
                               settings: ref.read(settingsProvider));
                           if (!context.mounted || result.saleId == null) return;
                           ref.read(syncEpochProvider.notifier).state++;

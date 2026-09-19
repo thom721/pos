@@ -1343,6 +1343,8 @@ class LocalDbService {
   Future<String> insertLocalSale({
     required Map<String, dynamic> payload,
     required String? customerName,
+    String? cashierId,
+    String? cashierName,
     double estimatedLoyaltyEarned = 0,
   }) async {
     final db = _safeDb;
@@ -1366,6 +1368,8 @@ class LocalDbService {
       'reference':        'HL-${const Uuid().v4().substring(0, 8).toUpperCase()}',
       'customer_id':      payload['customer_id'],
       'customer_name':    customerName,
+      'user_id':          cashierId,
+      'cashier_name':     cashierName,
       'warehouse_id':     payload['warehouse_id'],
       'total_amount':     total,
       'discount':         discount,

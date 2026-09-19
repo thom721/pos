@@ -77,6 +77,8 @@ class SaleRepository {
   Future<Map<String, dynamic>> createSale(
     Map<String, dynamic> data, {
     String? customerName,
+    String? cashierId,
+    String? cashierName,
     double estimatedLoyaltyEarned = 0,
   }) async {
     if (_isAndroid) {
@@ -84,6 +86,8 @@ class SaleRepository {
       final localId = await LocalDbService.instance.insertLocalSale(
         payload: data,
         customerName: customerName,
+        cashierId: cashierId,
+        cashierName: cashierName,
         estimatedLoyaltyEarned: estimatedLoyaltyEarned,
       );
 

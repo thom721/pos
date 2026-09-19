@@ -458,32 +458,51 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     super.dispose();
   }
 
-  /// Returns a (tenant + warehouse)-scoped cache key so each depot has its own local cache.
-  Future<String> _cacheKey() async {
+  /// Clé de base, scopée tenant/utilisateur mais PAS dépôt — stable dès la
+  /// connexion, indépendante de la résolution de activeWarehouseProvider.
+  Future<String> _baseCacheKey() async {
     final prefs = await SharedPreferences.getInstance();
-    final warehouseId = _ref.read(activeWarehouseProvider)?.id;
     final tenantRaw = prefs.getString(AppConstants.tenantKey);
     if (tenantRaw != null) {
       try {
         final tenant = jsonDecode(tenantRaw) as Map<String, dynamic>;
         final tenantId = tenant['id'] as String?;
-        if (tenantId != null && tenantId.isNotEmpty) {
-          if (warehouseId != null && warehouseId.isNotEmpty) {
-            return '${_kKeyPrefix}_${tenantId}_$warehouseId';
-          }
-          return '${_kKeyPrefix}_$tenantId';
-        }
+        if (tenantId != null && tenantId.isNotEmpty) return '${_kKeyPrefix}_$tenantId';
       } catch (_) {}
     }
-    // Local mode: scope by user + warehouse
     final userId = _ref.read(authProvider).user?.id;
-    if (userId != null && userId.isNotEmpty) {
-      if (warehouseId != null && warehouseId.isNotEmpty) {
-        return '${_kKeyPrefix}_${userId}_$warehouseId';
-      }
-      return '${_kKeyPrefix}_$userId';
-    }
+    if (userId != null && userId.isNotEmpty) return '${_kKeyPrefix}_$userId';
     return _kKeyPrefix;
+  }
+
+  /// Returns a (tenant + warehouse)-scoped cache key so each depot has its own local cache.
+  Future<String> _cacheKey() async {
+    final base = await _baseCacheKey();
+    final warehouseId = _ref.read(activeWarehouseProvider)?.id;
+    if (warehouseId != null && warehouseId.isNotEmpty) return '${base}_$warehouseId';
+    return base;
+  }
+
+  /// Lit le cache local en tolérant l'absence de résolution de
+  /// activeWarehouseProvider : au tout premier _load() après connexion (ou
+  /// juste après un redémarrage hors-ligne), le dépôt actif peut ne pas
+  /// encore être connu (course avec warehouseListProvider) — la clé scopée
+  /// par dépôt ne correspond alors pas à celle utilisée lors du dernier
+  /// save() réussi, et le cache semble vide alors qu'il existe bien sous la
+  /// clé de base. Sans ce repli, businessName retombait sur le placeholder
+  /// "Mon Commerce" — visible notamment sur le reçu d'une vente hors-ligne
+  /// imprimée juste après le lancement de l'app.
+  Future<AppSettings?> _readCache() async {
+    final scoped = await _cacheKey();
+    final base = await _baseCacheKey();
+    for (final key in {scoped, base}) {
+      final raw = await _storage.read(key: key);
+      if (raw == null) continue;
+      try {
+        return AppSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      } catch (_) {}
+    }
+    return null;
   }
 
   Future<void> _load() async {
@@ -493,14 +512,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
 
     final key = await _cacheKey();
     // Apply local cache first for fast startup
-    final raw = await _storage.read(key: key);
-    AppSettings? local;
-    if (raw != null) {
-      try {
-        local = AppSettings.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-        state = local;
-      } catch (_) {}
-    }
+    final local = await _readCache();
+    if (local != null) state = local;
     // Paramètres device-only depuis la clé fixe (non-scopée par warehouse)
     // → lus UNE FOIS, jamais écrasés par la race condition du double _load().
     int? devicePaperWidth;

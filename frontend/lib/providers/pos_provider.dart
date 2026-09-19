@@ -233,6 +233,8 @@ class PosNotifier extends StateNotifier<PosState> {
     String? approvalCode,
     String? warehouseId,
     String? customerName,
+    String? cashierId,
+    String? cashierName,
     AppSettings? settings,
   }) async {
     if (state.items.isEmpty || state.isProcessing) return (saleId: null, offline: false);
@@ -274,6 +276,8 @@ class PosNotifier extends StateNotifier<PosState> {
               .toList(),
         },
         customerName: customerName,
+        cashierId: cashierId,
+        cashierName: cashierName,
         estimatedLoyaltyEarned: estimatedLoyaltyEarned,
       );
       state = state.copyWith(isProcessing: false, error: null);
