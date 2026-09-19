@@ -51,18 +51,26 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         const Divider(height: 1),
         Expanded(
           child: customersAsync.when(
-            data: (customers) => customers.data.isEmpty
-                ? const Center(
-                    child: Text('Aucun client trouvé',
-                        style:
-                            TextStyle(color: AppColors.textSecondary)))
-                : ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: customers.data.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (_, i) =>
-                        _CustomerCard(customer: customers.data[i]),
-                  ),
+            data: (customers) {
+              // Aucune contrainte d'unicité nom+prénom en base (des
+              // doublons existent, notamment via la synchro hors-ligne) —
+              // on n'affiche qu'un seul exemplaire par nom ici, sans rien
+              // supprimer en base (un doublon peut être référencé par
+              // d'anciennes ventes).
+              final deduped = dedupCustomersByName(customers.data);
+              return deduped.isEmpty
+                  ? const Center(
+                      child: Text('Aucun client trouvé',
+                          style:
+                              TextStyle(color: AppColors.textSecondary)))
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: deduped.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (_, i) =>
+                          _CustomerCard(customer: deduped[i]),
+                    );
+            },
             loading: () =>
                 const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(
@@ -448,20 +456,39 @@ class CustomerFormDialogState
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    final fname = _fnameCtrl.text.trim();
+    final name = _nameCtrl.text.trim();
+
+    // Pas de contrainte d'unicité en base — avertir avant de créer un
+    // nouveau doublon plutôt que de laisser la liste des clients grossir
+    // silencieusement de doublons. confirmedDuplicate n'est mis à true que
+    // si l'utilisateur a explicitement choisi de continuer malgré un
+    // doublon détecté ici — laissé à false sinon pour que le serveur fasse
+    // quand même sa propre vérification (filet de sécurité contre une
+    // course : un autre appareil qui aurait créé ce même nom entre-temps).
+    var confirmedDuplicate = false;
+    if (!isEdit) {
+      final result = await _confirmIfDuplicateName(context, fname, name);
+      if (!result.proceed) return;
+      confirmedDuplicate = result.duplicateConfirmed;
+      if (!mounted) return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final data = {
-        'name': _nameCtrl.text.trim(),
-        'fname': _fnameCtrl.text.trim(),
+        'name': name,
+        'fname': fname,
         'nif': _nifCtrl.text.trim().isEmpty ? null : _nifCtrl.text.trim(),
         'phone': _phoneCtrl.text.trim(),
         'email': _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
         'address': _addressCtrl.text.trim(),
         'credit_limit':
             toHtgAmount(double.tryParse(_limitCtrl.text) ?? 0, ref.read(settingsProvider)),
+        if (confirmedDuplicate) 'confirm_duplicate': true,
       };
       final repo = CustomerRepository();
       if (isEdit) {
@@ -477,5 +504,36 @@ class CustomerFormDialogState
         _error = 'Erreur lors de l\'enregistrement. Réessayez.';
       });
     }
+  }
+
+  /// Cherche un client de même nom+prénom et, si trouvé, demande
+  /// confirmation avant de continuer.
+  Future<({bool proceed, bool duplicateConfirmed})> _confirmIfDuplicateName(
+      BuildContext context, String fname, String name) async {
+    final res = await CustomerRepository()
+        .getCustomers(search: '$fname $name'.trim());
+    final existing = findCustomerByName(res.data, fname, name);
+    if (existing == null) return (proceed: true, duplicateConfirmed: false);
+    if (!context.mounted) return (proceed: false, duplicateConfirmed: false);
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Client déjà existant'),
+        content: Text(
+          'Un client nommé "${existing.fullName}" existe déjà'
+          '${existing.phone.isNotEmpty ? ' (tél: ${existing.phone})' : ''}.\n\n'
+          'Créer quand même un nouveau client avec ce même nom ?',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Créer quand même')),
+        ],
+      ),
+    );
+    return (proceed: proceed ?? false, duplicateConfirmed: proceed ?? false);
   }
 }

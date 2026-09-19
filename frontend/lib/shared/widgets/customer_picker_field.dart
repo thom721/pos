@@ -7,6 +7,8 @@ import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/repositories/customer_repository.dart';
 import 'package:pos_connect/providers/customer_provider.dart';
 
+enum _DuplicateChoice { useExisting, createAnyway, cancel }
+
 /// Champ client cliquable avec recherche et bouton "+ Ajouter un nouveau".
 /// Utilisé dans proforma, facture et caisse.
 class CustomerPickerField extends ConsumerWidget {
@@ -141,8 +143,11 @@ class _CustomerPickerDialogState
     });
   }
 
-  List<CustomerModel> get _filtered =>
-      _query.isEmpty ? _all : (_searchResults ?? const []);
+  // Dédoublonnage à l'affichage — voir customerNameKey/dedupCustomersByName :
+  // aucune contrainte d'unicité en base, un même nom peut apparaître
+  // plusieurs fois (notamment via la synchro hors-ligne).
+  List<CustomerModel> get _filtered => dedupCustomersByName(
+      _query.isEmpty ? _all : (_searchResults ?? const []));
 
   void _select(String? id, String? name) =>
       Navigator.pop(context, (id: id, name: name));
@@ -334,17 +339,57 @@ class _QuickCreateCustomerDialogState
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    final fname = _fnameCtrl.text.trim();
+    final name = _nameCtrl.text.trim();
+
+    // Pas de contrainte d'unicité en base — repérer un client déjà existant
+    // avec ce nom avant d'en créer un nouveau qui alimenterait le problème.
+    var confirmedDuplicate = false;
+    final res = await CustomerRepository().getCustomers(search: '$fname $name'.trim());
+    final existing = findCustomerByName(res.data, fname, name);
+    if (existing != null && mounted) {
+      final choice = await showDialog<_DuplicateChoice>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Client déjà existant'),
+          content: Text(
+            'Un client nommé "${existing.fullName}" existe déjà'
+            '${existing.phone.isNotEmpty ? ' (tél: ${existing.phone})' : ''}.',
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, _DuplicateChoice.cancel),
+                child: const Text('Annuler')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, _DuplicateChoice.createAnyway),
+                child: const Text('Créer quand même')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, _DuplicateChoice.useExisting),
+                child: const Text('Utiliser ce client')),
+          ],
+        ),
+      );
+      if (choice == null || choice == _DuplicateChoice.cancel) return;
+      if (choice == _DuplicateChoice.useExisting) {
+        if (mounted) Navigator.pop(context, existing);
+        return;
+      }
+      // sinon _DuplicateChoice.createAnyway → continue ci-dessous
+      confirmedDuplicate = true;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final created = await CustomerRepository().createCustomer({
-        'name': _nameCtrl.text.trim(),
-        'fname': _fnameCtrl.text.trim(),
+        'name': name,
+        'fname': fname,
         'phone': _phoneCtrl.text.trim(),
         'address': '',
         'credit_limit': 0,
+        if (confirmedDuplicate) 'confirm_duplicate': true,
       });
       if (mounted) Navigator.pop(context, created);
     } catch (e) {

@@ -18,6 +18,11 @@ class CustomerCreate(CustomerBase):
     # foulée (qui référence cet id immédiatement, avant toute synchro) reste
     # valide même si la création du client ne synchronise que plus tard.
     client_id: Optional[str] = None
+    # true = l'utilisateur a déjà confirmé vouloir créer un doublon (nom déjà
+    # existant) — voir CustomerService.create. Toujours true pour un item
+    # rejoué depuis la file hors-ligne (aucune confirmation interactive
+    # possible en arrière-plan).
+    confirm_duplicate: bool = False
 
 
 class CustomerRead(CustomerBase):

@@ -81,7 +81,14 @@ class CustomerRepository {
               // hors-ligne recevait un id serveur différent de localId,
               // rendant à jamais invalide toute vente qui le référençait
               // déjà (créée dans la foulée, avant toute synchro).
-              data: {...data, 'local_id': localId, 'client_id': localId},
+              // confirm_duplicate: true — aucune vérification de doublon
+              // n'a pu être faite hors-ligne (pas de réseau pour chercher),
+              // donc pas de confirmation interactive possible non plus au
+              // moment de la synchro en arrière-plan. Sans ce flag, le
+              // serveur pourrait bloquer indéfiniment cette opération si un
+              // client du même nom existe déjà — exactement la classe de
+              // bug qu'on vient de corriger (opération jamais synchronisée).
+              data: {...data, 'local_id': localId, 'client_id': localId, 'confirm_duplicate': true},
             ),
           );
           return CustomerModel(
