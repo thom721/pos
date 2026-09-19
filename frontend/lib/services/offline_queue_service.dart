@@ -79,6 +79,14 @@ class OfflineQueueService {
 
   // ── Persistence ────────────────────────────────────────────────────────────
 
+  /// Clé de contenu (method+path+data) utilisée pour repérer deux opérations
+  /// identiques — pas l'id, qui est toujours unique même pour un doublon.
+  /// Chaque opération réelle (vente, client…) embarque son propre id local
+  /// dans data, donc deux opérations légitimement différentes ne collisionnent
+  /// jamais ici, même avec un contenu par ailleurs très similaire.
+  String _contentKey(OfflineQueueItem item) =>
+      '${item.method} ${item.path} ${jsonEncode(item.data)}';
+
   Future<List<OfflineQueueItem>> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw   = prefs.getStringList(_prefKey) ?? [];
@@ -92,15 +100,11 @@ class OfflineQueueService {
 
     // Filet de sécurité : un item rejoué qui échouait encore était ré-ajouté
     // en double par OfflineInterceptor (voir drain() — corrigé, mais des
-    // doublons ont pu s'accumuler avant ce correctif). On dédoublonne par
-    // contenu (method+path+data) plutôt que par id — chaque opération réelle
-    // (vente, client…) embarque son propre id local dans data, donc deux
-    // opérations légitimement identiques restent bien distinctes.
+    // doublons ont pu s'accumuler avant ce correctif).
     final seen = <String>{};
     final deduped = <OfflineQueueItem>[];
     for (final item in items) {
-      final key = '${item.method} ${item.path} ${jsonEncode(item.data)}';
-      if (seen.add(key)) deduped.add(item);
+      if (seen.add(_contentKey(item))) deduped.add(item);
     }
     if (deduped.length != items.length) {
       debugPrint('[OfflineQueue] ${items.length - deduped.length} doublon(s) supprimé(s)');
@@ -138,18 +142,29 @@ class OfflineQueueService {
   }
 
   /// Called by [OfflineInterceptor] when a mutation fails due to no connection.
+  ///
+  /// N'ajoute jamais un doublon de contenu (même method+path+data qu'un item
+  /// déjà en file) — le garde-fou de _load() nettoie ce qui existe déjà,
+  /// mais sans ce contrôle ICI, un appel concurrent d'enqueue() pour la
+  /// MÊME requête ratée pouvait quand même en ajouter un second avant le
+  /// prochain passage de dédoublonnage.
   Future<void> enqueue(RequestOptions req) async {
     final path = req.path;
     if (_skipPaths.any((s) => path.startsWith(s))) return;
 
     final items = await _load();
-    items.add(OfflineQueueItem(
+    final candidate = OfflineQueueItem(
       id:        const Uuid().v4(),
       method:    req.method,
       path:      path,
       data:      req.data,
       timestamp: DateTime.now(),
-    ));
+    );
+    if (items.any((i) => _contentKey(i) == _contentKey(candidate))) {
+      debugPrint('[OfflineQueue] déjà en file, ignoré : ${req.method} $path');
+      return;
+    }
+    items.add(candidate);
     await _save(items);
     debugPrint('[OfflineQueue] queued ${req.method} $path  (total: ${items.length})');
   }
