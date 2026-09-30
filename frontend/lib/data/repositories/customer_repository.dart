@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
@@ -106,9 +107,44 @@ class CustomerRepository {
       }
     }
 
-    // Web / macOS : direct API
-    final res = await dio.post('/api/customers/', data: data);
-    return CustomerModel.fromJson(res.data);
+    // Web / macOS : pas de cache SQLite local, mais même protection contre
+    // les doublons qu'Android : client_id envoyé dès le premier essai —
+    // sans ça, un client créé pendant une coupure réseau recevait un id
+    // serveur différent de celui utilisé aussitôt après pour une vente,
+    // rendant cette vente définitivement invalide (voir l'incident du
+    // 2026-09-19). Mise en file explicite si hors-ligne, avec un
+    // CustomerModel provisoire immédiatement utilisable (même id que le
+    // futur enregistrement serveur).
+    final clientId = const Uuid().v4();
+    try {
+      final res = await dio.post(
+        '/api/customers/',
+        data: {...data, 'client_id': clientId},
+        options: Options(extra: {'skipOfflineQueue': true}),
+      );
+      return CustomerModel.fromJson(res.data);
+    } catch (e) {
+      if (_isOffline(e)) {
+        await OfflineQueueService.instance.enqueue(
+          RequestOptions(
+            path: '/api/customers/',
+            method: 'POST',
+            data: {...data, 'client_id': clientId, 'confirm_duplicate': true},
+          ),
+        );
+        return CustomerModel(
+          id:          clientId,
+          name:        data['name'] as String,
+          fname:       data['fname'] as String? ?? '',
+          phone:       data['phone'] as String? ?? '',
+          nif:         data['nif'] as String?,
+          email:       data['email'] as String?,
+          address:     data['address'] as String? ?? '',
+          creditLimit: (data['credit_limit'] as num?)?.toDouble() ?? 0,
+        );
+      }
+      rethrow;
+    }
   }
 
   Future<CustomerModel> updateCustomer(String id, Map<String, dynamic> data) async {

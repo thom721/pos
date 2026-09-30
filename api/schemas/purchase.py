@@ -12,6 +12,11 @@ class PurchaseItemInput(BaseModel):
     unit_price: float
 
 class PurchaseCreate(BaseModel):
+    # UUID généré côté client pour l'offline-first (voir SaleCreate.client_id
+    # / CustomerCreate.client_id) — utilisé comme id de l'achat créé, pour
+    # qu'un rejeu (réseau revenu, ou retenté manuellement) ne crée jamais de
+    # doublon.
+    client_id: Optional[str] = None
     supplier_id: Optional[UUID] = None
     paid_amount: float = 0
     total_amount: float = 0

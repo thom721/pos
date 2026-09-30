@@ -1,4 +1,6 @@
 import logging
+import re
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException
 from datetime import datetime, timezone
@@ -13,6 +15,8 @@ from api.models.Supplier import Supplier
 from api.models.Debt import Debt
 from sqlalchemy import or_, and_
 from api.services.warehouse_helper import resolve_warehouse_id
+
+_UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
 
 
 
@@ -106,6 +110,15 @@ def create_purchase(db: Session, data, user_id: str, tenant_id: str | None = Non
     if not data.items:
         raise HTTPException(400, "Aucun produit")
 
+    # Idempotence hors-ligne : ce client_id existe déjà (rejeu après une
+    # synchro déjà réussie) → renvoyer l'achat existant directement, sans
+    # retraiter le stock/paiement/dette une seconde fois.
+    client_id = getattr(data, 'client_id', None)
+    if client_id and _UUID_RE.match(client_id):
+        existing = db.query(Purchase).filter_by(id=client_id).first()
+        if existing:
+            return existing
+
     # Pré-charger tous les produits en une seule requête (évite N+1)
     product_ids = [str(item.product_id) for item in data.items]
     products = {
@@ -137,10 +150,22 @@ def create_purchase(db: Session, data, user_id: str, tenant_id: str | None = Non
         paid_amount=data.paid_amount,
         status=status
     )
+    if client_id and _UUID_RE.match(client_id):
+        purchase.id = client_id
     if tenant_id:
         purchase.tenant_id = tenant_id
     db.add(purchase)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        # client_id déjà utilisé (course avec un rejeu concurrent) →
+        # retourner l'achat existant plutôt qu'échouer (idempotence).
+        if client_id:
+            existing = db.query(Purchase).filter_by(id=client_id).first()
+            if existing:
+                return existing
+        raise
 
     # Items (réutilise le dict déjà chargé)
     for item in data.items:

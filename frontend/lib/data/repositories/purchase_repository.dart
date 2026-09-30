@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/purchase_model.dart';
@@ -55,8 +56,32 @@ class PurchaseRepository {
   /// Hors-ligne : enfile pour sync ultérieure, retourne `{offline: true}`.
   Future<Map<String, dynamic>> createPurchase(Map<String, dynamic> data) async {
     if (!_isAndroid) {
-      final res = await dio.post('/api/purchases/', data: data);
-      return res.data as Map<String, dynamic>;
+      // Pas de cache SQLite local, mais même protection contre les
+      // doublons qu'Android : client_id dès le premier essai, mise en file
+      // explicite si hors-ligne — sinon un rejeu (réseau revenu, ou
+      // retenté manuellement après une erreur générique) créait un second
+      // achat en double, sans idempotence possible.
+      final clientId = const Uuid().v4();
+      try {
+        final res = await dio.post(
+          '/api/purchases/',
+          data: {...data, 'client_id': clientId},
+          options: Options(extra: {'skipOfflineQueue': true}),
+        );
+        return res.data as Map<String, dynamic>;
+      } catch (e) {
+        if (_isOffline(e)) {
+          await OfflineQueueService.instance.enqueue(
+            RequestOptions(
+              path: '/api/purchases/',
+              method: 'POST',
+              data: {...data, 'client_id': clientId},
+            ),
+          );
+          return {'purchase_id': clientId, 'offline': true};
+        }
+        rethrow;
+      }
     }
 
     // Incrémenter le stock local immédiatement

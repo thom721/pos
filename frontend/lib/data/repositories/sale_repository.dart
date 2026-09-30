@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
@@ -142,9 +143,34 @@ class SaleRepository {
       }
     }
 
-    // Web / macOS : direct API
-    final res = await dio.post('/api/sales/', data: data);
-    return res.data as Map<String, dynamic>;
+    // Web / macOS : pas de cache SQLite local, mais même protection contre
+    // les doublons qu'Android : client_id envoyé dès le premier essai, et
+    // mise en file explicite si hors-ligne. Sans ça, un caissier qui
+    // relance "Encaisser" après une erreur générique (croyant que rien n'a
+    // été envoyé, alors que la requête a en réalité déjà été mise en file
+    // par OfflineInterceptor) créerait une vente en double, sans aucune
+    // protection d'idempotence côté serveur.
+    final clientId = const Uuid().v4();
+    try {
+      final res = await dio.post(
+        '/api/sales/',
+        data: {...data, 'client_id': clientId},
+        options: Options(extra: {'skipOfflineQueue': true}),
+      );
+      return res.data as Map<String, dynamic>;
+    } catch (e) {
+      if (_isOffline(e)) {
+        await OfflineQueueService.instance.enqueue(
+          RequestOptions(
+            path: '/api/sales/',
+            method: 'POST',
+            data: {...data, 'client_id': clientId},
+          ),
+        );
+        return {'sale_id': clientId, 'reference': null, 'offline': true};
+      }
+      rethrow;
+    }
   }
 
   Future<void> _rollbackLocalSale(
