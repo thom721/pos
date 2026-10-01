@@ -72,6 +72,13 @@ class WebSocketService {
       await _channel!.ready; // throws if the handshake fails
       _retrySeconds = 1;
       debugPrint('[WS] connected to $base');
+      // Une (re)connexion WS ne se produit que lorsque le réseau redevient
+      // réellement joignable — déclencher la synchro à cet instant précis,
+      // sans attendre ni un push serveur (qui ne vient que sur UNE mutation
+      // d'un AUTRE appareil) ni le timer de secours (jusqu'à 2 min) : avant
+      // ce correctif, une file d'attente pouvait rester "en attente"
+      // plusieurs minutes après le retour du réseau sans raison.
+      _onSync?.call();
 
       _channel!.stream.listen(
         _onMessage,

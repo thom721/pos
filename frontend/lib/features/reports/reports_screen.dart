@@ -16,6 +16,7 @@ import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/data/models/sale_model.dart';
+import 'package:pos_connect/data/repositories/sale_repository.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 
@@ -115,43 +116,31 @@ String haitiMidnightToUtcIso(DateTime haitiDate) {
   return utc.toIso8601String();
 }
 
+/// Récupère toutes les ventes d'une période (toutes pages confondues), via
+/// SaleRepository plutôt qu'un appel direct à dio — sur Android, le repli
+/// vers le cache SQLite local (déjà prévu dans SaleRepository.getSales)
+/// permet ainsi au Rapport de rester consultable même hors connexion,
+/// au lieu d'échouer systématiquement en attendant une réponse serveur.
+Future<List<SaleModel>> _fetchAllSalesForRange(DateTime from, DateTime to) async {
+  const limit = 100;
+  final repo = SaleRepository();
+  final fromUtc = DateTime.parse(haitiMidnightToUtcIso(from));
+  final toUtc = DateTime.parse(haitiMidnightToUtcIso(to));
+
+  final first = await repo.getSales(page: 1, limit: limit, dateFrom: fromUtc, dateTo: toUtc);
+  final all = <SaleModel>[...first.data];
+  for (var p = 2; p <= first.meta.pages; p++) {
+    final res = await repo.getSales(page: p, limit: limit, dateFrom: fromUtc, dateTo: toUtc);
+    all.addAll(res.data);
+  }
+  return all;
+}
+
 final reportSalesProvider =
     FutureProvider.autoDispose<List<SaleModel>>((ref) async {
   final params = ref.watch(reportParamsProvider);
   final (from, to) = params.effectiveRange;
-  const limit = 100;
-
-  final baseQuery = {
-    'limit': limit,
-    'date_from': haitiMidnightToUtcIso(from),
-    'date_to': haitiMidnightToUtcIso(to),
-  };
-
-  // First page — also tells us the total page count
-  final first = await dio.get('/api/sales/',
-      queryParameters: {...baseQuery, 'page': 1});
-  final meta = first.data['meta'] as Map<String, dynamic>? ?? {};
-  final pages = (meta['pages'] as num?)?.toInt() ?? 1;
-
-  SaleModel parse(dynamic e) =>
-      SaleModel.fromJson(e as Map<String, dynamic>);
-
-  final all = <SaleModel>[
-    ...(first.data['data'] as List? ?? []).map(parse),
-  ];
-
-  if (pages > 1) {
-    final rest = await Future.wait(List.generate(
-      pages - 1,
-      (i) => dio.get('/api/sales/',
-          queryParameters: {...baseQuery, 'page': i + 2}),
-    ));
-    for (final res in rest) {
-      all.addAll((res.data['data'] as List? ?? []).map(parse));
-    }
-  }
-
-  return all;
+  return _fetchAllSalesForRange(from, to);
 });
 
 // ── Screen ─────────────────────────────────────────────────────────────────
@@ -701,39 +690,8 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
 
 // ── Print config dialog ────────────────────────────────────────────────────
 
-Future<List<SaleModel>> fetchSalesForRange(DateTime from, DateTime to) async {
-  const limit = 100;
-
-  final baseQuery = {
-    'limit': limit,
-    'date_from': haitiMidnightToUtcIso(from),
-    'date_to': haitiMidnightToUtcIso(to),
-  };
-
-  final first = await dio.get('/api/sales/',
-      queryParameters: {...baseQuery, 'page': 1});
-  final meta = first.data['meta'] as Map<String, dynamic>? ?? {};
-  final pages = (meta['pages'] as num?)?.toInt() ?? 1;
-
-  SaleModel parse(dynamic e) => SaleModel.fromJson(e as Map<String, dynamic>);
-
-  final all = <SaleModel>[
-    ...(first.data['data'] as List? ?? []).map(parse),
-  ];
-
-  if (pages > 1) {
-    final rest = await Future.wait(List.generate(
-      pages - 1,
-      (i) => dio.get('/api/sales/',
-          queryParameters: {...baseQuery, 'page': i + 2}),
-    ));
-    for (final res in rest) {
-      all.addAll((res.data['data'] as List? ?? []).map(parse));
-    }
-  }
-
-  return all;
-}
+Future<List<SaleModel>> fetchSalesForRange(DateTime from, DateTime to) =>
+    _fetchAllSalesForRange(from, to);
 
 class _PrintConfigDialog extends ConsumerStatefulWidget {
   final ReportParams currentParams;
