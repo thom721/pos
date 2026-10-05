@@ -469,10 +469,11 @@ jobs:
           if (Test-Path "certificat\nginx") { Remove-Item "certificat\nginx" -Recurse -Force }
           Rename-Item "certificat\nginx-$ver" "nginx"
 
-      - name: Télécharger et extraire NSSM 2.24
+      - name: Extraire NSSM 2.24 (copie versionnée dans le dépôt)
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile "nssm.zip" -UseBasicParsing
+          # Copie versionnée : nssm.cc était indisponible (503) lors d'un build.
+          Copy-Item "certificat\vendor\nssm-2.24.zip" "nssm.zip"
           Expand-Archive "nssm.zip" -DestinationPath "nssm-tmp" -Force
           New-Item -ItemType Directory -Force -Path "certificat\nssm" | Out-Null
           Copy-Item "nssm-tmp\nssm-2.24\win64\*" "certificat\nssm\" -Recurse -Force
