@@ -232,8 +232,19 @@ def _get_sync_state(db: Session, entity_type: str) -> SyncState:
     return s
 
 
+def _installer_warehouse_id() -> str:
+    """Dépôt de cette installation (installer_warehouse_id de pos_server.ini)."""
+    from api.core.config import load_ini_config
+    return (load_ini_config().get("INSTALLER_WAREHOUSE_ID") or "").strip()
+
+
 def _headers(token: str) -> dict:
-    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    h = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    wh = _installer_warehouse_id()
+    if wh:
+        # Le cloud ne renvoie / n'accepte que les lignes de ce dépôt (voir sync.py).
+        h["X-Warehouse-Id"] = wh
+    return h
 
 
 def _http_post(url: str, json: dict, headers: dict, timeout: int = 30) -> httpx.Response:
@@ -330,6 +341,10 @@ def _run_sync_inner(db: Session) -> dict:
         if direction in ("push", "both"):
             try:
                 query = db.query(model)
+                # Entités propres à un dépôt : n'envoyer que les lignes de ce dépôt.
+                _wh = _installer_warehouse_id()
+                if _wh and hasattr(model, "warehouse_id"):
+                    query = query.filter(model.warehouse_id == _wh)
                 if state.last_push_at:
                     query = query.filter(model.updated_at > state.last_push_at)
                 rows = query.all()
@@ -435,7 +450,12 @@ def _run_sync_inner(db: Session) -> dict:
             col_names = {c.key for c in sa_inspect(model).columns}
             entity_excl = _ENTITY_EXCLUDE_PULL.get(etype, set())
             applied = skipped = 0
+            _wh = _installer_warehouse_id()
             for rec in records:
+                # Réception : ignorer toute ligne propre à un autre dépôt.
+                if _wh and hasattr(model, "warehouse_id") and rec.get("warehouse_id") != _wh:
+                    skipped += 1
+                    continue
                 existing = db.get(model, rec["id"])
                 if existing is None:
                     for unique_col in ("username", "slug", "reference", "email"):

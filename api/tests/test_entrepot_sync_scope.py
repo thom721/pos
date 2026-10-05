@@ -13,6 +13,8 @@ import api.models  # noqa: F401
 from api.database import Base
 from api.models.Tenant import Tenant
 from api.models.Warehouse import Warehouse
+from starlette.requests import Request
+
 from api.routes.sync import sync_pull, sync_pull_batch, PullBatchRequest
 
 
@@ -34,6 +36,11 @@ def tenant(db):
     return t
 
 
+def _req(wh_id=None):
+    headers = [(b"x-warehouse-id", wh_id.encode())] if wh_id else []
+    return Request({"type": "http", "headers": headers})
+
+
 def _claims(tenant_id):
     return {"tenant_id": tenant_id, "tenant_type": "shared"}
 
@@ -49,7 +56,7 @@ def test_pull_excludes_unlinked_entrepot(db, tenant):
     db.add_all([unlinked, linked])
     db.commit()
 
-    result = sync_pull(entity_type="warehouse", since="1970-01-01T00:00:00",
+    result = sync_pull(request=_req(), entity_type="warehouse", since="1970-01-01T00:00:00",
                         claims=_claims(tenant.id), db=db)
 
     ids = {r["id"] for r in result["records"]}
@@ -70,7 +77,7 @@ def test_pull_batch_excludes_unlinked_entrepot(db, tenant):
     db.commit()
 
     body = PullBatchRequest(cursors={"warehouse": "1970-01-01T00:00:00"})
-    result = sync_pull_batch(body=body, claims=_claims(tenant.id), db=db)
+    result = sync_pull_batch(body=body, request=_req(), claims=_claims(tenant.id), db=db)
 
     ids = {r["id"] for r in result["results"]["warehouse"]["records"]}
     assert depot.id in ids
@@ -86,7 +93,7 @@ def test_regular_warehouse_never_filtered(db, tenant):
     db.add(depot)
     db.commit()
 
-    result = sync_pull(entity_type="warehouse", since="1970-01-01T00:00:00",
+    result = sync_pull(request=_req(), entity_type="warehouse", since="1970-01-01T00:00:00",
                         claims=_claims(tenant.id), db=db)
 
     ids = {r["id"] for r in result["records"]}

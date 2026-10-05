@@ -15,11 +15,11 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt as _jwt
 from pydantic import BaseModel
-from sqlalchemy import inspect as sa_inspect, or_ as sa_or_
+from sqlalchemy import false as sa_false, inspect as sa_inspect, or_ as sa_or_
 from sqlalchemy.orm import Session
 
 from api.core.config import settings, write_ini_config
@@ -213,6 +213,56 @@ def require_sync_token(
     return _decode_sync_token(creds.credentials)
 
 
+# ── Périmètre dépôt d'une installation locale ─────────────────────────────────
+# Le serveur local envoie son dépôt (installer_warehouse_id de pos_server.ini)
+# dans l'en-tête X-Warehouse-Id. Le cloud le vérifie contre le tenant du token.
+# Règle : une installation ne reçoit et n'envoie que les lignes de SON dépôt.
+# Sans dépôt valide, les entités propres à un dépôt ne sont pas renvoyées.
+
+_WAREHOUSE_HEADER = "X-Warehouse-Id"
+
+# Entités partagées au niveau du tenant (pas de dépôt).
+_SHARED_TENANT_ENTITIES = {"warehouse", "category", "supplier", "customer", "discount"}
+
+# Lignes enfants sans warehouse_id : rattachées à leur parent.
+_CHILD_PARENT: dict[str, tuple[str, Any]] = {
+    "sale_item":             ("sale_id",             Sale),
+    "purchase_item":         ("purchase_id",         Purchase),
+    "purchase_receipt_item": ("purchase_receipt_id", PurchaseReceipt),
+    "restaurant_order_item": ("order_id",            RestaurantOrder),
+}
+
+
+def _request_warehouse_id(request: Request, claims: dict, db: Session) -> str | None:
+    """Dépôt déclaré par l'installation, vérifié contre le tenant du token.
+    None si l'en-tête est absent. Refuse un dépôt qui n'appartient pas au tenant."""
+    wh_id = (request.headers.get(_WAREHOUSE_HEADER) or "").strip()
+    if not wh_id:
+        return None
+    wh = db.query(Warehouse).filter(
+        Warehouse.id == wh_id,
+        Warehouse.tenant_id == claims["tenant_id"],
+    ).first()
+    if not wh:
+        raise HTTPException(status_code=403, detail="Dépôt inconnu pour ce tenant")
+    return wh.id
+
+
+def _scope_to_warehouse(query, model, entity_type: str, wh_id: str | None):
+    """Restreint une requête de pull au dépôt. Fail closed : entité non reconnue
+    ou sans dépôt -> aucune ligne propre à un dépôt."""
+    if entity_type in _SHARED_TENANT_ENTITIES:
+        return query
+    if wh_id is None:
+        return query.filter(sa_false())
+    if hasattr(model, "warehouse_id"):
+        return query.filter(model.warehouse_id == wh_id)
+    if entity_type in _CHILD_PARENT:
+        fk, parent = _CHILD_PARENT[entity_type]
+        return query.join(parent, parent.id == getattr(model, fk)).filter(parent.warehouse_id == wh_id)
+    return query.filter(sa_false())
+
+
 # ── Utility ───────────────────────────────────────────────────────────────────
 
 def _row_to_dict(row: Any) -> dict:
@@ -342,9 +392,10 @@ def redeem_installation_code(payload: RedeemCodeRequest, db: Session = Depends(g
 
 @router.post("/push")
 def sync_push(
-    body:   PushRequest,
-    claims: dict = Depends(require_sync_token),
-    db:     Session = Depends(get_db),
+    body:    PushRequest,
+    request: Request,
+    claims:  dict = Depends(require_sync_token),
+    db:      Session = Depends(get_db),
 ):
     """Local server pushes records here. Upserts each under the authenticated tenant.
     Self-hosted tenants: business data is rejected — only billing sync is allowed.
@@ -367,8 +418,13 @@ def sync_push(
 
     col_names = {c.key for c in sa_inspect(model).columns}
     inserted = updated = skipped = 0
+    wh_id = _request_warehouse_id(request, claims, db)
 
     for rec in body.records:
+        # Une installation ne pousse que les lignes de son dépôt (entités propres à un dépôt).
+        if wh_id and "warehouse_id" in col_names and rec.get("warehouse_id") != wh_id:
+            skipped += 1
+            continue
         if "tenant_id" in col_names:
             rec["tenant_id"] = tenant_id
         clean = {k: v for k, v in rec.items() if k in col_names}
@@ -433,6 +489,7 @@ def _scope_warehouse_pull(query, model, entity_type: str):
 
 @router.get("/pull")
 def sync_pull(
+    request:     Request,
     entity_type: str = Query(...),
     since:       str = Query("1970-01-01T00:00:00"),
     claims:      dict = Depends(require_sync_token),
@@ -462,6 +519,7 @@ def sync_pull(
     if "tenant_id" in col_names:
         query = query.filter(model.tenant_id == tenant_id)
     query = _scope_warehouse_pull(query, model, entity_type)
+    query = _scope_to_warehouse(query, model, entity_type, _request_warehouse_id(request, claims, db))
     if since_dt:
         query = query.filter(model.updated_at > since_dt)
 
@@ -487,9 +545,10 @@ def sync_pull(
 
 @router.post("/pull-batch")
 def sync_pull_batch(
-    body:   PullBatchRequest,
-    claims: dict = Depends(require_sync_token),
-    db:     Session = Depends(get_db),
+    body:    PullBatchRequest,
+    request: Request,
+    claims:  dict = Depends(require_sync_token),
+    db:      Session = Depends(get_db),
 ):
     """Pull multiple entity types in a single HTTP call.
     Body: {cursors: {entity_type: since_iso}}.
@@ -506,6 +565,7 @@ def sync_pull_batch(
         )
 
     results: dict = {}
+    wh_id = _request_warehouse_id(request, claims, db)
     for entity_type, since_iso in body.cursors.items():
         model = _MODEL_MAP.get(entity_type)
         if not model:
@@ -516,6 +576,7 @@ def sync_pull_batch(
         if "tenant_id" in col_names:
             query = query.filter(model.tenant_id == tenant_id)
         query = _scope_warehouse_pull(query, model, entity_type)
+        query = _scope_to_warehouse(query, model, entity_type, wh_id)
         if since_dt:
             query = query.filter(model.updated_at > since_dt)
         rows      = query.limit(_PULL_PAGE_SIZE + 1).all()
