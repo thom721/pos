@@ -226,12 +226,15 @@ class _PosAppState extends ConsumerState<PosApp> {
       scaffoldMessengerKey: _messengerKey,
       theme: AppTheme.light,
       routerConfig: router,
-      builder: (context, child) => Column(
-        children: [
-          const ClockWarningBanner(),
-          Expanded(child: child ?? const SizedBox.shrink()),
-        ],
-      ),
+      // Bannière d'heure : application installée seulement (pas sur le web).
+      builder: (context, child) => kIsWeb
+          ? (child ?? const SizedBox.shrink())
+          : Column(
+              children: [
+                const ClockWarningBanner(),
+                Expanded(child: child ?? const SizedBox.shrink()),
+              ],
+            ),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
