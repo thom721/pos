@@ -35,7 +35,9 @@ class ConnectionManager:
     async def notify(self, tenant_id: str) -> None:
         conns = list(self._connections.get(tenant_id, set()))
         if not conns:
+            _log.info("WS notify tenant=%s : aucune connexion active", tenant_id)
             return
+        _log.info("WS notify tenant=%s : envoi sync à %d connexion(s)", tenant_id, len(conns))
         dead: list[WebSocket] = []
         for ws in conns:
             try:

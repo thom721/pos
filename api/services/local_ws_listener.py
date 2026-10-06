@@ -47,7 +47,8 @@ async def run_listener(load_credentials, on_sync) -> None:
                 delay = 1
                 _log.info("WS cloud connecté — synchro immédiate sur push")
                 async for raw in ws:
-                    handle_message(raw, on_sync)
+                    if handle_message(raw, on_sync):
+                        _log.info("WS cloud : signal sync reçu — synchro déclenchée")
         except Exception as exc:
             _log.warning("WS cloud indisponible (%s) — nouvelle tentative dans %ss", exc, delay)
         await asyncio.sleep(delay)
