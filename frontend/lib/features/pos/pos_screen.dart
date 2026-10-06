@@ -19,6 +19,8 @@ import 'package:pos_connect/data/models/discount_model.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/discount_provider.dart';
+import 'package:pos_connect/data/models/price_tier_model.dart';
+import 'package:pos_connect/providers/price_tier_provider.dart';
 import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
@@ -744,7 +746,7 @@ class _ProductPanelState extends ConsumerState<_ProductPanel> {
         // code-barres imprimé (tiret manquant, chiffre de contrôle, etc.).
         return 'Aucun produit pour le code "$trimmed"';
       }
-      ref.read(posProvider.notifier).addProduct(product);
+      ref.read(posProvider.notifier).addProduct(product, tiers: _tiersOf(ref, product.id));
       return null;
     } catch (e) {
       return 'Erreur de recherche';
@@ -908,7 +910,7 @@ class _ProductCard extends ConsumerWidget {
         .any((i) => i.product.id == product.id);
 
     return GestureDetector(
-      onTap: () => ref.read(posProvider.notifier).addProduct(product),
+      onTap: () => ref.read(posProvider.notifier).addProduct(product, tiers: _tiersOf(ref, product.id)),
       child: Container(
         decoration: BoxDecoration(
           color: AppColors.surface,
@@ -3409,3 +3411,7 @@ class _InfoRow extends StatelessWidget {
         ),
       );
 }
+
+/// Paliers de prix du produit dans le dépôt actif (vide si aucun ou pas encore chargés).
+List<PriceTier> _tiersOf(WidgetRef ref, String productId) =>
+    ref.read(priceTiersProvider).valueOrNull?[productId] ?? const <PriceTier>[];

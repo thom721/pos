@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 
 import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/models/discount_model.dart';
+import 'package:pos_connect/data/models/price_tier_model.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/purchase_model.dart';
@@ -58,7 +59,7 @@ class LocalDbService {
     }
     _db = await openDatabase(
       dbPath,
-      version: 29,
+      version: 30,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -185,6 +186,8 @@ class LocalDbService {
       try { await db.execute('ALTER TABLE sale_items ADD COLUMN discount REAL NOT NULL DEFAULT 0'); } catch (_) {}
       try { await db.execute('ALTER TABLE sale_items ADD COLUMN discount_id TEXT'); } catch (_) {}
       await _createDiscountsTable(db);
+    await _createPriceTiersTable(db);
+      await _createPriceTiersTable(db);
     }
     if (oldVersion < 19) {
       try { await db.execute('ALTER TABLE discounts ADD COLUMN product_ids TEXT'); } catch (_) {}
@@ -226,6 +229,9 @@ class LocalDbService {
     }
     if (oldVersion < 27) {
       try { await db.execute("ALTER TABLE customers ADD COLUMN fname TEXT NOT NULL DEFAULT ''"); } catch (_) {}
+    }
+    if (oldVersion < 30) {
+      await _createPriceTiersTable(db);
     }
     if (oldVersion < 29) {
       // Discount.warehouse_id (rabais par dépôt) — NULL = tous les dépôts.
@@ -356,6 +362,18 @@ class LocalDbService {
         amount        REAL NOT NULL DEFAULT 0,
         note          TEXT,
         created_at    TEXT
+      )
+    ''');
+  }
+
+  Future<void> _createPriceTiersTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS product_price_tiers (
+        product_id   TEXT NOT NULL,
+        warehouse_id TEXT NOT NULL,
+        min_quantity REAL NOT NULL,
+        price        REAL NOT NULL,
+        PRIMARY KEY (product_id, warehouse_id, min_quantity)
       )
     ''');
   }
@@ -1020,6 +1038,45 @@ class LocalDbService {
       );
     }
     await batch.commit(noResult: true);
+  }
+
+  /// Remplace les paliers du dépôt par ceux du serveur (synchro).
+  Future<void> replacePriceTiers(String warehouseId, List<PriceTier> tiers) async {
+    final db = _safeDb;
+    if (db == null) return;
+    await db.transaction((txn) async {
+      await txn.delete('product_price_tiers', where: 'warehouse_id = ?', whereArgs: [warehouseId]);
+      for (final t in tiers) {
+        await txn.insert(
+          'product_price_tiers',
+          {
+            'product_id': t.productId,
+            'warehouse_id': warehouseId,
+            'min_quantity': t.minQuantity,
+            'price': t.price,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
+  }
+
+  Future<List<PriceTier>> getPriceTiers(String warehouseId) async {
+    final db = _safeDb;
+    if (db == null) return const [];
+    final rows = await db.query(
+      'product_price_tiers',
+      where: 'warehouse_id = ?',
+      whereArgs: [warehouseId],
+      orderBy: 'product_id, min_quantity',
+    );
+    return rows
+        .map((r) => PriceTier(
+              productId: r['product_id'] as String,
+              minQuantity: (r['min_quantity'] as num).toDouble(),
+              price: (r['price'] as num).toDouble(),
+            ))
+        .toList();
   }
 
   Future<void> deleteStaleDiscounts(List<String> serverIds) async {

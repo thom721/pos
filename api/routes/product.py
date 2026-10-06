@@ -179,6 +179,20 @@ def adjust_stock(
     return product
 
 
+@router.get("/price-tiers")
+def read_all_price_tiers(
+    warehouse_id: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.PRODUCTS_READ)),
+):
+    """Tous les paliers d'un dépôt (caisse : calcul du prix hors-ligne)."""
+    rows = price_tier_service.list_all_tiers(db, current_user.tenant_id, warehouse_id)
+    return [
+        {"product_id": r.product_id, "min_quantity": float(r.min_quantity), "price": float(r.price)}
+        for r in rows
+    ]
+
+
 @router.get("/products/{product_id}/price-tiers", response_model=List[PriceTierRead])
 def read_product_price_tiers(
     product_id: str,

@@ -88,3 +88,10 @@ def test_set_replaces_previous_tiers(db, world):
 
 def test_tier_entity_is_synced():
     assert "product_price_tier" in _MODEL_MAP
+
+
+def test_list_all_tiers_only_for_warehouse(db, world):
+    svc.set_tiers(db, world["tenant"].id, world["prod"].id, world["wh_a"].id, [_T(3, 1700)])
+    svc.set_tiers(db, world["tenant"].id, world["prod"].id, world["wh_b"].id, [_T(3, 1650)])
+    rows = svc.list_all_tiers(db, world["tenant"].id, world["wh_a"].id)
+    assert [(float(r.min_quantity), float(r.price)) for r in rows] == [(3.0, 1700.0)]

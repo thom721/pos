@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
+import 'package:pos_connect/data/models/price_tier_model.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/services/local_db_service.dart';
 
@@ -162,6 +163,44 @@ class ProductRepository {
     await dio.put('/api/products/$productId/warehouse-prices/$warehouseId',
         data: {'sale_price': salePrice});
   }
+
+  /// Paliers d'un produit dans un dépôt (écran produit).
+  Future<List<PriceTier>> getPriceTiers(String productId, String warehouseId) async {
+    final res = await dio.get('/api/products/$productId/price-tiers',
+        queryParameters: {'warehouse_id': warehouseId});
+    return (res.data as List)
+        .map((e) => PriceTier(
+              productId: productId,
+              minQuantity: (e['min_quantity'] as num).toDouble(),
+              price: (e['price'] as num).toDouble(),
+            ))
+        .toList();
+  }
+
+  /// Remplace les paliers d'un produit dans un dépôt. Le serveur refuse les
+  /// seuils en double et les prix qui augmentent avec la quantité.
+  Future<void> setPriceTiers(String productId, String warehouseId, List<PriceTier> tiers) async {
+    await dio.put('/api/products/$productId/price-tiers',
+        queryParameters: {'warehouse_id': warehouseId},
+        data: {
+          'tiers': tiers
+              .map((t) => {'min_quantity': t.minQuantity, 'price': t.price})
+              .toList(),
+        });
+  }
+
+  /// Tous les paliers d'un dépôt (caisse en ligne).
+  Future<List<PriceTier>> getAllPriceTiers(String warehouseId) async {
+    final res = await dio.get('/api/price-tiers',
+        queryParameters: {'warehouse_id': warehouseId});
+    return (res.data as List)
+        .map((e) => PriceTier.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Paliers du dépôt depuis le cache local (caisse hors-ligne).
+  Future<List<PriceTier>> getLocalPriceTiers(String warehouseId) =>
+      LocalDbService.instance.getPriceTiers(warehouseId);
 
   Future<void> deleteWarehousePrice(String productId, String warehouseId) async {
     await dio.delete('/api/products/$productId/warehouse-prices/$warehouseId');

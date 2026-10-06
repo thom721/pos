@@ -2,6 +2,7 @@ import 'package:dio/dio.dart' show DioException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:pos_connect/data/models/discount_model.dart';
+import 'package:pos_connect/data/models/price_tier_model.dart';
 import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
@@ -19,22 +20,35 @@ class CartItem {
   double quantity;
   double? _customPrice;
   DiscountModel? catalogDiscount; // rabais catalogue choisi pour cette ligne
+  final List<PriceTier> tiers;    // paliers du dépôt pour ce produit
 
-  CartItem({required this.product, this.quantity = 1});
+  CartItem({required this.product, this.quantity = 1, this.tiers = const []});
 
-  double get unitPrice => _customPrice ?? product.salePrice;
+  // Palier le plus élevé atteint par la quantité de la ligne (null si aucun).
+  double? get tierPrice {
+    PriceTier? best;
+    for (final t in tiers) {
+      if (quantity >= t.minQuantity && (best == null || t.minQuantity > best.minQuantity)) best = t;
+    }
+    return best?.price;
+  }
+
+  // Prix catalogue de la ligne : palier atteint, sinon prix de vente.
+  double get catalogUnitPrice => tierPrice ?? product.salePrice;
+
+  double get unitPrice => _customPrice ?? catalogUnitPrice;
   set unitPrice(double v) => _customPrice = v;
 
   bool get isPriceModified =>
-      _customPrice != null && _customPrice != product.salePrice;
+      _customPrice != null && _customPrice != catalogUnitPrice;
   double get subtotal => unitPrice * quantity;
 
   // Catalog price total (before any per-item price reduction)
-  double get catalogSubtotal => product.salePrice * quantity;
+  double get catalogSubtotal => catalogUnitPrice * quantity;
 
   // Discount from price modification: (catalogPrice - unitPrice) * qty
   double get itemDiscount {
-    final diff = product.salePrice - unitPrice;
+    final diff = catalogUnitPrice - unitPrice;
     return diff > 0 ? diff * quantity : 0;
   }
 
@@ -140,7 +154,7 @@ class PosNotifier extends StateNotifier<PosState> {
 
   PosNotifier(this._repo) : super(const PosState());
 
-  void addProduct(ProductModel product) {
+  void addProduct(ProductModel product, {List<PriceTier> tiers = const []}) {
     final existing = state.items.indexWhere((i) => i.product.id == product.id);
     if (existing >= 0) {
       final updated = List<CartItem>.from(state.items);
@@ -148,7 +162,7 @@ class PosNotifier extends StateNotifier<PosState> {
       state = state.copyWith(items: updated);
     } else {
       state = state.copyWith(
-        items: [...state.items, CartItem(product: product)],
+        items: [...state.items, CartItem(product: product, tiers: tiers)],
       );
     }
   }

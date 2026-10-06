@@ -26,6 +26,8 @@ import 'package:pos_connect/providers/entrepot_provider.dart';
 import 'package:pos_connect/shared/widgets/barcode_scanner_sheet.dart';
 import 'package:pos_connect/shared/widgets/transfer_to_entrepot_dialog.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/providers/price_tier_provider.dart';
+import 'package:pos_connect/data/models/price_tier_model.dart';
 
 String _imgUrl(String path) => '${dio.options.baseUrl}$path';
 
@@ -2124,6 +2126,8 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                 if (isEdit) ...[
                   const SizedBox(height: 12),
                   _WarehousePricesSection(productId: widget.product!.id),
+                  const SizedBox(height: 16),
+                  _PriceTiersSection(productId: widget.product!.id),
                 ],
                 const SizedBox(height: 12),
                 TextFormField(
@@ -2687,6 +2691,203 @@ class _WarehousePricesSectionState extends ConsumerState<_WarehousePricesSection
                 ],
               ),
             )),
+      ],
+    );
+  }
+}
+
+// ─── Paliers de prix (par dépôt choisi) ──────────────────────────────────────
+
+class _TierRow {
+  final TextEditingController qty;
+  final TextEditingController price;
+  _TierRow(String q, String p)
+      : qty = TextEditingController(text: q),
+        price = TextEditingController(text: p);
+  void dispose() {
+    qty.dispose();
+    price.dispose();
+  }
+}
+
+class _PriceTiersSection extends ConsumerStatefulWidget {
+  final String productId;
+  const _PriceTiersSection({required this.productId});
+
+  @override
+  ConsumerState<_PriceTiersSection> createState() => _PriceTiersSectionState();
+}
+
+class _PriceTiersSectionState extends ConsumerState<_PriceTiersSection> {
+  String? _warehouseId;
+  final List<_TierRow> _rows = [];
+  bool _loading = false;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    for (final r in _rows) {
+      r.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _loadFor(String warehouseId, AppSettings settings) async {
+    setState(() {
+      _warehouseId = warehouseId;
+      _loading = true;
+    });
+    try {
+      final tiers = await ProductRepository().getPriceTiers(widget.productId, warehouseId);
+      if (!mounted) return;
+      for (final r in _rows) {
+        r.dispose();
+      }
+      _rows
+        ..clear()
+        ..addAll(tiers.map((t) => _TierRow(
+              _fmtNum(t.minQuantity),
+              toDisplayAmount(t.price, settings).toStringAsFixed(2),
+            )));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(extractAnyError(e)),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _fmtNum(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
+
+  Future<void> _save(AppSettings settings) async {
+    final warehouseId = _warehouseId;
+    if (warehouseId == null) return;
+    final tiers = <PriceTier>[];
+    for (final r in _rows) {
+      final q = double.tryParse(r.qty.text.trim().replaceAll(',', '.'));
+      final p = double.tryParse(r.price.text.trim().replaceAll(',', '.'));
+      if (q == null || q <= 0 || p == null || p <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Chaque palier doit avoir une quantité et un prix supérieurs à 0'),
+          backgroundColor: AppColors.error,
+        ));
+        return;
+      }
+      tiers.add(PriceTier(
+        productId: widget.productId,
+        minQuantity: q,
+        price: toHtgAmount(p, settings),
+      ));
+    }
+    setState(() => _saving = true);
+    try {
+      await ProductRepository().setPriceTiers(widget.productId, warehouseId, tiers);
+      ref.invalidate(priceTiersProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Paliers de prix enregistrés'),
+          duration: Duration(seconds: 2),
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(extractAnyError(e)),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final warehouses = ref.watch(warehouseListProvider).valueOrNull ?? const <WarehouseModel>[];
+    final active = warehouses.where((w) => !w.isEntrepot).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Paliers de prix (gros)',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        const Text(
+          'Prix unitaire à partir d\'une quantité (en unités de vente). Propre à chaque dépôt.',
+          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          value: active.any((w) => w.id == _warehouseId) ? _warehouseId : null,
+          decoration: const InputDecoration(labelText: 'Dépôt', isDense: true),
+          items: active
+              .map((w) => DropdownMenuItem(value: w.id, child: Text(w.name)))
+              .toList(),
+          onChanged: (id) {
+            if (id != null) _loadFor(id, settings);
+          },
+        ),
+        const SizedBox(height: 8),
+        if (_loading)
+          const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
+        else if (_warehouseId != null) ...[
+          ..._rows.asMap().entries.map((e) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 110,
+                      child: TextFormField(
+                        controller: e.value.qty,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'À partir de',
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        controller: e.value.price,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(
+                          labelText: 'Prix (${settings.currencySymbol.trim()})',
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                      tooltip: 'Supprimer ce palier',
+                      onPressed: () => setState(() {
+                        _rows.removeAt(e.key).dispose();
+                      }),
+                    ),
+                  ],
+                ),
+              )),
+          Row(
+            children: [
+              TextButton.icon(
+                onPressed: () => setState(() => _rows.add(_TierRow('', ''))),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Ajouter un palier'),
+              ),
+              const Spacer(),
+              _saving
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : FilledButton(
+                      onPressed: () => _save(settings),
+                      child: const Text('Enregistrer les paliers'),
+                    ),
+            ],
+          ),
+        ],
       ],
     );
   }

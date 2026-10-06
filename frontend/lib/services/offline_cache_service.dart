@@ -16,6 +16,7 @@ import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/models/client_sabotage_model.dart';
 import 'package:pos_connect/data/models/depot_model.dart';
 import 'package:pos_connect/data/models/retrait_model.dart';
+import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:pos_connect/services/local_db_service.dart';
 
 bool _isPermissionDenied(Object e) =>
@@ -77,6 +78,7 @@ class OfflineCacheService {
       // ── Base commune — tous les types ──────────────────────────────────
       await Future.wait([
         _syncProducts(warehouseId: warehouseId),
+        _syncPriceTiers(warehouseId: warehouseId),
         _syncCustomers(),
         _syncCategories(),
         _syncDiscounts(),
@@ -125,6 +127,17 @@ class OfflineCacheService {
   }
 
   // ── Produits ──────────────────────────────────────────────────────────────
+
+  Future<void> _syncPriceTiers({String? warehouseId}) async {
+    if (warehouseId == null) return;
+    try {
+      final tiers = await ProductRepository().getAllPriceTiers(warehouseId);
+      await LocalDbService.instance.replacePriceTiers(warehouseId, tiers);
+      debugPrint('[OfflineCache] paliers de prix: ${tiers.length} mis en cache');
+    } catch (e) {
+      if (!_isPermissionDenied(e)) debugPrint('[OfflineCache] paliers sync error: $e');
+    }
+  }
 
   Future<void> _syncProducts({String? warehouseId}) async {
     try {

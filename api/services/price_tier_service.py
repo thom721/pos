@@ -48,6 +48,15 @@ def list_tiers(db: Session, tenant_id, product_id: str, warehouse_id: str) -> li
     )
 
 
+def list_all_tiers(db: Session, tenant_id, warehouse_id: str) -> list[ProductPriceTier]:
+    return (
+        db.query(ProductPriceTier)
+        .filter(ProductPriceTier.tenant_id == tenant_id, ProductPriceTier.warehouse_id == warehouse_id)
+        .order_by(ProductPriceTier.product_id, ProductPriceTier.min_quantity)
+        .all()
+    )
+
+
 def set_tiers(db: Session, tenant_id, product_id: str, warehouse_id: str, tiers) -> list[ProductPriceTier]:
     """Remplace tous les paliers du couple (produit, dépôt)."""
     product = db.query(Product).filter(Product.id == product_id, Product.tenant_id == tenant_id).first()

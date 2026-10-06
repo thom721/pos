@@ -1,0 +1,31 @@
+/// Palier de prix d'un produit dans un dépôt : à partir de [minQuantity]
+/// (unités de vente), le prix unitaire est [price] (HTG, source de vérité).
+class PriceTier {
+  final String productId;
+  final double minQuantity;
+  final double price;
+
+  const PriceTier({
+    required this.productId,
+    required this.minQuantity,
+    required this.price,
+  });
+
+  factory PriceTier.fromJson(Map<String, dynamic> json) => PriceTier(
+        productId: json['product_id']?.toString() ?? '',
+        minQuantity: (json['min_quantity'] as num?)?.toDouble() ?? 0,
+        price: (json['price'] as num?)?.toDouble() ?? 0,
+      );
+
+  /// Regroupe les paliers par produit, triés par seuil croissant.
+  static Map<String, List<PriceTier>> groupByProduct(Iterable<PriceTier> tiers) {
+    final map = <String, List<PriceTier>>{};
+    for (final t in tiers) {
+      map.putIfAbsent(t.productId, () => []).add(t);
+    }
+    for (final list in map.values) {
+      list.sort((a, b) => a.minQuantity.compareTo(b.minQuantity));
+    }
+    return map;
+  }
+}
