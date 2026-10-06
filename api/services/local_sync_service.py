@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
-from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import inspect as sa_inspect, or_ as sa_or_
 from sqlalchemy.orm import Session
 
 from api.core.config import settings
@@ -232,6 +232,10 @@ def _get_sync_state(db: Session, entity_type: str) -> SyncState:
     return s
 
 
+# Entités dont warehouse_id peut être NULL (partagées par tous les dépôts).
+_NULLABLE_WAREHOUSE_ETYPES = {"discount"}
+
+
 def _installer_warehouse_id() -> str:
     """Dépôt de cette installation (installer_warehouse_id de pos_server.ini)."""
     from api.core.config import load_ini_config
@@ -344,7 +348,10 @@ def _run_sync_inner(db: Session) -> dict:
                 # Entités propres à un dépôt : n'envoyer que les lignes de ce dépôt.
                 _wh = _installer_warehouse_id()
                 if _wh and hasattr(model, "warehouse_id"):
-                    query = query.filter(model.warehouse_id == _wh)
+                    if etype in _NULLABLE_WAREHOUSE_ETYPES:
+                        query = query.filter(sa_or_(model.warehouse_id.is_(None), model.warehouse_id == _wh))
+                    else:
+                        query = query.filter(model.warehouse_id == _wh)
                 if state.last_push_at:
                     query = query.filter(model.updated_at > state.last_push_at)
                 rows = query.all()
@@ -454,8 +461,9 @@ def _run_sync_inner(db: Session) -> dict:
             for rec in records:
                 # Réception : ignorer toute ligne propre à un autre dépôt.
                 if _wh and hasattr(model, "warehouse_id") and rec.get("warehouse_id") != _wh:
-                    skipped += 1
-                    continue
+                    if not (etype in _NULLABLE_WAREHOUSE_ETYPES and rec.get("warehouse_id") is None):
+                        skipped += 1
+                        continue
                 existing = db.get(model, rec["id"])
                 if existing is None:
                     for unique_col in ("username", "slug", "reference", "email"):

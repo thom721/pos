@@ -9,6 +9,7 @@ import 'package:pos_connect/data/repositories/discount_repository.dart';
 import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:pos_connect/providers/discount_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 
 const List<String> _dayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
@@ -231,6 +232,7 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
   late final TextEditingController _minQuantityCtrl;
   late String _type;
   late String _scope;
+  String? _warehouseId;
   late bool _isAutomatic;
   late bool _isActive;
   late Set<int> _selectedDays;
@@ -258,6 +260,7 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
         text: d?.minQuantity != null ? d!.minQuantity!.toString() : '');
     _type = d?.type ?? 'percentage';
     _scope = d?.scope ?? 'both';
+    _warehouseId = d?.warehouseId;
     _isAutomatic = d?.isAutomatic ?? false;
     _isActive = d?.isActive ?? true;
     _selectedDays = d?.scheduleDays == null || d!.scheduleDays!.isEmpty
@@ -382,6 +385,19 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
                     DropdownMenuItem(value: 'item', child: Text('Article seulement')),
                   ],
                   onChanged: (v) => setState(() => _scope = v ?? 'both'),
+                ),
+                const SizedBox(height: 12),
+                ref.watch(warehouseListProvider).maybeWhen(
+                  data: (warehouses) => DropdownButtonFormField<String?>(
+                    value: warehouses.any((w) => w.id == _warehouseId) ? _warehouseId : null,
+                    decoration: const InputDecoration(labelText: 'Dépôt'),
+                    items: [
+                      const DropdownMenuItem<String?>(value: null, child: Text('Tous les dépôts')),
+                      ...warehouses.map((w) => DropdownMenuItem<String?>(value: w.id, child: Text(w.name))),
+                    ],
+                    onChanged: (v) => setState(() => _warehouseId = v),
+                  ),
+                  orElse: () => const SizedBox.shrink(),
                 ),
                 if (_scope == 'item' || _scope == 'both') ...[
                   const SizedBox(height: 12),
@@ -543,6 +559,7 @@ class _DiscountFormDialogState extends ConsumerState<_DiscountFormDialog> {
             ? double.parse(_valueCtrl.text.trim())
             : toHtgAmount(double.parse(_valueCtrl.text.trim()), ref.read(settingsProvider)),
         'scope': _scope,
+        'warehouse_id': _warehouseId,
         'is_automatic': _isAutomatic,
         'is_active': _isActive,
         'schedule_days': _isAutomatic && !allDays

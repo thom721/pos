@@ -1,6 +1,7 @@
 from decimal import Decimal
 from typing import List, Union
 
+from sqlalchemy import or_ as sa_or_
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 
@@ -8,6 +9,20 @@ from api.models.Discount import Discount, DiscountType, DiscountScope
 from api.schemas.discount import DiscountCreate, DiscountUpdate
 from api.services.base_service import TenantService
 from api.core.dt_coerce import now_local
+
+
+def _checked_warehouse(db: Session, tenant_id, warehouse_id):
+    """None = tous les dépôts. Sinon le dépôt doit appartenir au tenant."""
+    if not warehouse_id:
+        return None
+    from api.models.Warehouse import Warehouse
+    wh = db.query(Warehouse).filter(
+        Warehouse.id == warehouse_id,
+        Warehouse.tenant_id == tenant_id,
+    ).first()
+    if not wh:
+        raise HTTPException(400, "Dépôt introuvable pour ce tenant")
+    return wh.id
 
 
 class DiscountService(TenantService):
@@ -20,6 +35,7 @@ class DiscountService(TenantService):
         exists = self._q(Discount).filter(Discount.name == payload["name"]).first()
         if exists:
             raise HTTPException(400, f"Le rabais « {payload['name']} » existe déjà")
+        wh_id = _checked_warehouse(self.db, self._tid, payload.get("warehouse_id"))
 
         discount = Discount(
             name=payload["name"],
@@ -33,6 +49,7 @@ class DiscountService(TenantService):
             schedule_end=payload.get("schedule_end"),
             min_quantity=payload.get("min_quantity"),
             product_ids=payload.get("product_ids"),
+            warehouse_id=wh_id,
         )
         self._set_tenant(discount)
         self.db.add(discount)
@@ -40,8 +57,11 @@ class DiscountService(TenantService):
         self.db.refresh(discount)
         return discount
 
-    def list(self):
-        return self._q(Discount).all()
+    def list(self, warehouse_id: str | None = None):
+        q = self._q(Discount)
+        if warehouse_id:
+            q = q.filter(sa_or_(Discount.warehouse_id.is_(None), Discount.warehouse_id == warehouse_id))
+        return q.all()
 
     def get(self, discount_id: str):
         return self._q(Discount).filter(Discount.id == discount_id).first()
@@ -55,6 +75,8 @@ class DiscountService(TenantService):
                 value = DiscountType(value)
             elif key == "scope" and value is not None:
                 value = DiscountScope(value)
+            elif key == "warehouse_id":
+                value = _checked_warehouse(self.db, discount.tenant_id, value)
             setattr(discount, key, value)
         self.db.commit()
         self.db.refresh(discount)
@@ -77,6 +99,7 @@ def resolve_discount(
     base,
     quantity=None,
     product_id: str | None = None,
+    warehouse_id: str | None = None,
 ) -> tuple[Decimal, str | None]:
     """
     Si discount_id est fourni : charge le rabais catalogue, vérifie sa portée,
@@ -101,6 +124,8 @@ def resolve_discount(
             raise HTTPException(400, f"Le rabais « {discount.name} » est désactivé")
         if discount.scope not in allowed_scopes:
             raise HTTPException(400, f"Le rabais « {discount.name} » n'est pas applicable ici")
+        if discount.warehouse_id and str(warehouse_id) != str(discount.warehouse_id):
+            raise HTTPException(400, f"Le rabais « {discount.name} » n'est pas disponible dans ce dépôt")
         if discount.product_ids and str(product_id) not in {str(p) for p in discount.product_ids}:
             raise HTTPException(
                 400,
@@ -128,8 +153,9 @@ def compute_amount(discount: Discount, base: Decimal) -> Decimal:
     return min(amount, base)
 
 
-def get_active_automatic_receipt_discount(db: Session, tenant_id: str | None) -> Discount | None:
-    """Premier rabais automatique éligible (ticket) selon jour/heure courants, ou None."""
+def get_active_automatic_receipt_discount(db: Session, tenant_id: str | None, warehouse_id: str | None = None) -> Discount | None:
+    """Premier rabais automatique éligible (ticket) selon jour/heure courants, ou None.
+    Un rabais lié à un dépôt n'est proposé que dans ce dépôt."""
     now = now_local()
     weekday = str(now.weekday())
     current_time = now.time()
@@ -141,6 +167,8 @@ def get_active_automatic_receipt_discount(db: Session, tenant_id: str | None) ->
     )
     if tenant_id:
         query = query.filter(Discount.tenant_id == tenant_id)
+    if warehouse_id:
+        query = query.filter(sa_or_(Discount.warehouse_id.is_(None), Discount.warehouse_id == warehouse_id))
 
     candidates = query.order_by(Discount.created_at).all()
     for d in candidates:

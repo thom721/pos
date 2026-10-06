@@ -259,6 +259,7 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
             subtotal,
             quantity=item.quantity,
             product_id=product.id,
+            warehouse_id=sale.warehouse_id,
         )
         new_item_discount_total += item_amount
 
@@ -294,6 +295,7 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
         data.discount,
         {DiscountScope.receipt, DiscountScope.both},
         net_before_receipt_discount,
+        warehouse_id=sale.warehouse_id,
     )
     discount = float(receipt_discount)
     final = float(net_before_receipt_discount - receipt_discount)
@@ -568,6 +570,7 @@ def create_sale(
             subtotal,
             quantity=item.quantity,
             product_id=product.id,
+            warehouse_id=wh_id,
         )
         item_discounts.append((amount, disc_id))
         item_discount_total += amount
@@ -580,9 +583,10 @@ def create_sale(
         data.discount,
         {DiscountScope.receipt, DiscountScope.both},
         net_before_receipt_discount,
+        warehouse_id=wh_id,
     )
     if receipt_discount == 0 and not receipt_discount_id:
-        auto = get_active_automatic_receipt_discount(db, tenant_id)
+        auto = get_active_automatic_receipt_discount(db, tenant_id, warehouse_id=wh_id)
         if auto:
             from api.services.discount_service import compute_amount as _compute_amount
             receipt_discount = _compute_amount(auto, net_before_receipt_discount)

@@ -21,6 +21,8 @@ class Discount(UUIDBase):
     )
 
     tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
+    # Dépôt du rabais — NULL = disponible dans tous les dépôts du tenant.
+    warehouse_id = Column(String(36), ForeignKey('warehouses.id', ondelete='CASCADE'), nullable=True, index=True)
 
     name  = Column(String(255), nullable=False)
     type  = Column(Enum(DiscountType), nullable=False)

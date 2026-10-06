@@ -58,7 +58,7 @@ class LocalDbService {
     }
     _db = await openDatabase(
       dbPath,
-      version: 28,
+      version: 29,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -227,6 +227,10 @@ class LocalDbService {
     if (oldVersion < 27) {
       try { await db.execute("ALTER TABLE customers ADD COLUMN fname TEXT NOT NULL DEFAULT ''"); } catch (_) {}
     }
+    if (oldVersion < 29) {
+      // Discount.warehouse_id (rabais par dépôt) — NULL = tous les dépôts.
+      try { await db.execute('ALTER TABLE discounts ADD COLUMN warehouse_id TEXT'); } catch (_) {}
+    }
     if (oldVersion < 28) {
       // Warehouse.linked_warehouse_id (rattachement entrepôt → dépôt) —
       // absent du cache local jusqu'ici.
@@ -370,7 +374,8 @@ class LocalDbService {
         schedule_start TEXT,
         schedule_end   TEXT,
         min_quantity   REAL,
-        product_ids    TEXT
+        product_ids    TEXT,
+        warehouse_id   TEXT
       )
     ''');
   }
@@ -1009,6 +1014,7 @@ class LocalDbService {
           'schedule_end': d.scheduleEnd,
           'min_quantity': d.minQuantity,
           'product_ids': jsonEncode(d.productIds),
+          'warehouse_id': d.warehouseId,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -1034,6 +1040,7 @@ class LocalDbService {
               type: r['type'] as String,
               value: (r['value'] as num).toDouble(),
               scope: r['scope'] as String,
+              warehouseId: r['warehouse_id'] as String?,
               isAutomatic: (r['is_automatic'] as int? ?? 0) == 1,
               isActive: (r['is_active'] as int? ?? 1) == 1,
               scheduleDays: r['schedule_days'] as String?,

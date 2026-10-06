@@ -1465,7 +1465,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
     final drafts = ref.watch(draftsProvider);
     final isEdit = pos.isEditMode;
     final canDiscount = ref.watch(hasPermissionProvider(Perm.salesDiscount));
-    final discounts = ref.watch(discountsProvider).valueOrNull ?? const <DiscountModel>[];
+    final discounts = ref.watch(posDiscountsProvider).valueOrNull ?? const <DiscountModel>[];
 
     // Quand le dépôt actif se charge (null → valeur), re-vérifier la session
     // avec le warehouse_id correct pour détecter les sessions d'un autre business.

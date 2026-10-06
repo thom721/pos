@@ -25,10 +25,12 @@ def create_discount(
 
 @router.get("/discounts/")
 def list_discounts(
+    warehouse_id: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.DISCOUNTS_READ)),
 ):
-    return {"data": DiscountService(db, tenant_id=current_user.tenant_id).list()}
+    # warehouse_id fourni (caisse) : rabais du dépôt + rabais « tous dépôts ».
+    return {"data": DiscountService(db, tenant_id=current_user.tenant_id).list(warehouse_id=warehouse_id)}
 
 
 @router.get("/discounts/{discount_id}", response_model=DiscountRead)

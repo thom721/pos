@@ -222,7 +222,10 @@ def require_sync_token(
 _WAREHOUSE_HEADER = "X-Warehouse-Id"
 
 # Entités partagées au niveau du tenant (pas de dépôt).
-_SHARED_TENANT_ENTITIES = {"warehouse", "category", "supplier", "customer", "discount"}
+_SHARED_TENANT_ENTITIES = {"warehouse", "category", "supplier", "customer"}
+
+# Entités dont warehouse_id peut être NULL = partagées par tous les dépôts.
+_NULLABLE_WAREHOUSE_ENTITIES = {"discount"}
 
 # Lignes enfants sans warehouse_id : rattachées à leur parent.
 _CHILD_PARENT: dict[str, tuple[str, Any]] = {
@@ -253,6 +256,11 @@ def _scope_to_warehouse(query, model, entity_type: str, wh_id: str | None):
     ou sans dépôt -> aucune ligne propre à un dépôt."""
     if entity_type in _SHARED_TENANT_ENTITIES:
         return query
+    if hasattr(model, "warehouse_id") and entity_type in _NULLABLE_WAREHOUSE_ENTITIES:
+        # Rabais « tous dépôts » (NULL) + ceux du dépôt de l'installation.
+        if wh_id is None:
+            return query.filter(model.warehouse_id.is_(None))
+        return query.filter(sa_or_(model.warehouse_id.is_(None), model.warehouse_id == wh_id))
     if wh_id is None:
         return query.filter(sa_false())
     if hasattr(model, "warehouse_id"):
@@ -423,8 +431,10 @@ def sync_push(
     for rec in body.records:
         # Une installation ne pousse que les lignes de son dépôt (entités propres à un dépôt).
         if wh_id and "warehouse_id" in col_names and rec.get("warehouse_id") != wh_id:
-            skipped += 1
-            continue
+            nullable_ok = body.entity_type in _NULLABLE_WAREHOUSE_ENTITIES and rec.get("warehouse_id") is None
+            if not nullable_ok:
+                skipped += 1
+                continue
         if "tenant_id" in col_names:
             rec["tenant_id"] = tenant_id
         clean = {k: v for k, v in rec.items() if k in col_names}

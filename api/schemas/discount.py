@@ -15,6 +15,7 @@ class DiscountCreate(BaseModel):
     schedule_end: Optional[time] = None
     min_quantity: Optional[float] = None  # seuil de quantité (rabais article)
     product_ids: Optional[list[str]] = None  # produits liés — suggestion auto en caisse
+    warehouse_id: Optional[str] = None       # dépôt du rabais — None = tous les dépôts
 
 
 class DiscountRead(BaseModel):
@@ -30,6 +31,7 @@ class DiscountRead(BaseModel):
     schedule_end: Optional[time] = None
     min_quantity: Optional[float] = None
     product_ids: Optional[list[str]] = None
+    warehouse_id: Optional[str] = None
 
     @field_validator("type", "scope", mode="before")
     @classmethod
@@ -52,3 +54,4 @@ class DiscountUpdate(BaseModel):
     schedule_end: Optional[time] = None
     min_quantity: Optional[float] = None
     product_ids: Optional[list[str]] = None
+    warehouse_id: Optional[str] = None
