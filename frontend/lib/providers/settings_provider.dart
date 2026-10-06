@@ -7,6 +7,7 @@ import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/license_provider.dart';
+import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/services/logo_cache_service.dart';
@@ -424,6 +425,13 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     // Reload when the active warehouse changes (each depot has its own config)
     _ref.listen<WarehouseModel?>(activeWarehouseProvider, (prev, next) {
       if (prev?.id != next?.id) {
+        _load();
+      }
+    });
+    // Reload after each completed sync: a currency or rate changed in the cloud
+    // must apply without restarting the app.
+    _ref.listen<int>(syncEpochProvider, (prev, next) {
+      if (prev != next) {
         _load();
       }
     });
