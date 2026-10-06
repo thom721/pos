@@ -23,6 +23,7 @@ from api.models.Category import Category
 from api.models.Discount import Discount
 from api.models.Product import Product
 from api.models.ProductWarehousePrice import ProductWarehousePrice
+from api.models.ProductPriceTier import ProductPriceTier
 from api.models.Customer import Customer
 from api.models.Supplier import Supplier
 from api.models.User import User
@@ -76,6 +77,7 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "supplier",               "model": Supplier,             "direction": "both"},
     {"type": "product",                "model": Product,              "direction": "both"},
     {"type": "product_warehouse_price", "model": ProductWarehousePrice, "direction": "both"},
+    {"type": "product_price_tier", "model": ProductPriceTier, "direction": "both"},
     {"type": "customer",               "model": Customer,             "direction": "both"},
     {"type": "user",                   "model": User,                 "direction": "both"},
     {"type": "pos_register",           "model": PosRegister,         "direction": "both"},

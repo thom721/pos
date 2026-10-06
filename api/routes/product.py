@@ -7,6 +7,8 @@ from typing import List, Optional, Union
 from pydantic import BaseModel
 from api.services.product_service import ProductService
 from api.schemas.product import ProductCreate, ProductRead, ProductUpdate, WarehousePriceRead, WarehousePriceSet
+from api.schemas.price_tier import PriceTierRead, PriceTiersSet
+from api.services import price_tier_service
 from api.database import get_db
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
@@ -175,6 +177,32 @@ def adjust_stock(
     db.refresh(product)
     background_tasks.add_task(manager.notify, current_user.tenant_id)
     return product
+
+
+@router.get("/products/{product_id}/price-tiers", response_model=List[PriceTierRead])
+def read_product_price_tiers(
+    product_id: str,
+    warehouse_id: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.PRODUCTS_READ)),
+):
+    """Paliers de prix du produit dans CE dépôt (par dépôt, jamais partagés)."""
+    rows = price_tier_service.list_tiers(db, current_user.tenant_id, product_id, warehouse_id)
+    return [PriceTierRead(id=r.id, min_quantity=r.min_quantity, price=r.price) for r in rows]
+
+
+@router.put("/products/{product_id}/price-tiers", response_model=List[PriceTierRead])
+def set_product_price_tiers(
+    product_id: str,
+    body: PriceTiersSet,
+    warehouse_id: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
+):
+    """Remplace les paliers du produit pour ce dépôt. Refusé si les prix
+    augmentent avec la quantité ou si un seuil est en double."""
+    rows = price_tier_service.set_tiers(db, current_user.tenant_id, product_id, warehouse_id, body.tiers)
+    return [PriceTierRead(id=r.id, min_quantity=r.min_quantity, price=r.price) for r in rows]
 
 
 @router.get("/products/{product_id}/warehouse-prices", response_model=List[WarehousePriceRead])

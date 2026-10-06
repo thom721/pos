@@ -19,6 +19,7 @@ from api.models.CashierSession import CashierSession
 from api.services.warehouse_helper import resolve_warehouse_id
 from api.services.product_service import resolve_price as _resolve_price
 from api.services.discount_service import resolve_discount, get_active_automatic_receipt_discount
+from api.services import price_tier_service
 from api.services.stock_service import record_stock_movement
 from api.services import audit_service
 from api.core.dt_coerce import parse_dt
@@ -247,7 +248,12 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
         product = new_products.get(str(item.product_id))
         if not product:
             raise HTTPException(404, f"Produit introuvable: {item.product_id}")
-        unit_price = item.unit_price if item.unit_price else _resolve_price(db, product, sale.warehouse_id)
+        # Palier de prix du dépôt (quantité atteinte) : le serveur fait foi.
+        tier = price_tier_service.tier_price(db, product.id, sale.warehouse_id, item.quantity)
+        if tier is not None:
+            unit_price = tier
+        else:
+            unit_price = item.unit_price if item.unit_price else _resolve_price(db, product, sale.warehouse_id)
         subtotal = unit_price * item.quantity
         new_total += subtotal
 
@@ -558,7 +564,12 @@ def create_sale(
         # défaut) — ne s'applique que si le client n'a pas déjà envoyé un
         # unit_price explicite (cas normal : le prix affiché en caisse vient
         # déjà de ProductService.list(warehouse_id=...)).
-        unit_price = item.unit_price if item.unit_price else _resolve_price(db, product, wh_id)
+        # Palier de prix du dépôt (quantité atteinte) : le serveur fait foi.
+        tier = price_tier_service.tier_price(db, product.id, wh_id, item.quantity)
+        if tier is not None:
+            unit_price = tier
+        else:
+            unit_price = item.unit_price if item.unit_price else _resolve_price(db, product, wh_id)
         subtotal = unit_price * item.quantity
         total += subtotal
 
