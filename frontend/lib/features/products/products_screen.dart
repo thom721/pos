@@ -2127,7 +2127,14 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                   const SizedBox(height: 12),
                   _WarehousePricesSection(productId: widget.product!.id),
                   const SizedBox(height: 16),
-                  _PriceTiersSection(productId: widget.product!.id),
+                  _PriceTiersSection(
+                    productId: widget.product!.id,
+                    warehouseId: widget.product!.warehouseId,
+                    warehouseName: ref.watch(warehouseListProvider).valueOrNull
+                        ?.where((w) => w.id == widget.product!.warehouseId)
+                        .map((w) => w.name)
+                        .firstOrNull,
+                  ),
                 ],
                 const SizedBox(height: 12),
                 TextFormField(
@@ -2712,17 +2719,29 @@ class _TierRow {
 
 class _PriceTiersSection extends ConsumerStatefulWidget {
   final String productId;
-  const _PriceTiersSection({required this.productId});
+  final String? warehouseId;   // dépôt du produit (champ « Dépôt » de la fiche)
+  final String? warehouseName;
+  const _PriceTiersSection({required this.productId, this.warehouseId, this.warehouseName});
 
   @override
   ConsumerState<_PriceTiersSection> createState() => _PriceTiersSectionState();
 }
 
 class _PriceTiersSectionState extends ConsumerState<_PriceTiersSection> {
-  String? _warehouseId;
   final List<_TierRow> _rows = [];
   bool _loading = false;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final wh = widget.warehouseId;
+    if (wh != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load(wh, ref.read(settingsProvider));
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -2732,11 +2751,8 @@ class _PriceTiersSectionState extends ConsumerState<_PriceTiersSection> {
     super.dispose();
   }
 
-  Future<void> _loadFor(String warehouseId, AppSettings settings) async {
-    setState(() {
-      _warehouseId = warehouseId;
-      _loading = true;
-    });
+  Future<void> _load(String warehouseId, AppSettings settings) async {
+    setState(() => _loading = true);
     try {
       final tiers = await ProductRepository().getPriceTiers(widget.productId, warehouseId);
       if (!mounted) return;
@@ -2764,7 +2780,7 @@ class _PriceTiersSectionState extends ConsumerState<_PriceTiersSection> {
   String _fmtNum(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
 
   Future<void> _save(AppSettings settings) async {
-    final warehouseId = _warehouseId;
+    final warehouseId = widget.warehouseId;
     if (warehouseId == null) return;
     final tiers = <PriceTier>[];
     for (final r in _rows) {
@@ -2808,8 +2824,12 @@ class _PriceTiersSectionState extends ConsumerState<_PriceTiersSection> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
-    final warehouses = ref.watch(warehouseListProvider).valueOrNull ?? const <WarehouseModel>[];
-    final active = warehouses.where((w) => !w.isEntrepot).toList();
+    if (widget.warehouseId == null) {
+      return const Text(
+        'Choisissez un dépôt dans la fiche produit pour définir des paliers.',
+        style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2817,24 +2837,16 @@ class _PriceTiersSectionState extends ConsumerState<_PriceTiersSection> {
         const Text('Paliers de prix (gros)',
             style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
         const Text(
-          'Prix unitaire à partir d\'une quantité (en unités de vente). Propre à chaque dépôt.',
+          'Prix unitaire à partir d\'une quantité (en unités de vente), pour le dépôt du produit.',
           style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
         ),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          value: active.any((w) => w.id == _warehouseId) ? _warehouseId : null,
-          decoration: const InputDecoration(labelText: 'Dépôt', isDense: true),
-          items: active
-              .map((w) => DropdownMenuItem(value: w.id, child: Text(w.name)))
-              .toList(),
-          onChanged: (id) {
-            if (id != null) _loadFor(id, settings);
-          },
-        ),
+        if (widget.warehouseName != null)
+          Text('Dépôt : ${widget.warehouseName}',
+              style: const TextStyle(fontSize: 12)),
         const SizedBox(height: 8),
         if (_loading)
           const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
-        else if (_warehouseId != null) ...[
+        else ...[
           ..._rows.asMap().entries.map((e) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
