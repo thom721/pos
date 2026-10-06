@@ -21,6 +21,7 @@ import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/discount_provider.dart';
 import 'package:pos_connect/data/models/price_tier_model.dart';
 import 'package:pos_connect/providers/price_tier_provider.dart';
+import 'package:pos_connect/core/clock_check.dart';
 import 'package:pos_connect/data/models/user_model.dart';
 import 'package:pos_connect/data/repositories/auth_repository.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
@@ -2153,7 +2154,9 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
               ],
 
               // Checkout / Modify button
-              SizedBox(
+              ValueListenableBuilder<bool>(
+                valueListenable: clockSuspect,
+                builder: (context, clockBad, _) => SizedBox(
                 height: 50,
                 child: ElevatedButton.icon(
                   style: isEdit
@@ -2162,7 +2165,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           foregroundColor: Colors.white,
                         )
                       : null,
-                  onPressed: (pos.items.isEmpty || pos.isProcessing || _autoPrinting || (_sessionChecked && (_session == null || _noSessionPermission || _caisseDisabled)))
+                  onPressed: (clockBad || pos.items.isEmpty || pos.isProcessing || _autoPrinting || (_sessionChecked && (_session == null || _noSessionPermission || _caisseDisabled)))
                       ? null
                       : () async {
                           if (isEdit) {
@@ -2330,6 +2333,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           ? 'Modifier la vente'
                           : 'Encaisser ${formatMoney(pos.paidAmount, settings)}'),
                 ),
+              ),
               ),
             ],
           ),

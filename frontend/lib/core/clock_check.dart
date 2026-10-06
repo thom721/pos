@@ -1,11 +1,23 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
-/// Décalage entre l'heure du serveur et celle de l'appareil (serveur − appareil).
-/// Renseigné à chaque réponse réseau, à partir de l'en-tête HTTP `Date`.
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Décalage entre l'heure du serveur et celle de l'appareil (serveur − appareil),
+/// mesuré à la dernière réponse réseau.
 final ValueNotifier<Duration?> clockSkew = ValueNotifier<Duration?>(null);
 
-/// Seuil au-delà duquel les synchronisations peuvent créer des erreurs.
+/// Dernière heure du serveur reçue, gardée sur l'appareil pour vérifier hors-ligne.
+final ValueNotifier<DateTime?> lastServerDate = ValueNotifier<DateTime?>(null);
+
+/// Vrai quand l'heure de l'appareil est fausse : la caisse doit être bloquée.
+final ValueNotifier<bool> clockSuspect = ValueNotifier<bool>(false);
+
+/// Seuil au-delà duquel l'heure est considérée fausse.
 const Duration clockSkewTolerance = Duration(minutes: 2);
+
+const _kLastServerDate = 'clock_last_server_utc';
+Timer? _watchTimer;
 
 const _months = {
   'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
@@ -26,27 +38,79 @@ DateTime? parseHttpDate(String? value) {
   );
 }
 
-/// Met à jour le décalage à partir de la date renvoyée par le serveur.
+/// Charge la dernière heure serveur mémorisée (pour contrôler hors-ligne).
+Future<void> loadLastServerDate() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kLastServerDate);
+    lastServerDate.value = raw == null ? null : DateTime.tryParse(raw);
+  } catch (_) {}
+  refreshClockState();
+}
+
+/// Mémorise la dernière heure serveur (jamais en arrière : on garde la plus récente).
+Future<void> _persistLastServerDate(DateTime server) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastServerDate, server.toIso8601String());
+  } catch (_) {}
+}
+
+/// Appelé à chaque réponse réseau : mesure le décalage et mémorise l'heure serveur.
 void recordServerDate(String? headerValue) {
   final server = parseHttpDate(headerValue);
   if (server == null) return;
   clockSkew.value = server.difference(DateTime.now().toUtc());
+  final prev = lastServerDate.value;
+  if (prev == null || server.isAfter(prev)) {
+    lastServerDate.value = server;
+    _persistLastServerDate(server);
+  }
+  refreshClockState();
+}
+
+/// Recalcule l'état : hors-ligne, seule une heure reculée par rapport à la dernière synchro est détectable.
+void refreshClockState() {
+  final now = DateTime.now().toUtc();
+  final skew = clockSkew.value;
+  final last = lastServerDate.value;
+  final wrongOnline = skew != null && skew.abs() > clockSkewTolerance;
+  final wentBack = last != null && now.isBefore(last.subtract(clockSkewTolerance));
+  clockSuspect.value = wrongOnline || wentBack;
+}
+
+/// Surveille l'horloge en continu (le retour arrière hors-ligne est vu sans requête).
+void startClockWatch() {
+  _watchTimer ??= Timer.periodic(const Duration(seconds: 30), (_) => refreshClockState());
 }
 
 /// Bannière affichée en haut de l'application quand l'heure de l'appareil est fausse.
-class ClockWarningBanner extends StatelessWidget {
+class ClockWarningBanner extends StatefulWidget {
   const ClockWarningBanner({super.key});
 
   @override
+  State<ClockWarningBanner> createState() => _ClockWarningBannerState();
+}
+
+class _ClockWarningBannerState extends State<ClockWarningBanner> {
+  @override
+  void initState() {
+    super.initState();
+    loadLastServerDate();
+    startClockWatch();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<Duration?>(
-      valueListenable: clockSkew,
-      builder: (context, skew, _) {
-        if (skew == null || skew.abs() <= clockSkewTolerance) {
-          return const SizedBox.shrink();
-        }
-        final minutes = skew.inMinutes.abs();
-        final ahead = skew.isNegative ? 'en avance' : 'en retard';
+    return ValueListenableBuilder<bool>(
+      valueListenable: clockSuspect,
+      builder: (context, suspect, _) {
+        if (!suspect) return const SizedBox.shrink();
+        final skew = clockSkew.value;
+        final detail = skew != null && skew.abs() > clockSkewTolerance
+            ? "L'heure de cet appareil est ${skew.isNegative ? 'en avance' : 'en retard'} "
+                "d'environ ${skew.inMinutes.abs()} min."
+            : "L'heure de cet appareil est antérieure à la dernière synchronisation.";
         return Material(
           color: Colors.orange.shade800,
           child: SafeArea(
@@ -59,8 +123,7 @@ class ClockWarningBanner extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      "L'heure de cet appareil est $ahead d'environ $minutes min. "
-                      "Corrigez la date et l'heure pour éviter des erreurs de synchronisation.",
+                      '$detail Encaissement bloqué : corrigez la date et l\'heure de l\'appareil.',
                       style: const TextStyle(color: Colors.white, fontSize: 13),
                     ),
                   ),
