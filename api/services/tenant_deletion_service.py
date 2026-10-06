@@ -47,6 +47,7 @@ from api.models.PayrollPeriod import PayrollPeriod
 from api.models.PosRegister import PosRegister
 from api.models.Product import Product
 from api.models.ProductWarehousePrice import ProductWarehousePrice
+from api.models.ProductPriceTier import ProductPriceTier
 from api.models.Proforma import Proforma, ProformaItem
 from api.models.Purchase import Purchase
 from api.models.PurchaseItem import PurchaseItem
@@ -80,7 +81,7 @@ TENANT_SCOPED_MODELS = [
     HousekeepingTask, Ingredient, InstallationCode, InventoryRecord,
     InvoiceItem, Invoice, LoanRepayment, MenuItem, ModifierOption, ModifierGroup,
     OfflineSyncQueue, Payment, PayrollLoanDeduction, PayrollEntry, PayrollPeriod,
-    PosRegister, ProductWarehousePrice, ProformaItem, Proforma,
+    PosRegister, ProductWarehousePrice, ProductPriceTier, ProformaItem, Proforma,
     PurchaseItem, PurchaseReceiptItem, PurchaseReceipt, Purchase,
     RestaurantOrderItem, RestaurantOrder, RestaurantTable, Retrait,
     ReturnRecord, RoomAttribute, SaleItem, Sale, StockMovement,
