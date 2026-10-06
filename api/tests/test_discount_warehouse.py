@@ -97,3 +97,24 @@ def test_sync_pull_discounts_scoped_and_global(db, world):
                           claims={"tenant_id": world["tenant"].id, "tenant_type": "shared"}, db=db)
     names = {r["name"] for r in res["results"]["discount"]["records"]}
     assert names == {"Rabais tous"}
+
+
+def test_sync_pull_users_not_filtered_by_depot(db, world):
+    from api.models.User import User
+    db.add(User(tenant_id=world["tenant"].id, fname="Caissier", lname="A", username="caissier_a",
+                email="c@t.com", password="x", roles=["cashier"], warehouse_id=[world["wh_a"].id]))
+    db.commit()
+    body = PullBatchRequest(cursors={"user": "1970-01-01T00:00:00"})
+    res = sync_pull_batch(body=body, request=_req(world["wh_b"].id),
+                          claims={"tenant_id": world["tenant"].id, "tenant_type": "shared"}, db=db)
+    assert "caissier_a" in {r["username"] for r in res["results"]["user"]["records"]}
+
+
+def test_sync_pull_global_app_config_kept(db, world):
+    from api.models.AppConfig import AppConfig
+    db.add(AppConfig(tenant_id=world["tenant"].id, warehouse_id=None, business_name="Global"))
+    db.commit()
+    body = PullBatchRequest(cursors={"app_config": "1970-01-01T00:00:00"})
+    res = sync_pull_batch(body=body, request=_req(world["wh_b"].id),
+                          claims={"tenant_id": world["tenant"].id, "tenant_type": "shared"}, db=db)
+    assert "Global" in {r["business_name"] for r in res["results"]["app_config"]["records"]}

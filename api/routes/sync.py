@@ -222,10 +222,12 @@ def require_sync_token(
 _WAREHOUSE_HEADER = "X-Warehouse-Id"
 
 # Entités partagées au niveau du tenant (pas de dépôt).
-_SHARED_TENANT_ENTITIES = {"warehouse", "category", "supplier", "customer"}
+# "user" : warehouse_id est une liste JSON (plusieurs dépôts) — non filtrable en
+# SQL ; les comptes restent au niveau du tenant pour que les caisses puissent se connecter.
+_SHARED_TENANT_ENTITIES = {"warehouse", "category", "supplier", "customer", "user"}
 
 # Entités dont warehouse_id peut être NULL = partagées par tous les dépôts.
-_NULLABLE_WAREHOUSE_ENTITIES = {"discount"}
+_NULLABLE_WAREHOUSE_ENTITIES = {"discount", "app_config"}
 
 # Lignes enfants sans warehouse_id : rattachées à leur parent.
 _CHILD_PARENT: dict[str, tuple[str, Any]] = {
@@ -430,7 +432,9 @@ def sync_push(
 
     for rec in body.records:
         # Une installation ne pousse que les lignes de son dépôt (entités propres à un dépôt).
-        if wh_id and "warehouse_id" in col_names and rec.get("warehouse_id") != wh_id:
+        if (wh_id and "warehouse_id" in col_names
+                and body.entity_type not in _SHARED_TENANT_ENTITIES
+                and rec.get("warehouse_id") != wh_id):
             nullable_ok = body.entity_type in _NULLABLE_WAREHOUSE_ENTITIES and rec.get("warehouse_id") is None
             if not nullable_ok:
                 skipped += 1

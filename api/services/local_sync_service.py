@@ -233,7 +233,9 @@ def _get_sync_state(db: Session, entity_type: str) -> SyncState:
 
 
 # Entités dont warehouse_id peut être NULL (partagées par tous les dépôts).
-_NULLABLE_WAREHOUSE_ETYPES = {"discount"}
+_NULLABLE_WAREHOUSE_ETYPES = {"discount", "app_config"}
+# Entités au niveau du tenant malgré une colonne warehouse_id (user : liste JSON).
+_TENANT_LEVEL_ETYPES = {"user"}
 
 
 def _installer_warehouse_id() -> str:
@@ -347,7 +349,7 @@ def _run_sync_inner(db: Session) -> dict:
                 query = db.query(model)
                 # Entités propres à un dépôt : n'envoyer que les lignes de ce dépôt.
                 _wh = _installer_warehouse_id()
-                if _wh and hasattr(model, "warehouse_id"):
+                if _wh and hasattr(model, "warehouse_id") and etype not in _TENANT_LEVEL_ETYPES:
                     if etype in _NULLABLE_WAREHOUSE_ETYPES:
                         query = query.filter(sa_or_(model.warehouse_id.is_(None), model.warehouse_id == _wh))
                     else:
@@ -460,7 +462,8 @@ def _run_sync_inner(db: Session) -> dict:
             _wh = _installer_warehouse_id()
             for rec in records:
                 # Réception : ignorer toute ligne propre à un autre dépôt.
-                if _wh and hasattr(model, "warehouse_id") and rec.get("warehouse_id") != _wh:
+                if (_wh and hasattr(model, "warehouse_id") and etype not in _TENANT_LEVEL_ETYPES
+                        and rec.get("warehouse_id") != _wh):
                     if not (etype in _NULLABLE_WAREHOUSE_ETYPES and rec.get("warehouse_id") is None):
                         skipped += 1
                         continue
