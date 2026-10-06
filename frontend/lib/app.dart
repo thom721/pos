@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:pos_connect/core/clock_check.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/core/constants.dart';
@@ -225,6 +226,12 @@ class _PosAppState extends ConsumerState<PosApp> {
       scaffoldMessengerKey: _messengerKey,
       theme: AppTheme.light,
       routerConfig: router,
+      builder: (context, child) => Column(
+        children: [
+          const ClockWarningBanner(),
+          Expanded(child: child ?? const SizedBox.shrink()),
+        ],
+      ),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pos_connect/core/clock_check.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/local_https.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
@@ -119,6 +120,7 @@ Dio createDio() {
 
   dio.interceptors.add(AuthInterceptor(dio));
   dio.interceptors.add(OfflineInterceptor());
+  dio.interceptors.add(ClockInterceptor());
   if (!kReleaseMode) {
     dio.interceptors.add(LogInterceptor(
       requestBody: true,
@@ -172,6 +174,15 @@ String? _extractDetail(DioException err) {
 }
 
 // ── Offline interceptor ───────────────────────────────────────────────────────
+
+/// Relève l'heure du serveur (en-tête Date) pour détecter une horloge fausse.
+class ClockInterceptor extends Interceptor {
+  @override
+  void onResponse(Response response, ResponseInterceptorHandler handler) {
+    recordServerDate(response.headers.value('date'));
+    handler.next(response);
+  }
+}
 
 class OfflineInterceptor extends Interceptor {
   static bool _isMutation(String method) =>
