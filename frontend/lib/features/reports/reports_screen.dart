@@ -121,16 +121,19 @@ String haitiMidnightToUtcIso(DateTime haitiDate) {
 /// vers le cache SQLite local (déjà prévu dans SaleRepository.getSales)
 /// permet ainsi au Rapport de rester consultable même hors connexion,
 /// au lieu d'échouer systématiquement en attendant une réponse serveur.
-Future<List<SaleModel>> _fetchAllSalesForRange(DateTime from, DateTime to) async {
+Future<List<SaleModel>> _fetchAllSalesForRange(DateTime from, DateTime to,
+    {String? itemType}) async {
   const limit = 100;
   final repo = SaleRepository();
   final fromUtc = DateTime.parse(haitiMidnightToUtcIso(from));
   final toUtc = DateTime.parse(haitiMidnightToUtcIso(to));
 
-  final first = await repo.getSales(page: 1, limit: limit, dateFrom: fromUtc, dateTo: toUtc);
+  final first = await repo.getSales(
+      page: 1, limit: limit, dateFrom: fromUtc, dateTo: toUtc, itemType: itemType);
   final all = <SaleModel>[...first.data];
   for (var p = 2; p <= first.meta.pages; p++) {
-    final res = await repo.getSales(page: p, limit: limit, dateFrom: fromUtc, dateTo: toUtc);
+    final res = await repo.getSales(
+        page: p, limit: limit, dateFrom: fromUtc, dateTo: toUtc, itemType: itemType);
     all.addAll(res.data);
   }
   return all;
@@ -690,8 +693,9 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
 
 // ── Print config dialog ────────────────────────────────────────────────────
 
-Future<List<SaleModel>> fetchSalesForRange(DateTime from, DateTime to) =>
-    _fetchAllSalesForRange(from, to);
+Future<List<SaleModel>> fetchSalesForRange(DateTime from, DateTime to,
+        {String? itemType}) =>
+    _fetchAllSalesForRange(from, to, itemType: itemType);
 
 class _PrintConfigDialog extends ConsumerStatefulWidget {
   final ReportParams currentParams;
@@ -708,6 +712,11 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
   String? _selectedUserId;
   String? _selectedUserName;
   bool _loading = false;
+  // null = tous les types (comportement actuel, inchangé) ; "product"/
+  // "service" filtrent le rapport — même convention que l'onglet
+  // Produit/Service de l'écran Ventes (une vente mixte apparaît dans les
+  // deux filtres, jamais perdue).
+  String? _itemType;
 
   @override
   void initState() {
@@ -845,6 +854,30 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
                 error: (e, _) => Text('Erreur: $e',
                     style: const TextStyle(color: AppColors.error)),
               ),
+            const SizedBox(height: 20),
+
+            // ── Type d'article ──────────────────────────────────────
+            const Text('Type',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary)),
+            const SizedBox(height: 8),
+            SegmentedButton<String?>(
+              segments: const [
+                ButtonSegment(value: null, label: Text('Tous')),
+                ButtonSegment(
+                    value: 'product',
+                    label: Text('Produit'),
+                    icon: Icon(Icons.inventory_2_outlined, size: 15)),
+                ButtonSegment(
+                    value: 'service',
+                    label: Text('Service'),
+                    icon: Icon(Icons.design_services_outlined, size: 15)),
+              ],
+              selected: {_itemType},
+              onSelectionChanged: (s) => setState(() => _itemType = s.first),
+            ),
           ],
         ),
       ),
@@ -949,7 +982,7 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
     setState(() => _loading = true);
     try {
       final toExclusive = _to.add(const Duration(days: 1));
-      final sales = await fetchSalesForRange(_from, toExclusive);
+      final sales = await fetchSalesForRange(_from, toExclusive, itemType: _itemType);
 
       final filtered = canViewAll
           ? (_selectedUserName != null
@@ -1009,7 +1042,7 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
     setState(() => _loading = true);
     try {
       final toExclusive = _to.add(const Duration(days: 1));
-      final sales = await fetchSalesForRange(_from, toExclusive);
+      final sales = await fetchSalesForRange(_from, toExclusive, itemType: _itemType);
 
       final filteredSales = canViewAll
           ? (_selectedUserName != null
