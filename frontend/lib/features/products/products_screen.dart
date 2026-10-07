@@ -110,6 +110,9 @@ class _ProductsBody extends ConsumerWidget {
     ref.listen<WarehouseModel?>(activeWarehouseProvider, (prev, next) {
       if (prev?.id != next?.id) ref.read(productsPageProvider.notifier).state = 1;
     });
+    ref.listen<String>(productItemTypeProvider, (prev, next) {
+      if (prev != next) ref.read(productsPageProvider.notifier).state = 1;
+    });
 
     final productsAsync = ref.watch(productsProvider);
 
@@ -1196,6 +1199,22 @@ class _ProductsToolbar extends ConsumerWidget {
       onChanged: (v) => ref.read(productSearchProvider.notifier).state = v,
     );
 
+    final itemTypeToggle = SegmentedButton<String>(
+      segments: const [
+        ButtonSegment(
+            value: 'product',
+            label: Text('Produit'),
+            icon: Icon(Icons.inventory_2_outlined, size: 15)),
+        ButtonSegment(
+            value: 'service',
+            label: Text('Service'),
+            icon: Icon(Icons.design_services_outlined, size: 15)),
+      ],
+      selected: {ref.watch(productItemTypeProvider)},
+      onSelectionChanged: (s) =>
+          ref.read(productItemTypeProvider.notifier).state = s.first,
+    );
+
     return Container(
       color: AppColors.surface,
       padding: EdgeInsets.all(context.hPad),
@@ -1204,6 +1223,8 @@ class _ProductsToolbar extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 searchField,
+                const SizedBox(height: 8),
+                Align(alignment: Alignment.centerLeft, child: itemTypeToggle),
                 if (canCreate || canManageCat) ...[
                   const SizedBox(height: 8),
                   Row(
@@ -1248,6 +1269,8 @@ class _ProductsToolbar extends ConsumerWidget {
           : Row(
               children: [
                 Expanded(child: searchField),
+                const SizedBox(width: 12),
+                itemTypeToggle,
                 if (canManageCat) ...[
                   const SizedBox(width: 12),
                   OutlinedButton.icon(
@@ -1457,6 +1480,9 @@ class _ProductTable extends ConsumerWidget {
         (ref.watch(entrepotsProvider).valueOrNull?.isNotEmpty) ?? false;
     final canReturnToEntrepot =
         canAdjustStock && hasEntrepots && activeWarehouse != null;
+    // Stock/Seuil alerte n'ont pas de sens pour l'onglet Service (toujours
+    // vides — voir Product.is_service).
+    final showStockCols = ref.watch(productItemTypeProvider) != 'service';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -1499,8 +1525,8 @@ class _ProductTable extends ConsumerWidget {
                   ),
                 ),
               ),
-              const DataColumn(label: Text('Stock')),
-              const DataColumn(label: Text('Seuil alerte'), numeric: true),
+              if (showStockCols) const DataColumn(label: Text('Stock')),
+              if (showStockCols) const DataColumn(label: Text('Seuil alerte'), numeric: true),
               if (canEdit || canAdjustStock || canViewHistory) const DataColumn(label: Text(''), numeric: true),
             ],
             rows: products.map((p) {
@@ -1530,9 +1556,10 @@ class _ProductTable extends ConsumerWidget {
                         fontSize: 13))),
                 DataCell(_MarginChip(
                     purchasePrice: p.purchasePrice, salePrice: p.salePrice)),
-                DataCell(_StockChip(product: p)),
-                DataCell(Text('${p.alertStock}',
-                    style: const TextStyle(fontSize: 13))),
+                if (showStockCols) DataCell(_StockChip(product: p)),
+                if (showStockCols)
+                  DataCell(Text('${p.alertStock}',
+                      style: const TextStyle(fontSize: 13))),
                 if (canEdit || canAdjustStock || canViewHistory)
                   DataCell(Row(
                     mainAxisSize: MainAxisSize.min,

@@ -34,6 +34,9 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
   final _searchCtrl = TextEditingController();
   String? _statusFilter;
   DateTimeRange? _dateRange;
+  // Onglet "Produit" / "Service" — "product" sélectionné par défaut (voir
+  // Product.is_service). Une vente mixte apparaît dans les deux onglets.
+  String _itemType = 'product';
 
   @override
   void dispose() {
@@ -77,6 +80,23 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
       onPick: _pickDateRange,
       onClear: () => _setDateRange(null),
     );
+    final itemTypeToggle = SegmentedButton<String>(
+      segments: const [
+        ButtonSegment(
+            value: 'product',
+            label: Text('Produit'),
+            icon: Icon(Icons.inventory_2_outlined, size: 15)),
+        ButtonSegment(
+            value: 'service',
+            label: Text('Service'),
+            icon: Icon(Icons.design_services_outlined, size: 15)),
+      ],
+      selected: {_itemType},
+      onSelectionChanged: (s) {
+        setState(() => _itemType = s.first);
+        _updateParams(itemType: s.first);
+      },
+    );
 
     return Column(
       children: [
@@ -90,6 +110,10 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                   children: [
                     searchField,
                     const SizedBox(height: 12),
+                    Align(
+                        alignment: Alignment.centerLeft,
+                        child: itemTypeToggle),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         statusDropdown,
@@ -102,6 +126,8 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
               : Row(
                   children: [
                     Expanded(child: searchField),
+                    const SizedBox(width: 12),
+                    itemTypeToggle,
                     const SizedBox(width: 12),
                     statusDropdown,
                     const SizedBox(width: 12),
@@ -158,10 +184,11 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
       dateTo: range != null
           ? haitiDayStartUtc(range.end.add(const Duration(days: 1)))
           : null,
+      itemType: current.itemType,
     );
   }
 
-  void _updateParams({String? search, String? status}) {
+  void _updateParams({String? search, String? status, String? itemType}) {
     final current = ref.read(saleListParamsProvider);
     ref.read(saleListParamsProvider.notifier).state = SaleListParams(
       page: 1,
@@ -169,6 +196,7 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
       status: status ?? _statusFilter,
       dateFrom: current.dateFrom,
       dateTo: current.dateTo,
+      itemType: itemType ?? _itemType,
     );
   }
 }

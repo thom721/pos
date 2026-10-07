@@ -105,7 +105,8 @@ class ProductService(TenantService):
 
     def list(self, page: int = 1, per_page: int = 5, search: Optional[str] = None,
              category_id: Optional[str] = None, exclude_locked: bool = False,
-             warehouse_id: Optional[str] = None, restrict_to_warehouse: bool = True):
+             warehouse_id: Optional[str] = None, restrict_to_warehouse: bool = True,
+             item_type: Optional[str] = None):
         # selectinload pour les collections (évite le problème joinedload + pagination)
         query = self._q(Product).options(
             joinedload(Product.category),
@@ -126,6 +127,12 @@ class ProductService(TenantService):
 
         if exclude_locked:
             query = query.filter(Product.is_locked == False)  # noqa: E712
+
+        # Onglet "Produit" / "Service" de l'écran Produits — voir Product.is_service.
+        if item_type == "service":
+            query = query.filter(Product.is_service == True)  # noqa: E712
+        elif item_type == "product":
+            query = query.filter(Product.is_service == False)  # noqa: E712
 
         if warehouse_id and restrict_to_warehouse:
             # Un produit rattaché à UN dépôt précis (Product.warehouse_id) est

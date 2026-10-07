@@ -56,12 +56,13 @@ def list_products(
     search: str | None = None,
     category_id: str | None = None,
     warehouse_id: str | None = None,
+    item_type: str | None = Query(None, pattern="^(product|service)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_READ)),
 ):
     return ProductService(db, tenant_id=current_user.tenant_id).list(
         page=page, per_page=per_page, search=search, category_id=category_id,
-        warehouse_id=warehouse_id,
+        warehouse_id=warehouse_id, item_type=item_type,
     )
 
 

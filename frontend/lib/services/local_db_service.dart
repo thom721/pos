@@ -59,7 +59,7 @@ class LocalDbService {
     }
     _db = await openDatabase(
       dbPath,
-      version: 30,
+      version: 31,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -230,6 +230,11 @@ class LocalDbService {
     if (oldVersion < 27) {
       try { await db.execute("ALTER TABLE customers ADD COLUMN fname TEXT NOT NULL DEFAULT ''"); } catch (_) {}
     }
+    if (oldVersion < 31) {
+      // Product.is_service (pressing, lessive... — pas de stock) — absent
+      // du cache local jusqu'ici, nécessaire à l'onglet Produit/Service.
+      try { await db.execute('ALTER TABLE products ADD COLUMN is_service INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+    }
     if (oldVersion < 30) {
       await _createPriceTiersTable(db);
     }
@@ -263,7 +268,8 @@ class LocalDbService {
         synced         INTEGER NOT NULL DEFAULT 1,
         warehouse_id   TEXT,
         component_product_id TEXT,
-        component_quantity   REAL
+        component_quantity   REAL,
+        is_service     INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -713,6 +719,7 @@ class LocalDbService {
           'warehouse_id': p.warehouseId,
           'component_product_id': p.componentProductId,
           'component_quantity': p.componentQuantity,
+          'is_service': p.isService ? 1 : 0,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -736,6 +743,7 @@ class LocalDbService {
     int limit = 20,
     String? categoryId,
     bool excludeLocked = false,
+    String? itemType,
   }) async {
     final db = _safeDb;
     if (db == null) return _emptyProducts(limit);
@@ -753,6 +761,11 @@ class LocalDbService {
     if (categoryId != null) {
       where.add('category_id = ?');
       args.add(categoryId);
+    }
+    if (itemType == 'service') {
+      where.add('is_service = 1');
+    } else if (itemType == 'product') {
+      where.add('is_service = 0');
     }
 
     final whereStr = where.isEmpty ? null : where.join(' AND ');
@@ -812,6 +825,7 @@ class LocalDbService {
         warehouseId: row['warehouse_id'] as String?,
         componentProductId: row['component_product_id'] as String?,
         componentQuantity: (row['component_quantity'] as num?)?.toDouble(),
+        isService: (row['is_service'] as int? ?? 0) == 1,
       );
 
   // ── Auth hors ligne ───────────────────────────────────────────────────────
@@ -1599,6 +1613,7 @@ class LocalDbService {
     int limit = 15,
     DateTime? dateFrom,
     DateTime? dateTo,
+    String? itemType,
   }) async {
     final db = _safeDb;
     if (db == null) {
@@ -1634,6 +1649,17 @@ class LocalDbService {
       where.add('created_at < ?');
       args.add(toHaitiTime(dateTo.toUtc()).toIso8601String());
     }
+    // Onglet "Produit" / "Service" — voir products.is_service. Une vente
+    // mixte (contient les deux) matche les deux filtres via cet EXISTS.
+    if (itemType == 'service') {
+      where.add('EXISTS (SELECT 1 FROM sale_items si '
+          'JOIN products pr ON pr.id = si.product_id '
+          'WHERE si.sale_id = sales.id AND pr.is_service = 1)');
+    } else if (itemType == 'product') {
+      where.add('EXISTS (SELECT 1 FROM sale_items si '
+          'LEFT JOIN products pr ON pr.id = si.product_id '
+          'WHERE si.sale_id = sales.id AND (pr.id IS NULL OR pr.is_service = 0))');
+    }
     final whereStr = where.isEmpty ? null : where.join(' AND ');
 
     final total = Sqflite.firstIntValue(await db.rawQuery(
@@ -1652,11 +1678,7 @@ class LocalDbService {
 
     final sales = <SaleModel>[];
     for (final row in rows) {
-      final itemRows = await db.query(
-        'sale_items',
-        where: 'sale_id = ?',
-        whereArgs: [row['id']],
-      );
+      final itemRows = await _fetchSaleItemRows(db, row['id'] as String);
       sales.add(_saleFromRow(row, itemRows));
     }
 
@@ -1721,8 +1743,20 @@ class LocalDbService {
     if (db == null) return null;
     final rows = await db.query('sales', where: 'id = ?', whereArgs: [id], limit: 1);
     if (rows.isEmpty) return null;
-    final itemRows = await db.query('sale_items', where: 'sale_id = ?', whereArgs: [id]);
+    final itemRows = await _fetchSaleItemRows(db, id);
     return _saleFromRow(rows.first, itemRows);
+  }
+
+  /// sale_items jointe à products (is_service) — évite une requête produit
+  /// séparée par article et permet au PDF (section Services) et au toggle
+  /// Produit/Service de fonctionner aussi hors-ligne sur Android.
+  Future<List<Map<String, dynamic>>> _fetchSaleItemRows(Database db, String saleId) {
+    return db.rawQuery('''
+      SELECT si.*, COALESCE(pr.is_service, 0) AS is_service
+      FROM sale_items si
+      LEFT JOIN products pr ON pr.id = si.product_id
+      WHERE si.sale_id = ?
+    ''', [saleId]);
   }
 
   Future<void> deleteSale(String saleId) async {
@@ -1773,6 +1807,7 @@ class LocalDbService {
         returnedQty:   r['returned_qty'] != null ? (r['returned_qty'] as num).toDouble() : 0,
         catalogDiscount: r['discount'] != null ? (r['discount'] as num).toDouble() : 0,
         discountId:    r['discount_id'] as String?,
+        isService:     (r['is_service'] as int? ?? 0) == 1,
       )).toList(),
       payments: const [],
     );

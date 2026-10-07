@@ -9,6 +9,10 @@ final productRepositoryProvider = Provider((ref) => ProductRepository());
 
 final productSearchProvider = StateProvider<String>((ref) => '');
 
+// Onglet "Produit" / "Service" de l'écran Produits — "product" sélectionné
+// par défaut (voir Product.is_service).
+final productItemTypeProvider = StateProvider<String>((ref) => 'product');
+
 /// Page courante de la liste "Produits" — remise à 1 par _ProductsBody dès
 /// que la recherche ou le dépôt actif change (voir ref.listen).
 final productsPageProvider = StateProvider.autoDispose<int>((ref) => 1);
@@ -22,12 +26,14 @@ final productsProvider =
   // Le stock affiché reflète le dépôt actif ("Tous les business" = global).
   final warehouseId = ref.watch(activeWarehouseProvider)?.id;
   final page = ref.watch(productsPageProvider);
+  final itemType = ref.watch(productItemTypeProvider);
   final repo = ref.read(productRepositoryProvider);
   return repo.getProducts(
     page: page,
     limit: productsPageSize,
     search: search.isEmpty ? null : search,
     warehouseId: warehouseId,
+    itemType: itemType,
   );
 });
 

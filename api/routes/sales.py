@@ -112,6 +112,7 @@ def read_sales(
     date_from: Optional[datetime] = Query(None),
     date_to: Optional[datetime] = Query(None),
     warehouse_id: Optional[str] = None,
+    item_type: Optional[str] = Query(None, pattern="^(product|service)$"),
 ):
     cashier_id = None
     if not _has_perm(current_user.permissions or [], current_user.roles or [], P.REPORTS_READ_ALL):
@@ -119,7 +120,7 @@ def read_sales(
     return list_sales(db=db, page=page, limit=limit, search=search,
                       status=status, date_from=date_from, date_to=date_to,
                       tenant_id=current_user.tenant_id, cashier_id=cashier_id,
-                      warehouse_id=warehouse_id)
+                      warehouse_id=warehouse_id, item_type=item_type)
 
 
 @router.get("/products/search", response_model=LegacyPaginatedResponse[ProductSaleItem])

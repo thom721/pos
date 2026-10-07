@@ -62,6 +62,7 @@ def list_sales(
     tenant_id: str | None = None,
     cashier_id: str | None = None,
     warehouse_id: str | None = None,
+    item_type: str | None = None,
 ):
     query = (
         db.query(Sale)
@@ -104,6 +105,28 @@ def list_sales(
         if date_to.tzinfo is None:
             date_to = date_to.replace(tzinfo=timezone.utc)
         query = query.filter(Sale.created_at <= date_to)
+
+    # Onglet "Produit" / "Service" de l'écran Ventes : une vente mixte
+    # (contient les deux) apparaît dans les deux onglets — même logique que
+    # "Produit" = au moins un article physique (ou sans produit, ex. plat
+    # resto saisi par label), "Service" = au moins un article is_service.
+    if item_type == "service":
+        query = query.filter(
+            db.query(SaleItem.id)
+            .join(Product, SaleItem.product_id == Product.id)
+            .filter(SaleItem.sale_id == Sale.id, Product.is_service == True)  # noqa: E712
+            .exists()
+        )
+    elif item_type == "product":
+        query = query.filter(
+            db.query(SaleItem.id)
+            .outerjoin(Product, SaleItem.product_id == Product.id)
+            .filter(
+                SaleItem.sale_id == Sale.id,
+                or_(Product.id.is_(None), Product.is_service == False),  # noqa: E712
+            )
+            .exists()
+        )
 
     total = query.count()
 

@@ -29,6 +29,7 @@ class SaleRepository {
     String? cashierId,
     DateTime? dateFrom,
     DateTime? dateTo,
+    String? itemType,
   }) async {
     // Android : source de vérité = SQLite (alimenté par OfflineCacheService)
     if (_isAndroid) {
@@ -41,6 +42,7 @@ class SaleRepository {
         limit: limit,
         dateFrom: dateFrom,
         dateTo: dateTo,
+        itemType: itemType,
       );
     }
 
@@ -52,6 +54,7 @@ class SaleRepository {
       if (warehouseId != null) 'warehouse_id': warehouseId,
       if (dateFrom != null) 'date_from': dateFrom.toIso8601String(),
       if (dateTo != null) 'date_to': dateTo.toIso8601String(),
+      if (itemType != null) 'item_type': itemType,
     };
     final res = await dio.get('/api/sales/', queryParameters: params);
     return PaginatedResponse.fromJson(res.data, SaleModel.fromJson);

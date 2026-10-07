@@ -16,6 +16,7 @@ class ProductRepository {
     String? search,
     String? categoryId,
     String? warehouseId,
+    String? itemType,
   }) async {
     // Le cache local (offline Android) stocke stock/prix déjà scopés au dépôt
     // actif — c'est offline_cache_service.dart::_syncProducts qui les peuple
@@ -24,9 +25,10 @@ class ProductRepository {
     if (_isAndroid) {
       final cached = await LocalDbService.instance.getProducts(
         search: search, page: page, limit: limit, categoryId: categoryId,
+        itemType: itemType,
       );
       // Cache vide sans filtre actif → fallback API avec pagination + peuplement du cache
-      if (cached.data.isEmpty && search == null && categoryId == null) {
+      if (cached.data.isEmpty && search == null && categoryId == null && itemType == null) {
         try {
           final all = <ProductModel>[];
           int p = 1;
@@ -47,6 +49,7 @@ class ProductRepository {
           if (all.isNotEmpty) await LocalDbService.instance.upsertProducts(all);
           return LocalDbService.instance.getProducts(
             search: search, page: page, limit: limit, categoryId: categoryId,
+            itemType: itemType,
           );
         } catch (_) {
           return cached;
@@ -61,6 +64,7 @@ class ProductRepository {
       if (search != null && search.isNotEmpty) 'search': search,
       if (categoryId != null) 'category_id': categoryId,
       if (warehouseId != null) 'warehouse_id': warehouseId,
+      if (itemType != null) 'item_type': itemType,
     };
     final res = await dio.get('/api/products/', queryParameters: params);
     return PaginatedResponse.fromJson(res.data, ProductModel.fromJson);

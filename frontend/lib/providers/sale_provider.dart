@@ -15,6 +15,8 @@ class SaleListParams {
   final String? status;
   final DateTime? dateFrom;
   final DateTime? dateTo;
+  // Onglet "Produit" / "Service" — "product" par défaut (voir Product.is_service).
+  final String itemType;
 
   const SaleListParams({
     this.page = 1,
@@ -22,6 +24,7 @@ class SaleListParams {
     this.status,
     this.dateFrom,
     this.dateTo,
+    this.itemType = 'product',
   });
 
   @override
@@ -31,10 +34,12 @@ class SaleListParams {
       search == other.search &&
       status == other.status &&
       dateFrom == other.dateFrom &&
-      dateTo == other.dateTo;
+      dateTo == other.dateTo &&
+      itemType == other.itemType;
 
   @override
-  int get hashCode => Object.hash(page, search, status, dateFrom, dateTo);
+  int get hashCode =>
+      Object.hash(page, search, status, dateFrom, dateTo, itemType);
 }
 
 final saleListParamsProvider =
@@ -66,6 +71,7 @@ final salesProvider =
     dateTo: params.dateTo,
     warehouseId: warehouseId,
     cashierId: cashierId,
+    itemType: params.itemType,
   );
 });
 
