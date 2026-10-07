@@ -96,7 +96,12 @@ class _PosAppState extends ConsumerState<PosApp> {
     _triggerSync();
     if (_supportsWebSocket) {
       WebSocketService.instance.start(
-        _triggerSync,
+        () {
+          // Paramètres relus tout de suite (devise, taux…), sans attendre la fin
+          // de la synchro complète ; la synchro reste lancée en parallèle.
+          ref.read(settingsProvider.notifier).reload();
+          _triggerSync();
+        },
         onPermissionsChanged: () => _forceLogout(
           'Vos permissions ont été modifiées par un administrateur — veuillez vous reconnecter.',
         ),
