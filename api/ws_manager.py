@@ -54,9 +54,9 @@ class ConnectionManager:
                 if self._scope.get(ws) is None or warehouse_id in self._scope[ws]
             ]
         if not conns:
-            _log.info("WS notify tenant=%s : aucune connexion active", tenant_id)
+            _log.warning("WS notify tenant=%s : aucune connexion active", tenant_id)
             return
-        _log.info("WS notify tenant=%s : envoi sync à %d connexion(s)", tenant_id, len(conns))
+        _log.warning("WS notify tenant=%s warehouse=%s : envoi sync à %d connexion(s)", tenant_id, warehouse_id, len(conns))
         dead: list[WebSocket] = []
         payload = {"type": "sync"}
         if entities:
@@ -64,7 +64,8 @@ class ConnectionManager:
         for ws in conns:
             try:
                 await ws.send_json(payload)
-            except Exception:
+            except Exception as exc:
+                _log.warning("WS envoi échoué (connexion fermée ?) : %s", exc)
                 dead.append(ws)
         for ws in dead:
             self.disconnect(ws, tenant_id)
