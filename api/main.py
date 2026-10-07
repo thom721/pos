@@ -1967,6 +1967,9 @@ async def _auto_sync_loop():
     _slog = logging.getLogger("pos.autosync")
     await asyncio.sleep(30)  # attendre que le serveur soit prêt
     while True:
+        # Effacer AVANT le cycle : un signal reçu pendant la synchro reste actif
+        # et déclenche un nouveau cycle (sinon il était perdu → attente de 5 min).
+        _sync_event.clear()
         try:
             result = await asyncio.to_thread(_do_sync_cycle)
             if result is None:
@@ -1982,7 +1985,6 @@ async def _auto_sync_loop():
             _slog.error("Sync loop error: %s", exc)
 
         # Attendre le prochain déclencheur : écriture locale OU timeout 5 min
-        _sync_event.clear()
         try:
             await asyncio.wait_for(_sync_event.wait(), timeout=_AUTO_SYNC_INTERVAL)
             # Écriture détectée — debounce pour regrouper les transactions rapides
