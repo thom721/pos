@@ -186,6 +186,20 @@ def test_digest_only_sent_to_configured_roles(db, tenant, product, monkeypatch):
     assert sent[0]["to_addr"] == "manager@t.com"
 
 
+def test_service_product_never_listed_as_low_stock(db, tenant, category):
+    """Un service (is_service) n'a jamais de stock réel — stock toujours 0,
+    alert_stock par défaut >0 → l'exclusion explicite évite qu'il apparaisse
+    à tort comme "en rupture" (dashboard + digest email)."""
+    service = Product(
+        name="Pressing", category_id=category.id, sale_price=250,
+        tenant_id=tenant.id, alert_stock=5, is_service=True,
+    )
+    db.add(service)
+    db.commit()
+
+    assert list_low_stock_products(db, tenant_id=tenant.id) == []
+
+
 def test_digest_skipped_without_smtp_configured(db, tenant, product, monkeypatch):
     db.query(PlatformConfig).first().smtp_host = ""
     _enable_alert(db, tenant)

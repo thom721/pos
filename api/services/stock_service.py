@@ -103,6 +103,8 @@ def list_low_stock_products(
     sous leur seuil d'alerte (Product.alert_stock). Les produits composés en
     sont exclus : leur stock dérive toujours de leur composant, qui apparaît
     lui-même dans cette liste s'il est concerné — voir record_stock_movement.
+    Les services (is_service) en sont exclus aussi : stock toujours à 0, ce
+    qui les ferait apparaître à tort comme "en rupture".
     Utilisé pour l'affichage temps réel (page d'accueil) et pour le digest
     email de fin de journée (api.utils.email.maybe_send_low_stock_digest)."""
     candidates = (
@@ -111,6 +113,7 @@ def list_low_stock_products(
             Product.tenant_id == tenant_id,
             Product.is_active == True,  # noqa: E712
             Product.component_product_id.is_(None),
+            Product.is_service == False,  # noqa: E712
         )
         .all()
     )

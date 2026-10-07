@@ -17,11 +17,13 @@ def get_preview(
     tenant_id: str | None = None,
     warehouse_id: str | None = None,
 ) -> list[dict]:
-    """Return all active products with their current (system) stock for counting."""
+    """Return all active products with their current (system) stock for counting.
+
+    Un service (is_service) n'a pas de stock physique à compter."""
     query = (
         db.query(Product)
         .join(Category, Product.category_id == Category.id)
-        .filter(Product.is_active == True)
+        .filter(Product.is_active == True, Product.is_service == False)  # noqa: E712
     )
     if tenant_id:
         query = query.filter(Product.tenant_id == tenant_id)
