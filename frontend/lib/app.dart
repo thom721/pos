@@ -155,7 +155,7 @@ class _PosAppState extends ConsumerState<PosApp> {
 
   /// Rafraîchissement ciblé : seules les listes des types modifiés sont relues.
   /// Un type inconnu déclenche la synchronisation complète, comme avant.
-  void _refreshEntities(List<String> entities) {
+  Future<void> _refreshEntities(List<String> entities) async {
     const salesTypes = {'sale', 'sale_item', 'payment', 'return_record'};
     const productTypes = {'product', 'product_warehouse_price', 'category'};
     const purchaseTypes = {'purchase', 'purchase_item', 'purchase_receipt', 'purchase_receipt_item'};
@@ -165,6 +165,19 @@ class _PosAppState extends ConsumerState<PosApp> {
       'customer', 'discount', 'product_price_tier', 'app_config', 'config',
     };
     final set = entities.toSet();
+    // Android : les écrans lisent le cache SQLite → mise à jour ciblée du cache
+    // d'abord, puis rechargement. Un type inconnu : synchronisation complète.
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final handled = await OfflineCacheService.instance.syncEntities(
+        entities: entities,
+        warehouseId: ref.read(activeWarehouseProvider)?.id,
+      );
+      if (!handled) {
+        _triggerSync();
+        return;
+      }
+      ref.read(syncEpochProvider.notifier).state++;
+    }
     if (set.intersection({'app_config', 'config'}).isNotEmpty) {
       ref.read(settingsProvider.notifier).reload();
     }

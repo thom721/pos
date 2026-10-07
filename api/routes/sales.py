@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, BackgroundTasks
+from api.ws_manager import manager
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
@@ -64,6 +65,7 @@ def _require_open_session(db: Session, current_user: User) -> None:
 @router.post("/", status_code=201)
 def store_sale(
     payload: SaleCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_CREATE)),
     _plan: None = Depends(require_active_plan),
@@ -74,6 +76,11 @@ def store_sale(
         db, payload, current_user.id, tenant_id=current_user.tenant_id,
         current_user=current_user,
     )
+    # Vente d'un dépôt : signal aux appareils de ce dépôt ; une part à crédit
+    # touche aussi les dettes (tenant-wide).
+    background_tasks.add_task(manager.notify, current_user.tenant_id, sale.warehouse_id, ["sale"])
+    if (sale.final_amount or 0) > (sale.paid_amount or 0):
+        background_tasks.add_task(manager.notify, current_user.tenant_id, None, ["debt"])
     audit_service.log(
         db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         action="CREATE", resource_type="sale", resource_id=sale.id,
@@ -146,23 +153,29 @@ def read_sale(
 def update_sale_endpoint(
     sale_id: str,
     payload: SaleUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_UPDATE)),
     _plan: None = Depends(require_active_plan),
 ):
     _check_discount_permission(payload, current_user)
     sale = update_sale(db, sale_id, payload, current_user.id, tenant_id=current_user.tenant_id)
+    background_tasks.add_task(manager.notify, current_user.tenant_id, sale.warehouse_id, ["sale"])
     return {"message": "Vente modifiée avec succès", "sale_id": sale.id}
 
 
 @router.patch("/{sale_id}/cancel", status_code=200)
 def cancel_sale_endpoint(
     sale_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SALES_CANCEL)),
     _plan: None = Depends(require_active_plan),
 ):
+    from api.models.Sale import Sale as _Sale
+    _wh = db.query(_Sale.warehouse_id).filter(_Sale.id == sale_id).scalar()
     cancel_sale(db, sale_id, current_user.id, tenant_id=current_user.tenant_id)
+    background_tasks.add_task(manager.notify, current_user.tenant_id, _wh, ["sale", "debt"])
     audit_service.log(
         db, user_id=current_user.id, tenant_id=current_user.tenant_id,
         action="CANCEL", resource_type="sale", resource_id=sale_id,

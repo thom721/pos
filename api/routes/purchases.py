@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from api.ws_manager import manager
 from sqlalchemy.orm import Session
 from api.models.User import User
 from datetime import datetime
@@ -16,10 +17,12 @@ router = APIRouter(prefix="/api/purchases", tags=["Purchases"])
 @router.post("/", status_code=201)
 def store_purchase(
     payload: PurchaseCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PURCHASES_CREATE)),
 ):
     purchase = create_purchase(db, payload, current_user.id, tenant_id=current_user.tenant_id)
+    background_tasks.add_task(manager.notify, current_user.tenant_id, purchase.warehouse_id, ["purchase"])
     return {"message": "Achat enregistre avec succes", "purchase_id": purchase.id}
 
 

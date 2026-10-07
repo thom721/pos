@@ -128,6 +128,30 @@ class OfflineCacheService {
 
   // ── Produits ──────────────────────────────────────────────────────────────
 
+  /// Mise à jour ciblée du cache : seulement les types de données signalés.
+  /// Retourne false si un type est inconnu (l'appelant lance alors syncAll).
+  Future<bool> syncEntities({required List<String> entities, String? warehouseId}) async {
+    final types = entities.toSet();
+    const known = {
+      'sale', 'purchase', 'customer', 'debt', 'payment',
+      'product', 'product_warehouse_price', 'category',
+      'product_price_tier', 'discount', 'app_config', 'config',
+    };
+    if (types.difference(known).isNotEmpty) return false;
+    final jobs = <Future<void>>[];
+    if (types.contains('sale')) jobs.add(_syncSales(warehouseId: warehouseId));
+    if (types.contains('purchase')) jobs.add(_syncPurchases(warehouseId: warehouseId));
+    if (types.contains('customer')) jobs.add(_syncCustomers());
+    if (types.contains('debt') || types.contains('payment')) jobs.add(_syncDebts());
+    if (types.intersection({'product', 'product_warehouse_price', 'category'}).isNotEmpty) {
+      jobs.add(_syncProducts(warehouseId: warehouseId));
+    }
+    if (types.contains('product_price_tier')) jobs.add(_syncPriceTiers(warehouseId: warehouseId));
+    if (types.contains('discount')) jobs.add(_syncDiscounts());
+    await Future.wait(jobs);
+    return true;
+  }
+
   Future<void> _syncPriceTiers({String? warehouseId}) async {
     if (warehouseId == null) return;
     try {

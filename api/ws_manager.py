@@ -43,7 +43,8 @@ class ConnectionManager:
                 if not user_conns:
                     del self._user_connections[user_id]
 
-    async def notify(self, tenant_id: str, warehouse_id: str | None = None) -> None:
+    async def notify(self, tenant_id: str, warehouse_id: str | None = None,
+                     entities: list[str] | None = None) -> None:
         """Signal 'sync' au tenant. Avec warehouse_id : seulement aux connexions de
         ce dépôt, et à celles sans dépôt précis (données partagées)."""
         conns = list(self._connections.get(tenant_id, set()))
@@ -57,9 +58,12 @@ class ConnectionManager:
             return
         _log.info("WS notify tenant=%s : envoi sync à %d connexion(s)", tenant_id, len(conns))
         dead: list[WebSocket] = []
+        payload = {"type": "sync"}
+        if entities:
+            payload["entities"] = entities
         for ws in conns:
             try:
-                await ws.send_json({"type": "sync"})
+                await ws.send_json(payload)
             except Exception:
                 dead.append(ws)
         for ws in dead:
@@ -102,13 +106,14 @@ class ConnectionManager:
         for tenant_id, ws in dead:
             self.disconnect(ws, tenant_id)
 
-    def notify_threadsafe(self, tenant_id: str, warehouse_id: str | None = None) -> None:
+    def notify_threadsafe(self, tenant_id: str, warehouse_id: str | None = None,
+                          entities: list[str] | None = None) -> None:
         """Fire-and-forget notify from a synchronous context (e.g. a threadpool endpoint)."""
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 loop.call_soon_threadsafe(
-                    lambda: asyncio.ensure_future(self.notify(tenant_id, warehouse_id))
+                    lambda: asyncio.ensure_future(self.notify(tenant_id, warehouse_id, entities))
                 )
         except RuntimeError:
             pass

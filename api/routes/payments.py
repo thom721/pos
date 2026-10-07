@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, BackgroundTasks
+from api.ws_manager import manager
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -16,10 +17,13 @@ router = APIRouter(prefix="/api/payments", tags=["Payments"])
 @router.post("/", response_model=PaymentResponse, status_code=201)
 def store_payment(
     payload: PaymentCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PAYMENTS_CREATE)),
 ):
-    return add_payment(db, payload, current_user.id, tenant_id=current_user.tenant_id)
+    result = add_payment(db, payload, current_user.id, tenant_id=current_user.tenant_id)
+    background_tasks.add_task(manager.notify, current_user.tenant_id, None, ["payment", "debt"])
+    return result
 
 
 @router.get("/", response_model=List[PaymentResponse])
