@@ -100,6 +100,9 @@ def main() -> None:
         port=port,
         log_level="info",
         reload=args.reload,
+        # Protocole WebSocket explicite : en mode auto, uvicorn ne trouve pas la
+        # bibliothèque dans l'exécutable compilé et répond 404 à /ws.
+        ws="websockets",
     )
 
 
