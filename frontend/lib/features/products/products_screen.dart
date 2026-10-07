@@ -1544,7 +1544,7 @@ class _ProductTable extends ConsumerWidget {
                           tooltip: 'Historique des mouvements',
                           onPressed: () => _openStockHistory(context, ref, p),
                         ),
-                      if (canAdjustStock)
+                      if (canAdjustStock && !p.isService)
                         IconButton(
                           icon: const Icon(Icons.add_box_outlined,
                               size: 18, color: AppColors.accent),
@@ -1656,6 +1656,19 @@ class _StockChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (product.isService) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: AppColors.textSecondary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.3)),
+        ),
+        child: const Text('Service',
+            style: TextStyle(
+                color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+      );
+    }
     if (product.stock == null) {
       return const Text('—', style: TextStyle(fontSize: 13));
     }
@@ -1782,7 +1795,11 @@ class _ProductCard extends ConsumerWidget {
                         color: AppColors.primary,
                         fontWeight: FontWeight.w700,
                         fontSize: 14)),
-                if (product.stock != null)
+                if (product.isService)
+                  const Text('Service',
+                      style: TextStyle(
+                          fontSize: 12, color: AppColors.textSecondary))
+                else if (product.stock != null)
                   canAdjust
                       ? GestureDetector(
                           onTap: () => showDialog(
@@ -1855,6 +1872,9 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
   List<CategoryModel> _categories = [];
   List<WarehouseModel> _warehouses = [];
 
+  // Service (ex: pressing, lessive) : pas de stock ni de quantité suivie.
+  bool _isService = false;
+
   // Produit composé (ex: "Caisse" = 12 x "Boîte")
   bool _isComposite = false;
   String? _componentProductId;
@@ -1894,6 +1914,7 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
     _warehouseId = isEdit
         ? widget.product?.warehouseId
         : ref.read(activeWarehouseProvider)?.id;
+    _isService = widget.product?.isService ?? false;
     _isComposite = widget.product?.isComposite ?? false;
     _componentProductId = widget.product?.componentProductId;
     _componentQtyCtrl = TextEditingController(
@@ -2137,31 +2158,53 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                   ),
                 ],
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _alertCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                      labelText: 'Seuil d\'alerte stock'),
-                ),
-                const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Produit composé'),
+                  title: const Text('Service'),
                   subtitle: const Text(
-                    'Ex: "Caisse" = 12 x "Boîte" — le stock réel est suivi sur '
-                    'le produit choisi, pas sur celui-ci.',
+                    'Ex: pressing, lessive — aucune quantité ni stock '
+                    'suivis, vendable sans limite.',
                     style: TextStyle(fontSize: 11),
                   ),
-                  value: _isComposite,
+                  value: _isService,
                   onChanged: (v) => setState(() {
-                    _isComposite = v;
-                    if (!v) {
+                    _isService = v;
+                    if (v) {
+                      _isComposite = false;
                       _componentProductId = null;
                       _componentProductName = null;
                       _componentQtyCtrl.clear();
                     }
                   }),
                 ),
+                if (!_isService) ...[
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _alertCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'Seuil d\'alerte stock'),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Produit composé'),
+                    subtitle: const Text(
+                      'Ex: "Caisse" = 12 x "Boîte" — le stock réel est suivi sur '
+                      'le produit choisi, pas sur celui-ci.',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                    value: _isComposite,
+                    onChanged: (v) => setState(() {
+                      _isComposite = v;
+                      if (!v) {
+                        _componentProductId = null;
+                        _componentProductName = null;
+                        _componentQtyCtrl.clear();
+                      }
+                    }),
+                  ),
+                ],
                 if (_isComposite) ...[
                   const SizedBox(height: 8),
                   InkWell(
@@ -2508,6 +2551,7 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
         'component_product_id': _isComposite ? _componentProductId : null,
         'component_quantity':
             _isComposite ? double.tryParse(_componentQtyCtrl.text) : null,
+        'is_service': _isService,
       };
       final repo = ProductRepository();
       if (isEdit) {
@@ -2934,9 +2978,11 @@ class _SingleProductPickerDialogState extends State<_SingleProductPickerDialog> 
       if (!mounted) return;
       setState(() {
         // Un produit composé ne peut pas lui-même être composant (évite les
-        // chaînes/cycles) ; on exclut aussi le produit en cours d'édition.
+        // chaînes/cycles) ; un service n'a pas de stock à suivre ; on exclut
+        // aussi le produit en cours d'édition.
         _all = all
-            .where((p) => p.id != widget.excludeId && !p.isComposite)
+            .where((p) =>
+                p.id != widget.excludeId && !p.isComposite && !p.isService)
             .toList();
         _loading = false;
       });

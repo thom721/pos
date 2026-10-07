@@ -65,6 +65,9 @@ class ProductModel {
   // Présent uniquement juste après un changement de dépôt qui a migré du
   // stock existant — jamais persisté, à usage unique (afficher un message).
   final String? stockMigrationNote;
+  // Service (ex: pressing, lessive) : pas de stock ni de quantité suivie —
+  // voir api/models/Product.py.
+  final bool isService;
 
   ProductModel({
     required this.id,
@@ -84,9 +87,10 @@ class ProductModel {
     this.componentQuantity,
     this.compositeRemainder,
     this.stockMigrationNote,
+    this.isService = false,
   });
 
-  bool get isLowStock => stock != null && stock! <= alertStock;
+  bool get isLowStock => !isService && stock != null && stock! <= alertStock;
   bool get isComposite => componentProductId != null && componentQuantity != null;
 
   factory ProductModel.fromJson(Map<String, dynamic> json) => ProductModel(
@@ -116,6 +120,7 @@ class ProductModel {
             ? (json['composite_remainder'] as num?)?.toDouble()
             : null,
         stockMigrationNote: json['stock_migration_note']?.toString(),
+        isService: json['is_service'] == true,
       );
 
   Map<String, dynamic> toJson() => {
@@ -133,5 +138,6 @@ class ProductModel {
         'component_product_id': componentProductId,
         'component_quantity': componentQuantity,
         'composite_remainder': compositeRemainder,
+        'is_service': isService,
       };
 }

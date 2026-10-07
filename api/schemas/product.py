@@ -20,6 +20,9 @@ class ProductBase(BaseModel):
     # n'a alors plus de stock propre (dérivé du composant).
     component_product_id: Optional[str] = None
     component_quantity: Optional[float] = None
+    # Service (ex: pressing, lessive) : pas de stock ni de quantité suivie —
+    # voir api/models/Product.py et api/services/sale_service.py.
+    is_service: bool = False
 
 
 class ProductCreate(ProductBase):
@@ -62,6 +65,7 @@ class ProductUpdate(BaseModel):
     is_locked: Optional[bool] = None
     component_product_id: Optional[str] = None
     component_quantity: Optional[float] = None
+    is_service: bool = False
 
 
 class ProductSaleItem(BaseModel):
@@ -70,6 +74,7 @@ class ProductSaleItem(BaseModel):
     barcode: str | None
     sale_price: float
     alert_stock: int
+    is_service: bool = False
     category: Optional[CategoryRead] = None
 
 class WarehousePriceRead(BaseModel):

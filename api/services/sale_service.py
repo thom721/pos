@@ -221,8 +221,17 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
         for p in db.query(Product).filter(Product.id.in_(new_product_ids)).all()
     }
 
+    old_product_ids = [str(old_item.product_id) for old_item in sale.items]
+    old_products = {
+        p.id: p
+        for p in db.query(Product).filter(Product.id.in_(old_product_ids)).all()
+    }
+
     # 1. Revert stock for old items
     for old_item in sale.items:
+        old_product = old_products.get(str(old_item.product_id))
+        if old_product is not None and old_product.is_service:
+            continue
         record_stock_movement(
             db,
             product_id=old_item.product_id,
@@ -280,18 +289,19 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
             discount_id=item_disc_id,
             tenant_id=tenant_id,
         ))
-        record_stock_movement(
-            db,
-            product_id=product.id,
-            user_id=user_id,
-            tenant_id=tenant_id,
-            warehouse_id=sale.warehouse_id,
-            type=StockType.out,
-            quantity=-item.quantity,
-            source_type="SALE",
-            source_id=sale.id,
-            note="Vente POS (modification)",
-        )
+        if not product.is_service:
+            record_stock_movement(
+                db,
+                product_id=product.id,
+                user_id=user_id,
+                tenant_id=tenant_id,
+                warehouse_id=sale.warehouse_id,
+                type=StockType.out,
+                quantity=-item.quantity,
+                source_type="SALE",
+                source_id=sale.id,
+                note="Vente POS (modification)",
+            )
 
     # 4. Recalculate totals
     net_before_receipt_discount = Decimal(str(new_total)) - new_item_discount_total
@@ -546,19 +556,22 @@ def create_sale(
         if not product:
             raise HTTPException(404, "Produit introuvable")
 
-        # wh_id absent (tenant sans aucun Warehouse — install mono-dépôt/local)
-        # → repli sur le total global, comportement inchangé pour ces cas.
-        if wh_id:
-            if float(product.available_quantity_at(wh_id)) < item.quantity:
+        # Un service (pressing, lessive...) n'a ni stock ni quantité
+        # disponible à vérifier — voir Product.is_service.
+        if not product.is_service:
+            # wh_id absent (tenant sans aucun Warehouse — install mono-dépôt/local)
+            # → repli sur le total global, comportement inchangé pour ces cas.
+            if wh_id:
+                if float(product.available_quantity_at(wh_id)) < item.quantity:
+                    raise HTTPException(
+                        400,
+                        f"Stock insuffisant pour {product.name} dans ce dépôt"
+                    )
+            elif float(product.available_quantity) < item.quantity:
                 raise HTTPException(
                     400,
-                    f"Stock insuffisant pour {product.name} dans ce dépôt"
+                    f"Stock insuffisant pour {product.name}"
                 )
-        elif float(product.available_quantity) < item.quantity:
-            raise HTTPException(
-                400,
-                f"Stock insuffisant pour {product.name}"
-            )
 
         # Prix par dépôt si défini pour ce produit à ce dépôt (sinon prix par
         # défaut) — ne s'applique que si le client n'a pas déjà envoyé un
@@ -742,18 +755,19 @@ def create_sale(
             tenant_id=tenant_id,
         ))
 
-        record_stock_movement(
-            db,
-            product_id=product.id,
-            user_id=user_id,
-            tenant_id=tenant_id,
-            warehouse_id=wh_id,
-            type=StockType.out,
-            quantity=-item.quantity,
-            source_type="SALE",
-            source_id=sale.id,
-            note="Vente POS",
-        )
+        if not product.is_service:
+            record_stock_movement(
+                db,
+                product_id=product.id,
+                user_id=user_id,
+                tenant_id=tenant_id,
+                warehouse_id=wh_id,
+                type=StockType.out,
+                quantity=-item.quantity,
+                source_type="SALE",
+                source_id=sale.id,
+                note="Vente POS",
+            )
 
     # 4️⃣ Paiement + statut + dette
     if collected > 0:
@@ -831,7 +845,16 @@ def cancel_sale(db: Session, sale_id: str, user_id: str, tenant_id: str | None =
     if not sale:
         raise HTTPException(404, "Vente introuvable")
 
+    cancel_products = {
+        p.id: p
+        for p in db.query(Product).filter(
+            Product.id.in_([item.product_id for item in sale.items])
+        ).all()
+    }
     for item in sale.items:
+        product = cancel_products.get(item.product_id)
+        if product is not None and product.is_service:
+            continue
         record_stock_movement(
             db,
             product_id=item.product_id,

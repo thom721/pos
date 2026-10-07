@@ -72,19 +72,21 @@ def process_sale_return(
             "subtotal": line_refund,
         })
 
-        # Stock comes back IN (même dépôt que la vente d'origine)
-        record_stock_movement(
-            db,
-            product_id=str(item['product_id']),
-            user_id=user_id,
-            tenant_id=tenant_id,
-            warehouse_id=sale.warehouse_id,
-            type=StockType.in_,
-            quantity=qty,
-            source_type="sale_return",
-            source_id=sale.id,
-            note=f"Retour client{f' - {reason}' if reason else ''}",
-        )
+        # Stock comes back IN (même dépôt que la vente d'origine) — jamais
+        # pour un service, qui n'en a jamais eu à la vente (voir create_sale).
+        if not (sale_item.product and sale_item.product.is_service):
+            record_stock_movement(
+                db,
+                product_id=str(item['product_id']),
+                user_id=user_id,
+                tenant_id=tenant_id,
+                warehouse_id=sale.warehouse_id,
+                type=StockType.in_,
+                quantity=qty,
+                source_type="sale_return",
+                source_id=sale.id,
+                note=f"Retour client{f' - {reason}' if reason else ''}",
+            )
 
     # Record refund payment (negative reduces paid_amount)
     actual_refund = refund_amount if refund_amount > 0 else refund_total

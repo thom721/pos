@@ -20,6 +20,11 @@ class Product(UUIDBase):
     is_active = Column(Boolean, default=True)
     is_locked = Column(Boolean, default=False, nullable=False)
     image_url = Column(String(500), nullable=True)
+    # Service (ex: pressing, lessive) : pas de stock, jamais de mouvement de
+    # stock ni de contrôle de quantité disponible à la vente — voir
+    # create_sale/update_sale (api/services/sale_service.py), qui ignorent
+    # entièrement le stock pour un produit marqué service.
+    is_service = Column(Boolean, default=False, nullable=False)
 
     # ── Produit composé (ex: "Caisse" = 12 x "Boîte lait") ────────────────────
     # component_product_id pointe vers le produit dont le stock réel est suivi
