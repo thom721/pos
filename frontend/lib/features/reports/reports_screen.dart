@@ -1363,6 +1363,109 @@ Future<void> generateSalesReportPdf(
             ),
           ),
         ],
+
+        // ── Services (section séparée — voir Product.is_service) ──
+        pw.SizedBox(height: 24),
+        () {
+          final serviceRows = <({
+            String reference,
+            DateTime date,
+            String client,
+            String serviceName,
+            double qty,
+            double unitPrice,
+            double subtotal,
+          })>[];
+          for (final s in sales) {
+            for (final item in s.serviceItems) {
+              serviceRows.add((
+                reference: s.reference,
+                date: s.createdAt,
+                client: s.customerName ?? 'Comptoir',
+                serviceName: item.displayName,
+                qty: item.quantity,
+                unitPrice: item.unitPrice,
+                subtotal: item.subtotal,
+              ));
+            }
+          }
+          serviceRows.sort((a, b) => a.date.compareTo(b.date));
+          final totalServiceRevenue =
+              serviceRows.fold(0.0, (s, r) => s + r.subtotal);
+
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'SERVICES  (${serviceRows.length})',
+                style: pw.TextStyle(
+                    font: bold, fontSize: 10, color: PdfColors.grey900),
+              ),
+              pw.SizedBox(height: 8),
+              if (serviceRows.isNotEmpty) ...[
+                pw.TableHelper.fromTextArray(
+                  headerDecoration:
+                      const pw.BoxDecoration(color: PdfColors.teal700),
+                  headerStyle: pw.TextStyle(
+                      font: bold, fontSize: 7, color: PdfColors.white),
+                  cellStyle: const pw.TextStyle(fontSize: 7),
+                  cellPadding: const pw.EdgeInsets.symmetric(
+                      horizontal: 5, vertical: 4),
+                  cellAlignments: const {
+                    0: pw.Alignment.centerLeft,
+                    1: pw.Alignment.centerLeft,
+                    2: pw.Alignment.centerLeft,
+                    3: pw.Alignment.centerLeft,
+                    4: pw.Alignment.centerRight,
+                    5: pw.Alignment.centerRight,
+                    6: pw.Alignment.centerRight,
+                  },
+                  oddRowDecoration:
+                      const pw.BoxDecoration(color: PdfColors.grey50),
+                  columnWidths: const {
+                    0: pw.FlexColumnWidth(1.4),
+                    1: pw.FlexColumnWidth(1.2),
+                    2: pw.FlexColumnWidth(1.6),
+                    3: pw.FlexColumnWidth(1.4),
+                    4: pw.FlexColumnWidth(0.8),
+                    5: pw.FlexColumnWidth(1.0),
+                    6: pw.FlexColumnWidth(1.0),
+                  },
+                  headers: const [
+                    'Date', 'Référence', 'Client', 'Service',
+                    'Qté', 'Prix unit.', 'Sous-total',
+                  ],
+                  data: serviceRows
+                      .map((r) => [
+                            dtFmt.format(r.date),
+                            r.reference,
+                            r.client,
+                            r.serviceName,
+                            r.qty % 1 == 0
+                                ? r.qty.toInt().toString()
+                                : r.qty.toStringAsFixed(2),
+                            mon(r.unitPrice),
+                            mon(r.subtotal),
+                          ])
+                      .toList(),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Align(
+                  alignment: pw.Alignment.centerRight,
+                  child: pw.Text(
+                    'Total services : ${mon(totalServiceRevenue)}',
+                    style: pw.TextStyle(
+                        font: bold, fontSize: 9, color: PdfColors.grey900),
+                  ),
+                ),
+              ] else
+                pw.Text(
+                  'Aucun service vendu sur cette période.',
+                  style: const pw.TextStyle(color: PdfColors.grey500, fontSize: 9),
+                ),
+            ],
+          );
+        }(),
       ],
     ),
   );

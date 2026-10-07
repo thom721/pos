@@ -65,6 +65,15 @@ def product(db, tenant, category):
     return p
 
 
+@pytest.fixture()
+def service(db, tenant, category):
+    p = Product(name="Pressing", category_id=category.id, sale_price=100,
+                tenant_id=tenant.id, is_service=True)
+    db.add(p)
+    db.flush()
+    return p
+
+
 def _sale_data(product, warehouse_id, quantity=1):
     return SaleCreate(
         paid_amount=100 * quantity,
@@ -73,6 +82,18 @@ def _sale_data(product, warehouse_id, quantity=1):
         items=[SaleItemInput(
             product_id=product.id, quantity=quantity, unit_price=100, subtotal=100 * quantity,
         )],
+    )
+
+
+def _mixed_sale_data(product, service, warehouse_id):
+    return SaleCreate(
+        paid_amount=200,
+        payment_method="CASH",
+        warehouse_id=warehouse_id,
+        items=[
+            SaleItemInput(product_id=product.id, quantity=1, unit_price=100, subtotal=100),
+            SaleItemInput(product_id=service.id, quantity=1, unit_price=100, subtotal=100),
+        ],
     )
 
 
@@ -172,6 +193,53 @@ def test_no_warehouse_tenant_scoped_purely_by_tenant(db, tenant, product):
 
     sale = sale_service.create_sale(
         db, _sale_data(product, None), user_id="u1", tenant_id=tenant.id,
+    )
+    db.commit()
+
+    assert sale.reference == "VNT-00001"
+
+
+def test_sale_made_entirely_of_services_gets_ser_prefix(db, tenant, service, two_depots):
+    depot_a, _depot_b = two_depots
+
+    sale = sale_service.create_sale(
+        db, _sale_data(service, depot_a.id), user_id="u1", tenant_id=tenant.id,
+    )
+    db.commit()
+
+    assert sale.reference == "SER-00001"
+
+
+def test_ser_sequence_increments_independently_from_vnt(db, tenant, product, service, two_depots):
+    """SER- et VNT- sont deux compteurs totalement séparés, scopés chacun
+    par (tenant, dépôt) — vendre un produit n'influence pas la séquence
+    SER-, et vice versa."""
+    depot_a, _depot_b = two_depots
+    db.add(StockMovement(product_id=product.id, type=StockType.in_, quantity=10, tenant_id=tenant.id, warehouse_id=depot_a.id))
+    db.commit()
+
+    sale_1 = sale_service.create_sale(db, _sale_data(product, depot_a.id), user_id="u1", tenant_id=tenant.id)
+    db.commit()
+    sale_2 = sale_service.create_sale(db, _sale_data(service, depot_a.id), user_id="u1", tenant_id=tenant.id)
+    db.commit()
+    sale_3 = sale_service.create_sale(db, _sale_data(service, depot_a.id), user_id="u1", tenant_id=tenant.id)
+    db.commit()
+
+    assert sale_1.reference == "VNT-00001"
+    assert sale_2.reference == "SER-00001"
+    assert sale_3.reference == "SER-00002"
+
+
+def test_mixed_cart_with_a_product_and_a_service_keeps_vnt_prefix(db, tenant, product, service, two_depots):
+    """Une vente contenant au moins un produit physique, même mélangée avec
+    un service, reste une vente VNT- classique — SER- est réservé aux
+    ventes 100% service."""
+    depot_a, _depot_b = two_depots
+    db.add(StockMovement(product_id=product.id, type=StockType.in_, quantity=10, tenant_id=tenant.id, warehouse_id=depot_a.id))
+    db.commit()
+
+    sale = sale_service.create_sale(
+        db, _mixed_sale_data(product, service, depot_a.id), user_id="u1", tenant_id=tenant.id,
     )
     db.commit()
 

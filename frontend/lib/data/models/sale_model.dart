@@ -24,6 +24,10 @@ class SaleItemModel {
   final String? discountId;
   final String? discountName;
   final String? categoryName;
+  // Service (ex: pressing, lessive) : pas de stock ni de quantité suivie —
+  // voir api/models/Product.py. Utilisé pour la section "Services" du
+  // rapport PDF (reports_screen.dart).
+  final bool isService;
 
   SaleItemModel({
     required this.id,
@@ -39,6 +43,7 @@ class SaleItemModel {
     this.discountId,
     this.discountName,
     this.categoryName,
+    this.isService = false,
   });
 
   /// Nom à afficher : label (plat resto) > nom du produit > fallback
@@ -68,6 +73,7 @@ class SaleItemModel {
         discountId: json['discount_id']?.toString(),
         discountName: json['discount_catalog']?['name']?.toString(),
         categoryName: json['product']?['category']?['name']?.toString(),
+        isService: json['product']?['is_service'] == true,
       );
 }
 
@@ -168,6 +174,11 @@ class SaleModel {
       .where((n) => n.isNotEmpty)
       .toSet()
       .join(', ');
+
+  // Articles service de cette vente — pour la section "Services" du
+  // rapport PDF, distincte des produits physiques.
+  List<SaleItemModel> get serviceItems =>
+      items.where((i) => i.isService).toList();
 
   factory SaleModel.fromJson(Map<String, dynamic> json) => SaleModel(
         id: json['id']?.toString() ?? '',

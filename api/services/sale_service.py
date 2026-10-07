@@ -408,23 +408,32 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
     return sale
 
 
-def _next_sale_reference(db: Session, tenant_id: str | None, warehouse_id: str | None) -> str:
-    """Numéro de reçu séquentiel, formaté "VNT-00001", scopé par (tenant_id,
-    warehouse_id) — pas par tenant seul : un tenant multi-dépôts peut avoir
-    une installation locale distincte par dépôt (voir PlatformConfig /
-    entrepôts), chacune génère alors ses reçus offline avant synchro ; un
-    compteur par (tenant, dépôt) évite tout conflit entre deux dépôts qui,
-    eux, ne partagent jamais la même série.
+def _next_sale_reference(
+    db: Session, tenant_id: str | None, warehouse_id: str | None, all_services: bool = False,
+) -> str:
+    """Numéro de reçu séquentiel, formaté "VNT-00001" (ou "SER-00001" si la
+    vente ne contient QUE des services — voir Product.is_service), scopé par
+    (tenant_id, warehouse_id) — pas par tenant seul : un tenant multi-dépôts
+    peut avoir une installation locale distincte par dépôt (voir
+    PlatformConfig / entrepôts), chacune génère alors ses reçus offline avant
+    synchro ; un compteur par (tenant, dépôt) évite tout conflit entre deux
+    dépôts qui, eux, ne partagent jamais la même série.
+
+    Une vente mixte (au moins un produit physique, même avec des services)
+    garde VNT- — SER- est réservé aux ventes 100% service, pour que le
+    compteur SER- reflète fidèlement l'activité de service séparément des
+    ventes classiques (ex: pressing/lessive).
 
     LIKE 'VNT-_____' (5 underscores = exactement 5 caractères) ne matche que
     le nouveau format à 5 chiffres, jamais les anciennes références
     horodatées ("VNT-1786827154", 10 chiffres) — celles-ci restent
-    inchangées et n'influencent jamais le calcul du prochain numéro.
+    inchangées et n'influencent jamais le calcul du prochain numéro. SER-
+    n'ayant jamais existé avant, pas de format legacy à exclure pour lui.
 
     MAX() plutôt que COUNT() — voir le bug identique corrigé dans
     _generate_and_commit_payments (billing.py) : COUNT() sous-évalue le
     prochain numéro dès qu'un trou existe dans la séquence."""
-    prefix = "VNT-"
+    prefix = "SER-" if all_services else "VNT-"
     q = db.query(func.max(cast(func.substr(Sale.reference, len(prefix) + 1), Integer))).filter(
         Sale.reference.like(f"{prefix}_____"),
     )
@@ -689,13 +698,16 @@ def create_sale(
     # hors-ligne qui ne synchronise que plus tard prendrait par défaut
     # l'heure DE LA SYNCHRO plutôt que celle de la vente elle-même.
     _sale_created_at = parse_dt(getattr(data, 'created_at', None))
+    _all_services = all(
+        products[str(item.product_id)].is_service for item in data.items
+    )
     _MAX_REFERENCE_ATTEMPTS = 5
     for _attempt in range(_MAX_REFERENCE_ATTEMPTS):
         sale = Sale(
             customer_id=str(data.customer_id) if data.customer_id else None,
             user_id=user_id,
             warehouse_id=wh_id,
-            reference=_next_sale_reference(db, tenant_id, wh_id),
+            reference=_next_sale_reference(db, tenant_id, wh_id, _all_services),
             total_amount=total,
             discount=discount,
             discount_id=receipt_discount_id,
