@@ -28,8 +28,10 @@ async def websocket_endpoint(
     of waiting for the fallback timer.
     Auth: JWT passed as ?token= query parameter (standard Bearer token).
     """
+    _log.info("WS handshake reçu (depot=%s)", warehouse_id)
     payload = verify_token(token)
     if not payload:
+        _log.warning("WS refusé : jeton invalide ou signé avec une autre clé")
         await websocket.close(code=4001)
         return
 
@@ -54,6 +56,7 @@ async def websocket_endpoint(
         db.close()
 
     if not tenant_id:
+        _log.warning("WS refusé : tenant introuvable pour ce jeton (sub=%s)", sub)
         await websocket.close(code=4001)
         return
 
