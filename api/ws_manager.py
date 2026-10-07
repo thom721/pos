@@ -65,7 +65,7 @@ class ConnectionManager:
     def connection_count(self, tenant_id: str) -> int:
         return len(self._connections.get(tenant_id, set()))
 
-    async def notify_all(self) -> None:
+    async def notify_all(self, entities: list[str] | None = None) -> None:
         """Diffuse à TOUTES les connexions, tous tenants confondus — pour un
         changement qui n'est pas scopé à un tenant précis (ex: PlatformConfig,
         modifiée par le superadmin, affecte le prix/essai de tous les tenants
@@ -75,7 +75,10 @@ class ConnectionManager:
         for tenant_id, conns in list(self._connections.items()):
             for ws in list(conns):
                 try:
-                    await ws.send_json({"type": "sync"})
+                    payload = {"type": "sync"}
+                    if entities:
+                        payload["entities"] = entities
+                    await ws.send_json(payload)
                 except Exception:
                     dead.append((tenant_id, ws))
         for tenant_id, ws in dead:
@@ -92,13 +95,13 @@ class ConnectionManager:
         except RuntimeError:
             pass
 
-    def notify_all_threadsafe(self) -> None:
+    def notify_all_threadsafe(self, entities: list[str] | None = None) -> None:
         """Fire-and-forget notify_all from a synchronous context."""
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 loop.call_soon_threadsafe(
-                    lambda: asyncio.ensure_future(self.notify_all())
+                    lambda: asyncio.ensure_future(self.notify_all(entities))
                 )
         except RuntimeError:
             pass

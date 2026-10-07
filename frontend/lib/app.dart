@@ -9,6 +9,13 @@ import 'package:pos_connect/core/router.dart' show routerProvider, appNavigatorK
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
+import 'package:pos_connect/providers/customer_provider.dart';
+import 'package:pos_connect/providers/debt_provider.dart';
+import 'package:pos_connect/providers/discount_provider.dart';
+import 'package:pos_connect/providers/price_tier_provider.dart';
+import 'package:pos_connect/providers/product_provider.dart';
+import 'package:pos_connect/providers/purchase_provider.dart';
+import 'package:pos_connect/providers/sale_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/providers/version_provider.dart';
@@ -102,6 +109,7 @@ class _PosAppState extends ConsumerState<PosApp> {
           ref.read(settingsProvider.notifier).reload();
           _triggerSync();
         },
+        onSyncEntities: _refreshEntities,
         onPermissionsChanged: () => _forceLogout(
           'Vos permissions ont été modifiées par un administrateur — veuillez vous reconnecter.',
         ),
@@ -142,6 +150,37 @@ class _PosAppState extends ConsumerState<PosApp> {
       );
     } catch (_) {
       // Non-fatal: heartbeat failures don't interrupt the user
+    }
+  }
+
+  /// Rafraîchissement ciblé : seules les listes des types modifiés sont relues.
+  /// Un type inconnu déclenche la synchronisation complète, comme avant.
+  void _refreshEntities(List<String> entities) {
+    const salesTypes = {'sale', 'sale_item', 'payment', 'return_record'};
+    const productTypes = {'product', 'product_warehouse_price', 'category'};
+    const purchaseTypes = {'purchase', 'purchase_item', 'purchase_receipt', 'purchase_receipt_item'};
+    const debtTypes = {'debt'};
+    const knownTypes = {
+      ...salesTypes, ...productTypes, ...purchaseTypes, ...debtTypes,
+      'customer', 'discount', 'product_price_tier', 'app_config', 'config',
+    };
+    final set = entities.toSet();
+    if (set.intersection({'app_config', 'config'}).isNotEmpty) {
+      ref.read(settingsProvider.notifier).reload();
+    }
+    if (set.intersection(salesTypes).isNotEmpty) {
+      ref.invalidate(salesProvider);
+      ref.invalidate(dashboardSalesProvider);
+    }
+    if (set.intersection(productTypes).isNotEmpty) ref.invalidate(productsProvider);
+    if (set.intersection(purchaseTypes).isNotEmpty) ref.invalidate(purchasesProvider);
+    if (set.intersection(debtTypes).isNotEmpty) ref.invalidate(debtsProvider);
+    if (set.contains('customer')) ref.invalidate(customersProvider);
+    if (set.contains('discount')) ref.invalidate(discountsProvider);
+    if (set.contains('product_price_tier')) ref.invalidate(priceTiersProvider);
+    if (set.difference(knownTypes).isNotEmpty) {
+      // Type non reconnu : synchronisation complète (comportement prudent).
+      _triggerSync();
     }
   }
 

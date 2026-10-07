@@ -10,6 +10,7 @@ import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 
 typedef SyncCallback = void Function();
+typedef SyncEntitiesCallback = void Function(List<String> entities);
 typedef ForceLogoutCallback = void Function();
 
 const _tokenStorage = FlutterSecureStorage(
@@ -30,13 +31,19 @@ class WebSocketService {
   int _retrySeconds = 1;
   bool _active = false;
   SyncCallback? _onSync;
+  SyncEntitiesCallback? _onSyncEntities;
   ForceLogoutCallback? _onPermissionsChanged;
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
-  void start(SyncCallback onSync, {ForceLogoutCallback? onPermissionsChanged}) {
+  void start(
+    SyncCallback onSync, {
+    ForceLogoutCallback? onPermissionsChanged,
+    SyncEntitiesCallback? onSyncEntities,
+  }) {
     if (kIsWeb) return;
     _onSync = onSync;
+    _onSyncEntities = onSyncEntities;
     _onPermissionsChanged = onPermissionsChanged;
     _active = true;
     _retrySeconds = 1;
@@ -97,7 +104,14 @@ class WebSocketService {
       final msg = jsonDecode(raw as String) as Map<String, dynamic>;
       if (msg['type'] == 'sync') {
         debugPrint('[WS] sync push received');
-        _onSync?.call();
+        // Liste des types réellement modifiés (serveur local) : rafraîchissement ciblé.
+        // Sans liste (cloud, anciens serveurs) : synchronisation complète comme avant.
+        final raw = msg['entities'];
+        if (raw is List && raw.isNotEmpty && _onSyncEntities != null) {
+          _onSyncEntities!(raw.map((e) => e.toString()).toList());
+        } else {
+          _onSync?.call();
+        }
       } else if (msg['type'] == 'permissions_changed') {
         debugPrint('[WS] permissions_changed push received');
         _onPermissionsChanged?.call();

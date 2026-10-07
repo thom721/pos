@@ -611,9 +611,10 @@ def _run_sync_inner(db: Session) -> dict:
 
     # Prévient les applications connectées à CE serveur local qu'il y a de nouvelles
     # données : sans ça, elles ne les voient qu'à leur prochain timer (jusqu'à 2 min).
-    if any(summary["pulled"].values()):
+    changed = sorted(e for e, n in summary["pulled"].items() if n)
+    if changed:
         from api.ws_manager import manager as _ws_manager
-        _ws_manager.notify_all_threadsafe()
+        _ws_manager.notify_all_threadsafe(changed)
 
     summary["ok"] = len(summary["errors"]) == 0
     return summary
