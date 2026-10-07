@@ -372,16 +372,12 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
         .toList()
       ..sort();
 
-    // Filter sales by selected user — triées par date croissante (la plus
-    // ancienne d'abord) : widget.allSales hérite de l'ordre décroissant du
-    // backend (Sale.created_at.desc(), pensé pour la liste des ventes), pas
-    // pertinent pour un rapport chronologique.
-    final sales = (params.userFilter != null
+    // Filter sales by selected user
+    final sales = params.userFilter != null
         ? widget.allSales
             .where((s) => s.userFullName == params.userFilter)
             .toList()
-        : [...widget.allSales])
-      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        : widget.allSales;
 
     final totalRevenue = sales.fold(0.0, (s, e) => s + e.finalAmount);
     final totalPaid = sales.fold(0.0, (s, e) => s + e.paidAmount + e.loyaltyRedeemed);
@@ -1048,13 +1044,21 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
 
 // ── PDF generation ─────────────────────────────────────────────────────────
 
+/// Numéro séquentiel extrait de la fin d'une référence ("VNT-00001" → 1,
+/// "SER-00042" → 42) — utilisé pour trier le PDF par ordre croissant. Les
+/// anciennes références horodatées ("VNT-1786827154") retombent sur ce même
+/// mécanisme, le timestamp faisant alors office de "numéro".
+int _refSeq(String reference) {
+  final m = RegExp(r'(\d+)$').firstMatch(reference);
+  return m != null ? int.tryParse(m.group(1)!) ?? 0 : 0;
+}
+
 Future<void> generateSalesReportPdf(
     List<SaleModel> sales, ReportParams params, AppSettings settings) async {
-  // Chronologique (la plus ancienne d'abord) — l'appelant transmet l'ordre
-  // décroissant du backend (Sale.created_at.desc()), pensé pour la liste des
-  // ventes, pas pour un rapport. Copie avant tri : ne mute jamais la liste
-  // du caller.
-  sales = [...sales]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  // Trié par le numéro séquentiel de référence (VNT-00001, SER-00001...),
+  // croissant — uniquement dans le PDF, pas sur l'écran Rapports. Copie
+  // avant tri : ne mute jamais la liste du caller.
+  sales = [...sales]..sort((a, b) => _refSeq(a.reference).compareTo(_refSeq(b.reference)));
 
   final regular = await PdfGoogleFonts.notoSansRegular()
       .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helvetica());
@@ -1399,7 +1403,7 @@ Future<void> generateSalesReportPdf(
               ));
             }
           }
-          serviceRows.sort((a, b) => a.date.compareTo(b.date));
+          serviceRows.sort((a, b) => _refSeq(a.reference).compareTo(_refSeq(b.reference)));
           final totalServiceRevenue =
               serviceRows.fold(0.0, (s, r) => s + r.subtotal);
 
