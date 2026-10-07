@@ -490,6 +490,20 @@ def _run_sync_inner(db: Session) -> dict:
                             model.tenant_id == rec.get("tenant_id"),
                             model.device_id == rec["device_id"],
                         ).first()
+                    # app_config n'a pas de colonne unique simple non plus — sa clé
+                    # naturelle est composite (tenant_id, warehouse_id). Sans ce
+                    # fallback, une installation qui avait déjà créé sa propre ligne
+                    # par défaut (get_or_create, avant son premier pull) se retrouvait
+                    # avec deux lignes pour le même dépôt : la sienne (jamais mise à
+                    # jour) et celle du cloud insérée en double à chaque pull.
+                    if existing is None and etype == "app_config":
+                        wh_filter = (
+                            model.warehouse_id.is_(None) if rec.get("warehouse_id") is None
+                            else model.warehouse_id == rec["warehouse_id"]
+                        )
+                        existing = db.query(model).filter(
+                            model.tenant_id == rec.get("tenant_id"), wh_filter,
+                        ).first()
                 if existing is None:
                     coerced = _coerce_for_db(model, rec)
                     fields = {k: v for k, v in coerced.items() if k in col_names and k not in entity_excl}
