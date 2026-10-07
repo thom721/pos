@@ -210,6 +210,7 @@ def read_product_price_tiers(
 def set_product_price_tiers(
     product_id: str,
     body: PriceTiersSet,
+    background_tasks: BackgroundTasks,
     warehouse_id: str = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
@@ -217,6 +218,7 @@ def set_product_price_tiers(
     """Remplace les paliers du produit pour ce dépôt. Refusé si les prix
     augmentent avec la quantité ou si un seuil est en double."""
     rows = price_tier_service.set_tiers(db, current_user.tenant_id, product_id, warehouse_id, body.tiers)
+    background_tasks.add_task(manager.notify, current_user.tenant_id, warehouse_id, ["product_price_tier"])
     return [PriceTierRead(id=r.id, min_quantity=r.min_quantity, price=r.price) for r in rows]
 
 
@@ -253,6 +255,7 @@ def set_product_warehouse_price(
     product_id: str,
     warehouse_id: str,
     payload: WarehousePriceSet,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
 ):
@@ -269,6 +272,7 @@ def set_product_warehouse_price(
 
     svc = ProductService(db, tenant_id=current_user.tenant_id)
     svc.set_warehouse_price(product_id, warehouse_id, payload.sale_price)
+    background_tasks.add_task(manager.notify, current_user.tenant_id, warehouse_id, ["product_warehouse_price"])
     return WarehousePriceRead(
         warehouse_id=depot.id, warehouse_name=depot.name, sale_price=payload.sale_price,
     )
@@ -278,6 +282,7 @@ def set_product_warehouse_price(
 def delete_product_warehouse_price(
     product_id: str,
     warehouse_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_UPDATE)),
 ):
@@ -287,6 +292,7 @@ def delete_product_warehouse_price(
 
     svc = ProductService(db, tenant_id=current_user.tenant_id)
     svc.delete_warehouse_price(product_id, warehouse_id)
+    background_tasks.add_task(manager.notify, current_user.tenant_id, warehouse_id, ["product_warehouse_price"])
     return {"message": "Prix par dépôt supprimé — retour au prix par défaut"}
 
 
