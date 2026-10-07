@@ -17,6 +17,11 @@ const _tokenStorage = FlutterSecureStorage(
   aOptions: AndroidOptions(encryptedSharedPreferences: true),
 );
 
+/// Jeton d'accès, avec migration depuis l'ancien emplacement (préférences).
+/// Utilisé aussi par le WebSocket : sans cette lecture, un jeton encore dans
+/// les préférences faisait échouer la connexion en silence.
+Future<String?> readAuthToken() => _readToken();
+
 Future<String?> _readToken() async {
   // Migration one-shot depuis SharedPreferences
   final prefs = await SharedPreferences.getInstance();

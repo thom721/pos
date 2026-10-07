@@ -2,20 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 
 typedef SyncCallback = void Function();
 typedef SyncEntitiesCallback = void Function(List<String> entities);
 typedef ForceLogoutCallback = void Function();
-
-const _tokenStorage = FlutterSecureStorage(
-  aOptions: AndroidOptions(encryptedSharedPreferences: true),
-);
 
 /// Maintains a persistent WebSocket connection to the cloud API (Android and
 /// desktop — start() no-ops on web, which IOWebSocketChannel doesn't support).
@@ -64,8 +58,11 @@ class WebSocketService {
   Future<void> _connect() async {
     if (!_active) return;
 
-    final token = await _tokenStorage.read(key: AppConstants.tokenKey);
-    if (token == null) return;
+    final token = await readAuthToken();
+    if (token == null) {
+      debugPrint('[WS] pas de jeton — connexion non démarrée');
+      return;
+    }
 
     // Convert the current HTTP(S) base URL to its WebSocket equivalent
     final base = dio.options.baseUrl
