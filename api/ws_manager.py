@@ -94,6 +94,11 @@ class ConnectionManager:
         modifiée par le superadmin, affecte le prix/essai de tous les tenants
         d'un coup ; ou le pull de config publique côté serveur local, qui n'a
         qu'un seul tenant de toute façon)."""
+        total = sum(len(c) for c in self._connections.values())
+        if total == 0:
+            _log.warning("WS notify_all (entities=%s) : aucune connexion active", entities)
+        else:
+            _log.warning("WS notify_all (entities=%s) : envoi à %d connexion(s)", entities, total)
         dead: list[tuple[str, WebSocket]] = []
         for tenant_id, conns in list(self._connections.items()):
             for ws in list(conns):
@@ -102,7 +107,8 @@ class ConnectionManager:
                     if entities:
                         payload["entities"] = entities
                     await ws.send_json(payload)
-                except Exception:
+                except Exception as exc:
+                    _log.warning("WS notify_all envoi échoué (connexion fermée ?) : %s", exc)
                     dead.append((tenant_id, ws))
         for tenant_id, ws in dead:
             self.disconnect(ws, tenant_id)
