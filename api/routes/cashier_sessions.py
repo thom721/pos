@@ -1,6 +1,7 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
+from api.ws_manager import manager
 from pydantic import BaseModel
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -547,6 +548,7 @@ def session_summary(
 def close_session(
     session_id: str,
     body: CloseSessionBody,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SESSIONS_CLOSE)),
 ):
@@ -589,6 +591,7 @@ def close_session(
     )
 
     db.commit()
+    background_tasks.add_task(manager.notify, current_user.tenant_id, session.warehouse_id, ["cashier_session"])
     return {
         "message":                  "Session fermée",
         "opening_balance":          float(session.opening_balance or 0),
@@ -606,6 +609,7 @@ def close_session(
 @router.post("/{session_id}/force-close")
 def force_close_session(
     session_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.SESSIONS_CLOSE)),
 ):
@@ -654,6 +658,7 @@ def force_close_session(
     )
 
     db.commit()
+    background_tasks.add_task(manager.notify, current_user.tenant_id, session.warehouse_id, ["cashier_session"])
     return {"message": "Session fermée de force", "closed_at": closed_at.isoformat()}
 
 

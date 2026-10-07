@@ -1477,6 +1477,13 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         _refreshSessionFromServer();
       }
     });
+    // Session fermée (ou ouverte) ailleurs — admin, audit, autre appareil —
+    // signalée par le serveur : revérifier tout de suite, sans attendre.
+    ref.listen<int>(sessionRefreshEpochProvider, (prev, next) {
+      if (prev != next && _sessionChecked && mounted) {
+        _refreshSessionFromServer();
+      }
+    });
 
     return LayoutBuilder(
       builder: (context, constraints) {

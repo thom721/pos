@@ -163,6 +163,7 @@ class _PosAppState extends ConsumerState<PosApp> {
     const knownTypes = {
       ...salesTypes, ...productTypes, ...purchaseTypes, ...debtTypes,
       'customer', 'discount', 'product_price_tier', 'app_config', 'config',
+      'cashier_session',
     };
     final set = entities.toSet();
     // Android : les écrans lisent le cache SQLite → mise à jour ciblée du cache
@@ -191,6 +192,7 @@ class _PosAppState extends ConsumerState<PosApp> {
     if (set.contains('customer')) ref.invalidate(customersProvider);
     if (set.contains('discount')) ref.invalidate(discountsProvider);
     if (set.contains('product_price_tier')) ref.invalidate(priceTiersProvider);
+    if (set.contains('cashier_session')) ref.read(sessionRefreshEpochProvider.notifier).state++;
     if (set.difference(knownTypes).isNotEmpty) {
       // Type non reconnu : synchronisation complète (comportement prudent).
       _triggerSync();

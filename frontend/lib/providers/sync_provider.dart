@@ -143,6 +143,11 @@ final pendingOfflineCountProvider = FutureProvider.autoDispose<int>(
 /// Les providers Android le surveillent pour se rafraîchir automatiquement.
 final syncEpochProvider = StateProvider<int>((ref) => 0);
 
+/// Incrémenté quand le serveur signale qu'une session de caisse a changé
+/// (ouverte/fermée ailleurs) — la caisse et l'écran Audit s'y abonnent pour
+/// se remettre à jour sans attendre une navigation ou le minuteur.
+final sessionRefreshEpochProvider = StateProvider<int>((ref) => 0);
+
 /// True si cet appareil est en attente d'approbation admin (voir
 /// cashier_sessions.open_session) — vérifié app-wide (pas seulement sur
 /// l'écran Caisse) pour que la bannière s'affiche même si l'utilisateur ne

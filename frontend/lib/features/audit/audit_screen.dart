@@ -9,6 +9,7 @@ import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/sync_provider.dart';
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,9 @@ final _auditProvider =
 final _openSessionsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>(
   (ref) async {
+    // Se remet à jour dès qu'une session change ailleurs (ouverture, fermeture,
+    // fermeture forcée) — sans attendre une navigation ou le bouton de rafraîchissement.
+    ref.watch(sessionRefreshEpochProvider);
     final res = await dio.get('/api/sessions/open-sessions');
     return (res.data as List).cast<Map<String, dynamic>>();
   },
