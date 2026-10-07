@@ -1914,6 +1914,14 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
   // Service (ex: pressing, lessive) : pas de stock ni de quantité suivie.
   bool _isService = false;
 
+  // Capturé UNE SEULE FOIS à l'ouverture et réutilisé tel quel à la
+  // soumission (jamais un ref.read(settingsProvider) frais à ce moment-là)
+  // — un changement de devise/taux pendant que ce formulaire reste ouvert
+  // (ex: poussé en temps réel depuis un autre appareil) corrompait sinon le
+  // prix : préremplissage converti avec l'ancien taux, renvoi au serveur
+  // reconverti avec le nouveau, sans que l'utilisateur n'ait touché le champ.
+  late final AppSettings _formSettings;
+
   // Produit composé (ex: "Caisse" = 12 x "Boîte")
   bool _isComposite = false;
   String? _componentProductId;
@@ -1933,14 +1941,14 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
         TextEditingController(text: widget.product?.barcode ?? '');
     _descCtrl =
         TextEditingController(text: widget.product?.description ?? '');
-    final initSettings = ref.read(settingsProvider);
+    _formSettings = ref.read(settingsProvider);
     _salePriceCtrl = TextEditingController(
         text: widget.product != null
-            ? toDisplayAmount(widget.product!.salePrice, initSettings).toString()
+            ? toDisplayAmount(widget.product!.salePrice, _formSettings).toString()
             : '0');
     _purchasePriceCtrl = TextEditingController(
         text: widget.product != null
-            ? toDisplayAmount(widget.product!.purchasePrice, initSettings).toString()
+            ? toDisplayAmount(widget.product!.purchasePrice, _formSettings).toString()
             : '0');
     _alertCtrl = TextEditingController(
         text: widget.product?.alertStock.toString() ?? '5');
@@ -2045,8 +2053,11 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = ref.watch(settingsProvider);
-    final sym = settings.currencySymbol.trim();
+    // _formSettings (figée à l'ouverture), pas ref.watch(settingsProvider) —
+    // sinon le symbole affiché pourrait changer en cours d'édition sans que
+    // les chiffres déjà saisis ne soient reconvertis, trompeur pour
+    // l'utilisateur (voir le commentaire sur _formSettings).
+    final sym = _formSettings.currencySymbol.trim();
     return AlertDialog(
       title: Text(isEdit ? 'Modifier le produit' : 'Nouveau produit'),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
@@ -2575,7 +2586,6 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
 
     final ProductModel saved;
     try {
-      final submitSettings = ref.read(settingsProvider);
       final data = {
         'name': _nameCtrl.text.trim(),
         'barcode': _barcodeCtrl.text.trim().isEmpty
@@ -2586,9 +2596,9 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
             : _descCtrl.text.trim(),
         'category_id': _categoryId,
         'sale_price': toHtgAmount(
-            double.tryParse(_salePriceCtrl.text) ?? 0, submitSettings),
+            double.tryParse(_salePriceCtrl.text) ?? 0, _formSettings),
         'purchase_price': toHtgAmount(
-            double.tryParse(_purchasePriceCtrl.text) ?? 0, submitSettings),
+            double.tryParse(_purchasePriceCtrl.text) ?? 0, _formSettings),
         'alert_stock': int.tryParse(_alertCtrl.text) ?? 5,
         'warehouse_id': _warehouseId,
         'component_product_id': _isComposite ? _componentProductId : null,
@@ -2657,9 +2667,16 @@ class _WarehousePricesSectionState extends ConsumerState<_WarehousePricesSection
   bool _loading = true;
   final Set<String> _saving = {};
 
+  // Figée à l'ouverture, jamais relue à la sauvegarde — même raison que
+  // _ProductFormDialogState._formSettings : un changement de devise/taux
+  // pendant que la section reste affichée corromprait sinon un prix laissé
+  // tel quel (préremplissage avec l'ancien taux, renvoi avec le nouveau).
+  late final AppSettings _formSettings;
+
   @override
   void initState() {
     super.initState();
+    _formSettings = ref.read(settingsProvider);
     _load();
   }
 
@@ -2667,13 +2684,12 @@ class _WarehousePricesSectionState extends ConsumerState<_WarehousePricesSection
     try {
       final prices = await ProductRepository().getWarehousePrices(widget.productId);
       if (!mounted) return;
-      final loadSettings = ref.read(settingsProvider);
       setState(() {
         _prices = prices;
         for (final p in prices) {
           _ctrls[p.warehouseId] = TextEditingController(
               text: p.salePrice != null
-                  ? toDisplayAmount(p.salePrice!, loadSettings).toStringAsFixed(2)
+                  ? toDisplayAmount(p.salePrice!, _formSettings).toStringAsFixed(2)
                   : '');
         }
         _loading = false;
@@ -2703,7 +2719,7 @@ class _WarehousePricesSectionState extends ConsumerState<_WarehousePricesSection
           if (mounted) setState(() => _saving.remove(warehouseId));
           return;
         }
-        final price = toHtgAmount(typed, ref.read(settingsProvider));
+        final price = toHtgAmount(typed, _formSettings);
         await ProductRepository().setWarehousePrice(widget.productId, warehouseId, price);
       }
       if (mounted) {
@@ -2819,13 +2835,20 @@ class _PriceTiersSectionState extends ConsumerState<_PriceTiersSection> {
   bool _loading = false;
   bool _saving = false;
 
+  // Figée à l'ouverture, jamais relue via ref.watch au moment de l'enregistrement
+  // — même raison que _ProductFormDialogState._formSettings : un changement
+  // de devise/taux pendant que la section reste affichée corromprait sinon
+  // un palier laissé tel quel.
+  late final AppSettings _formSettings;
+
   @override
   void initState() {
     super.initState();
+    _formSettings = ref.read(settingsProvider);
     final wh = widget.warehouseId;
     if (wh != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _load(wh, ref.read(settingsProvider));
+        if (mounted) _load(wh, _formSettings);
       });
     }
   }
@@ -2910,7 +2933,6 @@ class _PriceTiersSectionState extends ConsumerState<_PriceTiersSection> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = ref.watch(settingsProvider);
     if (widget.warehouseId == null) {
       return const Text(
         'Choisissez un dépôt dans la fiche produit pour définir des paliers.',
@@ -2955,7 +2977,7 @@ class _PriceTiersSectionState extends ConsumerState<_PriceTiersSection> {
                         controller: e.value.price,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         decoration: InputDecoration(
-                          labelText: 'Prix (${settings.currencySymbol.trim()})',
+                          labelText: 'Prix (${_formSettings.currencySymbol.trim()})',
                           isDense: true,
                         ),
                       ),
@@ -2981,7 +3003,7 @@ class _PriceTiersSectionState extends ConsumerState<_PriceTiersSection> {
               _saving
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : FilledButton(
-                      onPressed: () => _save(settings),
+                      onPressed: () => _save(_formSettings),
                       child: const Text('Enregistrer les paliers'),
                     ),
             ],
