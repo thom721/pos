@@ -290,19 +290,15 @@ def get_current_session(
     # On ne filtre PAS sur warehouse_id ici : si la session est ouverte
     # sur un dépôt différent du dépôt actif, on la retourne quand même
     # pour éviter de demander l'ouverture d'une deuxième session fantôme.
+    #
+    # Filtrée par cashier_id : un ancien code reprenait sans ce filtre une
+    # session ouverte par n'importe quel AUTRE caissier sur la même caisse,
+    # et la présentait comme la vôtre — y compris après déconnexion/reconnexion.
     session = (
         db.query(CashierSession)
         .filter_by(register_id=reg.id, cashier_id=current_user.id, status="open")
         .first()
     )
-
-    # Fallback : session ouverte par une autre version du token (même device)
-    if not session:
-        session = (
-            db.query(CashierSession)
-            .filter_by(register_id=reg.id, status="open")
-            .first()
-        )
 
     warehouse_match = (not warehouse_id) or (reg.warehouse_id == warehouse_id)
 
