@@ -15,7 +15,11 @@ _PING_INTERVAL = 30  # seconds — keepalive sent to client when idle
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    token: str = Query(...),
+    warehouse_id: str | None = Query(None),
+):
     """
     Persistent connection for Android and desktop clients (web still relies
     on periodic polling — see websocket_service.dart).
@@ -53,7 +57,26 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
         await websocket.close(code=4001)
         return
 
-    await manager.connect(websocket, tenant_id, user_id)
+    # Dépôts suivis : ceux de l'utilisateur (liste) ; pour une installation
+    # locale (token de synchro), le dépôt qu'elle envoie — vérifié contre le tenant.
+    warehouses: set[str] | None = None
+    if user_id is not None and user is not None:
+        raw = getattr(user, "warehouse_id", None)
+        if isinstance(raw, list) and raw:
+            warehouses = {str(w) for w in raw}
+    elif warehouse_id:
+        from api.models.Warehouse import Warehouse
+        db2 = SessionLocal()
+        try:
+            wh = db2.query(Warehouse).filter(
+                Warehouse.id == warehouse_id, Warehouse.tenant_id == tenant_id
+            ).first()
+        finally:
+            db2.close()
+        if wh:
+            warehouses = {wh.id}
+
+    await manager.connect(websocket, tenant_id, user_id, warehouses)
     try:
         while True:
             try:

@@ -11,15 +11,26 @@ class ConnectionManager:
     def __init__(self) -> None:
         self._connections: Dict[str, Set[WebSocket]] = {}
         self._user_connections: Dict[str, Set[WebSocket]] = {}
+        # Dépôts suivis par connexion. None = toutes les notifications du tenant
+        # (ex: utilisateur sans dépôt, ou ancien client sans précision).
+        self._scope: Dict[WebSocket, Set[str] | None] = {}
 
-    async def connect(self, ws: WebSocket, tenant_id: str, user_id: str | None = None) -> None:
+    async def connect(
+        self,
+        ws: WebSocket,
+        tenant_id: str,
+        user_id: str | None = None,
+        warehouses: Set[str] | None = None,
+    ) -> None:
         await ws.accept()
+        self._scope[ws] = set(warehouses) if warehouses else None
         self._connections.setdefault(tenant_id, set()).add(ws)
         if user_id:
             self._user_connections.setdefault(user_id, set()).add(ws)
         _log.info("WS connect tenant=%s user=%s sockets=%d", tenant_id, user_id, len(self._connections[tenant_id]))
 
     def disconnect(self, ws: WebSocket, tenant_id: str, user_id: str | None = None) -> None:
+        self._scope.pop(ws, None)
         conns = self._connections.get(tenant_id)
         if conns:
             conns.discard(ws)
@@ -32,8 +43,15 @@ class ConnectionManager:
                 if not user_conns:
                     del self._user_connections[user_id]
 
-    async def notify(self, tenant_id: str) -> None:
+    async def notify(self, tenant_id: str, warehouse_id: str | None = None) -> None:
+        """Signal 'sync' au tenant. Avec warehouse_id : seulement aux connexions de
+        ce dépôt, et à celles sans dépôt précis (données partagées)."""
         conns = list(self._connections.get(tenant_id, set()))
+        if warehouse_id:
+            conns = [
+                ws for ws in conns
+                if self._scope.get(ws) is None or warehouse_id in self._scope[ws]
+            ]
         if not conns:
             _log.info("WS notify tenant=%s : aucune connexion active", tenant_id)
             return
@@ -84,13 +102,13 @@ class ConnectionManager:
         for tenant_id, ws in dead:
             self.disconnect(ws, tenant_id)
 
-    def notify_threadsafe(self, tenant_id: str) -> None:
+    def notify_threadsafe(self, tenant_id: str, warehouse_id: str | None = None) -> None:
         """Fire-and-forget notify from a synchronous context (e.g. a threadpool endpoint)."""
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 loop.call_soon_threadsafe(
-                    lambda: asyncio.ensure_future(self.notify(tenant_id))
+                    lambda: asyncio.ensure_future(self.notify(tenant_id, warehouse_id))
                 )
         except RuntimeError:
             pass

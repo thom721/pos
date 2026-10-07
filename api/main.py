@@ -2010,9 +2010,12 @@ async def start_auto_sync():
     # Push temps réel du cloud (WS, comme l'application) : déclenche une synchro
     # immédiate, sans attendre le cycle de 5 min. Ne transporte aucune donnée.
     from api.services.local_ws_listener import run_listener as _ws_listen
-    from api.services.local_sync_service import _load_sync_credentials as _load_creds
+    from api.services.local_sync_service import (
+        _load_sync_credentials as _load_creds,
+        _installer_warehouse_id as _load_wh,
+    )
     global _ws_listener_task
-    _ws_listener_task = asyncio.create_task(_ws_listen(_load_creds, signal_pending_sync))
+    _ws_listener_task = asyncio.create_task(_ws_listen(_load_creds, signal_pending_sync, _load_wh))
 
     global _log_rotate_task
     _log_rotate_task = asyncio.create_task(_log_rotate_loop())

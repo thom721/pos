@@ -15,11 +15,15 @@ _log = logging.getLogger("pos.ws_listener")
 _RECONNECT_MAX = 60  # secondes
 
 
-def ws_url(sync_url: str, token: str) -> str:
-    """https://host/api → wss://host/api/ws?token=… (l'endpoint /ws est à la racine)."""
+def ws_url(sync_url: str, token: str, warehouse_id: str | None = None) -> str:
+    """https://host/api → wss://host/api/ws?token=…[&warehouse_id=…] (endpoint /ws à la racine).
+    Le dépôt permet au cloud de ne signaler que les changements de ce dépôt."""
     p = urlparse(sync_url)
     scheme = "wss" if p.scheme == "https" else "ws"
-    return f"{scheme}://{p.netloc}/ws?{urlencode({'token': token})}"
+    params = {"token": token}
+    if warehouse_id:
+        params["warehouse_id"] = warehouse_id
+    return f"{scheme}://{p.netloc}/ws?{urlencode(params)}"
 
 
 def handle_message(raw, on_sync) -> bool:
@@ -34,7 +38,7 @@ def handle_message(raw, on_sync) -> bool:
     return False
 
 
-async def run_listener(load_credentials, on_sync) -> None:
+async def run_listener(load_credentials, on_sync, load_warehouse=None) -> None:
     """Boucle de connexion avec reconnexion (backoff 1 → 60 s)."""
     delay = 1
     while True:
@@ -42,8 +46,9 @@ async def run_listener(load_credentials, on_sync) -> None:
         if not (enabled and url and token):
             await asyncio.sleep(60)
             continue
+        warehouse_id = load_warehouse() if load_warehouse else None
         try:
-            async with websockets.connect(ws_url(url, token), open_timeout=15, ping_interval=None) as ws:
+            async with websockets.connect(ws_url(url, token, warehouse_id), open_timeout=15, ping_interval=None) as ws:
                 delay = 1
                 _log.info("WS cloud connecté — synchro immédiate sur push")
                 async for raw in ws:

@@ -92,7 +92,8 @@ def update_product(
                       action="UPDATE", resource_type="product", resource_id=product_id,
                       detail=data.model_dump(exclude_none=True))
     db.commit()
-    background_tasks.add_task(manager.notify, current_user.tenant_id)
+    # Produit d'un dépôt : signal seulement aux appareils de ce dépôt.
+    background_tasks.add_task(manager.notify, current_user.tenant_id, product.warehouse_id)
     return product
 
 
@@ -175,7 +176,7 @@ def adjust_stock(
                       detail={"quantity": qty, "reason": payload.reason})
     db.commit()
     db.refresh(product)
-    background_tasks.add_task(manager.notify, current_user.tenant_id)
+    background_tasks.add_task(manager.notify, current_user.tenant_id, product.warehouse_id)
     return product
 
 
