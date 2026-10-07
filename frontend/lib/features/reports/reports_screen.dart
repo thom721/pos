@@ -372,12 +372,16 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
         .toList()
       ..sort();
 
-    // Filter sales by selected user
-    final sales = params.userFilter != null
+    // Filter sales by selected user — triées par date croissante (la plus
+    // ancienne d'abord) : widget.allSales hérite de l'ordre décroissant du
+    // backend (Sale.created_at.desc(), pensé pour la liste des ventes), pas
+    // pertinent pour un rapport chronologique.
+    final sales = (params.userFilter != null
         ? widget.allSales
             .where((s) => s.userFullName == params.userFilter)
             .toList()
-        : widget.allSales;
+        : [...widget.allSales])
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
     final totalRevenue = sales.fold(0.0, (s, e) => s + e.finalAmount);
     final totalPaid = sales.fold(0.0, (s, e) => s + e.paidAmount + e.loyaltyRedeemed);
@@ -1046,6 +1050,12 @@ class _PrintConfigDialogState extends ConsumerState<_PrintConfigDialog> {
 
 Future<void> generateSalesReportPdf(
     List<SaleModel> sales, ReportParams params, AppSettings settings) async {
+  // Chronologique (la plus ancienne d'abord) — l'appelant transmet l'ordre
+  // décroissant du backend (Sale.created_at.desc()), pensé pour la liste des
+  // ventes, pas pour un rapport. Copie avant tri : ne mute jamais la liste
+  // du caller.
+  sales = [...sales]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
   final regular = await PdfGoogleFonts.notoSansRegular()
       .timeout(const Duration(seconds: 4), onTimeout: () => pw.Font.helvetica());
   final bold = await PdfGoogleFonts.notoSansBold()
