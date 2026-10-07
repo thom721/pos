@@ -1568,8 +1568,12 @@ class _ProductTable extends ConsumerWidget {
                         IconButton(
                           icon: const Icon(Icons.history_rounded,
                               size: 18, color: AppColors.textSecondary),
-                          tooltip: 'Historique des mouvements',
-                          onPressed: () => _openStockHistory(context, ref, p),
+                          tooltip: p.isService
+                              ? 'Un service n\'a pas de mouvement de stock'
+                              : 'Historique des mouvements',
+                          onPressed: p.isService
+                              ? null
+                              : () => _openStockHistory(context, ref, p),
                         ),
                       if (canAdjustStock && !p.isService)
                         IconButton(
@@ -1583,13 +1587,15 @@ class _ProductTable extends ConsumerWidget {
                         ),
                       if (hasEntrepots)
                         Tooltip(
-                          message: canReturnToEntrepot
-                              ? 'Retourner à l\'entrepôt'
-                              : 'Sélectionnez un dépôt précis (pas "Tous les business") pour retourner du stock',
+                          message: p.isService
+                              ? 'Un service n\'a pas de stock à retourner'
+                              : canReturnToEntrepot
+                                  ? 'Retourner à l\'entrepôt'
+                                  : 'Sélectionnez un dépôt précis (pas "Tous les business") pour retourner du stock',
                           child: IconButton(
                             icon: const Icon(Icons.undo_rounded,
                                 size: 18, color: AppColors.textSecondary),
-                            onPressed: canReturnToEntrepot
+                            onPressed: (canReturnToEntrepot && !p.isService)
                                 ? () => showTransferToEntrepotDialog(
                                       context, ref,
                                       productId: p.id,
@@ -1772,8 +1778,12 @@ class _ProductCard extends ConsumerWidget {
               IconButton(
                 icon: const Icon(Icons.history_rounded,
                     size: 18, color: AppColors.textSecondary),
-                tooltip: 'Historique des mouvements',
-                onPressed: () => _openStockHistory(context, ref, product),
+                tooltip: product.isService
+                    ? 'Un service n\'a pas de mouvement de stock'
+                    : 'Historique des mouvements',
+                onPressed: product.isService
+                    ? null
+                    : () => _openStockHistory(context, ref, product),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               ),
@@ -1781,10 +1791,12 @@ class _ProductCard extends ConsumerWidget {
               IconButton(
                 icon: const Icon(Icons.undo_rounded,
                     size: 18, color: AppColors.textSecondary),
-                tooltip: canReturnToEntrepot
-                    ? 'Retourner à l\'entrepôt'
-                    : 'Sélectionnez un dépôt précis pour retourner du stock',
-                onPressed: canReturnToEntrepot
+                tooltip: product.isService
+                    ? 'Un service n\'a pas de stock à retourner'
+                    : canReturnToEntrepot
+                        ? 'Retourner à l\'entrepôt'
+                        : 'Sélectionnez un dépôt précis pour retourner du stock',
+                onPressed: (canReturnToEntrepot && !product.isService)
                     ? () => showTransferToEntrepotDialog(
                           context, ref,
                           productId: product.id,
@@ -2174,15 +2186,19 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                 if (isEdit) ...[
                   const SizedBox(height: 12),
                   _WarehousePricesSection(productId: widget.product!.id),
-                  const SizedBox(height: 16),
-                  _PriceTiersSection(
-                    productId: widget.product!.id,
-                    warehouseId: widget.product!.warehouseId,
-                    warehouseName: ref.watch(warehouseListProvider).valueOrNull
-                        ?.where((w) => w.id == widget.product!.warehouseId)
-                        .map((w) => w.name)
-                        .firstOrNull,
-                  ),
+                  // Paliers de prix (quantité atteinte) n'ont pas de sens
+                  // pour un service — pas de notion de quantité en stock.
+                  if (!_isService) ...[
+                    const SizedBox(height: 16),
+                    _PriceTiersSection(
+                      productId: widget.product!.id,
+                      warehouseId: widget.product!.warehouseId,
+                      warehouseName: ref.watch(warehouseListProvider).valueOrNull
+                          ?.where((w) => w.id == widget.product!.warehouseId)
+                          .map((w) => w.name)
+                          .firstOrNull,
+                    ),
+                  ],
                 ],
                 const SizedBox(height: 12),
                 SwitchListTile(
