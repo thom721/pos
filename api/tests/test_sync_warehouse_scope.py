@@ -70,6 +70,19 @@ def test_pull_without_warehouse_header_returns_no_warehouse_data(db, world):
     assert res["records"] == []
 
 
+def test_pull_product_serializes_is_service(db, world):
+    """is_service (colonne ajoutée pour le type "service") doit traverser
+    sync_pull sans mapping explicite — _row_to_dict introspecte toutes les
+    colonnes du modèle, aucun champ whitelist à maintenir côté sync."""
+    world["prod_a"].is_service = True
+    db.commit()
+
+    res = sync_pull(request=_req(world["wh_a"].id), entity_type="product",
+                    since="1970-01-01T00:00:00", claims=_claims(world["tenant"].id), db=db)
+    by_id = {r["id"]: r for r in res["records"]}
+    assert by_id[world["prod_a"].id]["is_service"] is True
+
+
 def test_pull_shared_entities_still_returned(db, world):
     res = sync_pull(request=_req(world["wh_a"].id), entity_type="category",
                     since="1970-01-01T00:00:00", claims=_claims(world["tenant"].id), db=db)
