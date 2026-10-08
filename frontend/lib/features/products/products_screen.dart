@@ -1482,7 +1482,8 @@ class _ProductTable extends ConsumerWidget {
         canAdjustStock && hasEntrepots && activeWarehouse != null;
     // Stock/Seuil alerte n'ont pas de sens pour l'onglet Service (toujours
     // vides — voir Product.is_service).
-    final showStockCols = ref.watch(productItemTypeProvider) != 'service';
+    final isServiceTab = ref.watch(productItemTypeProvider) == 'service';
+    final showStockCols = !isServiceTab;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -1505,10 +1506,10 @@ class _ProductTable extends ConsumerWidget {
             headingRowColor: WidgetStateProperty.all(AppColors.background),
             columns: [
               const DataColumn(label: Text('')),
-              const DataColumn(label: Text('Produit')),
+              DataColumn(label: Text(isServiceTab ? 'Service' : 'Produit')),
               const DataColumn(label: Text('Catégorie')),
-              const DataColumn(label: Text('Prix achat'), numeric: true),
-              const DataColumn(label: Text('Prix vente'), numeric: true),
+              DataColumn(label: Text(isServiceTab ? 'Coût' : 'Prix achat'), numeric: true),
+              DataColumn(label: Text(isServiceTab ? 'Prix' : 'Prix vente'), numeric: true),
               DataColumn(
                 numeric: true,
                 label: Tooltip(
