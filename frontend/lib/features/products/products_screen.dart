@@ -1503,6 +1503,10 @@ class _ProductTable extends ConsumerWidget {
             // bouton d'édition reste visible sans scroll horizontal.
             columnSpacing: 20,
             horizontalMargin: 16,
+            // Ligne cliquable (voir onSelectChanged ci-dessous) sans la
+            // case à cocher que DataTable affiche par défaut dès qu'un
+            // onSelectChanged est défini.
+            showCheckboxColumn: false,
             headingRowColor: WidgetStateProperty.all(AppColors.background),
             columns: [
               const DataColumn(label: Text('')),
@@ -1531,7 +1535,17 @@ class _ProductTable extends ConsumerWidget {
               if (canEdit || canAdjustStock || canViewHistory) const DataColumn(label: Text(''), numeric: true),
             ],
             rows: products.map((p) {
-              return DataRow(cells: [
+              return DataRow(
+                // Clique n'importe où sur la ligne (hors boutons d'action,
+                // qui gèrent leur propre tap) pour voir tous les détails du
+                // produit — même dialogue que le crayon "Modifier".
+                onSelectChanged: canEdit
+                    ? (_) => showDialog(
+                          context: context,
+                          builder: (_) => _ProductFormDialog(product: p),
+                        )
+                    : null,
+                cells: [
                 DataCell(_ProductThumb(imageUrl: p.imageUrl, size: 36)),
                 DataCell(Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
