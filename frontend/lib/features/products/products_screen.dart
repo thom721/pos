@@ -1537,14 +1537,13 @@ class _ProductTable extends ConsumerWidget {
             rows: products.map((p) {
               return DataRow(
                 // Clique n'importe où sur la ligne (hors boutons d'action,
-                // qui gèrent leur propre tap) pour voir tous les détails du
-                // produit — même dialogue que le crayon "Modifier".
-                onSelectChanged: canEdit
-                    ? (_) => showDialog(
-                          context: context,
-                          builder: (_) => _ProductFormDialog(product: p),
-                        )
-                    : null,
+                // qui gèrent leur propre tap) pour voir la fiche détails en
+                // lecture seule — "Modifier" (crayon, ou le bouton dans la
+                // fiche) reste le seul moyen d'ouvrir le formulaire éditable.
+                onSelectChanged: (_) => showDialog(
+                  context: context,
+                  builder: (_) => _ProductDetailsDialog(product: p),
+                ),
                 cells: [
                 DataCell(_ProductThumb(imageUrl: p.imageUrl, size: 36)),
                 DataCell(Column(
@@ -1889,13 +1888,155 @@ class _ProductCard extends ConsumerWidget {
             ),
           ],
         ),
-        onTap: canEdit
-            ? () => showDialog(
-                  context: context,
-                  builder: (_) => _ProductFormDialog(product: product),
-                )
-            : null,
+        // Lecture seule au tap, cohérent avec le tableau desktop — "Modifier"
+        // reste accessible depuis la fiche détails (bouton) ou l'icône crayon.
+        onTap: () => showDialog(
+          context: context,
+          builder: (_) => _ProductDetailsDialog(product: product),
+        ),
       ),
+    );
+  }
+}
+
+// ─── Details Dialog (lecture seule) ──────────────────────────────────────────
+
+class _ProductDetailsDialog extends ConsumerStatefulWidget {
+  final ProductModel product;
+  const _ProductDetailsDialog({required this.product});
+
+  @override
+  ConsumerState<_ProductDetailsDialog> createState() => _ProductDetailsDialogState();
+}
+
+class _ProductDetailsDialogState extends ConsumerState<_ProductDetailsDialog> {
+  late final Future<List<PriceTier>>? _tiersFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    final wh = widget.product.warehouseId;
+    _tiersFuture = (!widget.product.isService && wh != null)
+        ? ProductRepository().getPriceTiers(widget.product.id, wh)
+        : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.product;
+    final settings = ref.watch(settingsProvider);
+    final canEdit = ref.watch(hasPermissionProvider(Perm.productsUpdate));
+
+    Widget row(String label, String value) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 140,
+                child: Text(label,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary)),
+              ),
+              Expanded(
+                child: Text(value,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w500)),
+              ),
+            ],
+          ),
+        );
+
+    return AlertDialog(
+      title: Row(
+        children: [
+          _ProductThumb(imageUrl: p.imageUrl, size: 40),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(p.name,
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              row('Type', p.isService ? 'Service' : 'Produit'),
+              if (p.barcode != null && p.barcode!.isNotEmpty)
+                row('Code-barres', p.barcode!),
+              if (p.description != null && p.description!.isNotEmpty)
+                row('Description', p.description!),
+              row('Catégorie', p.category?.name ?? '—'),
+              row(p.isService ? 'Coût' : 'Prix achat',
+                  formatMoney(p.purchasePrice, settings)),
+              row(p.isService ? 'Prix' : 'Prix vente',
+                  formatMoney(p.salePrice, settings)),
+              if (!p.isService) ...[
+                row('Marge',
+                    p.purchasePrice > 0
+                        ? '${((p.salePrice - p.purchasePrice) / p.purchasePrice * 100).toStringAsFixed(1)}%'
+                        : '—'),
+                row('Stock', p.stock != null ? '${p.stock}' : '—'),
+                row('Seuil d\'alerte', '${p.alertStock}'),
+                if (p.isComposite)
+                  row('Produit composé', 'Oui'),
+              ],
+              if (_tiersFuture != null)
+                FutureBuilder<List<PriceTier>>(
+                  future: _tiersFuture,
+                  builder: (context, snap) {
+                    if (!snap.hasData) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2)),
+                      );
+                    }
+                    final tiers = snap.data!;
+                    if (tiers.isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Paliers de prix (gros)',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 13)),
+                          const SizedBox(height: 4),
+                          ...tiers.map((t) => row(
+                              'À partir de ${t.minQuantity.toStringAsFixed(t.minQuantity % 1 == 0 ? 0 : 2)}',
+                              formatMoney(t.price, settings))),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Fermer'),
+        ),
+        if (canEdit)
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              showDialog(
+                context: context,
+                builder: (_) => _ProductFormDialog(product: p),
+              );
+            },
+            child: const Text('Modifier'),
+          ),
+      ],
     );
   }
 }
