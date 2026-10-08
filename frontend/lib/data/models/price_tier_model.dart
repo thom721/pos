@@ -11,10 +11,13 @@ class PriceTier {
     required this.price,
   });
 
+  // double.tryParse(...toString()), pas `as num` — un backend plus ancien
+  // (Decimal sérialisé en chaîne JSON par Pydantic, ex: "3.00") planterait
+  // sinon sur un simple cast de type.
   factory PriceTier.fromJson(Map<String, dynamic> json) => PriceTier(
         productId: json['product_id']?.toString() ?? '',
-        minQuantity: (json['min_quantity'] as num?)?.toDouble() ?? 0,
-        price: (json['price'] as num?)?.toDouble() ?? 0,
+        minQuantity: double.tryParse(json['min_quantity']?.toString() ?? '') ?? 0,
+        price: double.tryParse(json['price']?.toString() ?? '') ?? 0,
       );
 
   /// Regroupe les paliers par produit, triés par seuil croissant.

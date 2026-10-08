@@ -172,11 +172,15 @@ class ProductRepository {
   Future<List<PriceTier>> getPriceTiers(String productId, String warehouseId) async {
     final res = await dio.get('/api/products/$productId/price-tiers',
         queryParameters: {'warehouse_id': warehouseId});
+    // double.tryParse(...toString()), pas `as num` — un backend plus ancien
+    // (Decimal sérialisé en chaîne JSON, ex: "3.00") planterait sinon sur un
+    // simple cast de type (constaté en prod : "Une erreur inattendue s'est
+    // produite" dès qu'un produit avait au moins un palier).
     return (res.data as List)
         .map((e) => PriceTier(
               productId: productId,
-              minQuantity: (e['min_quantity'] as num).toDouble(),
-              price: (e['price'] as num).toDouble(),
+              minQuantity: double.tryParse(e['min_quantity']?.toString() ?? '') ?? 0,
+              price: double.tryParse(e['price']?.toString() ?? '') ?? 0,
             ))
         .toList();
   }
