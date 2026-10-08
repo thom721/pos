@@ -3,7 +3,7 @@ import asyncio
 import logging
 import os
 from fastapi import FastAPI, Depends, HTTPException, Request
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 
 logging.basicConfig(
     level=logging.INFO,
@@ -256,6 +256,44 @@ def _run_alembic_migrations() -> None:
                 lock_conn.execute(text("SELECT RELEASE_LOCK('pos_alembic_migration')"))
 
 
+def _reset_pull_watermarks_for_tables(active_engine, table_names: set[str]) -> None:
+    """Force un re-pull complet des entités de synchro dont la table vient de
+    recevoir une nouvelle colonne (voir _sync_schema_from_models).
+
+    Un ADD COLUMN ... DEFAULT ne touche jamais updated_at des lignes
+    existantes — sans ce reset, le curseur de synchro local (basé sur
+    updated_at côté cloud) ne re-tire jamais ces lignes, et la valeur par
+    défaut de la nouvelle colonne reste figée localement pour toujours, même
+    après mise à jour du serveur local (constaté en prod : Product.is_service
+    resté à 0 sur des produits service déjà synchronisés avant l'ajout de la
+    colonne). N'a d'effet que là où sync_state contient déjà des lignes —
+    no-op sur le cloud (qui n'utilise pas ce curseur) et sur une toute
+    nouvelle installation locale (rien à relancer, le premier pull est déjà complet)."""
+    from api.services.local_sync_service import SYNC_ENTITIES
+
+    entity_types = {
+        e["type"] for e in SYNC_ENTITIES
+        if e["direction"] in ("pull", "both") and e["model"].__tablename__ in table_names
+    }
+    if not entity_types:
+        return
+    try:
+        with active_engine.connect() as conn:
+            result = conn.execute(
+                text("UPDATE sync_state SET last_pull_at = NULL WHERE entity_type IN :types")
+                .bindparams(bindparam("types", expanding=True)),
+                {"types": list(entity_types)},
+            )
+            conn.commit()
+            if result.rowcount:
+                _log.info(
+                    "schema-sync: curseur de pull réinitialisé pour %s (%d ligne(s) sync_state)",
+                    sorted(entity_types), result.rowcount,
+                )
+    except Exception as exc:
+        _log.warning("schema-sync: échec réinitialisation curseur pull (%s)", exc)
+
+
 def _sync_schema_from_models(active_engine=None) -> None:
     """
     Synchronise automatiquement le schéma DB avec les modèles SQLAlchemy :
@@ -298,6 +336,13 @@ def _sync_schema_from_models(active_engine=None) -> None:
 
         dialect = _eng.dialect
         added = 0
+        # Tables ayant reçu au moins une colonne — sert à forcer un re-pull
+        # complet des entités de synchro concernées (voir plus bas) : une
+        # colonne ajoutée ici via DEFAULT ne touche jamais updated_at des
+        # lignes déjà présentes, donc le curseur de synchro (basé sur
+        # updated_at côté cloud) ne les re-tirerait sinon plus jamais —
+        # la valeur par défaut resterait figée localement pour toujours.
+        touched_tables: set[str] = set()
 
         with _eng.connect() as conn:
             for table in Base.metadata.sorted_tables:
@@ -357,6 +402,7 @@ def _sync_schema_from_models(active_engine=None) -> None:
                         conn.execute(text(stmt))
                         conn.commit()
                         added += 1
+                        touched_tables.add(table.name)
                         _log.info("schema-sync: + %s.%s %s", table.name, col.name, col_type)
                     except Exception as col_exc:
                         conn.rollback()
@@ -367,6 +413,9 @@ def _sync_schema_from_models(active_engine=None) -> None:
 
         if added:
             _log.info("schema-sync: %d colonne(s) ajoutée(s)", added)
+
+        if touched_tables:
+            _reset_pull_watermarks_for_tables(_eng, touched_tables)
     finally:
         if lock_conn is not None:
             try:
