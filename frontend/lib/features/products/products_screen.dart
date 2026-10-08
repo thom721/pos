@@ -2060,7 +2060,9 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
     // l'utilisateur (voir le commentaire sur _formSettings).
     final sym = _formSettings.currencySymbol.trim();
     return AlertDialog(
-      title: Text(isEdit ? 'Modifier le produit' : 'Nouveau produit'),
+      title: Text(isEdit
+          ? (_isService ? 'Modifier le service' : 'Modifier le produit')
+          : (_isService ? 'Nouveau service' : 'Nouveau produit')),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       content: SizedBox(
         width: 500,
@@ -2071,6 +2073,29 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Choix du type en tout premier — détermine le libellé du
+                // dialogue ("Nouveau service"/"Nouveau produit") et masque
+                // les champs liés au stock plus bas dans le formulaire.
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Service'),
+                  subtitle: const Text(
+                    'Ex: pressing, lessive — aucune quantité ni stock '
+                    'suivis, vendable sans limite.',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  value: _isService,
+                  onChanged: (v) => setState(() {
+                    _isService = v;
+                    if (v) {
+                      _isComposite = false;
+                      _componentProductId = null;
+                      _componentProductName = null;
+                      _componentQtyCtrl.clear();
+                    }
+                  }),
+                ),
+                const SizedBox(height: 8),
                 _ImagePickerSection(
                   existingUrl: widget.product?.imageUrl,
                   selectedBytes: _imageBytes,
@@ -2178,8 +2203,10 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                       child: TextFormField(
                         controller: _purchasePriceCtrl,
                         keyboardType: TextInputType.number,
-                        decoration:
-                            InputDecoration(labelText: 'Prix achat ($sym) *'),
+                        decoration: InputDecoration(
+                            labelText: _isService
+                                ? 'Coût ($sym)'
+                                : 'Prix achat ($sym) *'),
                         validator: (v) => v!.isEmpty ? 'Requis' : null,
                       ),
                     ),
@@ -2188,8 +2215,10 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                       child: TextFormField(
                         controller: _salePriceCtrl,
                         keyboardType: TextInputType.number,
-                        decoration:
-                            InputDecoration(labelText: 'Prix vente ($sym) *'),
+                        decoration: InputDecoration(
+                            labelText: _isService
+                                ? 'Prix ($sym) *'
+                                : 'Prix vente ($sym) *'),
                         validator: (v) => v!.isEmpty ? 'Requis' : null,
                       ),
                     ),
@@ -2212,26 +2241,6 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
                     ),
                   ],
                 ],
-                const SizedBox(height: 12),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Service'),
-                  subtitle: const Text(
-                    'Ex: pressing, lessive — aucune quantité ni stock '
-                    'suivis, vendable sans limite.',
-                    style: TextStyle(fontSize: 11),
-                  ),
-                  value: _isService,
-                  onChanged: (v) => setState(() {
-                    _isService = v;
-                    if (v) {
-                      _isComposite = false;
-                      _componentProductId = null;
-                      _componentProductName = null;
-                      _componentQtyCtrl.clear();
-                    }
-                  }),
-                ),
                 if (!_isService) ...[
                   const SizedBox(height: 8),
                   TextFormField(
