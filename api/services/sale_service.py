@@ -281,9 +281,11 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
         if not product:
             raise HTTPException(404, f"Produit introuvable: {item.product_id}")
         # Palier de prix du dépôt (quantité atteinte) : le serveur fait foi.
+        # float(tier) : voir le commentaire équivalent dans create_sale —
+        # Decimal * float lève TypeError.
         tier = price_tier_service.tier_price(db, product.id, sale.warehouse_id, item.quantity)
         if tier is not None:
-            unit_price = tier
+            unit_price = float(tier)
         else:
             unit_price = item.unit_price if item.unit_price else _resolve_price(db, product, sale.warehouse_id)
         subtotal = unit_price * item.quantity
@@ -580,6 +582,13 @@ def create_sale(
     total = 0
     item_discounts: list[tuple[Decimal, str | None]] = []
     item_discount_total = Decimal(0)
+    # Prix réellement appliqué par article (catalogue, par-dépôt, ou palier),
+    # réutilisé tel quel à l'étape 3️⃣ pour construire les SaleItem — sans ça,
+    # l'étape 3️⃣ recalculait son propre prix en ignorant complètement les
+    # paliers (elle ne regardait que item.unit_price/_resolve_price), donc le
+    # total de la vente reflétait le palier mais chaque SaleItem.unit_price
+    # restait au prix catalogue : incohérence totale vente ≠ somme des lignes.
+    item_unit_prices: list[float] = []
 
     # 1️⃣ Vérification stock + calcul total + résolution des rabais par article
     for item in data.items:
@@ -610,13 +619,19 @@ def create_sale(
         # unit_price explicite (cas normal : le prix affiché en caisse vient
         # déjà de ProductService.list(warehouse_id=...)).
         # Palier de prix du dépôt (quantité atteinte) : le serveur fait foi.
+        # float(tier) : tier_price() renvoie un Decimal, item.quantity est un
+        # float (SaleItemInput) — Decimal * float lève TypeError en Python,
+        # ce qui faisait planter TOUTE vente atteignant réellement un palier
+        # (jamais détecté : les tests ne couvraient que tier_price() isolé,
+        # jamais create_sale() avec une quantité franchissant un seuil).
         tier = price_tier_service.tier_price(db, product.id, wh_id, item.quantity)
         if tier is not None:
-            unit_price = tier
+            unit_price = float(tier)
         else:
             unit_price = item.unit_price if item.unit_price else _resolve_price(db, product, wh_id)
         subtotal = unit_price * item.quantity
         total += subtotal
+        item_unit_prices.append(unit_price)
 
         amount, disc_id = resolve_discount(
             db,
@@ -775,7 +790,9 @@ def create_sale(
     # 3️⃣ Items + mouvements stock OUT (réutilise le dict déjà chargé)
     for idx, item in enumerate(data.items):
         product = products[str(item.product_id)]
-        applied_price = item.unit_price if item.unit_price else _resolve_price(db, product, wh_id)
+        # Même prix que celui utilisé pour calculer le total à l'étape 1️⃣
+        # (catalogue, par-dépôt, ou palier) — ne jamais le recalculer ici.
+        applied_price = item_unit_prices[idx]
         item_amount, item_disc_id = item_discounts[idx]
 
         db.add(SaleItem(
