@@ -1484,6 +1484,14 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         _refreshSessionFromServer();
       }
     });
+    // Rattrape les articles déjà dans le panier ajoutés avant que les
+    // paliers de prix n'aient fini de charger (sinon figés au prix
+    // catalogue — voir PosNotifier.refreshTiers).
+    ref.listen<AsyncValue<Map<String, List<PriceTier>>>>(priceTiersProvider,
+        (prev, next) {
+      final tiers = next.valueOrNull;
+      if (tiers != null) notifier.refreshTiers(tiers);
+    });
 
     return LayoutBuilder(
       builder: (context, constraints) {

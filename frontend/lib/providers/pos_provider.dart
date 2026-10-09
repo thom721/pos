@@ -20,7 +20,14 @@ class CartItem {
   double quantity;
   double? _customPrice;
   DiscountModel? catalogDiscount; // rabais catalogue choisi pour cette ligne
-  final List<PriceTier> tiers;    // paliers du dépôt pour ce produit
+  // Paliers du dépôt pour ce produit — PAS final : addProduct() peut figer
+  // ceci à [] si priceTiersProvider n'a pas fini de charger (ouverture de
+  // la caisse, changement de dépôt) ; refreshTiers() le corrige dès que le
+  // provider répond, sinon un article déjà dans le panier restait bloqué au
+  // prix catalogue pour toute sa durée de vie même une fois les paliers
+  // chargés (constaté en prod : prix normal affiché alors qu'un palier
+  // aurait dû s'appliquer).
+  List<PriceTier> tiers;
 
   CartItem({required this.product, this.quantity = 1, this.tiers = const []});
 
@@ -189,6 +196,25 @@ class PosNotifier extends StateNotifier<PosState> {
       return i;
     }).toList();
     state = state.copyWith(items: updated);
+  }
+
+  /// Remet à jour les paliers de chaque article déjà dans le panier — appelé
+  /// quand priceTiersProvider se (re)charge, pour rattraper un article ajouté
+  /// avant que les paliers n'aient fini de charger (sinon figé au prix
+  /// catalogue pour toute sa durée de vie dans le panier, voir CartItem.tiers).
+  /// Ne touche pas _customPrice : un prix déjà modifié manuellement n'est
+  /// jamais écrasé.
+  void refreshTiers(Map<String, List<PriceTier>> tiersByProduct) {
+    if (state.items.isEmpty) return;
+    var changed = false;
+    for (final i in state.items) {
+      final fresh = tiersByProduct[i.product.id] ?? const <PriceTier>[];
+      if (fresh.length != i.tiers.length) {
+        i.tiers = fresh;
+        changed = true;
+      }
+    }
+    if (changed) state = state.copyWith(items: List<CartItem>.from(state.items));
   }
 
   void updateItemPrice(String productId, double newPrice) {
