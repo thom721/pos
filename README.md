@@ -22,6 +22,8 @@ Architecture **SaaS multi-tenant** avec support des déploiements **self-hosted*
 
 ### Commerce (tous types)
 - Catalogue produits (catégories, fournisseurs, barcode, images) — `warehouse_id` optionnel par produit
+- Type de produit "Service" (pressing, lessive...) : pas de stock suivi, référence de vente dédiée `SER-00001`
+- Paliers de prix (gros) par dépôt — le serveur applique automatiquement le palier atteint à la vente
 - Caisse POS : ventes, retours, paiements partiels, dettes automatiques
 - Achats fournisseurs avec réceptions partielles
 - Stock calculé en temps réel (StockMovement)

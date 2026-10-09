@@ -1,8 +1,8 @@
 # PPRD — Product & Project Requirements Document
 # POS Connect — Système de Caisse Multi-Plateforme
 
-**Date :** 2026-09-12
-**Version :** 0.9 (en développement actif) — app 2.0.0+44, tag v2.0.39
+**Date :** 2026-10-09
+**Version :** 0.9 (en développement actif) — app 2.0.0+57, tag v2.0.63
 **Stack backend :** Python 3.11 · FastAPI · SQLAlchemy · MySQL / SQLite · JWT
 **Stack frontend :** Flutter 3.x · Riverpod · go_router · Dio · SharedPreferences
 
@@ -107,6 +107,20 @@ Le backend lit sa configuration dans cet ordre de priorité :
 - [x] Multi-devise d'affichage/saisie ($HT/USD/EUR) — HTG reste l'unique source de vérité en base, conversion à l'affichage et à la saisie (`core/currency.dart`)
 - [x] Suppression sécurisée d'un produit : verrouillage (réversible) si historique bloquant, sinon suppression totale
 - [x] Produits composés : reste d'unités du composant affiché (ex: "3 (+8)") au lieu d'une fraction décimale trompeuse
+- [x] **Type de produit "Service"** (`products.is_service`, défaut `false`) — pour les commerces proposant des services (pressing, lessive...) sans stock/quantité suivie
+  - Backend : stock/quantité disponible jamais vérifiés à la vente, aucun `StockMovement` créé (création, modification, annulation, retour)
+  - Onglet "Produit" / "Service" sur les écrans Produits et Ventes (`item_type=product|service`) — "Produit" par défaut ; une vente mixte (contient les deux) apparaît dans les deux onglets côté Ventes
+  - Formulaire produit : switch "Service" en tout premier champ, pilote le titre du dialogue ("Nouveau service"/"Nouveau produit"), masque Seuil d'alerte/Produit composé/Paliers de prix, relabel "Prix achat"/"Prix vente" → "Coût"/"Prix"
+  - Exclu des alertes stock bas, du digest email quotidien et du comptage d'inventaire
+  - Historique des mouvements et "Retourner à l'entrepôt" désactivés (tooltip explicatif) dans la liste produits
+  - Référence de vente dédiée `SER-00001` (compteur indépendant de `VNT-`, scopé par dépôt) pour une vente composée uniquement de services ; une vente mixte garde `VNT-`
+  - Section "Services" séparée dans le PDF du rapport de ventes (liste par article, triée par numéro de référence croissant)
+  - Support complet Android hors-ligne (cache SQLite : colonne `is_service`, migration locale v31, jointure `sale_items`→`products`)
+- [x] **Paliers de prix (gros)** (`product_price_tiers` : `product_id`, `warehouse_id`, `min_quantity`, `price`) — prix dégressif par dépôt à partir d'une quantité
+  - Le palier le plus élevé atteint par la quantité de la ligne s'applique ; le serveur fait foi même si le client envoie un `unit_price` différent
+  - Édition dans la fiche produit ("Paliers de prix (gros)", visible en modification, par dépôt du produit) ; consultation en lecture seule dans la fiche détails (clic sur une ligne du tableau Produits)
+  - Caisse : `priceTiersProvider` charge tous les paliers du dépôt actif en un seul appel (`GET /api/price-tiers`), `CartItem.tierPrice` applique le palier atteint selon la quantité en temps réel
+  - Libellé reçu : "Rabais" (écart prix catalogue / prix facturé, inclut les paliers)
 
 ### 3.4 Ventes
 
@@ -441,6 +455,9 @@ room_attributes   ← attributs clé/valeur des chambres hôtel (FK restaurant_t
 | B16 | Résolu | `pos_server.ini` illisible (permissions/verrou) → `configparser.read()` échoue en silence total, aucune trace dans les logs → log explicite ajouté (`api/core/config.py`) |
 | B17 | Actif | Fichiers uploadés (`api/static/logos/*`) disparaissent entre deux déploiements prod — cause exacte non confirmée (probable étape de déploiement qui réinitialise `/opt/post` aux fichiers trackés par git, or ces uploads ne sont pas versionnés) — à investiguer côté script de déploiement |
 | B18 | Ajouté | `CORS_ORIGIN_REGEX` (optionnel, vide par défaut) en complément de `CORS_ORIGINS` — permet `flutter run -d chrome` en local contre un backend sans lister un port exact à chaque lancement |
+| B19 | Résolu | **Critique** — `create_sale()` : `Decimal * float` levait `TypeError` dès qu'une vente atteignait réellement un palier de prix (jamais détecté : seul `tier_price()` isolé était testé, jamais `create_sale()` avec une quantité franchissant un seuil) → `float(tier)` à la conversion. Une fois ce crash corrigé, bug plus profond trouvé : le prix du palier n'était calculé que pour le total de la vente (1ère boucle) ; une 2de boucle, indépendante, recalculait son propre prix pour construire chaque `SaleItem` en ignorant totalement les paliers — total correct, mais chaque ligne vendue enregistrée au prix catalogue. Le prix calculé est maintenant mémorisé (`item_unit_prices`) et réutilisé tel quel pour les deux boucles |
+| B20 | Résolu | `PriceTierIn`/`PriceTierRead` typés `Decimal` → Pydantic v2 sérialise en **chaîne JSON** (`"3.00"`, pas `3.00`) ; le client Flutter castait `min_quantity`/`price` en `num`, crash "Une erreur inattendue s'est produite" dès l'ouverture d'un produit ayant au moins un palier → schémas passés en `float` (`price_tier_service` reconvertit de toute façon en `Decimal` avant tout calcul, aucune perte de précision) |
+| B21 | Résolu | Toute colonne ajoutée via `_sync_schema_from_models()` (seul mécanisme de migration sur une install locale *frozen*, Alembic y étant ignoré) ne touche jamais `updated_at` des lignes existantes — le curseur de pull local (basé sur `updated_at` côté cloud) ne les re-tirait donc plus jamais, la valeur par défaut de la nouvelle colonne restant figée localement pour toujours, même après mise à jour du serveur local (constaté : `Product.is_service` resté à `0` sur des produits déjà synchronisés avant l'ajout de la colonne) → toute table ayant reçu une nouvelle colonne déclenche désormais la réinitialisation du curseur de pull des entités concernées |
 
 ### 5.2 Frontend
 
@@ -479,6 +496,9 @@ room_attributes   ← attributs clé/valeur des chambres hôtel (FK restaurant_t
 | F31 | Résolu | Upload logo (`POST /api/config/logo`) n'envoyait pas `warehouse_id` (contrairement à `_load()`/`save()`) → pouvait atterrir sur une ligne `AppConfig` différente de celle affichée à l'écran (dépôt par défaut de l'utilisateur ≠ business sélectionné) |
 | F32 | Résolu | Logo jamais imprimé sur reçu via imprimante Sunmi intégrée (seuls PDF et Bluetooth l'avaient) → `SunmiPrinter.printImage()` ajouté dans `thermal_printer_service.dart` |
 | F33 | Résolu | Modal "Modifier le produit" : écran gris (aucun champ affiché) uniquement en build `--release`/web déployé, jamais en `--debug` → `Spacer()` (= `Expanded` déguisé) dans `AlertDialog.actions`, mis en page par un `OverflowBar` depuis Flutter 3.x (pas un `Row`) → `TypeError: _OverflowBarParentData is not a subtype of FlexParentData` ; actions enveloppées dans un `Row` dédié |
+| F34 | Résolu | Formulaire produit : prix produit/par-dépôt/paliers lisait `settingsProvider` à deux moments différents (préremplissage à l'ouverture, conversion à l'enregistrement) — un changement de devise/taux pendant que le formulaire restait ouvert (ex: poussé en temps réel depuis un autre appareil) corrompait silencieusement le prix enregistré sans y toucher (constaté : prix saisi à 20 ressorti à 0.77 après réouverture/réenregistrement sans modification) → devise figée une seule fois à l'ouverture (`_formSettings`), réutilisée telle quelle jusqu'à la fermeture |
+| F35 | Résolu | **Critique** — Caisse : `CartItem.tiers` figé à l'ajout au panier (`_tiersOf(ref, ...)` lit `priceTiersProvider` une seule fois via `ref.read`) — si le `FutureProvider` n'avait pas fini de charger (ouverture de caisse, changement de dépôt), l'article gardait `tiers=[]` pour toute sa durée de vie dans le panier, même une fois les paliers chargés juste après : prix normal affiché au lieu du prix en gros, risque de sous-encaissement → `PosNotifier.refreshTiers()` rattrape chaque article déjà présent dès que `priceTiersProvider` se (re)charge, sans jamais écraser un prix déjà modifié manuellement |
+| F36 | Résolu | Écran Produits : clic sur une ligne du tableau ouvrait directement le formulaire d'édition (pas de fiche détails en lecture seule) → nouvelle `_ProductDetailsDialog` (texte simple, bouton "Modifier" séparé) ; même comportement appliqué à la carte mobile (`onTap`) |
 
 ---
 
@@ -518,6 +538,8 @@ Migrations récentes :
 - `f3930ab198e9` — `update_url_android` sur `platform_config` (lien Google Play)
 - `00d25d56df77` — merge de toutes les têtes Alembic divergentes (11 heads → 1)
 - `f8bf3dfe3543` — correctif idempotent `pos_registers.*_at` DATETIME → TEXT(600) (Fernet)
+- `f3a8d1c6e2b9` — table `product_price_tiers` (paliers de prix par dépôt)
+- `a1b4c7d9e3f2` — `products.is_service` (type "service", défaut `false`)
 
 ### 6.3 Client (autre machine)
 
@@ -593,6 +615,7 @@ SECRET_KEY=change_me_use_openssl_rand_hex_32
 | Moyenne | Variantes de plats UI (exploiter `menu_items.variants` JSON) |
 | Moyenne | Envoi facture/proforma par email depuis l'app |
 | Basse | Mode inventaire restaurant (recettes, coûts matières) |
+| Basse | Saisie libre d'un prix personnalisé par ligne en caisse — logique déjà prête côté provider (`PosNotifier.updateItemPrice`) mais jamais câblée à un champ dans l'UI |
 | Basse | Réservations de tables / chambres (heure, nom client) |
 | Basse | Tests unitaires backend (pytest) |
 | Basse | Migration SQLite → MySQL |
