@@ -107,6 +107,10 @@ Le backend lit sa configuration dans cet ordre de priorité :
 - [x] Multi-devise d'affichage/saisie ($HT/USD/EUR) — HTG reste l'unique source de vérité en base, conversion à l'affichage et à la saisie (`core/currency.dart`)
 - [x] Suppression sécurisée d'un produit : verrouillage (réversible) si historique bloquant, sinon suppression totale
 - [x] Produits composés : reste d'unités du composant affiché (ex: "3 (+8)") au lieu d'une fraction décimale trompeuse
+- [x] `warehouse_id` obligatoire sur un produit (plus d'option "Tous les dépôts" au formulaire) — le stock est suivi par (produit, dépôt), un produit partagé affichait un stock à 0 au changement de dépôt
+- [x] Changement de dépôt d'un produit : bloqué s'il a déjà des ventes enregistrées (historique rattaché à ce dépôt), sinon le stock existant est migré automatiquement vers le nouveau dépôt (notification de la quantité transférée)
+- [x] Produit verrouillé (`is_locked`) : toute modification bloquée sauf le déverrouillage lui-même
+- [x] Dépôt actif pré-sélectionné à la création d'un produit (au lieu de "Tous les dépôts" par défaut)
 - [x] **Type de produit "Service"** (`products.is_service`, défaut `false`) — pour les commerces proposant des services (pressing, lessive...) sans stock/quantité suivie
   - Backend : stock/quantité disponible jamais vérifiés à la vente, aucun `StockMovement` créé (création, modification, annulation, retour)
   - Onglet "Produit" / "Service" sur les écrans Produits et Ventes (`item_type=product|service`) — "Produit" par défaut ; une vente mixte (contient les deux) apparaît dans les deux onglets côté Ventes
@@ -132,6 +136,14 @@ Le backend lit sa configuration dans cet ordre de priorité :
 - [x] Statuts : UNPAID / PAID / PARTIAL
 - [x] Annulation de vente
 - [x] Retour client (permission `returns.create` accordée aux caissiers)
+- [x] Filtre par période (date range) + pagination sur l'historique des ventes
+- [x] Nom du caissier affiché sur chaque carte de vente
+- [x] Numérotation séquentielle (`VNT-00001`) appliquée aussi à l'encaissement d'une commande restaurant (générait auparavant une référence aléatoire, non isolée par dépôt)
+- [x] **Durcissement de l'autorisation par dépôt** (suite à un incident de production : vente d'un caissier comptabilisée sur le mauvais business) :
+  - vente rejetée si le dépôt demandé n'appartient pas à la liste des dépôts autorisés du caissier
+  - résolution du dépôt par priorité stricte : session de caisse ouverte (`CashierSession.warehouse_id`) > dépôt unique assigné au caissier > jamais un repli silencieux sur le dépôt par défaut du tenant
+  - tenant multi-dépôts : vente rejetée (400) plutôt que devinée si le dépôt reste ambigu (aucune session, aucun dépôt explicite, plusieurs dépôts assignés)
+  - même vérification ajoutée au login (`cloud_login`) et à l'ouverture de session de caisse (`open_session`) — un appareil déjà lié à la caisse d'un autre dépôt était sinon réutilisé tel quel
 
 ### 3.5 Achats fournisseurs
 
@@ -287,13 +299,29 @@ Implémenté via `_resolveMainNav(businessType)` et `_resolveAndroidBottom(busin
 ### 3.14 Synchronisation local ↔ cloud
 
 - [x] `POST /api/sync/token` — credentials tenant → JWT sync (365j)
-- [x] `POST /api/sync/push` / `GET /api/sync/pull` — upsert bidirectionnel
+- [x] `POST /api/sync/push` / `GET /api/sync/pull` / `POST /api/sync/pull-batch` — upsert bidirectionnel
 - [x] `POST /api/sync/run` — cycle complet
-- [x] Table `SyncState` : watermarks par entity_type
-- [x] Entités bidirectionnelles : `category`, `supplier`, `product`, `customer`
-- [x] Entités push-only : `sale`, `sale_item`, `payment`, `purchase`, `return_record`
+- [x] Table `SyncState` : watermarks par entity_type (réinitialisé automatiquement après l'ajout d'une colonne en local — voir B21)
+- [x] ~40 entités synchronisées (`SYNC_ENTITIES`), la plupart bidirectionnelles ; push-only : `cashier_session`, `audit_log`, `restaurant_order(_item)`, `housekeeping_task` ; pull-only : `app_config`
 - [x] Résolution conflits : last-write-wins sur `updated_at`
 - [x] Bug timezone corrigé : `datetime.now()` (local) remplacé par `datetime.now(timezone.utc)` pour éviter les comparaisons incohérentes
+- [x] **Synchronisation scopée par dépôt** — le serveur local envoie son `installer_warehouse_id` (en-tête `X-Warehouse-Id`), vérifié contre le tenant du token ; le cloud filtre pull/pull-batch/push sur ce dépôt pour les entités qui y sont propres (lignes enfants via leur entité parente) ; une installation ignore à la réception toute ligne d'un autre dépôt
+  - Entités "nullable par dépôt" (`discount`, `app_config`) : ligne propre à un dépôt **ou** ligne globale (`NULL` = partagée par tous)
+  - `user` (liste JSON de dépôts) et la ligne `app_config` globale restent au niveau du tenant, non filtrés par dépôt
+  - Rabais par dépôt (`discounts.warehouse_id`) — une vente refuse un rabais qui n'appartient pas à son dépôt
+- [x] **Synchronisation temps réel ciblée** (WebSocket) :
+  - le serveur local écoute le push WebSocket du cloud (`{type: sync}`) et synchronise immédiatement, au lieu d'attendre le minuteur (5 min) — reconnexion WS déclenche aussi une synchro immédiate côté app
+  - le signal porte la liste des types réellement modifiés (`entities: [...]`) — l'app ne relit que ces types (ventes, produits, achats, dettes, clients, rabais, paliers de prix, paramètres) au lieu d'une resynchro complète ; type inconnu ou absent = resynchro complète par sécurité
+  - signaux WS scopés par dépôt — une connexion ne reçoit que les signaux de son/ses dépôt(s) (liste de l'utilisateur, ou dépôt de l'installation locale)
+  - serveur local → appareils : notifie ses propres clients WS dès qu'un pull a appliqué des données (paramètres, produits, clients, ventes, achats, dettes, rabais, paliers)
+  - réglages (devise, taux, etc.) relus après chaque synchronisation terminée et dès le signal WebSocket, sans attendre la synchro complète — auparavant nécessitait un redémarrage de l'app pour apparaître
+- [x] **Fiabilité hors-ligne** (`OfflineQueueService`) :
+  - plus aucune opération abandonnée automatiquement après N échecs — reste en file jusqu'à réussir ; connectivité réseau réelle vérifiée avant toute tentative ; dédoublonnage par contenu au chargement et à l'ajout ; `drain()` réentrant (protégé contre les déclenchements concurrents)
+  - écran "Opérations hors-ligne en attente" : détail de chaque opération, resynchro manuelle (globale ou par ligne), suppression définitive après confirmation explicite
+  - idempotence `client_id` sur ventes, clients **et** achats (évite les doublons au rejeu), sur Android **et** bureau/web
+  - fermeture de session de caisse mise en file hors-ligne comme une vente (restait silencieusement "ouverte" côté serveur sinon)
+  - vente hors-ligne : horodatage réel envoyé par le client (`created_at`), au lieu de la date de la synchro différée
+  - clients : déduplication à l'affichage (par nom), avertissement avant de créer un doublon, rejet serveur (409) sauf confirmation explicite
 
 ### 3.15 Identité serveur Ed25519
 
@@ -368,6 +396,20 @@ Implémenté via `_resolveMainNav(businessType)` et `_resolveAndroidBottom(busin
 - [x] `app_config.hotel_checkin_fields` (JSON) : champs personnalisés au check-in
 - [x] `restaurant_tables.price` : tarif nuitée par chambre
 - [x] `users.is_active` : activation/désactivation d'un utilisateur sans le supprimer
+
+### 3.23 Vérification de l'heure de l'appareil
+
+- [x] Heure du serveur lue dans l'en-tête `Date` de chaque réponse réseau, mémorisée sur l'appareil (`SharedPreferences`)
+- [x] Bannière affichée au-delà de 2 minutes d'écart (en ligne) ou si l'heure de l'appareil recule par rapport à la dernière synchro connue (hors-ligne, vérifiable sans réseau)
+- [x] Bouton "Encaisser" grisé tant que l'heure est fausse — la vente en cours n'est pas perdue
+- [x] Désactivée sur le web (horloge du navigateur hors du contrôle de l'app)
+
+### 3.24 Programme d'affiliation (parrainage)
+
+- [x] Affiliés inscrits/vérifiés par email, code de parrainage transmis via `?ref=CODE` sur `/register`
+- [x] Commission calculée automatiquement (`record_commission`) à chaque renouvellement de caisse confirmé
+- [x] Demandes de retrait gérées depuis un onglet dédié du panel admin (`AffiliateCommission`, `AffiliateWithdrawal`)
+- [x] Page `/parrainage` servie en statique, indépendante du build Flutter web
 
 ---
 
@@ -458,6 +500,14 @@ room_attributes   ← attributs clé/valeur des chambres hôtel (FK restaurant_t
 | B19 | Résolu | **Critique** — `create_sale()` : `Decimal * float` levait `TypeError` dès qu'une vente atteignait réellement un palier de prix (jamais détecté : seul `tier_price()` isolé était testé, jamais `create_sale()` avec une quantité franchissant un seuil) → `float(tier)` à la conversion. Une fois ce crash corrigé, bug plus profond trouvé : le prix du palier n'était calculé que pour le total de la vente (1ère boucle) ; une 2de boucle, indépendante, recalculait son propre prix pour construire chaque `SaleItem` en ignorant totalement les paliers — total correct, mais chaque ligne vendue enregistrée au prix catalogue. Le prix calculé est maintenant mémorisé (`item_unit_prices`) et réutilisé tel quel pour les deux boucles |
 | B20 | Résolu | `PriceTierIn`/`PriceTierRead` typés `Decimal` → Pydantic v2 sérialise en **chaîne JSON** (`"3.00"`, pas `3.00`) ; le client Flutter castait `min_quantity`/`price` en `num`, crash "Une erreur inattendue s'est produite" dès l'ouverture d'un produit ayant au moins un palier → schémas passés en `float` (`price_tier_service` reconvertit de toute façon en `Decimal` avant tout calcul, aucune perte de précision) |
 | B21 | Résolu | Toute colonne ajoutée via `_sync_schema_from_models()` (seul mécanisme de migration sur une install locale *frozen*, Alembic y étant ignoré) ne touche jamais `updated_at` des lignes existantes — le curseur de pull local (basé sur `updated_at` côté cloud) ne les re-tirait donc plus jamais, la valeur par défaut de la nouvelle colonne restant figée localement pour toujours, même après mise à jour du serveur local (constaté : `Product.is_service` resté à `0` sur des produits déjà synchronisés avant l'ajout de la colonne) → toute table ayant reçu une nouvelle colonne déclenche désormais la réinitialisation du curseur de pull des entités concernées |
+| B22 | Résolu | **Faille d'autorisation par dépôt** (confirmée en prod : vente d'un caissier assigné à un seul dépôt comptabilisée sur un autre business du même tenant, faussant la numérotation des deux) — `create_sale()` faisait confiance au `warehouse_id` envoyé par le client sans jamais le vérifier contre `User.warehouse_id` ; même faille non reproduite à `cloud_login()` et `open_session()` (appareil déjà lié à la caisse d'un autre dépôt réutilisé tel quel) ; `list_warehouses()` repliait aussi silencieusement sur tous les dépôts actifs si le dépôt assigné à un caissier restreint était introuvable → vérification ajoutée aux trois endroits, résolution du dépôt par priorité stricte (session de caisse ouverte > dépôt unique du caissier > jamais le défaut du tenant), rejet explicite (400/403) si ambigu plutôt qu'un repli silencieux |
+| B23 | Résolu | Écran Profil (Informations personnelles) envoyait `phone`/`address` vides et un `email` factice en dur à chaque sauvegarde, alors qu'il n'affiche pas ces champs — écrasait silencieusement les vraies valeurs d'un utilisateur (et réactivait `is_active`) → champs omis du payload (`exclude_unset=True` côté backend préserve l'existant). Corrige aussi `_check_unique()` : la vérification d'unicité de l'email n'était pas filtrée par tenant — le premier utilisateur de N'IMPORTE QUEL tenant à sauvegarder son profil bloquait tous les autres tenants sur ce même email factice |
+| B24 | Résolu | Synchro non scopée par dépôt : le cloud renvoyait à toute installation locale l'intégralité des données du tenant, tous dépôts confondus (voir 3.14) — fuite de données entre dépôts d'un même tenant multi-business |
+| B25 | Résolu | `User.warehouse_id` (liste JSON) et la ligne `app_config` globale (`warehouse_id NULL`) étaient exclus à tort par le filtre de synchro par dépôt — aucun compte utilisateur ne remontait aux caisses, la configuration globale n'était jamais reçue |
+| B26 | Résolu | WebSocket temps réel : jeton de synchro non migré vers le nouveau stockage sécurisé (connexion `/ws` abandonnée en silence), protocole non détecté automatiquement par uvicorn dans l'exécutable Windows compilé (404), nginx local sans en-têtes `Upgrade`/`Connection` sur `/ws` (404), signal de réveil effacé après plutôt qu'avant le cycle de synchro (signal reçu pendant une synchro perdu), routes de prix par dépôt/paliers n'envoyant aucun signal (changement visible seulement au minuteur, ~1 min) |
+| B27 | Résolu | `GET /api/sessions/current` renvoyait, sans filtre par caissier, la session ouverte par N'IMPORTE QUEL AUTRE caissier sur la même caisse — donnait l'impression qu'une session restait ouverte alors que toutes celles de l'utilisateur connecté étaient fermées |
+| B28 | Résolu | Fermeture de session de caisse (normale ou forcée) ne signalait rien aux autres appareils — caisse et écran Audit gardaient l'ancien état jusqu'à une navigation ou le minuteur |
+| B29 | Résolu | Une installation ayant créé sa propre ligne `app_config` (avant son premier pull) recevait ensuite celle du cloud — même tenant/dépôt, identifiant différent — et se retrouvait avec deux lignes au lieu d'une mise à jour ; l'app pouvait lire l'ancienne ligne (jamais mise à jour) selon celle que `/api/config` choisissait |
 
 ### 5.2 Frontend
 
@@ -499,6 +549,13 @@ room_attributes   ← attributs clé/valeur des chambres hôtel (FK restaurant_t
 | F34 | Résolu | Formulaire produit : prix produit/par-dépôt/paliers lisait `settingsProvider` à deux moments différents (préremplissage à l'ouverture, conversion à l'enregistrement) — un changement de devise/taux pendant que le formulaire restait ouvert (ex: poussé en temps réel depuis un autre appareil) corrompait silencieusement le prix enregistré sans y toucher (constaté : prix saisi à 20 ressorti à 0.77 après réouverture/réenregistrement sans modification) → devise figée une seule fois à l'ouverture (`_formSettings`), réutilisée telle quelle jusqu'à la fermeture |
 | F35 | Résolu | **Critique** — Caisse : `CartItem.tiers` figé à l'ajout au panier (`_tiersOf(ref, ...)` lit `priceTiersProvider` une seule fois via `ref.read`) — si le `FutureProvider` n'avait pas fini de charger (ouverture de caisse, changement de dépôt), l'article gardait `tiers=[]` pour toute sa durée de vie dans le panier, même une fois les paliers chargés juste après : prix normal affiché au lieu du prix en gros, risque de sous-encaissement → `PosNotifier.refreshTiers()` rattrape chaque article déjà présent dès que `priceTiersProvider` se (re)charge, sans jamais écraser un prix déjà modifié manuellement |
 | F36 | Résolu | Écran Produits : clic sur une ligne du tableau ouvrait directement le formulaire d'édition (pas de fiche détails en lecture seule) → nouvelle `_ProductDetailsDialog` (texte simple, bouton "Modifier" séparé) ; même comportement appliqué à la carte mobile (`onTap`) |
+| F37 | Résolu | Verrou produit (cadenas) inaccessible sur mobile — uniquement dans le tableau desktop ; débordement (`RIGHT OVERFLOWED`) de la barre d'actions du dialogue "Modifier" sur mobile |
+| F38 | Résolu | Reçu imprimé avec l'identité (nom/logo/devise/taxe) du dépôt **actif dans l'UI** de l'appareil au lieu du dépôt **réel de la vente**, sur un tenant multi-business — notamment juste après l'encaissement et à la réimpression depuis l'historique → résolution depuis `warehouse_id` de la vente, pas celui affiché à l'écran |
+| F39 | Résolu | Commande ESC 7 (réglage chaleur imprimante thermique) imprimait un caractère parasite ("u") en tête de reçu sur certains clones ESC/POS ne la supportant pas — retirée, le double-strike + bold déjà actifs suffisent |
+| F40 | Résolu | Écran Rapport (notamment mobile) appelait l'API directement, contournant le repli Android vers le cache SQLite — échouait systématiquement hors connexion au lieu d'afficher les données déjà en cache |
+| F41 | Résolu | Réglages (devise, taux de change) non relus après une synchronisation — un changement poussé depuis le cloud n'apparaissait qu'après redémarrage de l'app |
+| F42 | Résolu | Message 403 générique ("Abonnement suspendu ou expiré") affiché à la connexion quelle que soit la vraie cause serveur — masquait notamment le refus "appareil déjà lié à un autre dépôt" (voir B22) sous un message trompeur |
+| F43 | Résolu | Dépôt actif pouvait rester bloqué sur "tous les dépôts" après une déconnexion forcée (session expirée), y compris pour un caissier restreint à un seul dépôt — drapeau persistant (`SharedPreferences`) survivant même à une réinstallation complète de l'app |
 
 ---
 
@@ -538,6 +595,7 @@ Migrations récentes :
 - `f3930ab198e9` — `update_url_android` sur `platform_config` (lien Google Play)
 - `00d25d56df77` — merge de toutes les têtes Alembic divergentes (11 heads → 1)
 - `f8bf3dfe3543` — correctif idempotent `pos_registers.*_at` DATETIME → TEXT(600) (Fernet)
+- `e7c1a9d2f4b8` — `discounts.warehouse_id` (rabais par dépôt, `NULL` = tous les dépôts) — fusionne deux têtes Alembic divergentes
 - `f3a8d1c6e2b9` — table `product_price_tiers` (paliers de prix par dépôt)
 - `a1b4c7d9e3f2` — `products.is_service` (type "service", défaut `false`)
 
