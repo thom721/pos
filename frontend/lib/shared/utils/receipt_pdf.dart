@@ -192,7 +192,7 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
               totalRow('Sous-total',
                   '$sym${numFmt.format(toDisplayAmount(sale.totalAmount + itemsDisc, settings))}'),
               if (itemsDisc > 0.001)
-                totalRow('Remises articles',
+                totalRow('Rabais',
                     '-$sym${numFmt.format(toDisplayAmount(itemsDisc, settings))}'),
               if (catalogItemsDisc > 0.001)
                 totalRow('Rabais articles (catalogue)',

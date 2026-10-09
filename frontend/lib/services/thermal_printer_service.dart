@@ -228,7 +228,7 @@ class ThermalPrinterService {
       ]);
       if (itemsDisc > 0.001) {
         await SunmiPrinter.printRow(cols: [
-          SunmiColumn(text: 'Remises articles', width: 20,
+          SunmiColumn(text: 'Rabais', width: 20,
               style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
           SunmiColumn(text: '-$sym${fmt.format(toDisplayAmount(itemsDisc, settings))}', width: 12,
               style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),

@@ -317,7 +317,7 @@ class BluetoothPrintService {
           '$sym ${numFmt.format(toDisplayAmount(sale.totalAmount + itemsDisc, settings))}'.padLeft(16));
       nl();
       if (itemsDisc > 0.001) {
-        text('Remises articles'.padRight(labelW) +
+        text('Rabais'.padRight(labelW) +
             '-$sym ${numFmt.format(toDisplayAmount(itemsDisc, settings))}'.padLeft(16));
         nl();
       }
