@@ -10,6 +10,9 @@ class CustomerModel {
   // Solde de fidélisation — lecture seule, géré uniquement par le serveur
   // (jamais inclus dans toJson(), jamais éditable dans le formulaire client).
   final double loyaltyBalance;
+  // Dépôt du client — null = partagé entre tous les dépôts du tenant (clients
+  // déjà existants avant l'ajout de ce champ, ou volontairement partagé).
+  final String? warehouseId;
 
   CustomerModel({
     required this.id,
@@ -21,6 +24,7 @@ class CustomerModel {
     required this.address,
     required this.creditLimit,
     this.loyaltyBalance = 0,
+    this.warehouseId,
   });
 
   // Prénom + Nom si le prénom est renseigné, sinon juste Nom (clients créés
@@ -39,6 +43,7 @@ class CustomerModel {
             double.tryParse(json['credit_limit']?.toString() ?? '0') ?? 0,
         loyaltyBalance:
             double.tryParse(json['loyalty_balance']?.toString() ?? '0') ?? 0,
+        warehouseId: json['warehouse_id']?.toString(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -49,6 +54,7 @@ class CustomerModel {
         'email': email,
         'address': address,
         'credit_limit': creditLimit,
+        if (warehouseId != null) 'warehouse_id': warehouseId,
       };
 }
 

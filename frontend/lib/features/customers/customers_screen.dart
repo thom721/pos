@@ -8,6 +8,7 @@ import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/repositories/debt_repository.dart';
 import 'package:pos_connect/providers/customer_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 
 class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key});
@@ -335,6 +336,10 @@ class CustomerFormDialogState
   late final TextEditingController _limitCtrl;
   bool _loading = false;
   String? _error;
+  // Dépôt du client — pré-sélectionne le business actif à la création (même
+  // convention que Product.warehouseId) ; en édition, garde le dépôt déjà
+  // enregistré (y compris null = client partagé entre tous les dépôts).
+  String? _warehouseId;
 
   bool get isEdit => widget.customer != null;
 
@@ -355,6 +360,9 @@ class CustomerFormDialogState
             ? toDisplayAmount(widget.customer!.creditLimit, ref.read(settingsProvider))
                 .toString()
             : '0');
+    _warehouseId = isEdit
+        ? widget.customer?.warehouseId
+        : ref.read(activeWarehouseProvider)?.id;
   }
 
   @override
@@ -416,6 +424,40 @@ class CustomerFormDialogState
                 TextFormField(
                   controller: _addressCtrl,
                   decoration: const InputDecoration(labelText: 'Adresse'),
+                ),
+                const SizedBox(height: 12),
+                ref.watch(warehouseListProvider).maybeWhen(
+                  data: (warehouses) => warehouses.isEmpty
+                      ? const SizedBox.shrink()
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            DropdownButtonFormField<String>(
+                              initialValue: _warehouseId,
+                              decoration: const InputDecoration(
+                                labelText: 'Dépôt',
+                                prefixIcon: Icon(Icons.warehouse_outlined, size: 18),
+                              ),
+                              validator: (v) =>
+                                  (v == null || v.isEmpty) ? 'Choisissez un dépôt' : null,
+                              items: warehouses
+                                  .map((w) => DropdownMenuItem(
+                                        value: w.id,
+                                        child: Text(w.name),
+                                      ))
+                                  .toList(),
+                              onChanged: (v) => setState(() => _warehouseId = v),
+                            ),
+                            const Padding(
+                              padding: EdgeInsets.only(top: 4, left: 4),
+                              child: Text(
+                                'Ce client est masqué des autres dépôts — reste visible depuis son dépôt.',
+                                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                              ),
+                            ),
+                          ],
+                        ),
+                  orElse: () => const SizedBox.shrink(),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -489,6 +531,7 @@ class CustomerFormDialogState
         'credit_limit':
             toHtgAmount(double.tryParse(_limitCtrl.text) ?? 0, ref.read(settingsProvider)),
         if (confirmedDuplicate) 'confirm_duplicate': true,
+        if (_warehouseId != null) 'warehouse_id': _warehouseId,
       };
       final repo = CustomerRepository();
       if (isEdit) {

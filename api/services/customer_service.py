@@ -5,6 +5,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from api.models.Customer import Customer
+from api.models.Warehouse import Warehouse
 from api.schemas.customer import CustomerCreate, CustomerUpdate
 from api.services.base_service import TenantService
 
@@ -33,6 +34,12 @@ class CustomerService(TenantService):
         # bloquer indéfiniment laisserait l'opération ne jamais synchroniser,
         # exactement la classe de bug corrigée plus tôt — voir l'incident du
         # 2026-09-19, session restée ouverte 10 jours + ventes bloquées).
+        # Dépôt obligatoire — vérifie qu'il appartient bien à ce tenant (sinon
+        # un warehouse_id d'un autre tenant pourrait finir stocké ici, même
+        # bug déjà corrigé ailleurs, cf. product_service.create).
+        if not self._q(Warehouse).filter(Warehouse.id == data.warehouse_id).first():
+            raise HTTPException(400, "Dépôt introuvable")
+
         if not data.confirm_duplicate:
             fname_norm = (data.fname or '').strip().lower()
             name_norm = (data.name or '').strip().lower()
@@ -77,14 +84,17 @@ class CustomerService(TenantService):
     def get(self, customer_id: str) -> Optional[Customer]:
         return self._q(Customer).filter(Customer.id == customer_id).first()
 
-    def list(self, search: str | None = None) -> List[Customer]:
+    def list(self, search: str | None = None, warehouse_id: str | None = None) -> List[Customer]:
         """Sans `search` : comportement historique inchangé (tous les clients
         du tenant — l'écran Clients n'a pas de pagination, il affiche tout).
         Avec `search` : filtre nom/prénom/téléphone — le endpoint acceptait
         déjà ce paramètre côté client (sélecteur de client caisse/proforma/
         facture, voir CustomerPickerField) mais l'ignorait complètement
         jusqu'ici, renvoyant systématiquement la liste entière du tenant
-        quel que soit le terme tapé."""
+        quel que soit le terme tapé.
+        Avec `warehouse_id` : ne renvoie que les clients de ce dépôt + ceux
+        partagés entre tous les dépôts (warehouse_id NULL) — même convention
+        que discount_service.list."""
         q = self._q(Customer)
         if search:
             pattern = f"%{search}%"
@@ -95,6 +105,8 @@ class CustomerService(TenantService):
                     Customer.phone.ilike(pattern),
                 )
             )
+        if warehouse_id:
+            q = q.filter(or_(Customer.warehouse_id.is_(None), Customer.warehouse_id == warehouse_id))
         return q.all()
 
     def update(self, customer_id: str, data: CustomerUpdate) -> Optional[Customer]:

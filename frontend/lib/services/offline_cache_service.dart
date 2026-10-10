@@ -79,7 +79,7 @@ class OfflineCacheService {
       await Future.wait([
         _syncProducts(warehouseId: warehouseId),
         _syncPriceTiers(warehouseId: warehouseId),
-        _syncCustomers(),
+        _syncCustomers(warehouseId: warehouseId),
         _syncCategories(),
         _syncDiscounts(),
         _syncWarehouses(),
@@ -141,7 +141,7 @@ class OfflineCacheService {
     final jobs = <Future<void>>[];
     if (types.contains('sale')) jobs.add(_syncSales(warehouseId: warehouseId));
     if (types.contains('purchase')) jobs.add(_syncPurchases(warehouseId: warehouseId));
-    if (types.contains('customer')) jobs.add(_syncCustomers());
+    if (types.contains('customer')) jobs.add(_syncCustomers(warehouseId: warehouseId));
     if (types.contains('debt') || types.contains('payment')) jobs.add(_syncDebts());
     if (types.intersection({'product', 'product_warehouse_price', 'category'}).isNotEmpty) {
       jobs.add(_syncProducts(warehouseId: warehouseId));
@@ -202,13 +202,17 @@ class OfflineCacheService {
 
   // ── Clients ───────────────────────────────────────────────────────────────
 
-  Future<void> _syncCustomers() async {
+  Future<void> _syncCustomers({String? warehouseId}) async {
     try {
       final all = <CustomerModel>[];
       int page = 1;
       while (true) {
         final res = await dio.get('/api/customers/',
-            queryParameters: {'page': page, 'limit': 200},
+            queryParameters: {
+              'page': page,
+              'limit': 200,
+              if (warehouseId != null) 'warehouse_id': warehouseId,
+            },
             options: kBackgroundOptions);
         final raw = res.data;
         List items;

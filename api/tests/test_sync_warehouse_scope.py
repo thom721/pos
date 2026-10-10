@@ -14,6 +14,7 @@ from starlette.requests import Request
 import api.models  # noqa: F401
 from api.database import Base
 from api.models.Category import Category
+from api.models.Customer import Customer
 from api.models.Product import Product
 from api.models.Tenant import Tenant
 from api.models.Warehouse import Warehouse
@@ -68,6 +69,23 @@ def test_pull_without_warehouse_header_returns_no_warehouse_data(db, world):
     res = sync_pull(request=_req(), entity_type="product",
                     since="1970-01-01T00:00:00", claims=_claims(world["tenant"].id), db=db)
     assert res["records"] == []
+
+
+def test_pull_customer_includes_own_depot_and_shared_not_other_depot(db, world):
+    """Customer.warehouse_id suit la même convention NULL-ou-dépôt que
+    Discount — une installation reçoit les clients de son dépôt + les
+    clients partagés (NULL), jamais ceux d'un autre dépôt."""
+    wh_a, wh_b, tenant = world["wh_a"], world["wh_b"], world["tenant"]
+    cust_a = Customer(tenant_id=tenant.id, warehouse_id=wh_a.id, name="A", phone="1", address="x")
+    cust_b = Customer(tenant_id=tenant.id, warehouse_id=wh_b.id, name="B", phone="2", address="x")
+    cust_shared = Customer(tenant_id=tenant.id, warehouse_id=None, name="Shared", phone="3", address="x")
+    db.add_all([cust_a, cust_b, cust_shared])
+    db.commit()
+
+    res = sync_pull(request=_req(wh_a.id), entity_type="customer",
+                    since="1970-01-01T00:00:00", claims=_claims(tenant.id), db=db)
+    ids = {r["id"] for r in res["records"]}
+    assert ids == {cust_a.id, cust_shared.id}
 
 
 def test_pull_product_serializes_is_service(db, world):

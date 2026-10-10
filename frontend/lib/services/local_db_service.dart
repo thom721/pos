@@ -59,7 +59,7 @@ class LocalDbService {
     }
     _db = await openDatabase(
       dbPath,
-      version: 31,
+      version: 32,
       onCreate: _createSchema,
       onUpgrade: _onUpgrade,
     );
@@ -230,6 +230,11 @@ class LocalDbService {
     if (oldVersion < 27) {
       try { await db.execute("ALTER TABLE customers ADD COLUMN fname TEXT NOT NULL DEFAULT ''"); } catch (_) {}
     }
+    if (oldVersion < 32) {
+      // Customer.warehouse_id (NULL = partagé entre tous les dépôts) —
+      // absent du cache local jusqu'ici, nécessaire au filtrage par dépôt.
+      try { await db.execute('ALTER TABLE customers ADD COLUMN warehouse_id TEXT'); } catch (_) {}
+    }
     if (oldVersion < 31) {
       // Product.is_service (pressing, lessive... — pas de stock) — absent
       // du cache local jusqu'ici, nécessaire à l'onglet Produit/Service.
@@ -293,6 +298,7 @@ class LocalDbService {
         address       TEXT NOT NULL DEFAULT '',
         credit_limit  REAL NOT NULL DEFAULT 0,
         loyalty_balance REAL NOT NULL DEFAULT 0,
+        warehouse_id  TEXT,
         synced        INTEGER NOT NULL DEFAULT 1
       )
     ''');
@@ -912,6 +918,7 @@ class LocalDbService {
           'address': c.address,
           'credit_limit': c.creditLimit,
           'loyalty_balance': c.loyaltyBalance,
+          'warehouse_id': c.warehouseId,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -931,6 +938,7 @@ class LocalDbService {
     String? search,
     int page = 1,
     int limit = 20,
+    String? warehouseId,
   }) async {
     final db = _safeDb;
     if (db == null) {
@@ -945,6 +953,12 @@ class LocalDbService {
     if (search != null && search.isNotEmpty) {
       where.add('(name LIKE ? OR fname LIKE ? OR phone LIKE ?)');
       args.addAll(['%$search%', '%$search%', '%$search%']);
+    }
+    if (warehouseId != null) {
+      // Clients du dépôt actif + clients partagés (warehouse_id NULL) —
+      // même convention que product_price_tiers/discounts.
+      where.add('(warehouse_id IS NULL OR warehouse_id = ?)');
+      args.add(warehouseId);
     }
     final whereStr = where.isEmpty ? null : where.join(' AND ');
     final total = Sqflite.firstIntValue(
@@ -985,6 +999,7 @@ class LocalDbService {
         address: row['address'] as String,
         creditLimit: (row['credit_limit'] as num).toDouble(),
         loyaltyBalance: (row['loyalty_balance'] as num?)?.toDouble() ?? 0,
+        warehouseId: row['warehouse_id'] as String?,
       );
 
   // ── Catégories ────────────────────────────────────────────────────────────
@@ -1703,6 +1718,7 @@ class LocalDbService {
     String? email,
     String? address,
     double creditLimit = 0,
+    String? warehouseId,
   }) async {
     final db = _safeDb;
     if (db == null) throw StateError('SQLite non disponible');
@@ -1717,6 +1733,7 @@ class LocalDbService {
       'email':        email,
       'address':      address ?? '',
       'credit_limit': creditLimit,
+      'warehouse_id': warehouseId,
       'synced':       0,
     });
     return localId;

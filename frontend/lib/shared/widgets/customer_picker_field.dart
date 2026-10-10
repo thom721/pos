@@ -6,6 +6,7 @@ import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/models/customer_model.dart';
 import 'package:pos_connect/data/repositories/customer_repository.dart';
 import 'package:pos_connect/providers/customer_provider.dart';
+import 'package:pos_connect/providers/warehouse_provider.dart';
 
 enum _DuplicateChoice { useExisting, createAnyway, cancel }
 
@@ -133,7 +134,11 @@ class _CustomerPickerDialogState
     setState(() => _searching = true);
     _debounce = Timer(const Duration(milliseconds: 300), () async {
       try {
-        final res = await CustomerRepository().getCustomers(search: query, limit: 30);
+        final res = await CustomerRepository().getCustomers(
+          search: query,
+          limit: 30,
+          warehouseId: ref.read(activeWarehouseProvider)?.id,
+        );
         if (mounted && _searchCtrl.text.trim() == query) {
           setState(() { _searchResults = res.data; _searching = false; });
         }
@@ -390,6 +395,10 @@ class _QuickCreateCustomerDialogState
         'address': '',
         'credit_limit': 0,
         if (confirmedDuplicate) 'confirm_duplicate': true,
+        // Rattaché silencieusement au dépôt actif — pas de sélecteur ici,
+        // cette création rapide se fait en plein milieu d'une vente.
+        if (ref.read(activeWarehouseProvider)?.id != null)
+          'warehouse_id': ref.read(activeWarehouseProvider)!.id,
       });
       if (mounted) Navigator.pop(context, created);
     } catch (e) {

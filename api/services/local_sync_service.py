@@ -235,7 +235,7 @@ def _get_sync_state(db: Session, entity_type: str) -> SyncState:
 
 
 # Entités dont warehouse_id peut être NULL (partagées par tous les dépôts).
-_NULLABLE_WAREHOUSE_ETYPES = {"discount", "app_config"}
+_NULLABLE_WAREHOUSE_ETYPES = {"discount", "app_config", "customer"}
 # Entités au niveau du tenant malgré une colonne warehouse_id (user : liste JSON).
 _TENANT_LEVEL_ETYPES = {"user"}
 

@@ -25,16 +25,18 @@ class CustomerRepository {
     int page = 1,
     int limit = 20,
     String? search,
+    String? warehouseId,
   }) async {
     final params = <String, dynamic>{
       'page': page,
       'limit': limit,
       if (search != null && search.isNotEmpty) 'search': search,
+      if (warehouseId != null) 'warehouse_id': warehouseId,
     };
     // Android : source de vérité = SQLite
     if (_isAndroid) {
       return LocalDbService.instance.getCustomers(
-        search: search, page: page, limit: limit,
+        search: search, page: page, limit: limit, warehouseId: warehouseId,
       );
     }
 
@@ -72,6 +74,7 @@ class CustomerRepository {
             email:       data['email'] as String?,
             address:     data['address'] as String?,
             creditLimit: (data['credit_limit'] as num?)?.toDouble() ?? 0,
+            warehouseId: data['warehouse_id'] as String?,
           );
           await OfflineQueueService.instance.enqueue(
             RequestOptions(
@@ -101,6 +104,7 @@ class CustomerRepository {
             email:       data['email'] as String?,
             address:     data['address'] as String? ?? '',
             creditLimit: (data['credit_limit'] as num?)?.toDouble() ?? 0,
+            warehouseId: data['warehouse_id'] as String?,
           );
         }
         rethrow;

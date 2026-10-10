@@ -14,6 +14,7 @@ from sqlalchemy.orm import sessionmaker
 import api.models  # noqa: F401
 from api.database import Base
 from api.models.Tenant import Tenant
+from api.models.Warehouse import Warehouse
 from api.schemas.customer import CustomerCreate
 from api.services.customer_service import CustomerService
 
@@ -36,59 +37,71 @@ def tenant(db):
     return t
 
 
-def test_duplicate_name_is_rejected_without_confirmation(db, tenant):
+@pytest.fixture()
+def warehouse(db, tenant):
+    wh = Warehouse(tenant_id=tenant.id, name="Dépôt", is_active=True, is_default=True)
+    db.add(wh)
+    db.flush()
+    return wh
+
+
+def test_duplicate_name_is_rejected_without_confirmation(db, tenant, warehouse):
     service = CustomerService(db, tenant_id=tenant.id)
-    service.create(CustomerCreate(fname="Jean", name="Pierre", phone="1", address="A"))
+    service.create(CustomerCreate(fname="Jean", name="Pierre", phone="1", address="A", warehouse_id=warehouse.id))
 
     with pytest.raises(HTTPException) as exc:
-        service.create(CustomerCreate(fname="Jean", name="Pierre", phone="2", address="B"))
+        service.create(CustomerCreate(fname="Jean", name="Pierre", phone="2", address="B", warehouse_id=warehouse.id))
     assert exc.value.status_code == 409
     assert exc.value.detail["duplicate"] is True
 
 
-def test_duplicate_name_is_case_and_space_insensitive(db, tenant):
+def test_duplicate_name_is_case_and_space_insensitive(db, tenant, warehouse):
     service = CustomerService(db, tenant_id=tenant.id)
-    service.create(CustomerCreate(fname="Jean", name="Pierre", phone="1", address="A"))
+    service.create(CustomerCreate(fname="Jean", name="Pierre", phone="1", address="A", warehouse_id=warehouse.id))
 
     with pytest.raises(HTTPException):
-        service.create(CustomerCreate(fname="  JEAN ", name=" pierre  ", phone="2", address="B"))
+        service.create(CustomerCreate(
+            fname="  JEAN ", name=" pierre  ", phone="2", address="B", warehouse_id=warehouse.id,
+        ))
 
 
-def test_confirm_duplicate_allows_creation(db, tenant):
+def test_confirm_duplicate_allows_creation(db, tenant, warehouse):
     """L'utilisateur a explicitement confirmé vouloir un doublon (vrai
     homonyme) — la création doit réussir normalement."""
     service = CustomerService(db, tenant_id=tenant.id)
-    service.create(CustomerCreate(fname="Jean", name="Pierre", phone="1", address="A"))
+    service.create(CustomerCreate(fname="Jean", name="Pierre", phone="1", address="A", warehouse_id=warehouse.id))
 
     second = service.create(CustomerCreate(
-        fname="Jean", name="Pierre", phone="2", address="B", confirm_duplicate=True,
+        fname="Jean", name="Pierre", phone="2", address="B", confirm_duplicate=True, warehouse_id=warehouse.id,
     ))
 
     assert second is not None
     assert len(service.list()) == 2
 
 
-def test_offline_queue_replay_is_never_blocked_by_duplicate_check(db, tenant):
+def test_offline_queue_replay_is_never_blocked_by_duplicate_check(db, tenant, warehouse):
     """Simule un item rejoué depuis la file hors-ligne : client_id +
     confirm_duplicate=True toujours envoyés ensemble par l'app dans ce cas
     (voir customer_repository.dart) — doit toujours réussir, jamais rester
     bloqué en attente d'une confirmation qui ne viendra jamais."""
     service = CustomerService(db, tenant_id=tenant.id)
-    service.create(CustomerCreate(fname="Jean", name="Pierre", phone="1", address="A"))
+    service.create(CustomerCreate(fname="Jean", name="Pierre", phone="1", address="A", warehouse_id=warehouse.id))
 
     replayed = service.create(CustomerCreate(
         fname="Jean", name="Pierre", phone="2", address="B",
         client_id="11111111-1111-1111-1111-111111111111",
-        confirm_duplicate=True,
+        confirm_duplicate=True, warehouse_id=warehouse.id,
     ))
 
     assert replayed.id == "11111111-1111-1111-1111-111111111111"
 
 
-def test_different_names_never_trigger_the_duplicate_check(db, tenant):
+def test_different_names_never_trigger_the_duplicate_check(db, tenant, warehouse):
     service = CustomerService(db, tenant_id=tenant.id)
-    service.create(CustomerCreate(fname="Jean", name="Pierre", phone="1", address="A"))
+    service.create(CustomerCreate(fname="Jean", name="Pierre", phone="1", address="A", warehouse_id=warehouse.id))
 
-    other = service.create(CustomerCreate(fname="Marie", name="Louis", phone="2", address="B"))
+    other = service.create(CustomerCreate(
+        fname="Marie", name="Louis", phone="2", address="B", warehouse_id=warehouse.id,
+    ))
 
     assert other is not None

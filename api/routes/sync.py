@@ -226,10 +226,12 @@ _WAREHOUSE_HEADER = "X-Warehouse-Id"
 # Entités partagées au niveau du tenant (pas de dépôt).
 # "user" : warehouse_id est une liste JSON (plusieurs dépôts) — non filtrable en
 # SQL ; les comptes restent au niveau du tenant pour que les caisses puissent se connecter.
-_SHARED_TENANT_ENTITIES = {"warehouse", "category", "supplier", "customer", "user"}
+_SHARED_TENANT_ENTITIES = {"warehouse", "category", "supplier", "user"}
 
 # Entités dont warehouse_id peut être NULL = partagées par tous les dépôts.
-_NULLABLE_WAREHOUSE_ENTITIES = {"discount", "app_config"}
+# "customer" : les clients déjà existants avant l'ajout de cette colonne
+# restent partagés (NULL) ; un nouveau client est rattaché à un dépôt précis.
+_NULLABLE_WAREHOUSE_ENTITIES = {"discount", "app_config", "customer"}
 
 # Lignes enfants sans warehouse_id : rattachées à leur parent.
 _CHILD_PARENT: dict[str, tuple[str, Any]] = {

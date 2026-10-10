@@ -13,6 +13,11 @@ class CustomerBase(BaseModel):
 
 
 class CustomerCreate(CustomerBase):
+    # Dépôt du client — obligatoire à la création (même convention que
+    # ProductCreate.warehouse_id). NULL n'est possible qu'en base, pour les
+    # clients déjà existants avant l'ajout de cette colonne (partagés entre
+    # tous les dépôts) — jamais choisi explicitement à la création.
+    warehouse_id: str
     # UUID généré côté client pour l'offline-first (voir SaleCreate.client_id)
     # — utilisé comme id du client créé, pour que la vente faite dans la
     # foulée (qui référence cet id immédiatement, avant toute synchro) reste
@@ -27,6 +32,7 @@ class CustomerCreate(CustomerBase):
 
 class CustomerRead(CustomerBase):
     id: str
+    warehouse_id: Optional[str] = None
     credit_limit: float = 0
     # Lecture seule — géré uniquement par sale_service (jamais accepté en
     # entrée sur CustomerCreate/CustomerUpdate).
@@ -44,3 +50,4 @@ class CustomerUpdate(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     credit_limit: Optional[float] = None
+    warehouse_id: Optional[str] = None

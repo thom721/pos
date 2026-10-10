@@ -6,6 +6,12 @@ from .base import UUIDBase
 class Customer(UUIDBase):
     __tablename__ = "customers"
     tenant_id = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
+    # Dépôt du client — NULL = partagé entre tous les dépôts du tenant (tous
+    # les clients existants avant l'ajout de cette colonne, ou volontairement
+    # partagé). Un nouveau client est désormais rattaché à un dépôt précis —
+    # voir CustomerCreate.warehouse_id et CustomerService.list (même
+    # convention NULL-ou-dépôt déjà utilisée pour Discount.warehouse_id).
+    warehouse_id = Column(String(36), ForeignKey('warehouses.id', ondelete='CASCADE'), nullable=True, index=True)
 
     # name = nom de famille seul depuis l'ajout de fname (avant : nom complet
     # en un seul champ) — les clients existants gardent leur valeur telle
