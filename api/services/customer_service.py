@@ -1,7 +1,7 @@
 import re
 from typing import List, Optional
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from api.models.Customer import Customer
@@ -77,8 +77,25 @@ class CustomerService(TenantService):
     def get(self, customer_id: str) -> Optional[Customer]:
         return self._q(Customer).filter(Customer.id == customer_id).first()
 
-    def list(self) -> List[Customer]:
-        return self._q(Customer).all()
+    def list(self, search: str | None = None) -> List[Customer]:
+        """Sans `search` : comportement historique inchangé (tous les clients
+        du tenant — l'écran Clients n'a pas de pagination, il affiche tout).
+        Avec `search` : filtre nom/prénom/téléphone — le endpoint acceptait
+        déjà ce paramètre côté client (sélecteur de client caisse/proforma/
+        facture, voir CustomerPickerField) mais l'ignorait complètement
+        jusqu'ici, renvoyant systématiquement la liste entière du tenant
+        quel que soit le terme tapé."""
+        q = self._q(Customer)
+        if search:
+            pattern = f"%{search}%"
+            q = q.filter(
+                or_(
+                    Customer.name.ilike(pattern),
+                    Customer.fname.ilike(pattern),
+                    Customer.phone.ilike(pattern),
+                )
+            )
+        return q.all()
 
     def update(self, customer_id: str, data: CustomerUpdate) -> Optional[Customer]:
         customer = self.get(customer_id)

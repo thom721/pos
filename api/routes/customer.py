@@ -27,10 +27,11 @@ def create_customer(
 
 @router.get("/customers/", response_model=List[CustomerRead])
 def list_customers(
+    search: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.CUSTOMERS_READ)),
 ):
-    return CustomerService(db, tenant_id=current_user.tenant_id).list()
+    return CustomerService(db, tenant_id=current_user.tenant_id).list(search=search)
 
 
 @router.get("/customers/{customer_id}", response_model=CustomerRead)
