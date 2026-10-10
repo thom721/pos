@@ -426,40 +426,6 @@ class CustomerFormDialogState
                   decoration: const InputDecoration(labelText: 'Adresse'),
                 ),
                 const SizedBox(height: 12),
-                ref.watch(warehouseListProvider).maybeWhen(
-                  data: (warehouses) => warehouses.isEmpty
-                      ? const SizedBox.shrink()
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            DropdownButtonFormField<String>(
-                              initialValue: _warehouseId,
-                              decoration: const InputDecoration(
-                                labelText: 'Dépôt',
-                                prefixIcon: Icon(Icons.warehouse_outlined, size: 18),
-                              ),
-                              validator: (v) =>
-                                  (v == null || v.isEmpty) ? 'Choisissez un dépôt' : null,
-                              items: warehouses
-                                  .map((w) => DropdownMenuItem(
-                                        value: w.id,
-                                        child: Text(w.name),
-                                      ))
-                                  .toList(),
-                              onChanged: (v) => setState(() => _warehouseId = v),
-                            ),
-                            const Padding(
-                              padding: EdgeInsets.only(top: 4, left: 4),
-                              child: Text(
-                                'Ce client est masqué des autres dépôts — reste visible depuis son dépôt.',
-                                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                              ),
-                            ),
-                          ],
-                        ),
-                  orElse: () => const SizedBox.shrink(),
-                ),
-                const SizedBox(height: 12),
                 TextFormField(
                   controller: _limitCtrl,
                   keyboardType: TextInputType.number,
