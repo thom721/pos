@@ -534,6 +534,13 @@ def _run_sync_inner(db: Session) -> dict:
         except Exception as exc:
             msg = f"pull {etype}: {exc}"
             _log.warning(msg)
+            # Un flush raté (ex: FK component_product_id pointant vers un
+            # produit d'un autre dépôt, jamais synchronisé ici) laisse la
+            # session MySQL dans un état "transaction rolled back" — toute
+            # requête suivante échoue à l'identique tant qu'on ne fait pas
+            # ce rollback explicite, ce qui cassait en cascade TOUTES les
+            # entités suivantes de ce cycle (pas seulement celle en cause).
+            db.rollback()
             state.last_error = msg
             summary["errors"].append(msg)
 

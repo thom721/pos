@@ -14,7 +14,7 @@ class LowStockProductRead(BaseModel):
 class StockMovementRead(BaseModel):
     id: str
     type: str
-    quantity: int
+    quantity: float
     source_type: Optional[str]
     source_id: Optional[str]
     note: Optional[str]

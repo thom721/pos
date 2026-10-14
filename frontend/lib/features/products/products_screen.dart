@@ -2139,7 +2139,10 @@ class _ProductFormDialogState extends ConsumerState<_ProductFormDialog> {
   Future<void> _pickComponentProduct() async {
     final result = await showDialog<ProductModel>(
       context: context,
-      builder: (_) => _SingleProductPickerDialog(excludeId: widget.product?.id),
+      builder: (_) => _SingleProductPickerDialog(
+        excludeId: widget.product?.id,
+        warehouseId: _warehouseId,
+      ),
     );
     if (result != null) {
       setState(() {
@@ -3183,8 +3186,9 @@ class _PriceTiersSectionState extends ConsumerState<_PriceTiersSection> {
 
 class _SingleProductPickerDialog extends StatefulWidget {
   final String? excludeId;
+  final String? warehouseId;
 
-  const _SingleProductPickerDialog({this.excludeId});
+  const _SingleProductPickerDialog({this.excludeId, this.warehouseId});
 
   @override
   State<_SingleProductPickerDialog> createState() => _SingleProductPickerDialogState();
@@ -3209,10 +3213,18 @@ class _SingleProductPickerDialogState extends State<_SingleProductPickerDialog> 
       setState(() {
         // Un produit composé ne peut pas lui-même être composant (évite les
         // chaînes/cycles) ; un service n'a pas de stock à suivre ; on exclut
-        // aussi le produit en cours d'édition.
+        // aussi le produit en cours d'édition. Composant limité au même
+        // dépôt (ou partagé, warehouseId NULL) — un composant d'un autre
+        // dépôt n'est jamais synchronisé localement là-bas et casse la
+        // contrainte de clé étrangère sur ce serveur local.
         _all = all
             .where((p) =>
-                p.id != widget.excludeId && !p.isComposite && !p.isService)
+                p.id != widget.excludeId &&
+                !p.isComposite &&
+                !p.isService &&
+                (widget.warehouseId == null ||
+                    p.warehouseId == null ||
+                    p.warehouseId == widget.warehouseId))
             .toList();
         _loading = false;
       });
