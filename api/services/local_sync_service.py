@@ -504,6 +504,21 @@ def _run_sync_inner(db: Session) -> dict:
                         existing = db.query(model).filter(
                             model.tenant_id == rec.get("tenant_id"), wh_filter,
                         ).first()
+                    # product_price_tier n'a pas de colonne unique simple non plus —
+                    # sa clé naturelle est (product_id, warehouse_id, min_quantity)
+                    # (uq_product_warehouse_tier). Vu en prod : une ligne locale
+                    # orpheline (créée avant un pull, id différent de celle du
+                    # cloud) faisait échouer l'insert à CHAQUE cycle sur une
+                    # IntegrityError jamais résolue d'elle-même, cassant en
+                    # cascade tout le reste de la synchro de ce cycle.
+                    if (existing is None and etype == "product_price_tier"
+                            and rec.get("product_id") and rec.get("warehouse_id")
+                            and rec.get("min_quantity") is not None):
+                        existing = db.query(model).filter(
+                            model.product_id == rec["product_id"],
+                            model.warehouse_id == rec["warehouse_id"],
+                            model.min_quantity == rec["min_quantity"],
+                        ).first()
                 if existing is None:
                     coerced = _coerce_for_db(model, rec)
                     fields = {k: v for k, v in coerced.items() if k in col_names and k not in entity_excl}

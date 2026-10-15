@@ -1432,7 +1432,7 @@ class _StockHistoryRow extends StatelessWidget {
     return ListTile(
       dense: true,
       leading: Icon(
-        isIn ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+        isIn ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
         color: isIn ? AppColors.success : AppColors.error,
       ),
       title: Text(
