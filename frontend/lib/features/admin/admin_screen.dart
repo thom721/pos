@@ -1627,6 +1627,48 @@ class _PaymentRow extends ConsumerWidget {
     }
   }
 
+  Future<void> _deletePending(BuildContext context, WidgetRef ref) async {
+    final id = payment['id'] as String?;
+    if (id == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer ce paiement ?'),
+        content: const Text(
+            'Cette soumission en attente sera définitivement supprimée (ex: doublon soumis par erreur). Action irréversible.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      final d = await ref.read(adminDioProvider.future);
+      await d.delete('/api/admin/payments/$id');
+      ref.invalidate(_paymentsProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Paiement supprimé'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(extractAnyError(e)),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final method = payment['method'] as String? ?? 'manual';
@@ -1699,19 +1741,29 @@ class _PaymentRow extends ConsumerWidget {
               ),
             if (isPending) ...[
               const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.check_circle_outline, size: 16),
-                  label: const Text('Valider le paiement'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.success,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    textStyle: const TextStyle(fontSize: 13),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.check_circle_outline, size: 16),
+                      label: const Text('Valider le paiement'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.success,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        textStyle: const TextStyle(fontSize: 13),
+                      ),
+                      onPressed: () => _confirmPending(context, ref),
+                    ),
                   ),
-                  onPressed: () => _confirmPending(context, ref),
-                ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    color: AppColors.error,
+                    tooltip: 'Supprimer (ex: doublon)',
+                    onPressed: () => _deletePending(context, ref),
+                  ),
+                ],
               ),
             ],
           ],

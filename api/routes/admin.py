@@ -29,6 +29,7 @@ from api.models.AffiliateCommission import AffiliateCommission
 from api.models.AffiliateWithdrawal import AffiliateWithdrawal
 from api.routes.billing import _renewal_pricing
 from api.services.affiliate_service import record_commission, available_balance
+from api.services import audit_service
 
 router = APIRouter(prefix="/api/admin", tags=["SuperAdmin"])
 _log = logging.getLogger("pos.admin")
@@ -1039,6 +1040,15 @@ def confirm_payment(
     payment.months     = months
     payment.plan_type  = plan_type
     payment.period_end = encrypt_date(period_end, payment.tenant_id)
+    # Aucune trace jusqu'ici d'une confirmation de paiement (vu en prod :
+    # REG-2026-0009 marqué "payé" sans que la caisse ne soit activée,
+    # impossible de savoir après coup ce qui s'est passé). user_id=None car
+    # le superadmin n'est pas un User (compte partagé, un seul "sub" fixe).
+    audit_service.log(db, user_id=None, tenant_id=payment.tenant_id,
+                      action="CONFIRM", resource_type="billing_payment", resource_id=payment.id,
+                      detail={"invoice_number": payment.invoice_number, "plan_type": plan_type,
+                              "months": months, "register_ids_json": getattr(payment, "register_ids_json", None),
+                              "entrepot_ids_json": getattr(payment, "entrepot_ids_json", None)})
     db.flush()
 
     cfg = db.query(PlatformConfig).first()
@@ -1056,6 +1066,16 @@ def confirm_payment(
         for reg_id in register_ids:
             reg = db.query(PosRegister).filter_by(id=reg_id, tenant_id=tenant.id).first()
             if not reg:
+                # Paiement confirmé "payé" sans qu'aucun registre ne soit
+                # activé si ceci passe inaperçu (vu en prod : REG-2026-0009,
+                # paiement marqué payé, caisse jamais activée, aucune trace
+                # pour comprendre pourquoi). Un log explicite au minimum,
+                # même si on ne bloque pas la confirmation du paiement.
+                _log.warning(
+                    "confirm_payment %s: registre %s introuvable (tenant=%s) — "
+                    "payé mais non activé",
+                    payment.invoice_number, reg_id, tenant.id,
+                )
                 continue
             # Capturé AVANT que la ligne ci-dessous n'écrase subscription_started_at —
             # _renewal_pricing() a besoin de la valeur PRÉ-renouvellement pour
@@ -1181,6 +1201,31 @@ def list_payments(
         _serialize_payment(p, tenant_map.get(p.tenant_id, "—"))
         for p in payments
     ]
+
+
+@router.delete("/payments/{payment_id}")
+def delete_payment(
+    payment_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_superadmin),
+):
+    """Supprime une soumission de paiement EN ATTENTE (ex: doublon soumis par
+    erreur par le tenant). Un paiement déjà payé/remboursé ne se supprime
+    pas — il fait partie de l'historique de facturation."""
+    payment = db.query(BillingPayment).filter(BillingPayment.id == payment_id).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Paiement introuvable")
+    if payment.status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Seul un paiement en attente peut être supprimé (statut actuel: '{payment.status}')",
+        )
+    audit_service.log(db, user_id=None, tenant_id=payment.tenant_id,
+                      action="DELETE", resource_type="billing_payment", resource_id=payment.id,
+                      detail={"invoice_number": payment.invoice_number})
+    db.delete(payment)
+    db.commit()
+    return {"ok": True}
 
 
 # ── Programme de parrainage — retraits ───────────────────────────────────────
