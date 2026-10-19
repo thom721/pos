@@ -53,15 +53,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
     if (isMobile) {
       await prefs.setBool(AppConstants.clientSetupDoneKey, true);
-    } else {
-      final localSetupDone =
-          prefs.getBool(AppConstants.clientSetupDoneKey) ?? false;
-      if (!mounted) return;
-      if (!localSetupDone) {
-        context.go('/install');
-        return;
-      }
     }
+    // Le besoin d'installation (desktop, hors mobile/web) est tranché par
+    // le router lui-même via needsDesktopInstall (voir core/router.dart) —
+    // préchargé de façon synchrone avant runApp(), pour ne pas dépendre
+    // d'un timing face à la résolution de authProvider.
     // Ne pas appeler context.go('/dashboard') — le router redirect le fait
     // une fois isLoading=false, en respectant pendingDeepLink si défini.
   }

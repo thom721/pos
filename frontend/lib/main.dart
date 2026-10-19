@@ -10,6 +10,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:pos_connect/app.dart';
+import 'package:pos_connect/core/router.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/services/local_db_service.dart';
 
@@ -34,6 +35,7 @@ void main() async {
 
   await initializeDateFormatting('fr');
   await initServerUrl();
+  await loadDesktopInstallState();
   await LocalDbService.instance.init();
 
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {

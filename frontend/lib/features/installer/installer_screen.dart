@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pos_connect/core/constants.dart';
+import 'package:pos_connect/core/router.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/api/local_https.dart';
@@ -2148,6 +2149,10 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
       }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(AppConstants.clientSetupDoneKey, true);
+      // Le router a déjà chargé son propre flag au démarrage (avant cet
+      // écran) — le mettre à jour ici aussi, sinon un logout plus tard dans
+      // la même session renverrait vers /install malgré une config valide.
+      needsDesktopInstall = false;
       // Indique à login_screen.dart quel formulaire afficher au démarrage —
       // sans ça, un client bureau configuré pour le cloud direct se
       // retrouvait quand même sur le formulaire "serveur local" (choisi

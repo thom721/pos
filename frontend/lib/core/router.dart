@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
+import 'package:pos_connect/core/constants.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/features/auth/login_screen.dart';
 import 'package:pos_connect/features/auth/register_screen.dart';
 import 'package:pos_connect/features/billing/billing_screen.dart';
@@ -50,6 +52,26 @@ import 'package:pos_connect/features/public/terms_screen.dart';
 import 'package:pos_connect/features/public/privacy_screen.dart';
 import 'package:pos_connect/shared/widgets/app_shell.dart';
 
+/// Installation client desktop (hors web/mobile) requise ? Préchargée de
+/// façon synchrone dans main() avant runApp() — le redirect de GoRouter ne
+/// peut pas attendre un Future, et une vérification async faite plus tard
+/// dans SplashScreen perdait systématiquement la course contre la
+/// résolution de authProvider (qui démarre dès la première évaluation de
+/// redirect() ici, avant même que SplashScreen soit construit), sautant
+/// l'installeur et laissant l'app sur son ancien comportement par défaut
+/// (serveur local infini-post.local, inexistant en mode client cloud).
+bool needsDesktopInstall = false;
+
+Future<void> loadDesktopInstallState() async {
+  if (kIsWeb) return;
+  final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
+  if (isMobile) return;
+  final prefs = await SharedPreferences.getInstance();
+  needsDesktopInstall =
+      !(prefs.getBool(AppConstants.clientSetupDoneKey) ?? false);
+}
+
 // Notifies GoRouter when auth state changes, without recreating the router.
 class _AuthRefreshNotifier extends ChangeNotifier {
   _AuthRefreshNotifier(Ref ref) {
@@ -95,6 +117,10 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // ── Splash : auth résolue, naviguer vers la bonne destination ────────
       if (location == '/splash') {
+        if (needsDesktopInstall) {
+          pendingDeepLink = null;
+          return '/install';
+        }
         if (!isLoggedIn) {
           pendingDeepLink = null;
           return kIsWeb ? '/home' : '/login';
