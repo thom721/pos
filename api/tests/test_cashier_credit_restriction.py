@@ -18,16 +18,19 @@ from api.models.Tenant import Tenant
 from api.models.Category import Category
 from api.models.Product import Product
 from api.models.AppConfig import AppConfig
+from api.models.Role import Role
 from api.models.StockMovement import StockMovement, StockType
 from api.schemas.sale import SaleCreate, SaleItemInput
 from api.services import sale_service
+from api.core.permissions import load_roles_from_db
 from fastapi import HTTPException
 
 
 class _FakeUser:
-    def __init__(self, permissions=None, roles=None):
+    def __init__(self, permissions=None, roles=None, tenant_id=None):
         self.permissions = permissions or []
         self.roles = roles or []
+        self.tenant_id = tenant_id
 
 
 @pytest.fixture()
@@ -121,6 +124,35 @@ def test_fully_paid_sale_never_blocked_regardless_of_credit_config(db, tenant, p
     sale = sale_service.create_sale(
         db, _sale_data(product, 1000), user_id="u1", tenant_id=tenant.id,
         current_user=_FakeUser(),
+    )
+    db.commit()
+    assert sale is not None
+
+
+def test_underpaid_sale_allowed_with_custom_tenant_role_granting_credit(db, tenant, product):
+    """Bug corrigé : has_permission() était appelée sans tenant_id dans
+    sale_service — un rôle personnalisé (ex: "Caissier + Crédit", créé via
+    l'écran Utilisateurs, vivant dans TENANT_ROLE_OVERRIDES, pas
+    ROLE_PERMISSIONS) était donc toujours invisible ici, même correctement
+    attribué à l'utilisateur. Vu en prod : la permission marchait bien pour
+    /users/me (resolve_effective_permissions passe déjà tenant_id) mais la
+    vente échouait quand même avec le même message d'erreur, renvoyé cette
+    fois par le serveur plutôt que bloqué par le frontend."""
+    role = Role(
+        tenant_id=tenant.id, name="credit_caissier", label="Caissier + Crédit",
+        is_builtin=False, permissions=["sales.credit"],
+    )
+    db.add(role)
+    db.commit()
+    load_roles_from_db(db.query(Role).all())
+
+    sale = sale_service.create_sale(
+        db, _sale_data(product, 300), user_id="u1", tenant_id=tenant.id,
+        current_user=_FakeUser(
+            roles=["cashier", "credit_caissier"],
+            permissions=["cashier", "credit_caissier"],
+            tenant_id=tenant.id,
+        ),
     )
     db.commit()
     assert sale is not None

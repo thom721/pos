@@ -711,7 +711,12 @@ def create_sale(
         from api.core.permissions import has_permission as _has_perm, P
         perms = getattr(current_user, "permissions", None) or []
         roles = getattr(current_user, "roles", None) or []
-        if not _has_perm(perms, roles, P.SALES_CREDIT):
+        # tenant_id requis : sans lui, has_permission() ne regarde que les
+        # rôles intégrés (ROLE_PERMISSIONS) et ignore TENANT_ROLE_OVERRIDES —
+        # un rôle personnalisé (ex: "Caissier + Crédit") y est invisible,
+        # donc toujours refusé même correctement attribué (vu en prod).
+        tenant_id = getattr(current_user, "tenant_id", None)
+        if not _has_perm(perms, roles, P.SALES_CREDIT, tenant_id=tenant_id):
             raise HTTPException(
                 400,
                 "Vous n'avez pas la permission d'effectuer une vente à crédit. "
