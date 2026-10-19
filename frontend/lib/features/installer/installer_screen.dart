@@ -35,6 +35,10 @@ class InstallConfig {
   String serverHost;
   int serverPort;
   String serverUrl;
+  // Client : connexion directe au cloud (true) ou serveur local sur le
+  // réseau (false, défaut — comportement historique). Détermine si la fin
+  // du wizard appelle saveServerUrl() ou saveLocalServer().
+  bool clientUseCloud;
   // Cloud tenant credentials (replaces local admin creation)
   String cloudUrl;
   String tenantEmail;
@@ -50,6 +54,7 @@ class InstallConfig {
 
   InstallConfig({
     this.serverUrl = '',
+    this.clientUseCloud = false,
     this.mode = InstallMode.both,
     this.dbType = DbType.mysql,
     this.dbHost = '127.0.0.1',
@@ -329,19 +334,23 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
   String? _error;
   bool _ok = false;
   List<String> _localIps = [];
+  late bool _useCloud;
 
   @override
   void initState() {
     super.initState();
     final cfg = ref.read(_configProvider);
     final isClient = cfg.mode == InstallMode.client;
+    _useCloud = cfg.clientUseCloud;
     _urlCtrl = TextEditingController(
-      // Client : IP saisie/sauvegardée précédemment (aucun défaut sensé sinon)
-      // Serveur/Both : localhost en attendant la détection de l'IP locale
+      // Client (reseau local) : IP sauvegardee precedemment (aucun defaut
+      // sensé sinon). Client (cloud) : l'URL cloud deja saisie, ou l'URL
+      // de production par defaut. Serveur/Both : localhost en attendant
+      // la detection de l'IP locale.
       text: cfg.serverUrl.isNotEmpty
           ? cfg.serverUrl
           : isClient
-              ? ''
+              ? (_useCloud ? AppConstants.cloudUrl : '')
               : 'http://127.0.0.1:9003',
     );
     _detectLocalIps();
@@ -395,6 +404,38 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
     final isClient = cfg.mode == InstallMode.client;
     final previousUrl = dio.options.baseUrl;
 
+    if (isClient && _useCloud) {
+      // Poste client connecté directement au cloud (sans serveur local) —
+      // même chemin que le mode serveur/both : l'URL saisie EST le serveur,
+      // pas de résolution DNS locale ni d'épinglage de certificat
+      // spécifique au réseau (le cloud a son propre certificat public).
+      final url = _urlCtrl.text.trim().replaceAll(RegExp(r'/+$'), '');
+      if (url.isEmpty) {
+        setState(() => _error = 'Adresse invalide');
+        return;
+      }
+      setState(() { _testing = true; _error = null; _ok = false; });
+      try {
+        dio.options.baseUrl = url;
+        final res = await dio.get('/api/setup/health');
+        final data = res.data as Map<String, dynamic>;
+        if (data['status'] == 'ok') {
+          final c = ref.read(_configProvider);
+          ref.read(_configProvider.notifier).state = c
+            ..serverUrl = url
+            ..clientUseCloud = true;
+          setState(() => _ok = true);
+        }
+      } catch (e) {
+        dio.options.baseUrl = previousUrl;
+        final msg = extractAnyError(e);
+        setState(() => _error = 'Impossible de joindre le serveur: $msg');
+      } finally {
+        setState(() => _testing = false);
+      }
+      return;
+    }
+
     if (isClient) {
       // Poste client : connexion HTTPS avec épinglage du certificat serveur
       // (voir local_https_native.dart) — jamais de HTTP en clair sur le réseau.
@@ -411,7 +452,9 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
         final data = res.data as Map<String, dynamic>;
         if (data['status'] == 'ok') {
           final c = ref.read(_configProvider);
-          ref.read(_configProvider.notifier).state = c..serverUrl = ip;
+          ref.read(_configProvider.notifier).state = c
+            ..serverUrl = ip
+            ..clientUseCloud = false;
           setState(() => _ok = true);
         }
       } catch (e) {
@@ -499,15 +542,38 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
             ),
             const SizedBox(height: 8),
           ] else ...[
-            const Text(
-              'Entrez l\'adresse IP du serveur POS Connect sur votre réseau local.',
-              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            _ModeCard(
+              icon: Icons.lan_rounded,
+              color: AppColors.primary,
+              title: 'Serveur local (réseau)',
+              desc: 'Un autre poste de ce réseau tourne déjà en mode Serveur ou Client + Serveur.',
+              selected: !_useCloud,
+              onTap: () => setState(() {
+                _useCloud = false;
+                _error = null;
+                _ok = false;
+                _urlCtrl.text = '';
+              }),
+            ),
+            const SizedBox(height: 10),
+            _ModeCard(
+              icon: Icons.cloud_rounded,
+              color: AppColors.primary,
+              title: 'Cloud (connexion directe)',
+              desc: 'Pas de serveur local — se connecte directement à POS Connect Cloud, comme sur mobile.',
+              selected: _useCloud,
+              onTap: () => setState(() {
+                _useCloud = true;
+                _error = null;
+                _ok = false;
+                if (_urlCtrl.text.isEmpty) _urlCtrl.text = AppConstants.cloudUrl;
+              }),
             ),
             const SizedBox(height: 24),
             _Field(
               ctrl: _urlCtrl,
-              label: 'Adresse IP du serveur',
-              hint: '192.168.1.100',
+              label: _useCloud ? 'Adresse du serveur cloud' : 'Adresse IP du serveur',
+              hint: _useCloud ? AppConstants.cloudUrl : '192.168.1.100',
               keyboardType: TextInputType.url,
             ),
             const SizedBox(height: 16),
@@ -2056,7 +2122,8 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
 
     if (!_failed) {
       // Persiste l'adresse du serveur dans SharedPreferences une seule fois, à la fin.
-      // Poste client : HTTPS + épinglage de certificat (cfg.serverUrl = IP nue).
+      // Poste client réseau local : HTTPS + épinglage de certificat (cfg.serverUrl = IP nue).
+      // Poste client cloud : URL directe, aucun épinglage (comme mobile).
       // Serveur/both sur Windows : à ce stade, setup-windows.ps1 (exécuté en
       // amont par l'installeur Inno Setup, avant même le premier lancement de
       // cette app) a déjà configuré nginx + le certificat pour de vrai — donc
@@ -2066,7 +2133,9 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
       // Non-Windows (macOS/Linux, service_wrapper) : aucun nginx/certificat
       // équivalent n'est mis en place par cet installeur — HTTP direct reste
       // le seul choix qui fonctionne réellement là-bas.
-      if (cfg.mode == InstallMode.client && cfg.serverUrl.isNotEmpty) {
+      if (cfg.mode == InstallMode.client && cfg.clientUseCloud && cfg.serverUrl.isNotEmpty) {
+        await saveServerUrl(cfg.serverUrl);
+      } else if (cfg.mode == InstallMode.client && cfg.serverUrl.isNotEmpty) {
         await saveLocalServer(cfg.serverUrl);
       } else if (cfg.mode != InstallMode.client && Platform.isWindows) {
         await saveLocalServer('127.0.0.1');
