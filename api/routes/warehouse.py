@@ -287,7 +287,11 @@ def get_warehouse(
 def get_install_code(
     warehouse_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(P.WAREHOUSES_READ)),
+    # WAREHOUSES_CREATE (pas READ) : ce code permet d'enregistrer une
+    # nouvelle caisse sur ce dépôt — un simple accès lecture (ex: caissier,
+    # qui a besoin de voir les dépôts pour choisir le sien) ne doit pas
+    # suffire à le récupérer.
+    current_user: User = Depends(require_permission(P.WAREHOUSES_CREATE)),
 ):
     """Return the installation code for an unclaimed warehouse (null if already claimed)."""
     wh = _get_or_404(db, warehouse_id, current_user.tenant_id)

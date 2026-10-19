@@ -153,6 +153,7 @@ class WarehousesScreen extends ConsumerWidget {
                       const SizedBox(height: 10),
                   itemBuilder: (_, i) => _WarehouseSection(
                     warehouse: warehouses[i],
+                    canCreate: canCreate,
                     canUpdate: canUpdate,
                     canDelete: canDelete,
                     onRefresh: () {
@@ -191,6 +192,7 @@ class WarehousesScreen extends ConsumerWidget {
 
 class _WarehouseSection extends ConsumerWidget {
   final WarehouseModel warehouse;
+  final bool canCreate;
   final bool canUpdate;
   final bool canDelete;
   final VoidCallback onRefresh;
@@ -198,6 +200,7 @@ class _WarehouseSection extends ConsumerWidget {
 
   const _WarehouseSection({
     required this.warehouse,
+    required this.canCreate,
     required this.canUpdate,
     required this.canDelete,
     required this.onRefresh,
@@ -357,7 +360,11 @@ class _WarehouseSection extends ConsumerWidget {
           ),
 
           // ── Code d'installation (dépôt non encore installé) ─────────────
-          if (!warehouse.isClaimed)
+          // canCreate (pas juste warehousesRead) : ce code permet d'enregistrer
+          // une nouvelle caisse sur ce dépôt — un caissier qui peut seulement
+          // VOIR cet écran (ex: pour choisir son dépôt actif) ne doit pas
+          // pouvoir le lire ni le copier.
+          if (!warehouse.isClaimed && canCreate)
             installCodeAsync.whenOrNull(
               data: (code) => code != null
                   ? _InstallCodeRow(code: code)
