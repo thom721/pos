@@ -374,19 +374,24 @@ jobs:
       # non signé — l'utilisateur n'a plus qu'un clic-droit → Ouvrir à faire.
       - name: Signature ad-hoc
         run: |
+          ENTITLEMENTS="$(pwd)/frontend/macos/Runner/Release.entitlements"
           cd frontend/build/macos/Build/Products/Release
           APP=$(ls -d *.app 2>/dev/null | head -1)
-          # --preserve-metadata=entitlements est indispensable : sans lui,
-          # codesign --force resigne SANS entitlements du tout (confirme en
-          # test reel), supprimant com.apple.security.app-sandbox +
-          # network.client poses par le build Xcode/Flutter d'origine. Une
-          # app sandboxee sans cette entitlement ne peut plus faire AUCUNE
-          # requete reseau sortante - aucune erreur serveur, aucune trace
-          # utile, juste "Pas de connexion" cote app. C'etait le vrai bug
-          # derriere l'echec de connexion sur les builds GitHub (le meme
-          # .app compile en local, jamais resigne, fonctionnait).
-          codesign --force --deep --sign - --preserve-metadata=entitlements "$APP"
+          # --entitlements explicite est indispensable ici : sur ce runner,
+          # FLUTTER_XCODE_CODE_SIGNING_ALLOWED=NO (pas de profil Apple
+          # Developer) fait que `flutter build macos` produit un .app
+          # totalement NON SIGNE - il n'y a donc AUCUNE entitlement
+          # preexistante a preserver avec --preserve-metadata=entitlements
+          # (teste en reel : ca ne donnait rien, contrairement a un build
+          # local signe par Xcode ou cette option suffisait). Sans les
+          # entitlements de Release.entitlements (com.apple.security.
+          # app-sandbox + network.client), l'app sandboxee ne peut plus
+          # faire AUCUNE requete reseau sortante - aucune erreur serveur,
+          # aucune trace utile, juste "Pas de connexion" cote app. C'etait
+          # le vrai bug derriere l'echec de connexion sur les builds GitHub.
+          codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP"
           codesign --verify --verbose "$APP"
+          codesign -d --entitlements :- "$APP"
 
       # zip standard, PAS tar ni ditto : un bundle .app contient des liens
       # symboliques (ex: Frameworks/*.framework/Versions/Current -> A) que
