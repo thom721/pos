@@ -376,7 +376,16 @@ jobs:
         run: |
           cd frontend/build/macos/Build/Products/Release
           APP=$(ls -d *.app 2>/dev/null | head -1)
-          codesign --force --deep --sign - "$APP"
+          # --preserve-metadata=entitlements est indispensable : sans lui,
+          # codesign --force resigne SANS entitlements du tout (confirme en
+          # test reel), supprimant com.apple.security.app-sandbox +
+          # network.client poses par le build Xcode/Flutter d'origine. Une
+          # app sandboxee sans cette entitlement ne peut plus faire AUCUNE
+          # requete reseau sortante - aucune erreur serveur, aucune trace
+          # utile, juste "Pas de connexion" cote app. C'etait le vrai bug
+          # derriere l'echec de connexion sur les builds GitHub (le meme
+          # .app compile en local, jamais resigne, fonctionnait).
+          codesign --force --deep --sign - --preserve-metadata=entitlements "$APP"
           codesign --verify --verbose "$APP"
 
       # zip standard, PAS tar ni ditto : un bundle .app contient des liens
