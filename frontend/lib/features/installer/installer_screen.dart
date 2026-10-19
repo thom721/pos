@@ -343,15 +343,17 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
     final isClient = cfg.mode == InstallMode.client;
     _useCloud = cfg.clientUseCloud;
     _urlCtrl = TextEditingController(
-      // Client (reseau local) : IP sauvegardee precedemment (aucun defaut
-      // sensé sinon). Client (cloud) : l'URL cloud deja saisie, ou l'URL
-      // de production par defaut. Serveur/Both : localhost en attendant
-      // la detection de l'IP locale.
-      text: cfg.serverUrl.isNotEmpty
-          ? cfg.serverUrl
-          : isClient
-              ? (_useCloud ? AppConstants.cloudUrl : '')
-              : 'http://127.0.0.1:9003',
+      // Client (cloud) : toujours l'URL de production, champ en lecture
+      // seule (une seule valeur valide). Client (reseau local) : IP
+      // sauvegardee precedemment (aucun defaut sensé sinon). Serveur/Both :
+      // localhost en attendant la detection de l'IP locale.
+      text: isClient && _useCloud
+          ? AppConstants.cloudUrl
+          : cfg.serverUrl.isNotEmpty
+              ? cfg.serverUrl
+              : isClient
+                  ? ''
+                  : 'http://127.0.0.1:9003',
     );
     _detectLocalIps();
   }
@@ -566,7 +568,7 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
                 _useCloud = true;
                 _error = null;
                 _ok = false;
-                if (_urlCtrl.text.isEmpty) _urlCtrl.text = AppConstants.cloudUrl;
+                _urlCtrl.text = AppConstants.cloudUrl;
               }),
             ),
             const SizedBox(height: 24),
@@ -575,6 +577,8 @@ class _ServerAddressPageState extends ConsumerState<_ServerAddressPage> {
               label: _useCloud ? 'Adresse du serveur cloud' : 'Adresse IP du serveur',
               hint: _useCloud ? AppConstants.cloudUrl : '192.168.1.100',
               keyboardType: TextInputType.url,
+              // Une seule adresse cloud valide — rien à saisir, juste à confirmer.
+              readOnly: _useCloud,
             ),
             const SizedBox(height: 16),
           ],
@@ -2904,6 +2908,7 @@ class _Field extends StatelessWidget {
   final String? hint;
   final TextInputType? keyboardType;
   final bool obscure;
+  final bool readOnly;
   final String? Function(String?)? validator;
 
   const _Field({
@@ -2912,6 +2917,7 @@ class _Field extends StatelessWidget {
     this.hint,
     this.keyboardType,
     this.obscure = false,
+    this.readOnly = false,
     this.validator,
   });
 
@@ -2920,9 +2926,15 @@ class _Field extends StatelessWidget {
     return TextFormField(
       controller: ctrl,
       obscureText: obscure,
+      readOnly: readOnly,
       keyboardType: keyboardType,
       validator: validator,
-      decoration: InputDecoration(labelText: label, hintText: hint),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        fillColor: readOnly ? AppColors.surface : null,
+        filled: readOnly,
+      ),
     );
   }
 }

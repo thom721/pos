@@ -185,7 +185,14 @@ class AuthRepository {
       await prefs.remove(AppConstants.planWarningKey);
       await prefs.remove('pos_caisse_session');
     }
-    await prefs.remove(AppConstants.connectionModeKey);
+    // connectionModeKey décrit la CONFIGURATION DE CE POSTE (cloud direct vs
+    // serveur local, choisie dans l'assistant d'installation) — pas l'état
+    // d'une session. Au même titre que serverUrlKey/serverIpKey (jamais
+    // supprimés ici non plus), elle doit survivre à une déconnexion. Sans
+    // ça, un poste bureau configuré en cloud direct retombait sur le
+    // formulaire "serveur local" (et tentait https://infini-post.local,
+    // qui échoue toujours avec une vraie erreur de certificat) dès la
+    // première reconnexion.
   }
 
   /// Supprime toutes les clés SharedPreferences liées à un tenant.
@@ -196,6 +203,7 @@ class AuthRepository {
     AppConstants.serverUrlKey,
     AppConstants.serverIpKey,
     AppConstants.clientSetupDoneKey,
+    AppConstants.connectionModeKey,
     'device_paper_width',
     'device_receipt_darkness',
     'device_bt_mac',
