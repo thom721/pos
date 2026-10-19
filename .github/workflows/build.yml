@@ -379,19 +379,25 @@ jobs:
           codesign --force --deep --sign - "$APP"
           codesign --verify --verbose "$APP"
 
-      # ditto plutôt que tar : un bundle .app contient des liens symboliques
-      # (ex: Frameworks/*.framework/Versions/Current -> A) que l'Archive
-      # Utility de macOS échoue parfois à extraire depuis un tar.gz
-      # ("unsupported format") même quand l'archive est parfaitement valide
-      # (tar/gnutar en ligne de commande la lisent sans problème — vu en
-      # test réel). ditto est l'outil qu'Apple recommande pour ça, produit
-      # un .zip qu'Archive Utility ouvre sans accroc au double-clic.
+      # zip standard, PAS tar ni ditto : un bundle .app contient des liens
+      # symboliques (ex: Frameworks/*.framework/Versions/Current -> A) que
+      # l'Archive Utility de macOS échoue parfois à extraire depuis un
+      # tar.gz ("unsupported format") même quand l'archive est parfaitement
+      # valide (tar en ligne de commande la lit sans problème — vu en test
+      # réel). ditto('-c -k') a semblé être la bonne solution (recommandé
+      # par Apple, lit bien en ligne de commande) mais produit par défaut un
+      # zip en mode "store" (sans compression) — avec lequel Archive Utility
+      # échoue À NOUVEAU avec "unsupported format", alors que le fichier est
+      # valide (unzip -t ne trouve aucune erreur) — bug connu de l'Archive
+      # Utility, pas du fichier (vu en test réel, deux fois). zip -r produit
+      # du deflate standard, le même format que "Compresser" dans le Finder,
+      # sans ce problème.
       - name: Create archive
         run: |
           cd frontend/build/macos/Build/Products/Release
           ls -la   # debug: voir le vrai nom du .app
           APP=$(ls -d *.app 2>/dev/null | head -1)
-          ditto -c -k --sequesterRsrc --keepParent "$APP" posconnect-macos-app.zip
+          zip -r -y posconnect-macos-app.zip "$APP"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
