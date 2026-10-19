@@ -31,6 +31,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _showServerConfig = false;
   bool _autoDiscovering = false;
   bool _usingAutoDiscoveredServer = false;
+  // Poste bureau configuré en mode "Client" + "Cloud (connexion directe)"
+  // dans l'assistant d'installation (connectionModeKey = 'cloud') — doit
+  // afficher le même formulaire que web/Android, pas celui du serveur
+  // local, malgré la plateforme desktop.
+  bool _desktopUsesCloud = false;
 
   final _cloudFormKey = GlobalKey<FormState>();
   final _localFormKey = GlobalKey<FormState>();
@@ -42,7 +47,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void initState() {
     super.initState();
     // Android est cloud-only : pas de serveur local à charger.
-    if (!kIsWeb && !_isAndroid) _initLocalServer();
+    if (!kIsWeb && !_isAndroid) _initDesktopConnection();
+  }
+
+  Future<void> _initDesktopConnection() async {
+    final prefs = await SharedPreferences.getInstance();
+    final mode = prefs.getString(AppConstants.connectionModeKey) ?? 'local';
+    if (mode == 'cloud') {
+      if (mounted) setState(() => _desktopUsesCloud = true);
+      return;
+    }
+    await _initLocalServer();
   }
 
   @override
@@ -403,9 +418,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         const SizedBox(height: 24),
                       ],
                       _buildErrorBanner(authState),
-                      if (kIsWeb)  _buildCloudForm(authState),
-                      if (!kIsWeb && _autoDiscovering) _buildAutoDiscoveringIndicator(),
-                      if (!kIsWeb && !_autoDiscovering) _buildLocalForm(authState),
+                      if (kIsWeb || _desktopUsesCloud)  _buildCloudForm(authState),
+                      if (!kIsWeb && !_desktopUsesCloud && _autoDiscovering) _buildAutoDiscoveringIndicator(),
+                      if (!kIsWeb && !_desktopUsesCloud && !_autoDiscovering) _buildLocalForm(authState),
                     ],
                   ),
                 ),

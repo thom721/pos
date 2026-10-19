@@ -2144,6 +2144,14 @@ class _InstallationPageState extends ConsumerState<_InstallationPage> {
       }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(AppConstants.clientSetupDoneKey, true);
+      // Indique à login_screen.dart quel formulaire afficher au démarrage —
+      // sans ça, un client bureau configuré pour le cloud direct se
+      // retrouvait quand même sur le formulaire "serveur local" (choisi
+      // uniquement selon la plateforme jusqu'ici, jamais selon ce réglage).
+      await prefs.setString(
+        AppConstants.connectionModeKey,
+        (cfg.mode == InstallMode.client && cfg.clientUseCloud) ? 'cloud' : 'local',
+      );
       setState(() { _done = true; _running = false; });
       await Future.delayed(const Duration(milliseconds: 500));
       widget.onDone();
