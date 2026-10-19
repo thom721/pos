@@ -1324,7 +1324,11 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
   late final TextEditingController _addressCtrl;
   late final TextEditingController _pwdCtrl;
   bool _isActive = true;
-  String _selectedRole = 'cashier';
+  // Plusieurs rôles cumulables (ex: "Caissier" + un rôle minimal
+  // personnalisé type "Crédit") — le backend fait déjà l'union des
+  // permissions de tous les rôles d'un utilisateur (has_permission), donc
+  // pas besoin de dupliquer tout le rôle de base dans chaque rôle extra.
+  Set<String> _selectedRoles = {'cashier'};
   List<String> _selectedWarehouseIds = [];
   bool _saving = false;
 
@@ -1345,9 +1349,9 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
 
     final roles = (e?['roles'] as List?)?.map((r) => r.toString()).toList() ?? [];
     if (roles.isNotEmpty) {
-      _selectedRole = roles.first;
+      _selectedRoles = roles.toSet();
     } else if ((e?['permissions'] as List?)?.contains('all') ?? false) {
-      _selectedRole = 'admin';
+      _selectedRoles = {'admin'};
     }
 
     // Charger les dépôts déjà assignés (warehouse_id est un tableau JSON)
@@ -1387,8 +1391,8 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
         'phone':        _phoneCtrl.text.trim(),
         'address':      _addressCtrl.text.trim(),
         'is_active':    _isActive,
-        'roles':        [_selectedRole],
-        'permissions':  _selectedRole == 'admin' ? ['all'] : [_selectedRole],
+        'roles':        _selectedRoles.toList(),
+        'permissions':  _selectedRoles.contains('admin') ? ['all'] : _selectedRoles.toList(),
         // null = accès à tous les dépôts ; liste vide envoyée comme null aussi
         'warehouse_id': _selectedWarehouseIds.isEmpty ? null : _selectedWarehouseIds,
       };
@@ -1546,18 +1550,29 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
   }
 
   Widget _buildRolePicker(List<Map<String, dynamic>> roles) {
-    // Ensure selected role exists in loaded list
+    // Ensure selected roles still exist in the loaded list (ex: rôle
+    // personnalisé supprimé entre-temps) — retombe sur "cashier" si plus rien
+    // ne correspond, jamais une sélection vide.
     final names = roles.map((r) => r['name'] as String).toSet();
-    if (!names.contains(_selectedRole)) {
-      _selectedRole = names.firstWhere(
-          (n) => n == 'cashier', orElse: () => names.first);
+    _selectedRoles = _selectedRoles.where(names.contains).toSet();
+    if (_selectedRoles.isEmpty) {
+      _selectedRoles = {names.contains('cashier') ? 'cashier' : names.first};
     }
 
-    final selected = roles.firstWhere(
-        (r) => r['name'] == _selectedRole,
-        orElse: () => roles.first);
-    final selColor = _hexColor(selected['color'] as String?);
-    final selPerms = (selected['permissions'] as List?) ?? [];
+    // Plusieurs rôles sélectionnés = union de leurs permissions (même
+    // logique que has_permission() côté backend) — pas juste celles du
+    // premier rôle. Couleur/icône d'aperçu basées sur le premier rôle
+    // sélectionné (dans l'ordre d'affichage), juste pour l'habillage visuel.
+    final selectedRoleData =
+        roles.where((r) => _selectedRoles.contains(r['name'])).toList();
+    final first = selectedRoleData.isNotEmpty ? selectedRoleData.first : roles.first;
+    final selColor = _hexColor(first['color'] as String?);
+    final isAllAccess = selectedRoleData
+        .any((r) => ((r['permissions'] as List?) ?? []).contains('all'));
+    final unionPerms = <String>{
+      for (final r in selectedRoleData)
+        ...((r['permissions'] as List?) ?? []).cast<String>(),
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1567,9 +1582,16 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
           children: roles.map((r) {
             final rColor = _hexColor(r['color'] as String?);
             final rName  = r['name'] as String;
-            final isSelected = _selectedRole == rName;
+            final isSelected = _selectedRoles.contains(rName);
             return GestureDetector(
-              onTap: () => setState(() => _selectedRole = rName),
+              onTap: () => setState(() {
+                if (isSelected) {
+                  // Au moins un rôle doit toujours rester sélectionné.
+                  if (_selectedRoles.length > 1) _selectedRoles.remove(rName);
+                } else {
+                  _selectedRoles.add(rName);
+                }
+              }),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1584,7 +1606,11 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
                   ),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(_roleIcon(rName), size: 15,
+                  Icon(
+                      isSelected
+                          ? Icons.check_circle_rounded
+                          : _roleIcon(rName),
+                      size: 15,
                       color: isSelected ? rColor : AppColors.textSecondary),
                   const SizedBox(width: 6),
                   Text(r['label'] as String,
@@ -1610,20 +1636,23 @@ class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
-                Icon(_roleIcon(_selectedRole), size: 14, color: selColor),
+                Icon(Icons.security_rounded, size: 14, color: selColor),
                 const SizedBox(width: 6),
-                Text('Permissions du rôle ${selected['label']}',
+                Text(
+                    _selectedRoles.length > 1
+                        ? 'Permissions combinées (${_selectedRoles.length} rôles)'
+                        : 'Permissions du rôle ${first['label']}',
                     style: TextStyle(fontSize: 12,
                         fontWeight: FontWeight.w600, color: selColor)),
               ]),
               const SizedBox(height: 8),
-              if (selPerms.contains('all'))
+              if (isAllAccess)
                 const Text('Accès total — toutes les fonctionnalités',
                     style: TextStyle(fontSize: 11, color: AppColors.textSecondary))
               else
                 Wrap(
                   spacing: 4, runSpacing: 4,
-                  children: _resolvePermLabels(selPerms.cast<String>())
+                  children: _resolvePermLabels(unionPerms.toList())
                       .take(12)
                       .map((p) => Container(
                             padding: const EdgeInsets.symmetric(
