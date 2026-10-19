@@ -365,6 +365,20 @@ jobs:
           FLUTTER_XCODE_CODE_SIGN_IDENTITY: ""
         run: flutter build macos --release
 
+      # Signature ad-hoc (gratuite, sans compte Apple Developer) — en
+      # attendant un vrai certificat "Developer ID Application" + notarisation
+      # (seule façon d'éviter complètement l'avertissement Gatekeeper). L'ad-hoc
+      # ne supprime pas l'avertissement "développeur non identifié" au premier
+      # lancement d'une app téléchargée, mais évite le message plus alarmant
+      # "app endommagée" qu'affiche parfois macOS sur un .app totalement
+      # non signé — l'utilisateur n'a plus qu'un clic-droit → Ouvrir à faire.
+      - name: Signature ad-hoc
+        run: |
+          cd frontend/build/macos/Build/Products/Release
+          APP=$(ls -d *.app 2>/dev/null | head -1)
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --verbose "$APP"
+
       - name: Create archive
         run: |
           cd frontend/build/macos/Build/Products/Release
@@ -704,6 +718,18 @@ jobs:
           cd packages
           tar -czf posconnect-linux-${{ needs.determine-version.outputs.version }}.tar.gz linux/
 
+      # Client seul (pas de serveur local) — équivalent Linux de
+      # POSConnect-Client-Setup.zip côté Windows. Permet d'installer
+      # uniquement l'app Flutter sur un poste qui se connecte au cloud ou à
+      # un serveur local existant ailleurs sur le réseau, sans forcer le
+      # téléchargement du binaire backend.
+      - name: Assembler Linux Client (tar.gz)
+        run: |
+          mkdir -p packages/linux-client
+          cp -r artifacts/frontend-linux/* packages/linux-client/
+          cd packages
+          tar -czf posconnect-linux-client-${{ needs.determine-version.outputs.version }}.tar.gz linux-client/
+
       - name: Assembler macOS (tar.gz)
         run: |
           mkdir -p packages/macos
@@ -711,6 +737,14 @@ jobs:
           cp artifacts/frontend-macos/posconnect-macos-app.tar.gz packages/macos/
           cd packages
           tar -czf posconnect-macos-${{ needs.determine-version.outputs.version }}.tar.gz macos/
+
+      # Client seul (pas de serveur local) — meme principe que pour Linux.
+      - name: Assembler macOS Client (tar.gz)
+        run: |
+          mkdir -p packages/macos-client
+          cp artifacts/frontend-macos/posconnect-macos-app.tar.gz packages/macos-client/
+          cd packages
+          tar -czf posconnect-macos-client-${{ needs.determine-version.outputs.version }}.tar.gz macos-client/
 
       - name: Assembler Web (zip)
         run: |
@@ -752,8 +786,10 @@ jobs:
             | Windows — Serveur (installeur) | `POSConnect-Setup.zip` |
             | Windows — Client (installeur)  | `POSConnect-Client-Setup.zip` |
             | Windows — Zip (serveur+client) | `posconnect-windows-${{ needs.determine-version.outputs.version }}.zip` |
-            | Linux                | `posconnect-linux-${{ needs.determine-version.outputs.version }}.tar.gz` |
-            | macOS                | `posconnect-macos-${{ needs.determine-version.outputs.version }}.tar.gz` |
+            | Linux — Serveur+Client | `posconnect-linux-${{ needs.determine-version.outputs.version }}.tar.gz` |
+            | Linux — Client seul    | `posconnect-linux-client-${{ needs.determine-version.outputs.version }}.tar.gz` |
+            | macOS — Serveur+Client | `posconnect-macos-${{ needs.determine-version.outputs.version }}.tar.gz` |
+            | macOS — Client seul    | `posconnect-macos-client-${{ needs.determine-version.outputs.version }}.tar.gz` |
             | Web                  | `posconnect-web-${{ needs.determine-version.outputs.version }}.zip` |
 
             ### Installation Windows
@@ -799,8 +835,10 @@ jobs:
             | Windows — Serveur (installeur) | `POSConnect-Setup.zip` |
             | Windows — Client (installeur)  | `POSConnect-Client-Setup.zip` |
             | Windows — Zip (serveur+client) | `posconnect-windows-${{ needs.determine-version.outputs.version }}.zip` |
-            | Linux                | `posconnect-linux-${{ needs.determine-version.outputs.version }}.tar.gz` |
-            | macOS                | `posconnect-macos-${{ needs.determine-version.outputs.version }}.tar.gz` |
+            | Linux — Serveur+Client | `posconnect-linux-${{ needs.determine-version.outputs.version }}.tar.gz` |
+            | Linux — Client seul    | `posconnect-linux-client-${{ needs.determine-version.outputs.version }}.tar.gz` |
+            | macOS — Serveur+Client | `posconnect-macos-${{ needs.determine-version.outputs.version }}.tar.gz` |
+            | macOS — Client seul    | `posconnect-macos-client-${{ needs.determine-version.outputs.version }}.tar.gz` |
             | Web                  | `posconnect-web-${{ needs.determine-version.outputs.version }}.zip` |
           files: |
             packages/posconnect-windows-*.zip
