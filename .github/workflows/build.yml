@@ -379,18 +379,25 @@ jobs:
           codesign --force --deep --sign - "$APP"
           codesign --verify --verbose "$APP"
 
+      # ditto plutôt que tar : un bundle .app contient des liens symboliques
+      # (ex: Frameworks/*.framework/Versions/Current -> A) que l'Archive
+      # Utility de macOS échoue parfois à extraire depuis un tar.gz
+      # ("unsupported format") même quand l'archive est parfaitement valide
+      # (tar/gnutar en ligne de commande la lisent sans problème — vu en
+      # test réel). ditto est l'outil qu'Apple recommande pour ça, produit
+      # un .zip qu'Archive Utility ouvre sans accroc au double-clic.
       - name: Create archive
         run: |
           cd frontend/build/macos/Build/Products/Release
           ls -la   # debug: voir le vrai nom du .app
           APP=$(ls -d *.app 2>/dev/null | head -1)
-          tar -czf posconnect-macos-app.tar.gz "$APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" posconnect-macos-app.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: frontend-macos
-          path: frontend/build/macos/Build/Products/Release/posconnect-macos-app.tar.gz
+          path: frontend/build/macos/Build/Products/Release/posconnect-macos-app.zip
 
   # ── Web ──────────────────────────────────────────────────────────────────────
   frontend-web:
@@ -734,7 +741,7 @@ jobs:
         run: |
           mkdir -p packages/macos
           cp -r artifacts/backend-macos/* packages/macos/
-          cp artifacts/frontend-macos/posconnect-macos-app.tar.gz packages/macos/
+          cp artifacts/frontend-macos/posconnect-macos-app.zip packages/macos/
           cd packages
           tar -czf posconnect-macos-${{ needs.determine-version.outputs.version }}.tar.gz macos/
 
@@ -742,7 +749,7 @@ jobs:
       - name: Assembler macOS Client (tar.gz)
         run: |
           mkdir -p packages/macos-client
-          cp artifacts/frontend-macos/posconnect-macos-app.tar.gz packages/macos-client/
+          cp artifacts/frontend-macos/posconnect-macos-app.zip packages/macos-client/
           cd packages
           tar -czf posconnect-macos-client-${{ needs.determine-version.outputs.version }}.tar.gz macos-client/
 
