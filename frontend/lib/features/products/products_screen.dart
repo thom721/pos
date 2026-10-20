@@ -1985,6 +1985,8 @@ class _ProductDetailsDialogState extends ConsumerState<_ProductDetailsDialog> {
                 if (p.isComposite)
                   row('Produit composé', 'Oui'),
               ],
+              if (p.createdAt != null)
+                row('Créé le', DateFormat('dd/MM/yyyy HH:mm').format(p.createdAt!)),
               if (_tiersFuture != null)
                 FutureBuilder<List<PriceTier>>(
                   future: _tiersFuture,

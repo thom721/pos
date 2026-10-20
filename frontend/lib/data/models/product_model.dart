@@ -1,3 +1,5 @@
+import 'package:pos_connect/core/date_utils.dart' show parseApiDate;
+
 class CategoryModel {
   final String id;
   final String name;
@@ -68,6 +70,7 @@ class ProductModel {
   // Service (ex: pressing, lessive) : pas de stock ni de quantité suivie —
   // voir api/models/Product.py.
   final bool isService;
+  final DateTime? createdAt;
 
   ProductModel({
     required this.id,
@@ -88,6 +91,7 @@ class ProductModel {
     this.compositeRemainder,
     this.stockMigrationNote,
     this.isService = false,
+    this.createdAt,
   });
 
   bool get isLowStock => !isService && stock != null && stock! <= alertStock;
@@ -121,6 +125,9 @@ class ProductModel {
             : null,
         stockMigrationNote: json['stock_migration_note']?.toString(),
         isService: json['is_service'] == true,
+        createdAt: json['created_at'] != null
+            ? parseApiDate(json['created_at'].toString())
+            : null,
       );
 
   Map<String, dynamic> toJson() => {
