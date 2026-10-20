@@ -20,7 +20,14 @@ class PurchaseItemModel {
   factory PurchaseItemModel.fromJson(Map<String, dynamic> json) =>
       PurchaseItemModel(
         id: json['id']?.toString() ?? '',
-        productId: json['product_id']?.toString() ?? '',
+        // L'API (PurchaseItemRead) ne renvoie product_id qu'imbriqué dans
+        // l'objet product — jamais à plat. Lire json['product_id'] (absent)
+        // laissait toujours productId vide, provoquant une violation de clé
+        // étrangère (product_id='') dès la réception d'un achat (voir
+        // ReceiptService.receive → record_stock_movement).
+        productId: json['product']?['id']?.toString() ??
+            json['product_id']?.toString() ??
+            '',
         orderedQty:
             double.tryParse(json['ordered_qty']?.toString() ?? '0') ?? 0,
         unitPrice: double.tryParse(json['unit_price']?.toString() ?? '0') ?? 0,

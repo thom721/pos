@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
 import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/purchase_model.dart';
 import 'package:pos_connect/data/models/supplier_model.dart';
+import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/data/repositories/purchase_repository.dart';
 import 'package:pos_connect/providers/purchase_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/supplier_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/shared/utils/purchase_receipt_pdf.dart';
 import 'package:pos_connect/shared/widgets/status_badge.dart';
 
 final _dateFmt = DateFormat('dd/MM/yyyy HH:mm');
@@ -263,6 +267,20 @@ class _PurchaseCard extends ConsumerWidget {
                 const SizedBox.shrink(),
               Row(
                 children: [
+                  IconButton(
+                    icon: const Icon(Icons.print_rounded, size: 18),
+                    tooltip: 'Imprimer le reçu (lettre 8.5x11)',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () async {
+                      final bytes =
+                          await buildPurchaseReceiptPdf(purchase, settings);
+                      await Printing.layoutPdf(
+                        onLayout: (_) => bytes,
+                        name: 'Achat_${purchase.reference}',
+                        format: PdfPageFormat.letter,
+                      );
+                    },
+                  ),
                   Text('Total: ${formatMoney(purchase.totalAmount, settings)}  ',
                       style: const TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 13)),
@@ -300,6 +318,9 @@ class _CreatePurchaseDialogState
   bool _loading = false;
   String? _error;
 
+  double get _itemsTotal => _items.fold<double>(
+      0, (s, i) => s + (i['ordered_qty'] as num) * (i['unit_price'] as num));
+
   @override
   void dispose() {
     _paidCtrl.dispose();
@@ -315,7 +336,7 @@ class _CreatePurchaseDialogState
     return AlertDialog(
       title: const Text('Nouvel achat fournisseur'),
       content: SizedBox(
-        width: double.maxFinite,
+        width: 480,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -367,6 +388,21 @@ class _CreatePurchaseDialogState
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: const Text('Ajouter un article'),
               ),
+              if (_items.isNotEmpty) ...[
+                const Divider(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total à payer',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    Text(
+                      formatMoney(_itemsTotal, settings),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 12),
 
               // Paid amount
@@ -578,6 +614,7 @@ class _ReceiveDialogState extends ConsumerState<_ReceiveDialog> {
   late List<Map<String, dynamic>> _items;
   bool _loading = false;
   String? _error;
+  WarehouseModel? _warehouse;
 
   @override
   void initState() {
@@ -596,10 +633,15 @@ class _ReceiveDialogState extends ConsumerState<_ReceiveDialog> {
   }
 
   Future<void> _submit() async {
+    if (_warehouse == null) {
+      setState(() => _error = 'Choisissez le dépôt ou entrepôt de réception.');
+      return;
+    }
     setState(() { _loading = true; _error = null; });
     try {
       await dio.post('/api/receive/', data: {
         'purchase_id': widget.purchase.id,
+        'warehouse_id': _warehouse!.id,
         'items': _items.map((i) => {
           'purchase_item_id':    i['purchase_item_id'],
           'purchase_receipt_id': '',
@@ -623,17 +665,45 @@ class _ReceiveDialogState extends ConsumerState<_ReceiveDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final warehousesAsync = ref.watch(warehouseListProvider);
+    final activeWarehouse = ref.read(activeWarehouseProvider);
+
     return AlertDialog(
       title: Text('Réceptionner — ${widget.purchase.reference}'),
       content: SizedBox(
-        width: double.maxFinite,
+        width: 480,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Text(
                 'Saisissez les quantités reçues, numéros de lot et dates d\'expiration.',
                 style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              warehousesAsync.when(
+                data: (warehouses) {
+                  // Pré-sélection une seule fois : le dépôt de l'achat lui-même,
+                  // sinon le dépôt actif — l'utilisateur peut toujours changer.
+                  _warehouse ??= warehouses.where((w) => w.id == widget.purchase.warehouseId).firstOrNull
+                      ?? activeWarehouse
+                      ?? warehouses.where((w) => w.isDefault).firstOrNull;
+                  return DropdownButtonFormField<WarehouseModel>(
+                    initialValue: _warehouse,
+                    decoration: const InputDecoration(
+                        labelText: 'Dépôt / entrepôt de réception'),
+                    items: warehouses
+                        .map((w) => DropdownMenuItem(
+                              value: w,
+                              child: Text(w.isEntrepot ? '${w.name} (entrepôt)' : w.name),
+                            ))
+                        .toList(),
+                    onChanged: (v) => setState(() => _warehouse = v),
+                  );
+                },
+                loading: () => const LinearProgressIndicator(),
+                error: (_, __) => const Text('Erreur chargement des dépôts'),
               ),
               const SizedBox(height: 12),
               ..._items.asMap().entries.map((e) =>
