@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_connect/core/clock_check.dart';
 import 'package:pos_connect/core/constants.dart';
 import 'package:pos_connect/data/api/local_https.dart';
+import 'package:pos_connect/data/api/token_storage.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
 
 const _localBaseUrl = 'https://infini-post.local';
@@ -13,32 +13,14 @@ const _localBaseUrl = 'https://infini-post.local';
 final _unauthorizedCtrl = StreamController<String?>.broadcast();
 Stream<String?> get onUnauthorized => _unauthorizedCtrl.stream;
 
-const _tokenStorage = FlutterSecureStorage(
-  aOptions: AndroidOptions(encryptedSharedPreferences: true),
-);
-
-/// Jeton d'accès, avec migration depuis l'ancien emplacement (préférences).
+/// Jeton d'accès (Keychain, repli SharedPreferences — voir token_storage.dart).
 /// Utilisé aussi par le WebSocket : sans cette lecture, un jeton encore dans
 /// les préférences faisait échouer la connexion en silence.
-Future<String?> readAuthToken() => _readToken();
+Future<String?> readAuthToken() => readAuthTokenStorage();
 
-Future<String?> _readToken() async {
-  // Migration one-shot depuis SharedPreferences
-  final prefs = await SharedPreferences.getInstance();
-  final legacy = prefs.getString(AppConstants.tokenKey);
-  if (legacy != null) {
-    await _tokenStorage.write(key: AppConstants.tokenKey, value: legacy);
-    await prefs.remove(AppConstants.tokenKey);
-  }
-  return _tokenStorage.read(key: AppConstants.tokenKey);
-}
+Future<String?> _readToken() => readAuthTokenStorage();
 
-Future<void> _deleteToken() async {
-  await _tokenStorage.delete(key: AppConstants.tokenKey);
-  // Nettoyage legacy au cas où
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.remove(AppConstants.tokenKey);
-}
+Future<void> _deleteToken() => deleteAuthToken();
 
 Future<String> getEffectiveBaseUrl() async {
   final prefs = await SharedPreferences.getInstance();
