@@ -3,6 +3,8 @@ from typing import Optional
 from decimal import Decimal
 from datetime import datetime
 
+from api.schemas.payment import PaymentUserInfo
+
 
 class DebtRead(BaseModel):
     id: str
@@ -16,6 +18,7 @@ class DebtRead(BaseModel):
     status: str
     created_at: datetime
     partner_name: Optional[str] = None
+    user: Optional[PaymentUserInfo] = None
 
     class Config:
         from_attributes = True

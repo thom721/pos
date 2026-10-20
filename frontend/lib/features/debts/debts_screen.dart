@@ -9,6 +9,8 @@ import 'package:pos_connect/data/repositories/sale_repository.dart';
 import 'package:pos_connect/providers/debt_provider.dart';
 import 'package:pos_connect/providers/payment_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
+import 'package:pos_connect/services/thermal_printer_service.dart';
+import 'package:pos_connect/shared/utils/receipt_pdf.dart';
 import 'package:pos_connect/shared/widgets/status_badge.dart';
 final _dateFmt = DateFormat('dd/MM/yyyy');
 final _dtFmt = DateFormat('dd/MM/yyyy HH:mm');
@@ -21,8 +23,14 @@ class DebtsScreen extends ConsumerStatefulWidget {
 }
 
 class _DebtsScreenState extends ConsumerState<DebtsScreen> {
-  String? _partnerType;
+  String? _partnerType = 'CUSTOMER';
   String? _statusFilter;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _update());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -377,7 +385,9 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
                                   color: AppColors.accent),
                             )
                           : const Icon(Icons.payment_rounded, size: 14),
-                      label: Text(_paying ? 'En cours...' : 'Encaisser'),
+                      label: Text(_paying
+                          ? 'En cours...'
+                          : (isCustomer ? 'Encaisser' : 'Payer')),
                     ),
                   ),
               ],
@@ -573,6 +583,100 @@ class _PaymentHistoryDialog extends ConsumerWidget {
             ),
             const Divider(height: 1),
 
+            // Ligne de la dette elle-même (la vente/achat d'origine)
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      debt.referenceType == 'PURCHASE'
+                          ? Icons.local_shipping_rounded
+                          : Icons.point_of_sale_rounded,
+                      color: AppColors.primary,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _dtFmt.format(debt.createdAt),
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary
+                                    .withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                debt.referenceType == 'PURCHASE'
+                                    ? 'Achat'
+                                    : 'Vente',
+                                style: const TextStyle(
+                                    fontSize: 10,
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            if (debt.userFullName != null &&
+                                debt.userFullName!.isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              Text(
+                                debt.userFullName!,
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    formatMoney(debt.totalAmount, settings),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.print_rounded, size: 18),
+                    tooltip: 'Imprimer',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _printDebtLine(
+                      context,
+                      settings,
+                      typeLabel: debt.referenceType == 'PURCHASE' ? 'Achat' : 'Vente',
+                      date: debt.createdAt,
+                      amount: debt.totalAmount,
+                      partnerLabel: isCustomer ? 'Client' : 'Fournisseur',
+                      partnerName: debt.partnerName,
+                      cashierName: debt.userFullName,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+
             // Payment list
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 360),
@@ -684,6 +788,22 @@ class _PaymentHistoryDialog extends ConsumerWidget {
                                     color: AppColors.success,
                                   ),
                                 ),
+                                IconButton(
+                                  icon: const Icon(Icons.print_rounded, size: 18),
+                                  tooltip: 'Imprimer',
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: () => _printDebtLine(
+                                    ctx,
+                                    settings,
+                                    typeLabel: p.methodLabel,
+                                    date: p.createdAt,
+                                    amount: p.amount,
+                                    partnerLabel:
+                                        isCustomer ? 'Client' : 'Fournisseur',
+                                    partnerName: debt.partnerName,
+                                    cashierName: p.userFullName,
+                                  ),
+                                ),
                               ],
                             ),
                           );
@@ -720,6 +840,40 @@ class _PaymentHistoryDialog extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _printDebtLine(
+    BuildContext context,
+    AppSettings settings, {
+    required String typeLabel,
+    required DateTime date,
+    required double amount,
+    required String partnerLabel,
+    String? partnerName,
+    String? cashierName,
+  }) async {
+    try {
+      final bytes = await buildDebtLineReceiptPdf(
+        settings: settings,
+        typeLabel: typeLabel,
+        date: date,
+        amount: amount,
+        partnerLabel: partnerLabel,
+        partnerName: partnerName,
+        cashierName: cashierName,
+      );
+      await ThermalPrinterService.instance.printPdfBytes(
+        bytes,
+        name: 'Recu_${_dtFmt.format(date).replaceAll(RegExp(r'[^0-9]'), '')}',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Impression impossible: $e'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    }
   }
 
   IconData _methodIcon(String method) {

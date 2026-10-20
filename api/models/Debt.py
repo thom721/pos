@@ -69,3 +69,11 @@ class Debt(UUIDBase):
         if self.partner_type == "SUPPLIER" and self.supplier:
             return self.supplier.name
         return None
+
+    @property
+    def user(self):
+        if self.reference_type == "SALE" and self.sale:
+            return self.sale.user
+        if self.reference_type == "PURCHASE" and self.purchase:
+            return self.purchase.user
+        return None

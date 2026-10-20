@@ -266,3 +266,97 @@ Future<Uint8List> buildReceiptPdf(SaleModel sale, AppSettings settings) async {
 
   return doc.save();
 }
+
+/// Génère un petit reçu thermique pour une seule ligne d'une dette
+/// (la vente/achat d'origine, ou l'un de ses paiements) — pas la facture
+/// complète, juste de quoi tracer ce mouvement précis d'argent.
+Future<Uint8List> buildDebtLineReceiptPdf({
+  required AppSettings settings,
+  required String typeLabel, // 'Vente' | 'Achat' | méthode du paiement
+  required DateTime date,
+  required double amount,
+  required String partnerLabel, // 'Client' | 'Fournisseur'
+  String? partnerName,
+  String? cashierName,
+}) async {
+  final doc = pw.Document();
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+
+  pw.MemoryImage? logoImage;
+  if (settings.showLogoOnReceipt) {
+    final logoBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
+    if (logoBytes != null) {
+      logoImage = pw.MemoryImage(logoBytes);
+    }
+  }
+
+  final numFmt =
+      NumberFormat.currency(locale: 'fr_HT', symbol: '', decimalDigits: 2);
+  final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+
+  final pageWidth = settings.paperWidth == 58 ? 164.0
+                  : settings.paperWidth == 48 ? 136.0
+                  : 204.0;
+  const inkColor = PdfColors.black;
+
+  doc.addPage(pw.Page(
+    pageFormat: PdfPageFormat(pageWidth, double.infinity, marginAll: 8),
+    build: (ctx) {
+      final base  = pw.TextStyle(font: font,     fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
+      final bold  = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
+      final small = pw.TextStyle(font: font,     fontSize: settings.paperWidth == 48 ? 6.0 : 7.0,  color: inkColor);
+      final title = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 9.0 : 11.0, color: inkColor);
+      final big   = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 12.0 : 15.0, color: inkColor);
+      final sym   = settings.currencySymbol;
+
+      pw.Widget divider() =>
+          pw.Divider(thickness: 0.5, color: PdfColors.black);
+      pw.Widget row(String label, String value) => pw.Row(children: [
+            pw.Expanded(child: pw.Text(label, style: base)),
+            pw.Text(value, style: bold),
+          ]);
+
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Center(child: pw.Text(settings.businessName, style: title)),
+          if (settings.address.isNotEmpty)
+            pw.Center(child: pw.Text(settings.address, style: small)),
+          if (settings.phone.isNotEmpty)
+            pw.Center(child: pw.Text('Tél: ${settings.phone}', style: small)),
+          if (logoImage != null) ...[
+            pw.SizedBox(height: 4),
+            pw.Align(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Image(logoImage,
+                    height: settings.paperWidth == 48 ? 16 : settings.paperWidth == 58 ? 20 : 24,
+                    fit: pw.BoxFit.contain)),
+          ],
+          pw.SizedBox(height: 4),
+          divider(),
+          pw.Center(child: pw.Text(typeLabel.toUpperCase(), style: title)),
+          divider(),
+          row('Date', dateFmt.format(date)),
+          if (partnerName != null && partnerName.isNotEmpty)
+            row(partnerLabel, partnerName),
+          if (cashierName != null && cashierName.isNotEmpty)
+            row('Caissier', cashierName),
+          divider(),
+          pw.SizedBox(height: 2),
+          pw.Center(
+              child: pw.Text('$sym${numFmt.format(toDisplayAmount(amount, settings))}',
+                  style: big)),
+          pw.SizedBox(height: 2),
+          divider(),
+          if (settings.receiptFooter.isNotEmpty) ...[
+            pw.SizedBox(height: 4),
+            pw.Center(child: pw.Text(settings.receiptFooter, style: small)),
+          ],
+        ],
+      );
+    },
+  ));
+
+  return doc.save();
+}

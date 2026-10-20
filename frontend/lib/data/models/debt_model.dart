@@ -12,6 +12,7 @@ class DebtModel {
   final String status;
   final DateTime createdAt;
   final String? partnerName;
+  final String? userFullName;
 
   DebtModel({
     required this.id,
@@ -25,21 +26,28 @@ class DebtModel {
     required this.status,
     required this.createdAt,
     this.partnerName,
+    this.userFullName,
   });
 
-  factory DebtModel.fromJson(Map<String, dynamic> json) => DebtModel(
-        id: json['id']?.toString() ?? '',
-        referenceType: json['reference_type']?.toString() ?? '',
-        referenceId: json['reference_id']?.toString() ?? '',
-        partnerType: json['partner_type']?.toString() ?? '',
-        partnerId: json['partner_id']?.toString() ?? '',
-        totalAmount:
-            double.tryParse(json['total_amount']?.toString() ?? '0') ?? 0,
-        paidAmount:
-            double.tryParse(json['paid_amount']?.toString() ?? '0') ?? 0,
-        balance: double.tryParse(json['balance']?.toString() ?? '0') ?? 0,
-        status: json['status']?.toString() ?? 'UNPAID',
-        createdAt: parseApiDate(json['created_at']?.toString()),
-        partnerName: json['partner_name']?.toString(),
-      );
+  factory DebtModel.fromJson(Map<String, dynamic> json) {
+    final user = json['user'] as Map<String, dynamic>?;
+    return DebtModel(
+      id: json['id']?.toString() ?? '',
+      referenceType: json['reference_type']?.toString() ?? '',
+      referenceId: json['reference_id']?.toString() ?? '',
+      partnerType: json['partner_type']?.toString() ?? '',
+      partnerId: json['partner_id']?.toString() ?? '',
+      totalAmount:
+          double.tryParse(json['total_amount']?.toString() ?? '0') ?? 0,
+      paidAmount:
+          double.tryParse(json['paid_amount']?.toString() ?? '0') ?? 0,
+      balance: double.tryParse(json['balance']?.toString() ?? '0') ?? 0,
+      status: json['status']?.toString() ?? 'UNPAID',
+      createdAt: parseApiDate(json['created_at']?.toString()),
+      partnerName: json['partner_name']?.toString(),
+      userFullName: user != null
+          ? '${user['fname'] ?? ''} ${user['lname'] ?? ''}'.trim()
+          : null,
+    );
+  }
 }
