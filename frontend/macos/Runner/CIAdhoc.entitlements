@@ -12,5 +12,9 @@
 	<true/>
 	<key>com.apple.security.device.camera</key>
 	<true/>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>com.kikipllc.posconnect</string>
+	</array>
 </dict>
 </plist>

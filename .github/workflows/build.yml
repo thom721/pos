@@ -398,10 +398,18 @@ jobs:
           # lancement (confirme en reel : spawn tue immediatement, crash
           # "EXC_CRASH (SIGKILL (Code Signature Invalid))" /
           # "CODESIGNING Taskgated Invalid Signature", AVANT meme d'afficher
-          # quoi que ce soit). CIAdhoc.entitlements reprend les memes
-          # capacites sans cette entree - un Keychain sandboxe fonctionne
-          # sans elle pour une app qui ne partage pas d'items avec une
-          # autre app/extension du meme compte developpeur.
+          # quoi que ce soit).
+          #
+          # CIAdhoc.entitlements garde quand meme UNE entree
+          # keychain-access-groups (juste "com.kikipllc.posconnect", sans
+          # prefixe d'equipe) - la retirer completement casse a son tour
+          # TOUTE ecriture Keychain (flutter_secure_storage, donc le JWT)
+          # avec PlatformException -34018 (errSecMissingEntitlement), meme
+          # sans jamais demander de groupe precis dans la requete Keychain :
+          # confirme en reel, logs d'un build sans cette entree (v2.0.73).
+          # Une app sandboxee doit avoir AU MOINS une entree dans
+          # keychain-access-groups pour que le Keychain accepte quoi que ce
+          # soit - macOS utilise la premiere comme groupe implicite.
           codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP"
           codesign --verify --verbose "$APP"
           codesign -d --entitlements :- "$APP"
