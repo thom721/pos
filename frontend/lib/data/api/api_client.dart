@@ -126,7 +126,10 @@ Dio createDio() {
   dio.interceptors.add(AuthInterceptor(dio));
   dio.interceptors.add(OfflineInterceptor());
   dio.interceptors.add(ClockInterceptor());
-  if (!kReleaseMode) {
+  // TEMP DEBUG — logs actives meme en release pour diagnostiquer l'echec de
+  // cloudLogin() (/api/public/login) specifique au build GitHub, absent en
+  // debug. A retirer apres.
+  if (true) {
     dio.interceptors.add(LogInterceptor(
       requestBody: true,
       responseBody: true,
