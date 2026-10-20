@@ -374,7 +374,7 @@ jobs:
       # non signé — l'utilisateur n'a plus qu'un clic-droit → Ouvrir à faire.
       - name: Signature ad-hoc
         run: |
-          ENTITLEMENTS="$(pwd)/frontend/macos/Runner/Release.entitlements"
+          ENTITLEMENTS="$(pwd)/frontend/macos/Runner/CIAdhoc.entitlements"
           cd frontend/build/macos/Build/Products/Release
           APP=$(ls -d *.app 2>/dev/null | head -1)
           # --entitlements explicite est indispensable ici : sur ce runner,
@@ -384,11 +384,24 @@ jobs:
           # preexistante a preserver avec --preserve-metadata=entitlements
           # (teste en reel : ca ne donnait rien, contrairement a un build
           # local signe par Xcode ou cette option suffisait). Sans les
-          # entitlements de Release.entitlements (com.apple.security.
-          # app-sandbox + network.client), l'app sandboxee ne peut plus
-          # faire AUCUNE requete reseau sortante - aucune erreur serveur,
-          # aucune trace utile, juste "Pas de connexion" cote app. C'etait
-          # le vrai bug derriere l'echec de connexion sur les builds GitHub.
+          # entitlements (com.apple.security.app-sandbox + network.client),
+          # l'app sandboxee ne peut plus faire AUCUNE requete reseau
+          # sortante - aucune erreur serveur, aucune trace utile, juste
+          # "Pas de connexion" cote app.
+          #
+          # CIAdhoc.entitlements (pas Release.entitlements) : ce dernier
+          # contient keychain-access-groups avec $(AppIdentifierPrefix),
+          # une variable qu'Xcode substitue a la compilation (team ID reel)
+          # mais que `codesign` en ligne de commande ne resout JAMAIS -
+          # le placeholder litteral finit tel quel dans la signature. Sur
+          # une app sandboxee, ca invalide carrement la signature au
+          # lancement (confirme en reel : spawn tue immediatement, crash
+          # "EXC_CRASH (SIGKILL (Code Signature Invalid))" /
+          # "CODESIGNING Taskgated Invalid Signature", AVANT meme d'afficher
+          # quoi que ce soit). CIAdhoc.entitlements reprend les memes
+          # capacites sans cette entree - un Keychain sandboxe fonctionne
+          # sans elle pour une app qui ne partage pas d'items avec une
+          # autre app/extension du meme compte developpeur.
           codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP"
           codesign --verify --verbose "$APP"
           codesign -d --entitlements :- "$APP"
