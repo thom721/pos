@@ -377,39 +377,39 @@ jobs:
           ENTITLEMENTS="$(pwd)/frontend/macos/Runner/CIAdhoc.entitlements"
           cd frontend/build/macos/Build/Products/Release
           APP=$(ls -d *.app 2>/dev/null | head -1)
-          # --entitlements explicite est indispensable ici : sur ce runner,
-          # FLUTTER_XCODE_CODE_SIGNING_ALLOWED=NO (pas de profil Apple
-          # Developer) fait que `flutter build macos` produit un .app
-          # totalement NON SIGNE - il n'y a donc AUCUNE entitlement
-          # preexistante a preserver avec --preserve-metadata=entitlements
-          # (teste en reel : ca ne donnait rien, contrairement a un build
-          # local signe par Xcode ou cette option suffisait). Sans les
-          # entitlements (com.apple.security.app-sandbox + network.client),
-          # l'app sandboxee ne peut plus faire AUCUNE requete reseau
-          # sortante - aucune erreur serveur, aucune trace utile, juste
-          # "Pas de connexion" cote app.
+          # CONCLUSION (apres plusieurs allers-retours, chacun teste en reel) :
+          # App Sandbox est fondamentalement incompatible avec une signature
+          # ad-hoc (`codesign --sign -`, sans compte Apple Developer payant).
           #
-          # CIAdhoc.entitlements (pas Release.entitlements) : ce dernier
-          # contient keychain-access-groups avec $(AppIdentifierPrefix),
-          # une variable qu'Xcode substitue a la compilation (team ID reel)
-          # mais que `codesign` en ligne de commande ne resout JAMAIS -
-          # le placeholder litteral finit tel quel dans la signature. Sur
-          # une app sandboxee, ca invalide carrement la signature au
-          # lancement (confirme en reel : spawn tue immediatement, crash
-          # "EXC_CRASH (SIGKILL (Code Signature Invalid))" /
-          # "CODESIGNING Taskgated Invalid Signature", AVANT meme d'afficher
-          # quoi que ce soit).
+          # - Sans entitlements du tout : app non sandboxee qui lance très
+          #   bien, mais l'ABSENCE totale d'entitlement reseau n'est pas le
+          #   probleme pour une app non sandboxee (le sandbox seul exigeait
+          #   com.apple.security.network.client) - en realite le probleme
+          #   inverse se posait : app-sandbox=true SANS network.client
+          #   bloquait toute requete sortante ("Pas de connexion").
+          # - app-sandbox=true + network.client (sans keychain-access-groups) :
+          #   lance bien, MAIS toute ecriture Keychain (flutter_secure_storage,
+          #   donc le JWT) echoue avec PlatformException -34018
+          #   (errSecMissingEntitlement) - confirme par les logs reels d'un
+          #   build sans cette entree (v2.0.73) : une app sandboxee exige AU
+          #   MOINS une entree keychain-access-groups pour que le Keychain
+          #   accepte quoi que ce soit.
+          # - app-sandbox=true + keychain-access-groups : keychain-access-
+          #   groups est une entitlement RESTREINTE qui exige un vrai profil
+          #   de provisioning (donc un vrai Developer ID) - une signature
+          #   ad-hoc ne peut legitimement la revendiquer. Resultat : signature
+          #   invalide, process tue au spawn, "EXC_CRASH (SIGKILL (Code
+          #   Signature Invalid))" AVANT meme d'afficher quoi que ce soit
+          #   (confirme en reel sur le build v2.0.74, bissecte entitlement
+          #   par entitlement jusqu'a isoler cette combinaison precise).
           #
-          # CIAdhoc.entitlements garde quand meme UNE entree
-          # keychain-access-groups (juste "com.kikipllc.posconnect", sans
-          # prefixe d'equipe) - la retirer completement casse a son tour
-          # TOUTE ecriture Keychain (flutter_secure_storage, donc le JWT)
-          # avec PlatformException -34018 (errSecMissingEntitlement), meme
-          # sans jamais demander de groupe precis dans la requete Keychain :
-          # confirme en reel, logs d'un build sans cette entree (v2.0.73).
-          # Une app sandboxee doit avoir AU MOINS une entree dans
-          # keychain-access-groups pour que le Keychain accepte quoi que ce
-          # soit - macOS utilise la premiere comme groupe implicite.
+          # Donc : impossible d'avoir App Sandbox + acces Keychain + signature
+          # ad-hoc en meme temps sur macOS. Solution retenue en attendant un
+          # vrai certificat Developer ID (en cours) : CIAdhoc.entitlements est
+          # VIDE - sandbox desactive entierement pour ce build. Hors sandbox,
+          # le reseau ET le Keychain fonctionnent nativement sans aucune
+          # entitlement a declarer (comportement standard de milliers d'apps
+          # Mac distribuees en ad-hoc hors App Store) - teste en reel.
           codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP"
           codesign --verify --verbose "$APP"
           codesign -d --entitlements :- "$APP"
