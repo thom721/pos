@@ -39,7 +39,11 @@ class UserService(TenantService):
                 fname=data.fname,
                 lname=data.lname,
                 username=data.username,
-                phone=data.phone,
+                # "" doit devenir NULL : MySQL n'exempte les doublons de la
+                # contrainte unique (phone, tenant_id) que pour NULL, pas
+                # pour une chaîne vide — deux caissiers créés sans téléphone
+                # entraient en collision sur cette contrainte.
+                phone=(data.phone or "").strip() or None,
                 address=data.address,
                 email=data.email or None,
                 password=get_password_hash(data.password),
@@ -59,7 +63,13 @@ class UserService(TenantService):
             err = str(e.orig).lower() if e.orig else ''
             if 'email' in err:
                 raise HTTPException(status_code=409, detail=f"L'adresse email '{data.email}' est déjà utilisée.")
-            raise HTTPException(status_code=409, detail=f"Le nom d'utilisateur '{data.username}' est déjà pris.")
+            if "phone" in err:
+                raise HTTPException(409, "Ce numéro de téléphone est déjà utilisé.")
+            if "username" in err:
+                raise HTTPException(409, f"Le nom d'utilisateur '{data.username}' est déjà pris.")
+            if "foreign key" in err:
+                raise HTTPException(422, "Référence invalide (entrepôt ou tenant).")
+            raise HTTPException(500, "Erreur d'intégrité lors de la création de l'utilisateur.")
 
     def change_password(self, user_id: str, new_password: str) -> User:
         user = self.get(user_id)
@@ -84,6 +94,8 @@ class UserService(TenantService):
         if not user:
             return None
         changed = data.dict(exclude_unset=True)
+        if 'phone' in changed:
+            changed['phone'] = (changed['phone'] or "").strip() or None
         new_username = changed.get('username', user.username)
         new_email = changed.get('email', user.email)
         self._check_unique(new_username, new_email, exclude_id=user_id)
@@ -113,6 +125,8 @@ class UserService(TenantService):
             err = str(e.orig).lower() if e.orig else ''
             if 'email' in err:
                 raise HTTPException(status_code=409, detail=f"L'adresse email '{new_email}' est déjà utilisée.")
+            if 'phone' in err:
+                raise HTTPException(status_code=409, detail="Ce numéro de téléphone est déjà utilisé.")
             raise HTTPException(status_code=409, detail=f"Le nom d'utilisateur '{new_username}' est déjà pris.")
 
     def delete(self, user_id: str) -> bool:
