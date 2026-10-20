@@ -50,11 +50,17 @@ class _PosAppState extends ConsumerState<PosApp> {
   Timer? _syncTimer;
   Timer? _heartbeatTimer;
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  // Plusieurs requêtes en vol au moment où la session expire reçoivent
+  // chacune leur propre 401 — sans ce garde, _forceLogout() (et son dialogue
+  // barrierDismissible:false) s'exécutait une fois par requête, empilant
+  // plusieurs "Session terminée" identiques à l'écran.
+  bool _forcingLogout = false;
 
   @override
   void initState() {
     super.initState();
     _authSub = onUnauthorized.listen((message) async {
+      if (_forcingLogout) return;
       // Generic credential errors (bad login attempt) skip the dialog.
       const kGeneric = 'Could not validate credentials';
       final showReason = message != null && message != kGeneric;
@@ -66,6 +72,8 @@ class _PosAppState extends ConsumerState<PosApp> {
   /// de permissions). Réutilisé par le 401 générique et par le push WebSocket
   /// "permissions_changed".
   Future<void> _forceLogout(String? message) async {
+    if (_forcingLogout) return;
+    _forcingLogout = true;
     _stopAutoSync();
     if (message != null) {
       final ctx = appNavigatorKey.currentContext;
@@ -90,6 +98,7 @@ class _PosAppState extends ConsumerState<PosApp> {
       }
     }
     ref.read(authProvider.notifier).logoutDueToExpiry();
+    _forcingLogout = false;
   }
 
   void _startAutoSync() {
