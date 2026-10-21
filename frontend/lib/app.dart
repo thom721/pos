@@ -11,6 +11,7 @@ import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/customer_provider.dart';
 import 'package:pos_connect/providers/debt_provider.dart';
+import 'package:pos_connect/providers/license_provider.dart';
 import 'package:pos_connect/providers/discount_provider.dart';
 import 'package:pos_connect/providers/price_tier_provider.dart';
 import 'package:pos_connect/providers/product_provider.dart';
@@ -169,8 +170,12 @@ class _PosAppState extends ConsumerState<PosApp> {
     const productTypes = {'product', 'product_warehouse_price', 'category'};
     const purchaseTypes = {'purchase', 'purchase_item', 'purchase_receipt', 'purchase_receipt_item'};
     const debtTypes = {'debt'};
+    // Confirmation d'un paiement d'abonnement (caisse/entrepôt/tenant) côté
+    // admin — voir api/routes/admin.py::confirm_payment.
+    const billingTypes = {'pos_register', 'warehouse', 'tenant'};
     const knownTypes = {
       ...salesTypes, ...productTypes, ...purchaseTypes, ...debtTypes,
+      ...billingTypes,
       'customer', 'discount', 'product_price_tier', 'app_config', 'config',
       'cashier_session',
     };
@@ -202,6 +207,10 @@ class _PosAppState extends ConsumerState<PosApp> {
     if (set.contains('discount')) ref.invalidate(discountsProvider);
     if (set.contains('product_price_tier')) ref.invalidate(priceTiersProvider);
     if (set.contains('cashier_session')) ref.read(sessionRefreshEpochProvider.notifier).state++;
+    if (set.intersection(billingTypes).isNotEmpty) {
+      ref.invalidate(licenseProvider);
+      ref.read(billingEpochProvider.notifier).state++;
+    }
     if (set.difference(knownTypes).isNotEmpty) {
       // Type non reconnu : synchronisation complète (comportement prudent).
       _triggerSync();

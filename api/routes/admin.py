@@ -1118,6 +1118,13 @@ def confirm_payment(
                 "subscription_ends_at":     reg.subscription_ends_at.isoformat(),
             })
         db.commit()
+        # Pousse immediatement aux clients connectes DIRECTEMENT au cloud
+        # (web/mobile/client desktop cloud-direct) - un serveur local ne
+        # maintient pas de connexion WS permanente vers le cloud, donc ca
+        # ne raccourcit pas son cycle de sync periodique (jusqu'a 5 min),
+        # mais evite au moins cette attente pour tous les autres clients.
+        from api.ws_manager import manager as _ws_manager
+        _ws_manager.notify_threadsafe(tenant.id, entities=["pos_register"])
         return {
             "status":           "ok",
             "payment_id":       payment.id,
@@ -1154,6 +1161,8 @@ def confirm_payment(
                 "subscription_ends_at":     wh.subscription_ends_at.isoformat(),
             })
         db.commit()
+        from api.ws_manager import manager as _ws_manager
+        _ws_manager.notify_threadsafe(tenant.id, entities=["warehouse"])
         return {
             "status":           "ok",
             "payment_id":       payment.id,
@@ -1165,6 +1174,8 @@ def confirm_payment(
 
     # ── Paiement abonnement tenant ────────────────────────────────────────────
     _activate_tenant(db, tenant, months=months, plan_type=plan_type)
+    from api.ws_manager import manager as _ws_manager
+    _ws_manager.notify_threadsafe(tenant.id, entities=["tenant"])
 
     return {
         "status":               "ok",
