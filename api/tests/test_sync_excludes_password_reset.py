@@ -106,3 +106,56 @@ def test_password_reset_fields_never_applied_from_pull(db, tenant, monkeypatch):
     db.refresh(user)
     assert user.password_reset_code is None
     assert user.password_reset_expires_at is None
+
+
+def test_password_never_overwritten_from_pull(db, tenant, monkeypatch):
+    """Bug reel : le cloud ne recoit jamais password/offline_hash (voir
+    _EXCLUDE_PUSH) - sa copie est donc perimee des qu'un mot de passe change
+    en local. Un changement de role bump updated_at sur la ligne User
+    (user_service.py), la rendant eligible au prochain pull - qui, sans
+    cette exclusion, ecrasait le hash local reel avec le hash perime du
+    cloud et cassait la connexion locale du caissier concerne."""
+    user = User(
+        tenant_id=tenant.id, fname="A", lname="B", username="ab",
+        email="ab@t.com", password="hash-reel-local", roles=["cashier"],
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+
+    cloud_record = {
+        "id": user.id,
+        "tenant_id": tenant.id,
+        "fname": "A", "lname": "B", "username": "ab", "email": "ab@t.com",
+        # Perime par rapport au hash local reel — exactement le cas qui
+        # cassait la connexion.
+        "password": "hash-perime-cloud",
+        "roles": ["cashier"], "is_active": True,
+        "permissions": [], "permissions_version": 1,
+        "must_change_password": False, "warehouse_id": None,
+        "phone": None, "address": None, "offline_hash": None,
+        "password_reset_code": None, "password_reset_expires_at": None,
+        "created_at": now_local().isoformat(),
+        "updated_at": (now_local() + timedelta(seconds=1)).isoformat(),
+    }
+
+    monkeypatch.setattr(lss, "SYNC_ENTITIES", [
+        {"type": "user", "model": User, "direction": "both"},
+    ])
+    monkeypatch.setattr(lss, "_load_sync_credentials", lambda: ("https://cloud.example", "fake-token", True))
+
+    def fake_http_post(url, json, headers, timeout=30):
+        if url.endswith("/api/sync/push"):
+            return _FakeResponse({"ok": True, "inserted": 0, "updated": 0, "skipped": 0})
+        assert url.endswith("/api/sync/pull-batch")
+        return _FakeResponse({"results": {
+            "user": {"records": [cloud_record], "has_more": False, "next_since": None},
+        }})
+
+    monkeypatch.setattr(lss, "_http_post", fake_http_post)
+
+    result = lss.run_sync(db)
+    assert result["ok"] is not False, result
+
+    db.refresh(user)
+    assert user.password == "hash-reel-local"

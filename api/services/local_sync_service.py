@@ -163,7 +163,18 @@ _ENTITY_EXCLUDE_PULL: dict[str, set[str]] = {
         # encore été.
         "low_stock_digest_sent_date",
     },
-    "user": {"password_reset_code", "password_reset_expires_at"},
+    # password/offline_hash : le cloud ne les recoit jamais a la base (voir
+    # _EXCLUDE_PUSH ci-dessus) - sa copie est donc fatalement perimee des
+    # qu'un mot de passe change en local. Un pull qui ecraserait le hash
+    # local avec cette valeur figee cassait silencieusement la connexion du
+    # caissier concerne, typiquement juste apres un changement de role (qui
+    # bump updated_at sur la ligne User et la rend eligible au prochain
+    # cycle de pull) - diagnostique en reel, caissier "permissions
+    # modifiees" puis 401 systematique a la reconnexion locale.
+    "user": {
+        "password_reset_code", "password_reset_expires_at",
+        "password", "offline_hash",
+    },
 }
 _PUSH_CHUNK   = 500   # max records per HTTP push request
 
