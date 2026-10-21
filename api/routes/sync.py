@@ -235,6 +235,20 @@ _SHARED_TENANT_ENTITIES = {"warehouse", "category", "supplier", "user"}
 # restent partagés (NULL) ; un nouveau client est rattaché à un dépôt précis.
 _NULLABLE_WAREHOUSE_ENTITIES = {"discount", "app_config", "customer"}
 
+# Champs de facturation : autoritaires UNIQUEMENT côté cloud (poses par
+# confirm_payment/_activate_tenant, jamais par un serveur local). Sans cette
+# exclusion, le push écrasait silencieusement sur UPDATE la date d'abonnement
+# fraîchement confirmée avec la copie périmée du serveur local (ex: un simple
+# heartbeat touche updated_at sur PosRegister sans toucher l'abonnement — le
+# prochain push renvoie quand même l'ancienne subscription_ends_at, qui gagne
+# dès que son updated_at (celui du heartbeat) dépasse celui de la
+# confirmation cloud) — vu en prod : paiement confirmé "payé", registre
+# retrouvé avec le bon tenant, mais subscription_ends_at resté None.
+_PUSH_NEVER_OVERWRITE: dict[str, set[str]] = {
+    "pos_register": {"trial_ends_at", "subscription_started_at", "subscription_ends_at"},
+    "warehouse": {"subscription_ends_at"},
+}
+
 # Lignes enfants sans warehouse_id : rattachées à leur parent.
 _CHILD_PARENT: dict[str, tuple[str, Any]] = {
     "sale_item":             ("sale_id",             Sale),
@@ -472,9 +486,10 @@ def sync_push(
             # clean["updated_at"] est déjà un datetime (coercé par _coerce_dt ci-dessus)
             remote_ts = clean.get("updated_at")
             local_ts  = existing.updated_at
+            push_excl = _PUSH_NEVER_OVERWRITE.get(body.entity_type, set())
             if remote_ts and (not local_ts or remote_ts > local_ts):
                 for k, v in clean.items():
-                    if k != "id":
+                    if k != "id" and k not in push_excl:
                         setattr(existing, k, v)
                 updated += 1
             else:
