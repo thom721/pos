@@ -159,3 +159,49 @@ def test_password_never_overwritten_from_pull(db, tenant, monkeypatch):
 
     db.refresh(user)
     assert user.password == "hash-reel-local"
+
+
+def test_password_still_applied_on_first_insert_from_pull(db, tenant, monkeypatch):
+    """La protection ci-dessus ne doit jouer qu'a la MISE A JOUR d'un
+    utilisateur deja present localement. Un utilisateur tout juste cree
+    cote cloud et jamais encore synchronise doit recevoir son mot de passe
+    normalement a l'insertion - sinon INSERT echoue (User.password est
+    nullable=False) et ce nouvel utilisateur ne syncrhonise plus jamais
+    vers ce serveur local (meme classe de bug que product_price_tier/
+    pos_register plus haut dans ce fichier : un INSERT qui echoue a chaque
+    cycle sans jamais se corriger)."""
+    cloud_record = {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "tenant_id": tenant.id,
+        "fname": "C", "lname": "D", "username": "cd", "email": "cd@t.com",
+        "password": "hash-du-nouvel-utilisateur",
+        "roles": ["cashier"], "is_active": True,
+        "permissions": [], "permissions_version": 0,
+        "must_change_password": True, "warehouse_id": None,
+        "phone": None, "address": None, "offline_hash": None,
+        "password_reset_code": None, "password_reset_expires_at": None,
+        "created_at": now_local().isoformat(),
+        "updated_at": now_local().isoformat(),
+    }
+
+    monkeypatch.setattr(lss, "SYNC_ENTITIES", [
+        {"type": "user", "model": User, "direction": "both"},
+    ])
+    monkeypatch.setattr(lss, "_load_sync_credentials", lambda: ("https://cloud.example", "fake-token", True))
+
+    def fake_http_post(url, json, headers, timeout=30):
+        if url.endswith("/api/sync/push"):
+            return _FakeResponse({"ok": True, "inserted": 0, "updated": 0, "skipped": 0})
+        assert url.endswith("/api/sync/pull-batch")
+        return _FakeResponse({"results": {
+            "user": {"records": [cloud_record], "has_more": False, "next_since": None},
+        }})
+
+    monkeypatch.setattr(lss, "_http_post", fake_http_post)
+
+    result = lss.run_sync(db)
+    assert result["ok"] is not False, result
+
+    new_user = db.query(User).filter(User.username == "cd").first()
+    assert new_user is not None, "l'utilisateur n'a pas ete insere"
+    assert new_user.password == "hash-du-nouvel-utilisateur"

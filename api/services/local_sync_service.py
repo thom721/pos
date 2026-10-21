@@ -61,6 +61,7 @@ from api.models.ClientSabotage import ClientSabotage
 from api.models.Depot import Depot
 from api.models.Retrait import Retrait
 from api.models.Expense import Expense
+from api.models.Role import Role
 
 _log = logging.getLogger("pos.sync")
 
@@ -80,6 +81,16 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "product_price_tier", "model": ProductPriceTier, "direction": "both"},
     {"type": "customer",               "model": Customer,             "direction": "both"},
     {"type": "user",                   "model": User,                 "direction": "both"},
+    # Role manquait entierement de SYNC_ENTITIES : un role personnalise cree
+    # cote cloud admin (ex: "Caissier + Credit") n'atteignait jamais la base
+    # locale, donc TENANT_ROLE_OVERRIDES n'y avait aucune entree pour ce
+    # role - has_permission()/resolve_effective_permissions() retombaient
+    # sur ROLE_PERMISSIONS (roles integres) qui ne le connait pas non plus,
+    # refusant silencieusement toute permission accordee via ce role (vu en
+    # reel : sales.credit refuse en local alors que confirme accorde cote
+    # cloud). "both" comme User : un role peut aussi etre cree depuis
+    # l'ecran Utilisateurs d'un client desktop en mode local.
+    {"type": "role",                   "model": Role,                 "direction": "both"},
     {"type": "pos_register",           "model": PosRegister,         "direction": "both"},
     # ── Sales & payments ────────────────────────────────────────────────────
     # "both" : le bureau doit voir les ventes faites depuis mobile ou web.
@@ -163,18 +174,28 @@ _ENTITY_EXCLUDE_PULL: dict[str, set[str]] = {
         # encore été.
         "low_stock_digest_sent_date",
     },
-    # password/offline_hash : le cloud ne les recoit jamais a la base (voir
-    # _EXCLUDE_PUSH ci-dessus) - sa copie est donc fatalement perimee des
-    # qu'un mot de passe change en local. Un pull qui ecraserait le hash
-    # local avec cette valeur figee cassait silencieusement la connexion du
-    # caissier concerne, typiquement juste apres un changement de role (qui
-    # bump updated_at sur la ligne User et la rend eligible au prochain
-    # cycle de pull) - diagnostique en reel, caissier "permissions
-    # modifiees" puis 401 systematique a la reconnexion locale.
-    "user": {
-        "password_reset_code", "password_reset_expires_at",
-        "password", "offline_hash",
-    },
+    "user": {"password_reset_code", "password_reset_expires_at"},
+}
+
+# Per-entity fields excluded ONLY when UPDATING a row that already exists
+# locally — still accepted on the very first INSERT of that row, since the
+# cloud's value is then the only one that exists yet (not stale, it's the
+# source). password/offline_hash : le cloud ne les recoit jamais au push
+# (voir _EXCLUDE_PUSH) - sa copie est donc fatalement perimee des qu'un mot
+# de passe change en local. Les exclure aussi a l'INSERT casserait la toute
+# premiere synchro d'un utilisateur cree cote cloud (password requis,
+# nullable=False, voir api/models/User.py) - deja constate en reel : une
+# premiere version de ce fix les excluait partout et aurait fait echouer
+# silencieusement l'insert de tout nouvel utilisateur a chaque cycle
+# (meme classe de bug que product_price_tier/pos_register, voir plus bas).
+# A l'UPDATE en revanche, un pull qui ecraserait le hash local avec la
+# valeur perimee du cloud cassait silencieusement la connexion du caissier
+# concerne, typiquement juste apres un changement de role (qui bump
+# updated_at sur la ligne User et la rend eligible au prochain cycle de
+# pull) - diagnostique en reel, caissier "permissions modifiees" puis 401
+# systematique a la reconnexion locale.
+_ENTITY_EXCLUDE_PULL_UPDATE_ONLY: dict[str, set[str]] = {
+    "user": {"password", "offline_hash"},
 }
 _PUSH_CHUNK   = 500   # max records per HTTP push request
 
@@ -471,6 +492,7 @@ def _run_sync_inner(db: Session) -> dict:
 
             col_names = {c.key for c in sa_inspect(model).columns}
             entity_excl = _ENTITY_EXCLUDE_PULL.get(etype, set())
+            entity_excl_update = entity_excl | _ENTITY_EXCLUDE_PULL_UPDATE_ONLY.get(etype, set())
             applied = skipped = 0
             _wh = _installer_warehouse_id()
             for rec in records:
@@ -530,6 +552,18 @@ def _run_sync_inner(db: Session) -> dict:
                             model.warehouse_id == rec["warehouse_id"],
                             model.min_quantity == rec["min_quantity"],
                         ).first()
+                    # role n'a pas de colonne unique simple non plus — sa cle
+                    # naturelle est (tenant_id, name) (uq_role_tenant_name).
+                    # Sans ce fallback, un role deja cree localement avec le
+                    # meme nom avant son premier pull (id different de celui
+                    # du cloud) ferait echouer l'insert a chaque cycle - meme
+                    # classe de bug que product_price_tier/pos_register
+                    # ci-dessus.
+                    if existing is None and etype == "role" and rec.get("name"):
+                        existing = db.query(model).filter(
+                            model.tenant_id == rec.get("tenant_id"),
+                            model.name == rec["name"],
+                        ).first()
                 if existing is None:
                     coerced = _coerce_for_db(model, rec)
                     fields = {k: v for k, v in coerced.items() if k in col_names and k not in entity_excl}
@@ -546,7 +580,7 @@ def _run_sync_inner(db: Session) -> dict:
                     if remote_ts and (not local_ts or remote_ts > local_ts):
                         coerced = _coerce_for_db(model, rec)
                         for k, v in coerced.items():
-                            if k in col_names and k != "id" and k not in entity_excl:
+                            if k in col_names and k != "id" and k not in entity_excl_update:
                                 setattr(existing, k, v)
                         applied += 1
 
@@ -571,6 +605,16 @@ def _run_sync_inner(db: Session) -> dict:
             summary["errors"].append(msg)
 
     db.commit()
+
+    # Les permissions personnalisees sont mises en cache en memoire au
+    # demarrage (TENANT_ROLE_OVERRIDES / ROLE_PERMISSIONS, voir
+    # api/core/permissions.py) - un pull qui vient de modifier la table
+    # roles ne serait sinon pris en compte qu'au prochain redemarrage du
+    # serveur local, laissant un role fraichement synchronise invisible
+    # pour has_permission() en attendant.
+    if summary["pulled"].get("role"):
+        from api.core.permissions import load_roles_from_db
+        load_roles_from_db(db.query(Role).all())
 
     # ── Sync tenant billing (trial_ends_at, status, limits) ──────────────────
     # Tenant is not a generic SYNC_ENTITIES model; update its billing fields

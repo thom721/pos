@@ -70,6 +70,7 @@ from api.models.ClientSabotage import ClientSabotage
 from api.models.Depot import Depot
 from api.models.Retrait import Retrait
 from api.models.Expense import Expense
+from api.models.Role import Role
 
 router = APIRouter(prefix="/api/sync", tags=["Sync"])
 _log = logging.getLogger("pos.sync")
@@ -88,6 +89,7 @@ _MODEL_MAP: dict[str, Any] = {
     "product_price_tier": ProductPriceTier,
     "customer":               Customer,
     "user":                   User,
+    "role":                   Role,
     "pos_register":           PosRegister,
     "discount":               Discount,
     # Sales & payments
