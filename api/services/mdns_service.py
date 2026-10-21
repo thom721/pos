@@ -69,6 +69,23 @@ def start_mdns_responder(port: int = 443) -> None:
     except Exception:
         _log.exception("Échec démarrage mDNS — infini-post.local ne sera "
                         "résoluble que sur cette machine (fichier hosts)")
+        # _zeroconf/_service_info restaient assignés malgré l'echec de
+        # register_service() (l'instance Zeroconf() elle-meme a bien ete
+        # creee avant l'exception) : refresh_if_ip_changed() voyait donc
+        # _zeroconf is not None et pensait mDNS demarre, alors que
+        # _current_ip n'avait JAMAIS ete mis a jour (ligne au-dessus jamais
+        # atteinte) - chaque verification periodique (toutes les 1-2 min)
+        # detectait donc un "changement d'IP" (None -> IP reelle) a
+        # l'infini, retentait un demarrage qui echouait pour la meme raison
+        # environnementale, et chaque tentative bloquait l'event loop assez
+        # longtemps (EventLoopBlocked) pour faire expirer le keepalive du
+        # WS vers le cloud - coupant la synchro temps reel toutes les 2-3
+        # min en boucle (vu en reel, logs v2.0.79). Reinitialiser l'etat ici
+        # fait que le garde-fou "if _zeroconf is None: return" de
+        # refresh_if_ip_changed() joue enfin son role annonce dans son
+        # propre commentaire, au lieu de re-tenter a chaque cycle.
+        _zeroconf = None
+        _service_info = None
 
 
 def stop_mdns_responder() -> None:
