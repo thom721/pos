@@ -63,13 +63,22 @@ import 'package:pos_connect/shared/widgets/app_shell.dart';
 bool needsDesktopInstall = false;
 
 Future<void> loadDesktopInstallState() async {
-  if (kIsWeb) return;
+  if (kIsWeb) {
+    debugPrint('[install-debug] kIsWeb=true, skip');
+    return;
+  }
   final isMobile = defaultTargetPlatform == TargetPlatform.android ||
       defaultTargetPlatform == TargetPlatform.iOS;
-  if (isMobile) return;
+  if (isMobile) {
+    debugPrint('[install-debug] isMobile=true (${defaultTargetPlatform}), skip');
+    return;
+  }
   final prefs = await SharedPreferences.getInstance();
-  needsDesktopInstall =
-      !(prefs.getBool(AppConstants.clientSetupDoneKey) ?? false);
+  final raw = prefs.getBool(AppConstants.clientSetupDoneKey);
+  needsDesktopInstall = !(raw ?? false);
+  debugPrint('[install-debug] platform=${defaultTargetPlatform} '
+      'client_setup_done(raw)=$raw needsDesktopInstall=$needsDesktopInstall '
+      'allKeys=${prefs.getKeys()}');
 }
 
 // Notifies GoRouter when auth state changes, without recreating the router.
@@ -117,6 +126,8 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // ── Splash : auth résolue, naviguer vers la bonne destination ────────
       if (location == '/splash') {
+        debugPrint('[install-debug] redirect() sur /splash : '
+            'needsDesktopInstall=$needsDesktopInstall isLoggedIn=$isLoggedIn');
         if (needsDesktopInstall) {
           pendingDeepLink = null;
           return '/install';
