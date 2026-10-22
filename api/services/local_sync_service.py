@@ -589,7 +589,32 @@ def _run_sync_inner(db: Session) -> dict:
 
             summary["pulled"][etype] = applied
             state.records_pulled += applied
-            state.last_pull_at = now_local()
+            # IMPORTANT : avancer jusqu'a now_local() (horloge locale, pas
+            # celle du cloud) plutot que jusqu'a la date du dernier
+            # enregistrement REELLEMENT recu creait une fenetre de perte de
+            # donnees silencieuse. Scenario reel : le pull interroge le
+            # cloud, recoit sa reponse, puis - AVANT que ce cycle ne mette a
+            # jour last_pull_at - le cloud commite un changement (ex: un
+            # paiement confirme, un role modifie) avec un updated_at encore
+            # anterieur a ce now_local() local (latence reseau normale, ou
+            # simple derive d'horloge entre les deux machines). Ce cycle
+            # avancait quand meme le curseur a "maintenant", donc ce
+            # changement - jamais vu - ne serait plus JAMAIS redemande par
+            # un futur pull (filtre cote cloud : updated_at > since). Vu en
+            # reel : un abonnement confirme cote cloud (subscription_ends_at
+            # correctement pose) reste NULL indefiniment en local, aucune
+            # erreur loguee nulle part - le pull suivant demandait deja
+            # "since now" sans jamais avoir recu cette ligne precise.
+            # Desormais : si des enregistrements ont ete recus, le curseur
+            # n'avance que jusqu'a la date du PLUS RECENT d'entre eux
+            # (jamais au-dela de ce qui a ete vu) ; si rien n'a ete recu, le
+            # curseur reste inchange - le prochain cycle reposera
+            # simplement la meme question, sans aucun risque de manquer un
+            # changement survenu entre-temps.
+            if records:
+                seen_ts = [ts for ts in (_parse_dt(r.get("updated_at")) for r in records) if ts]
+                if seen_ts:
+                    state.last_pull_at = max(seen_ts)
             state.last_error = None
         except Exception as exc:
             msg = f"pull {etype}: {exc}"
