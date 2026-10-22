@@ -62,6 +62,7 @@ class SuppliersScreen extends ConsumerWidget {
             error: (e, _) => Center(
                 child: Text('Erreur: $e',
                     style: const TextStyle(color: AppColors.error))),
+            skipLoadingOnReload: true,
           ),
         ),
       ],

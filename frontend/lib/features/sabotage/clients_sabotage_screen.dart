@@ -73,6 +73,7 @@ class _ClientsSabotageScreenState extends ConsumerState<ClientsSabotageScreen> {
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(
                 child: Text('Erreur: ${extractAnyError(e)}', style: const TextStyle(color: AppColors.error))),
+            skipLoadingOnReload: true,
           ),
         ),
       ],

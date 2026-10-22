@@ -105,6 +105,7 @@ class TablesScreen extends ConsumerWidget {
                 onAdd: canCreate ? () => _showAddDialog(context, ref, isHotel: isHotel) : null,
               )
             : _TableGrid(tables: tables, isHotel: isHotel),
+        skipLoadingOnReload: true,
       ),
       floatingActionButton: canCreate
           ? FloatingActionButton.extended(

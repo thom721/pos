@@ -117,6 +117,7 @@ class DiscountsScreen extends ConsumerWidget {
             error: (e, _) => Center(
                 child: Text('Erreur: ${extractAnyError(e)}',
                     style: const TextStyle(color: AppColors.error))),
+            skipLoadingOnReload: true,
           ),
         ),
       ],

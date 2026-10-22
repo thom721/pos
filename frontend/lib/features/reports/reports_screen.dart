@@ -337,6 +337,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 ],
               ),
             ),
+            skipLoadingOnReload: true,
           ),
         ),
       ],

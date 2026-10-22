@@ -891,6 +891,7 @@ class _ProductPanelState extends ConsumerState<_ProductPanel> {
               child: Text('Erreur: $e',
                   style: const TextStyle(color: AppColors.error)),
             ),
+            skipLoadingOnReload: true,
           ),
         ),
       ],

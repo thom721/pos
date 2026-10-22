@@ -151,6 +151,7 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
               child: Text('Erreur: $e',
                   style: const TextStyle(color: AppColors.error)),
             ),
+            skipLoadingOnReload: true,
           ),
         ),
         salesAsync.maybeWhen(

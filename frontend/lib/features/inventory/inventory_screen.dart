@@ -244,6 +244,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               child: Text('Erreur: $e',
                   style: const TextStyle(color: AppColors.error)),
             ),
+            skipLoadingOnReload: true,
           ),
         ),
       ],
@@ -886,6 +887,7 @@ class _InventoryDetailDialog extends ConsumerWidget {
                   child: Text('Erreur: $e',
                       style: const TextStyle(color: AppColors.error)),
                 ),
+                skipLoadingOnReload: true,
               ),
             ),
 

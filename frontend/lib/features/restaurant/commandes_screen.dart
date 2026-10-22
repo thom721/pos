@@ -211,6 +211,7 @@ class _CommandesScreenState extends ConsumerState<CommandesScreen> {
             ],
           ),
         ),
+        skipLoadingOnReload: true,
         data: (orders) => orders.isEmpty
             ? _EmptyState(onNew: () => _showNewOrderDialog(context))
             : ListView.separated(

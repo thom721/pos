@@ -305,6 +305,7 @@ class _AuditScreenState extends ConsumerState<AuditScreen> {
               child: Text('Erreur: $e',
                   style: const TextStyle(color: AppColors.error)),
             ),
+            skipLoadingOnReload: true,
           ),
         ),
       ],
@@ -520,6 +521,7 @@ class _OpenSessionsTabState extends ConsumerState<_OpenSessionsTab> {
         child: Text('Erreur : $e',
             style: const TextStyle(color: AppColors.error)),
       ),
+      skipLoadingOnReload: true,
     );
   }
 }
@@ -553,6 +555,7 @@ class _SessionHistoryTabState extends ConsumerState<_SessionHistoryTab> {
       error:   (e, _) => Center(
         child: Text('Erreur : $e', style: const TextStyle(color: AppColors.error)),
       ),
+      skipLoadingOnReload: true,
       data: (data) {
         final items = (data['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
         final total = (data['total'] as num?)?.toInt() ?? 0;

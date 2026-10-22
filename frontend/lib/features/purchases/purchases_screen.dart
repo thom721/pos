@@ -147,6 +147,7 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
             error: (e, _) => Center(
                 child: Text('Erreur: $e',
                     style: const TextStyle(color: AppColors.error))),
+            skipLoadingOnReload: true,
           ),
         ),
       ],

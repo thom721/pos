@@ -91,6 +91,7 @@ class BillingScreen extends ConsumerWidget {
                   : e.toString(),
             ),
             data: (data) => _BillingContent(data: data),
+            skipLoadingOnReload: true,
           ),
         ],
       ),
@@ -545,6 +546,7 @@ class _BillingContent extends ConsumerWidget {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         const SizedBox(height: 12),
         payments.when(
+          skipLoadingOnReload: true,
           loading: () => const Center(
               child: Padding(
                 padding: EdgeInsets.all(24),
@@ -1651,6 +1653,7 @@ class _RegisterPaymentSectionState
             error: (e, _) => Text('Erreur : $e',
                 style:
                     const TextStyle(color: AppColors.error, fontSize: 12)),
+            skipLoadingOnReload: true,
             data: (whRegs) {
               final groups = whRegs
                   .map((w) => _WhWithRegs(
@@ -1989,6 +1992,7 @@ class _EntrepotPaymentSectionState
                   ),
                   error: (e, _) => Text('Erreur : $e',
                       style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                  skipLoadingOnReload: true,
                   data: (entrepots) => Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: entrepots.map((e) {

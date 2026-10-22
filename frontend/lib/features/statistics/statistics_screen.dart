@@ -665,6 +665,7 @@ class StatisticsScreen extends ConsumerWidget {
                   loading: () => const Center(
                       child: CircularProgressIndicator(strokeWidth: 2)),
                   error: (e, _) => _noData(),
+                  skipLoadingOnReload: true,
                 ),
               );
             }),
@@ -732,6 +733,7 @@ class StatisticsScreen extends ConsumerWidget {
           ],
         ),
       ),
+      skipLoadingOnReload: true,
     );
   }
 
@@ -1468,6 +1470,7 @@ class _ProductEcoulementSectionState
             ),
             loading: () => const SizedBox(height: 32),
             error: (err, st) => const SizedBox(height: 32),
+            skipLoadingOnReload: true,
           ),
 
           const SizedBox(height: 16),
@@ -1493,6 +1496,7 @@ class _ProductEcoulementSectionState
                     style: const TextStyle(
                         color: AppColors.error, fontSize: 12)),
               ),
+              skipLoadingOnReload: true,
             ),
           ),
         ],

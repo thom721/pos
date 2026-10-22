@@ -492,6 +492,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
               loading: () => const _LoadingSection(label: 'Chargement des stats…'),
               error:   (e, _) => _ErrorSection(error: e, onRetry: () => ref.invalidate(_warehouseStatsProvider)),
               data: (data) => _GlobalSummary(global: data.global, money: money),
+              skipLoadingOnReload: true,
             ),
             const SizedBox(height: 24),
 
@@ -508,6 +509,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
               data: (data) => data.byWarehouse.isEmpty
                   ? _emptyState('Aucune vente enregistrée pour cette période')
                   : _WarehouseRanking(stats: data.byWarehouse, money: money),
+              skipLoadingOnReload: true,
             ),
             const SizedBox(height: 32),
 
@@ -547,6 +549,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
               data: (products) => products.isEmpty
                   ? _emptyState('Aucun produit vendu sur cette période')
                   : _TopProductsTable(products: products, money: money),
+              skipLoadingOnReload: true,
             ),
 
             // ── Dépenses ─────────────────────────────────────────────────
@@ -566,6 +569,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
                   data: (report) => report.count == 0
                       ? _emptyState('Aucune dépense enregistrée pour cette période')
                       : _ExpensesSection(report: report, money: money),
+                  skipLoadingOnReload: true,
                 );
               }),
             ],
@@ -587,6 +591,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
                   data: (report) => report.periodsCount == 0
                       ? _emptyState('Aucune période de paie sur cette période')
                       : _PayrollSection(report: report, money: money),
+                  skipLoadingOnReload: true,
                 );
               }),
             ],
@@ -608,6 +613,7 @@ class _DepotReportsScreenState extends ConsumerState<DepotReportsScreen> {
                   data: (report) => report.count == 0
                       ? _emptyState('Aucun prêt accordé sur cette période')
                       : _LoansSection(report: report, money: money),
+                  skipLoadingOnReload: true,
                 );
               }),
             ],

@@ -118,6 +118,7 @@ class WarehousesScreen extends ConsumerWidget {
                   ],
                 ),
               ),
+              skipLoadingOnReload: true,
               data: (warehouses) {
                 if (warehouses.isEmpty) {
                   return Center(
@@ -396,6 +397,7 @@ class _WarehouseSection extends ConsumerWidget {
               isEntrepot: warehouse.isEntrepot,
               onRefresh: onRefreshRegisters,
             ),
+            skipLoadingOnReload: true,
           ),
         ],
       ),

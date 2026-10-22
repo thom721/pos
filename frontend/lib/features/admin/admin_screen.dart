@@ -297,6 +297,7 @@ class _TenantsTabState extends ConsumerState<_TenantsTab> {
               message: extractAnyError(e),
               onRetry: () => ref.invalidate(_tenantsProvider),
             ),
+            skipLoadingOnReload: true,
             data: (result) {
               final tenants = result['data'] as List<dynamic>? ?? [];
               final total = result['total'] as int? ?? 0;
@@ -1451,6 +1452,7 @@ class _PaymentsTab extends ConsumerWidget {
         message: extractAnyError(e),
         onRetry: () => ref.invalidate(_paymentsProvider),
       ),
+      skipLoadingOnReload: true,
       data: (payments) => Column(
         children: [
           // Stats bar
@@ -1790,6 +1792,7 @@ class _AffiliateWithdrawalsTab extends ConsumerWidget {
         message: extractAnyError(e),
         onRetry: () => ref.invalidate(_affiliateWithdrawalsProvider),
       ),
+      skipLoadingOnReload: true,
       data: (withdrawals) => withdrawals.isEmpty
           ? const Center(child: Text('Aucune demande de retrait'))
           : ListView.separated(

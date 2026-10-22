@@ -233,6 +233,7 @@ class _UsersTab extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error:   (e, _) => Center(child: Text('Erreur: ${extractAnyError(e)}',
           style: const TextStyle(color: AppColors.error))),
+      skipLoadingOnReload: true,
       data: (users) {
         final rolesData = ref.watch(_rolesProvider).valueOrNull ?? [];
         return Column(children: [
@@ -554,6 +555,7 @@ class _PermissionsMatrixTab extends ConsumerWidget {
           child: Text('Erreur: $e',
               style: const TextStyle(color: AppColors.error))),
       data: (roles) => _buildContent(context, ref, roles),
+      skipLoadingOnReload: true,
     );
   }
 

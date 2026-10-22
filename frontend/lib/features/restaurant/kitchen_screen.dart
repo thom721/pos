@@ -31,6 +31,7 @@ class KitchenScreen extends ConsumerWidget {
         error: (e, _) => Center(
           child: Text(extractAnyError(e), style: const TextStyle(color: Colors.red)),
         ),
+        skipLoadingOnReload: true,
         data: (orders) {
           final active = orders.where((o) => o.status != 'closed').toList();
           if (active.isEmpty) {

@@ -1495,6 +1495,7 @@ class _DocumentDialogState extends ConsumerState<_DocumentDialog> {
             loading: () =>
                 const Center(child: CircularProgressIndicator()),
             error: (e, s) => Center(child: Text('Erreur: $e')),
+            skipLoadingOnReload: true,
           ),
         ),
         Container(

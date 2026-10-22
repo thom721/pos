@@ -162,6 +162,7 @@ class _DebtsScreenState extends ConsumerState<DebtsScreen> {
             error: (e, _) => Center(
                 child: Text('Erreur: $e',
                     style: const TextStyle(color: AppColors.error))),
+            skipLoadingOnReload: true,
           ),
         ),
       ],
@@ -818,6 +819,7 @@ class _PaymentHistoryDialog extends ConsumerWidget {
                   child: Text('Erreur: $e',
                       style: const TextStyle(color: AppColors.error)),
                 ),
+                skipLoadingOnReload: true,
               ),
             ),
 
