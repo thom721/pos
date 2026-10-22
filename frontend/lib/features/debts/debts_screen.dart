@@ -5,6 +5,7 @@ import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/models/debt_model.dart';
+import 'package:pos_connect/data/models/payment_model.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
 import 'package:pos_connect/providers/debt_provider.dart';
 import 'package:pos_connect/providers/payment_provider.dart';
@@ -543,6 +544,16 @@ class _PaymentHistoryDialog extends ConsumerWidget {
                     ),
                   ),
                   IconButton(
+                    icon: const Icon(Icons.print_rounded, size: 20),
+                    tooltip: 'Imprimer l\'état de compte',
+                    onPressed: () => _printStatement(
+                      context, settings, isCustomer ? 'Client' : 'Fournisseur',
+                      paymentsAsync.valueOrNull ?? const [],
+                    ),
+                    style: IconButton.styleFrom(
+                        foregroundColor: AppColors.primary),
+                  ),
+                  IconButton(
                     icon: const Icon(Icons.close_rounded, size: 20),
                     onPressed: () => Navigator.pop(context),
                     style: IconButton.styleFrom(
@@ -867,6 +878,33 @@ class _PaymentHistoryDialog extends ConsumerWidget {
       await ThermalPrinterService.instance.printPdfBytes(
         bytes,
         name: 'Recu_${_dtFmt.format(date).replaceAll(RegExp(r'[^0-9]'), '')}',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Impression impossible: $e'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    }
+  }
+
+  Future<void> _printStatement(
+    BuildContext context,
+    AppSettings settings,
+    String partnerLabel,
+    List<PaymentModel> payments,
+  ) async {
+    try {
+      final bytes = await buildDebtStatementPdf(
+        settings: settings,
+        debt: debt,
+        payments: payments,
+        partnerLabel: partnerLabel,
+      );
+      await ThermalPrinterService.instance.printPdfBytes(
+        bytes,
+        name: 'Etat_compte_${_dtFmt.format(debt.createdAt).replaceAll(RegExp(r'[^0-9]'), '')}',
       );
     } catch (e) {
       if (context.mounted) {

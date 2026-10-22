@@ -5,6 +5,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import 'package:pos_connect/core/currency.dart';
+import 'package:pos_connect/data/models/debt_model.dart';
+import 'package:pos_connect/data/models/payment_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/services/logo_cache_service.dart';
@@ -348,6 +350,119 @@ Future<Uint8List> buildDebtLineReceiptPdf({
               child: pw.Text('$sym${numFmt.format(toDisplayAmount(amount, settings))}',
                   style: big)),
           pw.SizedBox(height: 2),
+          divider(),
+          if (settings.receiptFooter.isNotEmpty) ...[
+            pw.SizedBox(height: 4),
+            pw.Center(child: pw.Text(settings.receiptFooter, style: small)),
+          ],
+        ],
+      );
+    },
+  ));
+
+  return doc.save();
+}
+
+/// État de compte d'un crédit (vente/achat à crédit) : la dette d'origine
+/// puis tous les paiements reçus depuis, avec date et caissier — demandé
+/// pour remettre au client/fournisseur une preuve complète de son compte,
+/// pas juste un reçu de paiement isolé (voir buildDebtLineReceiptPdf).
+Future<Uint8List> buildDebtStatementPdf({
+  required AppSettings settings,
+  required DebtModel debt,
+  required List<PaymentModel> payments,
+  required String partnerLabel, // 'Client' | 'Fournisseur'
+}) async {
+  final doc = pw.Document();
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+
+  pw.MemoryImage? logoImage;
+  if (settings.showLogoOnReceipt) {
+    final logoBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
+    if (logoBytes != null) {
+      logoImage = pw.MemoryImage(logoBytes);
+    }
+  }
+
+  final numFmt =
+      NumberFormat.currency(locale: 'fr_HT', symbol: '', decimalDigits: 2);
+  final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+
+  final pageWidth = settings.paperWidth == 58 ? 164.0
+                  : settings.paperWidth == 48 ? 136.0
+                  : 204.0;
+  const inkColor = PdfColors.black;
+
+  doc.addPage(pw.Page(
+    pageFormat: PdfPageFormat(pageWidth, double.infinity, marginAll: 8),
+    build: (ctx) {
+      final base  = pw.TextStyle(font: font,     fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
+      final bold  = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
+      final small = pw.TextStyle(font: font,     fontSize: settings.paperWidth == 48 ? 6.0 : 7.0,  color: inkColor);
+      final title = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 9.0 : 11.0, color: inkColor);
+      final sym   = settings.currencySymbol;
+      String mon(double v) => '$sym${numFmt.format(toDisplayAmount(v, settings))}';
+
+      pw.Widget divider() =>
+          pw.Divider(thickness: 0.5, color: PdfColors.black);
+      pw.Widget row(String label, String value, {pw.TextStyle? valueStyle}) =>
+          pw.Row(children: [
+            pw.Expanded(child: pw.Text(label, style: base)),
+            pw.Text(value, style: valueStyle ?? bold),
+          ]);
+      pw.Widget entry(String dateStr, String label, String? cashier, double amount) =>
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 3),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Row(children: [
+                  pw.Expanded(child: pw.Text(dateStr, style: small)),
+                  pw.Text(mon(amount), style: bold),
+                ]),
+                pw.Text(
+                  cashier != null && cashier.isNotEmpty ? '$label — $cashier' : label,
+                  style: small,
+                ),
+              ],
+            ),
+          );
+
+      final debtTypeLabel = debt.referenceType == 'PURCHASE' ? 'Achat à crédit' : 'Vente à crédit';
+
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Center(child: pw.Text(settings.businessName, style: title)),
+          if (settings.address.isNotEmpty)
+            pw.Center(child: pw.Text(settings.address, style: small)),
+          if (settings.phone.isNotEmpty)
+            pw.Center(child: pw.Text('Tél: ${settings.phone}', style: small)),
+          if (logoImage != null) ...[
+            pw.SizedBox(height: 4),
+            pw.Align(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Image(logoImage,
+                    height: settings.paperWidth == 48 ? 16 : settings.paperWidth == 58 ? 20 : 24,
+                    fit: pw.BoxFit.contain)),
+          ],
+          pw.SizedBox(height: 4),
+          divider(),
+          pw.Center(child: pw.Text('ÉTAT DE COMPTE', style: title)),
+          divider(),
+          if (debt.partnerName != null && debt.partnerName!.isNotEmpty)
+            row(partnerLabel, debt.partnerName!),
+          row('Depuis le', dateFmt.format(debt.createdAt)),
+          divider(),
+          pw.SizedBox(height: 2),
+          entry(dateFmt.format(debt.createdAt), debtTypeLabel, debt.userFullName, debt.totalAmount),
+          for (final p in payments)
+            entry(dateFmt.format(p.createdAt), 'Paiement (${p.methodLabel})', p.userFullName, p.amount),
+          divider(),
+          row('Total', mon(debt.totalAmount)),
+          row('Payé', mon(debt.paidAmount)),
+          row('Reste', mon(debt.balance)),
           divider(),
           if (settings.receiptFooter.isNotEmpty) ...[
             pw.SizedBox(height: 4),
