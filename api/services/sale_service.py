@@ -315,6 +315,15 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
             tenant_id=tenant_id,
         ))
         if not product.is_service:
+            # Stock des anciens articles deja reverse (etape 1 + flush ci-dessus),
+            # donc available_quantity_at reflete deja ce retrait avant ce controle.
+            if sale.warehouse_id:
+                if float(product.available_quantity_at(sale.warehouse_id)) < item.quantity:
+                    raise HTTPException(
+                        400, f"Stock insuffisant pour {product.name} dans ce dépôt"
+                    )
+            elif float(product.available_quantity) < item.quantity:
+                raise HTTPException(400, f"Stock insuffisant pour {product.name}")
             record_stock_movement(
                 db,
                 product_id=product.id,

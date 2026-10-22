@@ -190,7 +190,19 @@ def process_purchase_return(
             "subtotal": line_value,
         })
 
-        # Stock goes OUT (meme depot que l'achat d'origine)
+        # Stock goes OUT (meme depot que l'achat d'origine) - une partie a pu
+        # etre revendue depuis la reception, donc le stock disponible peut
+        # etre inferieur a ordered_qty au moment du retour fournisseur.
+        if purchase_item.product is not None and not purchase_item.product.is_service:
+            available = purchase_item.product.available_quantity_at(purchase.warehouse_id) \
+                if purchase.warehouse_id else purchase_item.product.available_quantity
+            if qty > float(available):
+                raise HTTPException(
+                    400,
+                    f"Stock insuffisant pour retourner {product_name} au fournisseur "
+                    f"(disponible: {available}, retour demandé: {qty})",
+                )
+
         record_stock_movement(
             db,
             product_id=str(item['product_id']),

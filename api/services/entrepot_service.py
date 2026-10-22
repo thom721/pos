@@ -172,6 +172,15 @@ def adjust_entrepot_stock(
     if not product:
         raise HTTPException(404, "Produit introuvable")
 
+    if quantity < 0:
+        available = Decimal(str(product.available_quantity_at(entrepot.id)))
+        if Decimal(str(-quantity)) > available:
+            raise HTTPException(
+                400,
+                f"Stock insuffisant à l'entrepôt pour {product.name} "
+                f"(disponible: {available}, retrait demandé: {-quantity})",
+            )
+
     record_stock_movement(
         db,
         product_id=product_id,

@@ -93,6 +93,9 @@ def get_inventory(db: Session, inventory_id: str, tenant_id: str | None = None) 
 def create_inventory(db: Session, data, user_id: str, tenant_id: str | None = None, warehouse_id: str | None = None) -> InventoryRecord:
     if not data.items:
         raise HTTPException(400, "Aucun produit compté")
+    for item in data.items:
+        if float(item.counted_qty) < 0:
+            raise HTTPException(400, "La quantité comptée ne peut pas être négative")
 
     wh_id = resolve_warehouse_id(db, tenant_id, warehouse_id or data.warehouse_id) if tenant_id else None
     product_ids = [str(item.product_id) for item in data.items]

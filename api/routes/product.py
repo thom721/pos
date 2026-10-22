@@ -160,6 +160,15 @@ def adjust_stock(
     wh_id = resolve_warehouse_id(db, current_user.tenant_id, payload.warehouse_id) \
         if current_user.tenant_id else None
 
+    if qty < 0 and not product.is_service:
+        available = product.available_quantity_at(wh_id) if wh_id else product.available_quantity
+        if -qty > float(available):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Stock insuffisant pour {product.name} "
+                       f"(disponible: {available}, retrait demandé: {-qty})",
+            )
+
     record_stock_movement(
         db,
         product_id=product_id,
