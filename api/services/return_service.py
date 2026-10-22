@@ -90,6 +90,10 @@ def process_sale_return(
 
     # Record refund payment (negative reduces paid_amount)
     actual_refund = refund_amount if refund_amount > 0 else refund_total
+    # Jamais plus que ce qui a reellement ete paye (cash/carte/mobile/banque) -
+    # sinon un retour sur une vente a credit jamais payee cree un remboursement
+    # cash negatif fictif, qui fausse ensuite la reconciliation de caisse.
+    actual_refund = min(actual_refund, float(sale.paid_amount))
     if actual_refund > 0:
         pmt = Payment(
             reference_type="SALE",
@@ -233,12 +237,28 @@ def list_returns(
     page: int = 1,
     limit: int = 20,
     tenant_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ):
     query = db.query(ReturnRecord)
     if tenant_id:
         query = query.filter(ReturnRecord.tenant_id == tenant_id)
     if return_type:
         query = query.filter(ReturnRecord.return_type == return_type)
+    if date_from:
+        query = query.filter(ReturnRecord.created_at >= date_from)
+    if date_to:
+        query = query.filter(ReturnRecord.created_at <= date_to)
+
+    # Totaux sur l'ENSEMBLE des resultats filtres (pas juste la page courante) -
+    # necessaire pour afficher une carte "Retours" dans un rapport sans paginer.
+    from sqlalchemy import func as _func
+    totals = query.with_entities(
+        _func.coalesce(_func.sum(ReturnRecord.refund_amount), 0),
+        _func.coalesce(_func.sum(ReturnRecord.total_returned), 0),
+    ).first()
+    total_refund_amount = float(totals[0] or 0)
+    total_returned_amount = float(totals[1] or 0)
 
     total = query.count()
     records = (
@@ -268,4 +288,6 @@ def list_returns(
     return {
         "data": [serialize(r) for r in records],
         "meta": {"total": total, "page": page, "limit": limit},
+        "total_refund_amount": total_refund_amount,
+        "total_returned": total_returned_amount,
     }

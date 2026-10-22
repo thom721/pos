@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiTodayStartUtc;
+import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
@@ -99,4 +100,18 @@ final dashboardSalesProvider =
     dateTo: dateTo,
     warehouseId: warehouseId,
   );
+});
+
+/// Carte dashboard "Recouvrement de dettes" : paiements du jour sur des
+/// dettes antérieures, scope tenant ou caissier selon reports.read_all
+/// (décidé côté backend — voir GET /api/sessions/debt-collected-today).
+final debtCollectedTodayProvider = FutureProvider.autoDispose<double>((ref) async {
+  ref.watch(syncEpochProvider);
+  try {
+    final res = await dio.get('/api/sessions/debt-collected-today');
+    final d = res.data as Map<String, dynamic>;
+    return (d['debt_collected_today'] as num?)?.toDouble() ?? 0.0;
+  } catch (_) {
+    return 0.0;
+  }
 });

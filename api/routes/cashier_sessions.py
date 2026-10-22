@@ -11,6 +11,7 @@ from api.models.User import User
 from api.models.CashierSession import CashierSession
 from api.models.Payment import Payment
 from api.models.ReturnRecord import ReturnRecord
+from api.models.Sale import Sale
 from api.models.PosRegister import PosRegister
 from api.models.Tenant import Tenant
 from api.models.PlatformConfig import PlatformConfig
@@ -71,6 +72,35 @@ def _compute_reconciliation(db: Session, session: CashierSession, closed_at: dat
     opening  = float(session.opening_balance or 0)
     expected = opening + cash - refunds
 
+    # Vente a credit de la session (non payee/partiellement payee) - purement
+    # informatif, n'entre jamais dans expected_closing_balance puisque rien
+    # n'est passe en caisse pour cette partie.
+    credit_sold = float(db.query(func.coalesce(
+        func.sum(Sale.final_amount - Sale.paid_amount - Sale.loyalty_redeemed), 0
+    )).filter(
+        Sale.tenant_id   == tid,
+        Sale.user_id     == uid,
+        Sale.created_at  >= since,
+        Sale.created_at  <= until,
+        (Sale.final_amount - Sale.paid_amount - Sale.loyalty_redeemed) > 0,
+    ).scalar() or 0)
+
+    # Recouvrement de dettes : paiements de cette session sur des ventes
+    # creees AVANT son ouverture - deja inclus dans cash/card/mobile/bank
+    # ci-dessus, ceci n'est qu'une ventilation informative, pas un montant
+    # a ajouter en plus.
+    debt_collected = float(db.query(func.coalesce(func.sum(Payment.amount), 0))
+        .join(Sale, Sale.id == Payment.reference_id)
+        .filter(
+            Payment.tenant_id      == tid,
+            Payment.user_id        == uid,
+            Payment.reference_type == "SALE",
+            Payment.created_at     >= since,
+            Payment.created_at     <= until,
+            Payment.amount         > 0,
+            Sale.created_at        < since,
+        ).scalar() or 0)
+
     return {
         "total_cash_sales":         cash,
         "total_card_sales":         card,
@@ -78,6 +108,8 @@ def _compute_reconciliation(db: Session, session: CashierSession, closed_at: dat
         "total_bank_sales":         bank,
         "total_refunds_cash":       refunds,
         "expected_closing_balance": expected,
+        "credit_sold":              credit_sold,
+        "debt_collected":           debt_collected,
     }
 
 
@@ -537,7 +569,44 @@ def session_summary(
         "total_bank_sales":         recon["total_bank_sales"],
         "total_refunds_cash":       recon["total_refunds_cash"],
         "expected_closing_balance": recon["expected_closing_balance"],
+        "credit_sold":              recon["credit_sold"],
+        "debt_collected":           recon["debt_collected"],
     }
+
+
+@router.get("/debt-collected-today")
+def debt_collected_today(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.REPORTS_READ)),
+):
+    """Somme des paiements du jour sur des dettes anterieures (vente creee
+    avant aujourd'hui) - pour la carte dashboard 'Recouvrement de dettes'.
+    Scope tenant entier si reports.read_all, sinon uniquement ce caissier."""
+    since = now_local().replace(hour=0, minute=0, second=0, microsecond=0)
+    until = now_local()
+    tid   = current_user.tenant_id
+
+    query = (
+        db.query(func.coalesce(func.sum(Payment.amount), 0))
+        .join(Sale, Sale.id == Payment.reference_id)
+        .filter(
+            Payment.tenant_id      == tid,
+            Payment.reference_type == "SALE",
+            Payment.created_at     >= since,
+            Payment.created_at     <= until,
+            Payment.amount         > 0,
+            Sale.created_at        < since,
+        )
+    )
+    can_see_all = _has_perm(
+        current_user.permissions or [],
+        current_user.roles or [],
+        P.REPORTS_READ_ALL,
+    )
+    if not can_see_all:
+        query = query.filter(Payment.user_id == current_user.id)
+
+    return {"debt_collected_today": float(query.scalar() or 0)}
 
 
 @router.post("/{session_id}/close")
@@ -571,6 +640,8 @@ def close_session(
     session.total_refunds_cash       = recon["total_refunds_cash"]
     session.expected_closing_balance = recon["expected_closing_balance"]
     session.cash_difference          = body.closing_balance - recon["expected_closing_balance"]
+    session.total_credit_sold        = recon["credit_sold"]
+    session.total_debt_collected     = recon["debt_collected"]
 
     audit_service.log(
         db,
@@ -599,6 +670,8 @@ def close_session(
         "total_refunds_cash":       float(session.total_refunds_cash or 0),
         "expected_closing_balance": float(session.expected_closing_balance or 0),
         "cash_difference":          float(session.cash_difference or 0),
+        "credit_sold":              float(session.total_credit_sold or 0),
+        "debt_collected":           float(session.total_debt_collected or 0),
     }
 
 
@@ -631,6 +704,8 @@ def force_close_session(
     session.total_refunds_cash       = recon["total_refunds_cash"]
     session.expected_closing_balance = recon["expected_closing_balance"]
     session.cash_difference          = 0 - recon["expected_closing_balance"]
+    session.total_credit_sold        = recon["credit_sold"]
+    session.total_debt_collected     = recon["debt_collected"]
 
     # Free the register slot — clears JWT sid so the device is kicked out
     reg = db.get(PosRegister, session.register_id)

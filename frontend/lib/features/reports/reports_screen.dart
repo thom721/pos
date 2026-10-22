@@ -146,6 +146,30 @@ final reportSalesProvider =
   return _fetchAllSalesForRange(from, to);
 });
 
+/// Total des retours clients de la période — {total_refund_amount, total_returned}.
+Future<(double, double)> _fetchReturnsSummary(DateTime from, DateTime to) async {
+  final fromUtc = haitiMidnightToUtcIso(from);
+  final toUtc = haitiMidnightToUtcIso(to);
+  final res = await dio.get('/api/returns/', queryParameters: {
+    'return_type': 'sale',
+    'date_from': fromUtc,
+    'date_to': toUtc,
+    'limit': 1,
+  });
+  final d = res.data as Map<String, dynamic>;
+  return (
+    (d['total_refund_amount'] as num?)?.toDouble() ?? 0.0,
+    (d['total_returned'] as num?)?.toDouble() ?? 0.0,
+  );
+}
+
+final reportReturnsSummaryProvider =
+    FutureProvider.autoDispose<(double, double)>((ref) async {
+  final params = ref.watch(reportParamsProvider);
+  final (from, to) = params.effectiveRange;
+  return _fetchReturnsSummary(from, to);
+});
+
 // ── Screen ─────────────────────────────────────────────────────────────────
 
 final _dateFmt = DateFormat('dd/MM/yyyy', 'fr');
@@ -366,6 +390,8 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
     final settings = ref.watch(settingsProvider);
     final fmt = NumberFormat.currency(
         locale: 'fr_HT', symbol: settings.currencySymbol, decimalDigits: 2);
+    final returnsAsync = ref.watch(reportReturnsSummaryProvider);
+    final totalReturns = returnsAsync.valueOrNull?.$1 ?? 0.0;
 
     // Unique users from current period's sales
     final uniqueUsers = widget.allSales
@@ -533,6 +559,12 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
                 value: fmt.format(toDisplayAmount(totalDiscount, settings)),
                 icon: Icons.local_offer_rounded,
                 color: AppColors.info,
+              ),
+              _KpiCard(
+                label: 'Retours',
+                value: fmt.format(toDisplayAmount(totalReturns, settings)),
+                icon: Icons.assignment_return_rounded,
+                color: AppColors.error,
               ),
               _KpiCard(
                 label: 'Nb ventes',
@@ -1122,6 +1154,14 @@ Future<void> generateSalesReportPdf(
   final paid = sales.fold(0.0, (s, e) => s + e.paidAmount + e.loyaltyRedeemed);
   final disc = sales.fold(0.0,
       (s, e) => s + e.discount + e.totalItemsDiscount + e.totalCatalogItemDiscount);
+  double totalReturns = 0;
+  try {
+    final (from, to) = params.effectiveRange;
+    final (refund, _) = await _fetchReturnsSummary(from, to);
+    totalReturns = refund;
+  } catch (_) {
+    // Non bloquant pour la génération du PDF — affiche 0 si indisponible
+  }
   final paidCnt = sales.where((s) => s.status == 'PAID').length;
   final partCnt = sales.where((s) => s.status == 'PARTIAL').length;
   final unpaidCnt = sales.where((s) => s.status == 'UNPAID').length;
@@ -1309,13 +1349,24 @@ Future<void> generateSalesReportPdf(
                       child: _pdfKpiCell('Remises accordées', mon(disc), bold)),
                   pw.SizedBox(width: 10),
                   pw.Expanded(
-                      child: _pdfKpiCell('Nombre de ventes', '${sales.length}', bold)),
+                      child: _pdfKpiCell('Retours', mon(totalReturns), bold)),
                   pw.SizedBox(width: 10),
+                  pw.Expanded(
+                      child: _pdfKpiCell('Nombre de ventes', '${sales.length}', bold)),
+                ],
+              ),
+              pw.SizedBox(height: 10),
+              pw.Row(
+                children: [
                   pw.Expanded(
                       child: _pdfKpiCell(
                           'Payé / Partiel / Impayé',
                           '$paidCnt / $partCnt / $unpaidCnt',
                           bold)),
+                  pw.SizedBox(width: 10),
+                  pw.Expanded(child: pw.SizedBox()),
+                  pw.SizedBox(width: 10),
+                  pw.Expanded(child: pw.SizedBox()),
                 ],
               ),
             ],

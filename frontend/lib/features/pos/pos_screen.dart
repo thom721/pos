@@ -3182,6 +3182,8 @@ class _CloseSessionDialogState extends ConsumerState<_CloseSessionDialog> {
   double _bank     = 0;
   double _refunds  = 0;
   double _expected = 0;
+  double _creditSold     = 0;
+  double _debtCollected  = 0;
 
   @override
   void initState() {
@@ -3211,6 +3213,8 @@ class _CloseSessionDialogState extends ConsumerState<_CloseSessionDialog> {
         _bank     = (d['total_bank_sales']          as num?)?.toDouble() ?? 0;
         _refunds  = (d['total_refunds_cash']        as num?)?.toDouble() ?? 0;
         _expected = (d['expected_closing_balance']  as num?)?.toDouble() ?? _opening;
+        _creditSold    = (d['credit_sold']    as num?)?.toDouble() ?? 0;
+        _debtCollected = (d['debt_collected'] as num?)?.toDouble() ?? 0;
         // Ne pas pré-remplir le solde réel — le caissier doit compter
         _loadingSummary = false;
       });
@@ -3334,6 +3338,8 @@ class _CloseSessionDialogState extends ConsumerState<_CloseSessionDialog> {
                   const SizedBox(height: 8),
                   _InfoRow('Fond initial',  formatMoney(_opening, settings)),
                   if (_cash   > 0) _InfoRow('Ventes cash',   '+ ${formatMoney(_cash, settings)}',   color: AppColors.success),
+                  if (_debtCollected > 0) _InfoRow('  dont recouvrement de dettes',
+                      formatMoney(_debtCollected, settings), color: AppColors.textSecondary),
                   if (_card   > 0) _InfoRow('Ventes carte',  '+ ${formatMoney(_card, settings)}',   color: AppColors.success),
                   if (_mobile > 0) _InfoRow('Ventes mobile', '+ ${formatMoney(_mobile, settings)}', color: AppColors.success),
                   if (_bank   > 0) _InfoRow('Ventes banque', '+ ${formatMoney(_bank, settings)}',   color: AppColors.success),
@@ -3342,6 +3348,35 @@ class _CloseSessionDialogState extends ConsumerState<_CloseSessionDialog> {
                   const Divider(height: 16),
                   _InfoRow('Solde théorique', formatMoney(_expected, settings),
                       bold: true),
+
+                  if (_creditSold > 0) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.info_outline_rounded, color: AppColors.warning, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Vendu à crédit cette session (non contrôlé) : '
+                              '${formatMoney(_creditSold, settings)}\n'
+                              'Cette somme n\'est pas attendue en caisse — '
+                              'fera l\'objet d\'un recouvrement ultérieur.',
+                              style: const TextStyle(color: AppColors.warning, fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
 
                   // ── Solde réel ──────────────────────────────────────

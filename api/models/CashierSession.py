@@ -30,3 +30,5 @@ class CashierSession(UUIDBase):
     total_refunds_cash        = Column(Numeric(12, 2), nullable=True)
     expected_closing_balance  = Column(Numeric(12, 2), nullable=True)
     cash_difference           = Column(Numeric(12, 2), nullable=True)  # closing - expected
+    total_credit_sold         = Column(Numeric(12, 2), nullable=True)  # informatif, hors reconciliation
+    total_debt_collected      = Column(Numeric(12, 2), nullable=True)  # informatif, deja inclus dans cash/card/mobile/bank

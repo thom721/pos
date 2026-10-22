@@ -160,6 +160,21 @@ class DashboardScreen extends ConsumerWidget {
                     icon: Icons.warning_amber_rounded,
                     color: AppColors.warning,
                   ),
+                  StatCard(
+                    label: 'Vente crédit',
+                    value: formatMoney((totalRevenue - totalPaid).clamp(0.0, double.infinity), settings),
+                    icon: Icons.credit_card_off_rounded,
+                    color: AppColors.warning,
+                  ),
+                  Consumer(builder: (context, ref, _) {
+                    final debtCollectedAsync = ref.watch(debtCollectedTodayProvider);
+                    return StatCard(
+                      label: 'Recouvrement de dettes',
+                      value: formatMoney(debtCollectedAsync.valueOrNull ?? 0, settings),
+                      icon: Icons.price_check_rounded,
+                      color: AppColors.success,
+                    );
+                  }),
                   if (totalDiscount > 0)
                     StatCard(
                       label: 'Remises accordées',

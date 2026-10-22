@@ -17,10 +17,15 @@ def get_returns(
     return_type: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, le=100),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.RETURNS_READ)),
 ):
-    return list_returns(db, return_type=return_type, page=page, limit=limit, tenant_id=current_user.tenant_id)
+    return list_returns(
+        db, return_type=return_type, page=page, limit=limit,
+        tenant_id=current_user.tenant_id, date_from=date_from, date_to=date_to,
+    )
 
 
 @router.post("/sale")
