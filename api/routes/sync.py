@@ -228,7 +228,16 @@ _WAREHOUSE_HEADER = "X-Warehouse-Id"
 # Entités partagées au niveau du tenant (pas de dépôt).
 # "user" : warehouse_id est une liste JSON (plusieurs dépôts) — non filtrable en
 # SQL ; les comptes restent au niveau du tenant pour que les caisses puissent se connecter.
-_SHARED_TENANT_ENTITIES = {"warehouse", "category", "supplier", "user"}
+# "role" : pas de colonne warehouse_id du tout (un rôle n'est jamais propre a
+# un depot) - sans cette entree, _scope_to_warehouse() tombait sur son
+# dernier cas par defaut (fail-closed : aucune ligne) pour TOUTE requete de
+# pull sur "role", quel que soit le curseur - aucun role personnalise
+# n'atteignait donc jamais un serveur local, meme apres l'ajout de "role" a
+# SYNC_ENTITIES (d1a82df) et un reset de curseur. Bug trouve en reel : la
+# table roles locale ne contenait que les roles integres (tenant_id NULL,
+# vraisemblablement seedes au demarrage du serveur, pas via la synchro),
+# jamais le moindre role personnalise (tenant_id renseigne).
+_SHARED_TENANT_ENTITIES = {"warehouse", "category", "supplier", "user", "role"}
 
 # Entités dont warehouse_id peut être NULL = partagées par tous les dépôts.
 # "customer" : les clients déjà existants avant l'ajout de cette colonne
