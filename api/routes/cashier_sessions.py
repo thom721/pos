@@ -576,14 +576,21 @@ def session_summary(
 
 @router.get("/debt-collected-today")
 def debt_collected_today(
+    date_from: str | None = None,
+    date_to:   str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.REPORTS_READ)),
 ):
-    """Somme des paiements du jour sur des dettes anterieures (vente creee
-    avant aujourd'hui) - pour la carte dashboard 'Recouvrement de dettes'.
+    """Somme des paiements sur des dettes anterieures (vente creee avant le
+    debut de la periode). Sans date_from/date_to : aujourd'hui (carte
+    dashboard 'Recouvrement de dettes'). Avec : periode du rapport des
+    ventes (carte 'Recouvrement de dettes' de reports_screen.dart).
     Scope tenant entier si reports.read_all, sinon uniquement ce caissier."""
-    since = now_local().replace(hour=0, minute=0, second=0, microsecond=0)
-    until = now_local()
+    if date_from:
+        since = datetime.fromisoformat(date_from)
+    else:
+        since = now_local().replace(hour=0, minute=0, second=0, microsecond=0)
+    until = datetime.fromisoformat(date_to) if date_to else now_local()
     tid   = current_user.tenant_id
 
     query = (

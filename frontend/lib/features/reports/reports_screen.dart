@@ -170,6 +170,20 @@ final reportReturnsSummaryProvider =
   return _fetchReturnsSummary(from, to);
 });
 
+/// Recouvrement de dettes de la période — paiements sur des ventes créées
+/// avant le début de la période (voir GET /api/sessions/debt-collected-today).
+final reportDebtCollectedProvider =
+    FutureProvider.autoDispose<double>((ref) async {
+  final params = ref.watch(reportParamsProvider);
+  final (from, to) = params.effectiveRange;
+  final res = await dio.get('/api/sessions/debt-collected-today', queryParameters: {
+    'date_from': haitiMidnightToUtcIso(from),
+    'date_to':   haitiMidnightToUtcIso(to),
+  });
+  final d = res.data as Map<String, dynamic>;
+  return (d['debt_collected_today'] as num?)?.toDouble() ?? 0.0;
+});
+
 // ── Screen ─────────────────────────────────────────────────────────────────
 
 final _dateFmt = DateFormat('dd/MM/yyyy', 'fr');
@@ -392,6 +406,8 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
         locale: 'fr_HT', symbol: settings.currencySymbol, decimalDigits: 2);
     final returnsAsync = ref.watch(reportReturnsSummaryProvider);
     final totalReturns = returnsAsync.valueOrNull?.$1 ?? 0.0;
+    final debtCollectedAsync = ref.watch(reportDebtCollectedProvider);
+    final totalDebtCollected = debtCollectedAsync.valueOrNull ?? 0.0;
 
     // Unique users from current period's sales
     final uniqueUsers = widget.allSales
@@ -565,6 +581,18 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
                 value: fmt.format(toDisplayAmount(totalReturns, settings)),
                 icon: Icons.assignment_return_rounded,
                 color: AppColors.error,
+              ),
+              _KpiCard(
+                label: 'Vente crédit',
+                value: fmt.format(toDisplayAmount(totalBalance, settings)),
+                icon: Icons.credit_card_off_rounded,
+                color: AppColors.warning,
+              ),
+              _KpiCard(
+                label: 'Recouvrement de dettes',
+                value: fmt.format(toDisplayAmount(totalDebtCollected, settings)),
+                icon: Icons.price_check_rounded,
+                color: AppColors.success,
               ),
               _KpiCard(
                 label: 'Nb ventes',
@@ -1155,10 +1183,16 @@ Future<void> generateSalesReportPdf(
   final disc = sales.fold(0.0,
       (s, e) => s + e.discount + e.totalItemsDiscount + e.totalCatalogItemDiscount);
   double totalReturns = 0;
+  double totalDebtCollected = 0;
   try {
     final (from, to) = params.effectiveRange;
     final (refund, _) = await _fetchReturnsSummary(from, to);
     totalReturns = refund;
+    final res = await dio.get('/api/sessions/debt-collected-today', queryParameters: {
+      'date_from': haitiMidnightToUtcIso(from),
+      'date_to':   haitiMidnightToUtcIso(to),
+    });
+    totalDebtCollected = ((res.data as Map<String, dynamic>)['debt_collected_today'] as num?)?.toDouble() ?? 0.0;
   } catch (_) {
     // Non bloquant pour la génération du PDF — affiche 0 si indisponible
   }
@@ -1364,9 +1398,11 @@ Future<void> generateSalesReportPdf(
                           '$paidCnt / $partCnt / $unpaidCnt',
                           bold)),
                   pw.SizedBox(width: 10),
-                  pw.Expanded(child: pw.SizedBox()),
+                  pw.Expanded(
+                      child: _pdfKpiCell('Vente crédit', mon((rev - paid).clamp(0.0, double.infinity)), bold)),
                   pw.SizedBox(width: 10),
-                  pw.Expanded(child: pw.SizedBox()),
+                  pw.Expanded(
+                      child: _pdfKpiCell('Recouvrement de dettes', mon(totalDebtCollected), bold)),
                 ],
               ),
             ],
