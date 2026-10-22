@@ -218,7 +218,11 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P.DISCOUNTS_READ,
         P.PAYMENTS_CREATE, P.PAYMENTS_READ,
         P.DEBTS_READ,
-        P.RETURNS_CREATE, P.RETURNS_READ,
+        # returns.create volontairement PAS accordé par défaut — un retour
+        # affecte le stock et peut rembourser un client, même logique que
+        # sales.credit : à accorder individuellement via un rôle
+        # personnalisé si un tenant le souhaite pour un caissier précis.
+        P.RETURNS_READ,
         P.REPORTS_READ,
         P.PROFORMAS_CREATE, P.PROFORMAS_READ, P.PROFORMAS_UPDATE,
         P.INVOICES_CREATE, P.INVOICES_READ, P.INVOICES_UPDATE,
