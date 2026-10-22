@@ -373,13 +373,22 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
             pmt.tenant_id = tenant_id
         db.add(pmt)
         new_paid = original_paid - refund
+        sale.change_due = Decimal(0)
     else:
-        new_paid = original_paid + additional
-        if additional > 0:
+        # Cap au solde reellement du — un paiement supplementaire superieur a
+        # diff est de la monnaie a rendre, pas un paiement (meme logique que
+        # create_sale: collected = min(paid, remaining)). Sans ce clamp,
+        # paid_amount depassait final_amount : la vente affichait un solde
+        # negatif qui, agrege avec d'autres ventes (dashboard/rapports),
+        # masquait a tort du credit reellement du ailleurs.
+        collected = min(additional, diff) if additional > 0 else 0.0
+        new_paid = original_paid + collected
+        sale.change_due = Decimal(str(additional - collected)) if additional > collected else Decimal(0)
+        if collected > 0:
             pmt = Payment(
                 reference_type="SALE",
                 reference_id=sale.id,
-                amount=additional,
+                amount=collected,
                 method=data.payment_method or "CASH",
                 note="Paiement supplémentaire — modification vente",
                 user_id=user_id,
