@@ -2142,7 +2142,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                         style: TextStyle(fontSize: 12)),
                   ),
                 ),
-                if (pos.paidAmount > 0)
+                if (pos.paidAmount > 0 || pos.balance > 0)
                   _TotalRow(
                     pos.balance > 0 ? 'Reste à payer' : 'Monnaie',
                     formatMoney(pos.balance.abs(), settings),
