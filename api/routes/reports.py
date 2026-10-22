@@ -215,6 +215,80 @@ def top_products(
     ]
 
 
+@router.get("/quantity-by-category")
+def quantity_by_category(
+    date_from:    Optional[datetime] = Query(None),
+    date_to:      Optional[datetime] = Query(None),
+    warehouse_id: Optional[str]      = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(P.SALES_READ)),
+):
+    """Quantité totale vendue par produit sur la période, groupée par
+    catégorie — style relevé de clôture (ex: rapport "fermeture système"
+    d'un grossiste). La quantité est celle de SaleItem (pas des mouvements
+    de stock) : pour un produit composé ("Caisse"), c'est donc le nombre de
+    caisses vendues, pas le nombre d'unités du composant — record_stock_movement
+    redirige les mouvements de stock vers le composant, mais SaleItem.product_id
+    reste le produit composé tel que réellement vendu/facturé.
+    Quantité BRUTE (pas nette des retours) — voir la carte "Retours" du
+    rapport des ventes pour le montant remboursé sur la période."""
+    tid = current_user.tenant_id
+
+    q = (
+        db.query(
+            Product.id.label("product_id"),
+            Product.name.label("product_name"),
+            Category.id.label("category_id"),
+            Category.name.label("category_name"),
+            func.coalesce(func.sum(SaleItem.quantity), 0).label("quantity"),
+        )
+        .join(SaleItem, SaleItem.product_id == Product.id)
+        .join(Sale,     Sale.id == SaleItem.sale_id)
+        .outerjoin(Category, Category.id == Product.category_id)
+        .filter(Sale.tenant_id == tid, Sale.status != _EXCLUDED_STATUS)
+    )
+    q = _apply_date_filters(q, date_from, date_to)
+    if warehouse_id:
+        q = q.filter(Sale.warehouse_id == warehouse_id)
+
+    rows = (
+        q.group_by(Product.id, Product.name, Category.id, Category.name)
+         .all()
+    )
+
+    by_cat: dict[str | None, dict] = {}
+    grand_total_qty = 0.0
+    grand_total_lines = 0
+    for r in rows:
+        cat_key = r.category_id
+        entry = by_cat.setdefault(cat_key, {
+            "category_id":   r.category_id,
+            "category_name": r.category_name or "Sans catégorie",
+            "items":         [],
+            "subtotal_qty":  0.0,
+        })
+        qty = float(r.quantity)
+        entry["items"].append({
+            "product_id":   r.product_id,
+            "product_name": r.product_name,
+            "quantity":     qty,
+        })
+        entry["subtotal_qty"] += qty
+        grand_total_qty += qty
+        grand_total_lines += 1
+
+    categories = sorted(by_cat.values(), key=lambda c: c["category_name"])
+    for cat in categories:
+        cat["items"].sort(key=lambda i: i["product_name"])
+        cat["subtotal_lines"] = len(cat["items"])
+
+    return {
+        "categories":         categories,
+        "grand_total_qty":    grand_total_qty,
+        "grand_total_lines":  grand_total_lines,
+    }
+
+
 @router.get("/expenses")
 def expenses_report(
     date_from:    Optional[datetime] = Query(None),

@@ -184,6 +184,55 @@ final reportDebtCollectedProvider =
   return (d['debt_collected_today'] as num?)?.toDouble() ?? 0.0;
 });
 
+class QuantityCategoryGroup {
+  final String categoryName;
+  final List<(String name, double qty)> items;
+  final double subtotalQty;
+  QuantityCategoryGroup(this.categoryName, this.items, this.subtotalQty);
+}
+
+class QuantityByCategoryResult {
+  final List<QuantityCategoryGroup> categories;
+  final double grandTotalQty;
+  final int grandTotalLines;
+  QuantityByCategoryResult(this.categories, this.grandTotalQty, this.grandTotalLines);
+}
+
+/// Quantité vendue par produit, groupée par catégorie — style relevé de
+/// clôture (voir GET /api/reports/quantity-by-category). Quantité brute,
+/// pas nette des retours (voir la carte "Retours" pour le montant remboursé).
+Future<QuantityByCategoryResult> _fetchQuantityByCategory(DateTime from, DateTime to) async {
+  final res = await dio.get('/api/reports/quantity-by-category', queryParameters: {
+    'date_from': haitiMidnightToUtcIso(from),
+    'date_to':   haitiMidnightToUtcIso(to),
+  });
+  final d = res.data as Map<String, dynamic>;
+  final cats = (d['categories'] as List? ?? []).map((c) {
+    final m = c as Map<String, dynamic>;
+    final items = (m['items'] as List? ?? []).map((i) {
+      final im = i as Map<String, dynamic>;
+      return (im['product_name']?.toString() ?? '', (im['quantity'] as num?)?.toDouble() ?? 0.0);
+    }).toList();
+    return QuantityCategoryGroup(
+      m['category_name']?.toString() ?? 'Sans catégorie',
+      items,
+      (m['subtotal_qty'] as num?)?.toDouble() ?? 0.0,
+    );
+  }).toList();
+  return QuantityByCategoryResult(
+    cats,
+    (d['grand_total_qty'] as num?)?.toDouble() ?? 0.0,
+    (d['grand_total_lines'] as num?)?.toInt() ?? 0,
+  );
+}
+
+final reportQuantityByCategoryProvider =
+    FutureProvider.autoDispose<QuantityByCategoryResult>((ref) async {
+  final params = ref.watch(reportParamsProvider);
+  final (from, to) = params.effectiveRange;
+  return _fetchQuantityByCategory(from, to);
+});
+
 // ── Screen ─────────────────────────────────────────────────────────────────
 
 final _dateFmt = DateFormat('dd/MM/yyyy', 'fr');
@@ -609,6 +658,10 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
               ),
             ],
           ),
+          const SizedBox(height: 24),
+
+          // ── Quantités vendues par catégorie ────────────────────────
+          _QuantityByCategorySection(settings: settings),
           const SizedBox(height: 24),
 
           // ── Sales table ───────────────────────────────────────────
@@ -1196,6 +1249,13 @@ Future<void> generateSalesReportPdf(
   } catch (_) {
     // Non bloquant pour la génération du PDF — affiche 0 si indisponible
   }
+  QuantityByCategoryResult? qtyByCategory;
+  try {
+    final (from, to) = params.effectiveRange;
+    qtyByCategory = await _fetchQuantityByCategory(from, to);
+  } catch (_) {
+    // Non bloquant — section omise si indisponible
+  }
   final paidCnt = sales.where((s) => s.status == 'PAID').length;
   final partCnt = sales.where((s) => s.status == 'PARTIAL').length;
   final unpaidCnt = sales.where((s) => s.status == 'UNPAID').length;
@@ -1409,6 +1469,53 @@ Future<void> generateSalesReportPdf(
           ),
         ),
         pw.SizedBox(height: 18),
+
+        // ── Quantités vendues par catégorie (style relevé de clôture) ──
+        if (qtyByCategory != null && qtyByCategory.categories.isNotEmpty) ...[
+          pw.Text(
+            'QUANTITÉS VENDUES PAR CATÉGORIE',
+            style: pw.TextStyle(font: bold, fontSize: 12),
+          ),
+          pw.SizedBox(height: 8),
+          for (final cat in qtyByCategory.categories) ...[
+            pw.Text(cat.categoryName.toUpperCase(),
+                style: pw.TextStyle(font: bold, fontSize: 9, color: PdfColors.grey700)),
+            pw.Divider(thickness: 0.5, color: PdfColors.grey400),
+            for (final item in cat.items)
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 2),
+                child: pw.Row(
+                  children: [
+                    pw.Expanded(
+                        child: pw.Text(item.$1, style: pw.TextStyle(font: regular, fontSize: 8))),
+                    pw.Text(_qtyFmt.format(item.$2),
+                        style: pw.TextStyle(font: bold, fontSize: 8)),
+                  ],
+                ),
+              ),
+            pw.Row(
+              children: [
+                pw.Expanded(
+                    child: pw.Text('Sous-total (${cat.items.length})',
+                        style: pw.TextStyle(font: bold, fontSize: 8))),
+                pw.Text(_qtyFmt.format(cat.subtotalQty),
+                    style: pw.TextStyle(font: bold, fontSize: 8)),
+              ],
+            ),
+            pw.SizedBox(height: 8),
+          ],
+          pw.Divider(thickness: 1, color: PdfColors.black),
+          pw.Row(
+            children: [
+              pw.Expanded(
+                  child: pw.Text('TOTAL GÉNÉRAL (${qtyByCategory.grandTotalLines})',
+                      style: pw.TextStyle(font: bold, fontSize: 9))),
+              pw.Text(_qtyFmt.format(qtyByCategory.grandTotalQty),
+                  style: pw.TextStyle(font: bold, fontSize: 9)),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+        ],
 
         // ── Sales table ──
         if (sales.isNotEmpty) ...[
@@ -1675,6 +1782,101 @@ Color _statusColor(String s) {
 }
 
 // ── KPI card ───────────────────────────────────────────────────────────────
+
+class _QuantityByCategorySection extends ConsumerWidget {
+  final AppSettings settings;
+  const _QuantityByCategorySection({required this.settings});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(reportQuantityByCategoryProvider);
+    return async.when(
+      skipLoadingOnReload: true,
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (result) {
+        if (result.categories.isEmpty) return const SizedBox.shrink();
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.divider),
+          ),
+          clipBehavior: Clip.hardEdge,
+          child: ExpansionTile(
+            initiallyExpanded: true,
+            title: const Text('Quantités vendues par catégorie',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            subtitle: Text(
+              '${result.grandTotalLines} produit${result.grandTotalLines > 1 ? 's' : ''} — '
+              '${_qtyFmt.format(result.grandTotalQty)} unités au total',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            children: [
+              for (final cat in result.categories) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  color: AppColors.background,
+                  child: Text(cat.categoryName.toUpperCase(),
+                      style: const TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w700,
+                          color: AppColors.textSecondary, letterSpacing: 0.4)),
+                ),
+                for (final item in cat.items)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    child: Row(
+                      children: [
+                        Expanded(child: Text(item.$1, style: const TextStyle(fontSize: 13))),
+                        Text(_qtyFmt.format(item.$2),
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: AppColors.divider)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                          child: Text('Sous-total (${cat.items.length})',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+                      Text(_qtyFmt.format(cat.subtotalQty),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              ],
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: const BoxDecoration(
+                  color: AppColors.background,
+                  border: Border(top: BorderSide(color: AppColors.divider, width: 2)),
+                ),
+                child: Row(
+                  children: [
+                    const Expanded(
+                        child: Text('TOTAL GÉNÉRAL',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700))),
+                    Text(_qtyFmt.format(result.grandTotalQty),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+final _qtyFmt = NumberFormat('#,##0.##');
 
 class _KpiCard extends StatelessWidget {
   final String label;
