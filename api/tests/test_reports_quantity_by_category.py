@@ -125,3 +125,46 @@ def test_quantity_grouped_by_category_with_subtotals(
     assert by_name["Boissons"]["subtotal_qty"] == 8
     assert {i["product_name"] for i in by_name["Boissons"]["items"]} == {"Coca Cola", "Fanta"}
     assert by_name["Hygiène"]["subtotal_qty"] == 2
+
+
+def test_services_excluded_from_quantity_report(
+    db, client, tenant, admin_token, categories, depot,
+):
+    """Bug reel : un service (ex: "Entretien Veste") apparaissait dans ce
+    relevé alors qu'aucune marchandise physique n'avait de sens a y
+    associer une quantite/stock — ce rapport reproduit un ledger de
+    mouvement de marchandise (style grossiste), pas une liste de toutes
+    les lignes de vente."""
+    boissons, hygiene = categories
+    coca = Product(name="Coca Cola", category_id=boissons.id, sale_price=10, tenant_id=tenant.id)
+    entretien = Product(name="Entretien Veste", category_id=hygiene.id, sale_price=20,
+                         tenant_id=tenant.id, is_service=True)
+    db.add_all([coca, entretien])
+    db.flush()
+    db.add(StockMovement(product_id=coca.id, type=StockType.in_, quantity=100,
+                          tenant_id=tenant.id, warehouse_id=depot.id))
+    db.commit()
+
+    sale_service.create_sale(
+        db,
+        SaleCreate(
+            paid_amount=10 * 3 + 20, payment_method="CASH", warehouse_id=depot.id,
+            items=[
+                SaleItemInput(product_id=coca.id, quantity=3, unit_price=10, subtotal=30),
+                SaleItemInput(product_id=entretien.id, quantity=1, unit_price=20, subtotal=20),
+            ],
+        ),
+        user_id="u1", tenant_id=tenant.id, current_user=None,
+    )
+    db.commit()
+
+    res = client.get(
+        "/api/reports/quantity-by-category",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["grand_total_qty"] == 3
+    assert data["grand_total_lines"] == 1
+    names = {i["product_name"] for c in data["categories"] for i in c["items"]}
+    assert "Entretien Veste" not in names

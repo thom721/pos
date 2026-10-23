@@ -230,6 +230,9 @@ def quantity_by_category(
     caisses vendues, pas le nombre d'unités du composant — record_stock_movement
     redirige les mouvements de stock vers le composant, mais SaleItem.product_id
     reste le produit composé tel que réellement vendu/facturé.
+    Services (Product.is_service) exclus : ce relevé reproduit un ledger de
+    mouvement de marchandise physique (style grossiste) — un service n'a pas
+    de quantité/stock au sens où ce rapport l'entend.
     Quantité BRUTE (pas nette des retours) — voir la carte "Retours" du
     rapport des ventes pour le montant remboursé sur la période."""
     tid = current_user.tenant_id
@@ -244,6 +247,7 @@ def quantity_by_category(
         )
         .join(SaleItem, SaleItem.product_id == Product.id)
         .join(Sale,     Sale.id == SaleItem.sale_id)
+        .filter(Product.is_service == False)  # noqa: E712
         .outerjoin(Category, Category.id == Product.category_id)
         .filter(Sale.tenant_id == tid, Sale.status != _EXCLUDED_STATUS)
     )
