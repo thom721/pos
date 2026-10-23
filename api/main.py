@@ -1898,6 +1898,13 @@ async def _mdns_watch_loop():
 _LOG_ROTATE_INTERVAL = 600                       # secondes entre deux vérifications
 _LOG_ROTATE_THRESHOLD_BYTES = 1024 * 1024 * 1024  # 1 Go
 _log_rotate_task: asyncio.Task | None = None
+# L'utilisateur MySQL de connexion peut manquer du privilège SUPER/
+# SYSTEM_VARIABLES_ADMIN requis par "SET GLOBAL general_log" (vu en prod sur
+# un serveur local) — rien que ce code puisse corriger lui-même (c'est un
+# droit à accorder côté serveur MySQL). Sans ce drapeau, l'échec se répétait
+# toutes les 10 min avec sa trace complète, grossissant indéfiniment le log
+# applicatif — exactement ce que cette routine est censée éviter côté MySQL.
+_log_rotate_permission_denied = False
 
 
 def _rotate_mysql_general_log() -> None:
@@ -1910,8 +1917,9 @@ def _rotate_mysql_general_log() -> None:
     Windows), supprime le fichier, puis le rallume — MySQL le recrée vide
     au prochain SET GLOBAL general_log = 1.
     """
+    global _log_rotate_permission_denied
     from api.core.config import settings as _s
-    if _s.DB_TYPE != "mysql":
+    if _s.DB_TYPE != "mysql" or _log_rotate_permission_denied:
         return
     import api.database as _db_module
     _rlog = logging.getLogger("pos.logrotate")
@@ -1930,7 +1938,18 @@ def _rotate_mysql_general_log() -> None:
             conn.execute(text("SET GLOBAL general_log = 1"))
             conn.commit()
             _rlog.info("mysql-query.log supprimé (%.0f Mo atteints)", size / 1024 / 1024)
-    except Exception:
+    except Exception as exc:
+        if "1227" in str(exc):
+            _log_rotate_permission_denied = True
+            _rlog.warning(
+                "Rotation mysql-query.log desactivee : l'utilisateur MySQL de "
+                "connexion n'a pas le privilege SUPER/SYSTEM_VARIABLES_ADMIN "
+                "requis par SET GLOBAL general_log. mysql-query.log va "
+                "continuer de grossir sans etre purge. Pour corriger : "
+                "accorder ce privilege a l'utilisateur MySQL de l'app, ou "
+                "desactiver general_log dans my.ini."
+            )
+            return
         _rlog.exception("Échec rotation mysql-query.log")
 
 
