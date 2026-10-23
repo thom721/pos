@@ -392,6 +392,7 @@ def _run_sync_inner(db: Session) -> dict:
                     query = query.filter(model.updated_at > state.last_push_at)
                 rows = query.all()
 
+                total_skipped = 0
                 if rows:
                     payload = _serialize(rows, _EXCLUDE_PUSH)
                     total_pushed = 0
@@ -405,13 +406,30 @@ def _run_sync_inner(db: Session) -> dict:
                         )
                         result = resp.json()
                         total_pushed += result.get("inserted", 0) + result.get("updated", 0)
+                        total_skipped += result.get("skipped", 0)
                     summary["pushed"][etype] = total_pushed
                     state.records_pushed += total_pushed
 
-                # Advance watermark to cycle_start (recorded before queries)
-                # to close the race window between query and now().
-                state.last_push_at = cycle_start
-                state.last_error = None
+                # Bug reel : le cloud peut "skipped" une ligne (exception a
+                # l'insertion, cote serveur) sans que le push HTTP echoue -
+                # avancer quand meme le curseur la faisait disparaitre pour
+                # toujours de la fenetre updated_at > last_push_at, perdue en
+                # silence (constate en prod : 2 ventes payees jamais arrivees
+                # au cloud, aucune erreur visible nulle part). Si skipped > 0,
+                # on NE FAIT PAS avancer le curseur pour CE cycle - tout le
+                # lot (y compris les lignes deja reussies, un re-push est sans
+                # risque) est retente au prochain cycle, jusqu'a ce que ca
+                # passe ou qu'un humain investigue via ce warning.
+                if total_skipped > 0:
+                    msg = f"push {etype}: {total_skipped} ligne(s) rejetee(s) par le cloud - retente au prochain cycle"
+                    _log.warning(msg)
+                    state.last_error = msg
+                    summary["errors"].append(msg)
+                else:
+                    # Advance watermark to cycle_start (recorded before queries)
+                    # to close the race window between query and now().
+                    state.last_push_at = cycle_start
+                    state.last_error = None
             except Exception as exc:
                 msg = f"push {etype}: {exc}"
                 _log.warning(msg)
