@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pos_connect/core/permissions.dart';
 import 'package:pos_connect/core/theme.dart';
@@ -10,6 +11,7 @@ import 'package:pos_connect/data/models/warehouse_model.dart';
 import 'package:pos_connect/providers/auth_provider.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/services/ws_debug_log.dart';
 
 // ── Screen ─────────────────────────────────────────────────────────────────
 
@@ -267,6 +269,59 @@ class _ProfileFormState extends ConsumerState<_ProfileForm> {
                 ),
               ],
             ),
+            if (!kIsWeb) ...[
+              const SizedBox(height: 20),
+              _FormCard(
+                title: 'Diagnostic',
+                icon: Icons.bug_report_outlined,
+                children: [
+                  FutureBuilder<String?>(
+                    future: WsDebugLog.path(),
+                    builder: (context, snapshot) {
+                      final path = snapshot.data;
+                      if (!snapshot.hasData) {
+                        return const Text('Résolution du chemin…',
+                            style: TextStyle(
+                                fontSize: 12, color: AppColors.textSecondary));
+                      }
+                      if (path == null) {
+                        return const Text(
+                            'Impossible de résoudre le dossier de journal sur cet appareil.',
+                            style: TextStyle(fontSize: 12, color: AppColors.error));
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Journal de connexion WebSocket (ws_debug.log) :',
+                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SelectableText(path,
+                                    style: const TextStyle(
+                                        fontSize: 12, fontFamily: 'monospace')),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.copy_rounded, size: 16),
+                                tooltip: 'Copier le chemin',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () {
+                                  Clipboard.setData(ClipboardData(text: path));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Chemin copié')),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 32),
 
             SizedBox(

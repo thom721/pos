@@ -18,15 +18,26 @@ class WsDebugLog {
   static Future<File?> _getFile() async {
     if (kIsWeb) return null;
     if (_file != null) return _file;
-    try {
-      final dir = await getApplicationSupportDirectory();
-      final f = File('${dir.path}/ws_debug.log');
-      if (!await f.exists()) await f.create(recursive: true);
-      _file = f;
-      return f;
-    } catch (_) {
-      return null;
+    // getApplicationSupportDirectory() peut echouer ou resoudre un chemin
+    // impossible a deviner selon la machine — plusieurs replis plutot que
+    // d'abandonner silencieusement (constate en prod : fichier introuvable,
+    // sans aucune indication de pourquoi ni d'alternative).
+    final candidates = <Future<Directory> Function()>[
+      getApplicationSupportDirectory,
+      getTemporaryDirectory,
+    ];
+    for (final getDir in candidates) {
+      try {
+        final dir = await getDir();
+        final f = File('${dir.path}/ws_debug.log');
+        if (!await f.exists()) await f.create(recursive: true);
+        _file = f;
+        return f;
+      } catch (_) {
+        continue;
+      }
     }
+    return null;
   }
 
   /// Chemin du fichier, pour l'afficher à l'utilisateur (ex: écran Profil).
