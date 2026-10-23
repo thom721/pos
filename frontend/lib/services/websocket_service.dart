@@ -6,6 +6,7 @@ import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'package:pos_connect/data/api/api_client.dart';
+import 'package:pos_connect/services/ws_debug_log.dart';
 
 typedef SyncCallback = void Function();
 typedef SyncEntitiesCallback = void Function(List<String> entities);
@@ -61,6 +62,7 @@ class WebSocketService {
     final token = await readAuthToken();
     if (token == null) {
       debugPrint('[WS] pas de jeton — connexion non démarrée');
+      WsDebugLog.log('pas de jeton — connexion non démarrée');
       return;
     }
 
@@ -70,12 +72,14 @@ class WebSocketService {
         .replaceFirst('http://', 'ws://');
     // Backend expects token as ?token= query param (FastAPI Query dependency)
     final wsUri = Uri.parse('$base/ws?token=$token');
+    WsDebugLog.log('tentative de connexion à $base (dio.baseUrl=${dio.options.baseUrl})');
 
     try {
       _channel = IOWebSocketChannel.connect(wsUri);
       await _channel!.ready; // throws if the handshake fails
       _retrySeconds = 1;
       debugPrint('[WS] connected to $base');
+      WsDebugLog.log('connecté à $base');
       // Une (re)connexion WS ne se produit que lorsque le réseau redevient
       // réellement joignable — déclencher la synchro à cet instant précis,
       // sans attendre ni un push serveur (qui ne vient que sur UNE mutation
@@ -92,6 +96,7 @@ class WebSocketService {
       );
     } catch (e) {
       debugPrint('[WS] connect error: $e');
+      WsDebugLog.log('erreur de connexion à $base : $e');
       _scheduleReconnect();
     }
   }
@@ -105,12 +110,15 @@ class WebSocketService {
         // Sans liste (cloud, anciens serveurs) : synchronisation complète comme avant.
         final raw = msg['entities'];
         if (raw is List && raw.isNotEmpty && _onSyncEntities != null) {
+          WsDebugLog.log('sync push reçu — entities=$raw');
           _onSyncEntities!(raw.map((e) => e.toString()).toList());
         } else {
+          WsDebugLog.log('sync push reçu — sans entities (sync complète)');
           _onSync?.call();
         }
       } else if (msg['type'] == 'permissions_changed') {
         debugPrint('[WS] permissions_changed push received');
+        WsDebugLog.log('permissions_changed push reçu');
         _onPermissionsChanged?.call();
       }
       // 'ping' messages are silently ignored
@@ -122,6 +130,7 @@ class WebSocketService {
     _channel?.sink.close(); // fermer proprement l'ancien socket
     _channel = null;
     debugPrint('[WS] reconnect in ${_retrySeconds}s');
+    WsDebugLog.log('reconnexion dans ${_retrySeconds}s');
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(Duration(seconds: _retrySeconds), _connect);
     // Exponential backoff: 1 → 2 → 4 → … → 60 s max
