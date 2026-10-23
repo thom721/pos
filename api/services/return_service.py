@@ -66,6 +66,7 @@ def process_sale_return(
             sale_item.product.name if sale_item.product else str(sale_item.product_id)
         )
         items_summary.append({
+            "product_id": str(item['product_id']),
             "product_name": product_name,
             "quantity": qty,
             "unit_price": float(sale_item.unit_price),

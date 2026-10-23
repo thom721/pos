@@ -28,24 +28,43 @@ logger = logging.getLogger(__name__)
 
 
 def _inject_returned_qty(db: Session, sales: list) -> None:
-    """Attach returned_qty to each SaleItem based on sale_return stock movements."""
+    """Attache returned_qty a chaque SaleItem, lu depuis ReturnRecord.items_json.
+
+    Ne PAS deriver ca des StockMovement(source_type="sale_return") : pour un
+    produit compose ("Caisse"), record_stock_movement redirige le mouvement
+    vers le COMPOSANT (StockMovement.product_id = component_product_id, en
+    unites composant) — le retour sur le produit compose lui-meme n'apparait
+    alors JAMAIS dans ces mouvements, returned_qty restait toujours a 0 pour
+    ces produits. Consequence reelle : _QuickReturnDialog (frontend) calcule
+    la quantite encore retournable comme quantity - returnedQty, donc un
+    produit compose deja entierement retourne pouvait etre retourne une
+    seconde fois. items_json porte product_id depuis ce correctif (les
+    ReturnRecord crees avant n'en ont pas et restent a 0 — gap historique
+    accepte, aucune donnee pour les reconstruire)."""
     if not sales:
         return
+    from api.models.ReturnRecord import ReturnRecord
+    import json as _json
+
     sale_ids = [s.id for s in sales]
-    rows = (
-        db.query(
-            StockMovement.source_id,
-            StockMovement.product_id,
-            func.sum(StockMovement.quantity).label("returned_qty"),
-        )
-        .filter(
-            StockMovement.source_type == "sale_return",
-            StockMovement.source_id.in_(sale_ids),
-        )
-        .group_by(StockMovement.source_id, StockMovement.product_id)
+    records = (
+        db.query(ReturnRecord)
+        .filter(ReturnRecord.return_type == "sale", ReturnRecord.reference_id.in_(sale_ids))
         .all()
     )
-    return_map = {(r.source_id, r.product_id): float(r.returned_qty) for r in rows}
+    return_map: dict[tuple[str, str], float] = {}
+    for r in records:
+        try:
+            items = _json.loads(r.items_json or "[]")
+        except Exception:
+            items = []
+        for it in items:
+            pid = it.get("product_id")
+            if not pid:
+                continue
+            key = (r.reference_id, pid)
+            return_map[key] = return_map.get(key, 0.0) + float(it.get("quantity") or 0)
+
     for sale in sales:
         for item in (sale.items or []):
             item.returned_qty = return_map.get((sale.id, item.product_id), 0.0)
