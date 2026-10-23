@@ -758,29 +758,50 @@ class _TopBar extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: 4),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.accent.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                  color: AppColors.accent.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.circle, size: 8, color: AppColors.accent),
-                const SizedBox(width: 6),
-                const Text(
-                  'Connecté',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.accent,
-                      fontWeight: FontWeight.w500),
+          Builder(builder: (context) {
+            // Opérations en file d'attente hors-ligne (OfflineInterceptor
+            // tourne sur toutes les plateformes, pas seulement Android — le
+            // bureau peut aussi perdre la connexion, surtout un client qui
+            // ne tourne pas sur le même poste que son serveur).
+            final pendingCount = ref.watch(pendingOfflineCountProvider).valueOrNull ?? 0;
+            if (pendingCount > 0) {
+              return TextButton.icon(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const OfflineQueueScreen(),
+                )),
+                icon: const Icon(Icons.sync_rounded, size: 16),
+                label: Text('$pendingCount en attente'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.orange,
+                  textStyle: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w600),
                 ),
-              ],
-            ),
-          ),
+              );
+            }
+            return Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: AppColors.accent.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.circle, size: 8, color: AppColors.accent),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Connecté',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.accent,
+                        fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );
