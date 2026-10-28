@@ -1048,7 +1048,6 @@ class _CartPanel extends ConsumerStatefulWidget {
 class _CartPanelState extends ConsumerState<_CartPanel> {
   final _discountCtrl = TextEditingController(text: '0');
   final _paidCtrl = TextEditingController();
-  bool _discountUnlocked = false;
   bool _autoPrinting = false;
 
   // ── Session caisse ────────────────────────────────────────────────────────
@@ -1312,7 +1311,6 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
   void _resetFields() {
     _discountCtrl.text = '0';
     _paidCtrl.text = '';
-    setState(() => _discountUnlocked = false);
   }
 
   Future<void> _runAutoPrint(String saleId) async {
@@ -1358,14 +1356,6 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
         duration: const Duration(seconds: 4),
       ));
     }
-  }
-
-  Future<void> _requestDiscountAuth(BuildContext context, PosNotifier notifier) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => const _SupervisorAuthDialog(),
-    );
-    if (ok == true && mounted) setState(() => _discountUnlocked = true);
   }
 
   void _syncFields(PosState pos) {
@@ -1839,6 +1829,17 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                   ),
                 )
               else
+                // Champ en lecture seule pour tout le monde (plus de saisie
+                // libre, plus de deverrouillage par PIN manager) — faille
+                // reelle corrigee : un montant tape a la main n'etait soumis
+                // a aucune limite cote serveur, permettant une "remise
+                // caisse" superieure au sous-total (total negatif affiche
+                // comme "monnaie a rendre" sur un encaissement jamais recu,
+                // constate sur des recus imprimes). sales.discount est
+                // documente pour appliquer un rabais EXISTANT du catalogue,
+                // pas pour en inventer un — seul le picker catalogue (deja
+                // plafonne et predefini par un admin dans la page Rabais)
+                // peut encore renseigner ce champ, jamais la saisie clavier.
                 Row(
                   children: [
                     Expanded(
@@ -1847,17 +1848,6 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                           Text('Remise caisse (${settings.currencySymbol.trim()})',
                               style: const TextStyle(
                                   color: AppColors.textSecondary, fontSize: 13)),
-                          if (!canDiscount && !_discountUnlocked) ...[
-                            const SizedBox(width: 6),
-                            GestureDetector(
-                              onTap: () => _requestDiscountAuth(context, notifier),
-                              child: const Tooltip(
-                                message: 'Autorisation requise',
-                                child: Icon(Icons.lock_rounded,
-                                    size: 14, color: AppColors.textSecondary),
-                              ),
-                            ),
-                          ],
                           const SizedBox(width: 6),
                           InkWell(
                             onTap: () async {
@@ -1884,7 +1874,8 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                       width: 100,
                       child: TextField(
                         controller: _discountCtrl,
-                        enabled: canDiscount || _discountUnlocked,
+                        readOnly: true,
+                        enabled: false,
                         keyboardType: TextInputType.number,
                         style: const TextStyle(fontSize: 13),
                         decoration: const InputDecoration(
@@ -1892,8 +1883,6 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                               horizontal: 10, vertical: 8),
                           isDense: true,
                         ),
-                        onChanged: (v) => notifier.setDiscount(
-                            toHtgAmount(double.tryParse(v) ?? 0, settings)),
                       ),
                     ),
                   ],

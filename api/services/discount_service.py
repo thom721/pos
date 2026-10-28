@@ -138,7 +138,18 @@ def resolve_discount(
                 f"{discount.min_quantity} unité(s) (quantité actuelle : {quantity})",
             )
         return compute_amount(discount, base), discount.id
-    return Decimal(str(raw_amount or 0)), None
+    # Rabais saisi librement (pas de discount_id) — jusqu'ici renvoyé tel
+    # quel, sans plafond, contrairement au rabais catalogue ci-dessus
+    # (compute_amount clampe deja contre base). Un montant superieur au
+    # total produisait un final_amount NEGATIF, affiche comme une "monnaie
+    # a rendre" sur un encaissement jamais recu — constate en prod (reçu
+    # avec Remise caisse > sous-total). Meme plafond que compute_amount :
+    # jamais negatif, jamais au-dela de base.
+    base_dec = Decimal(str(base or 0))
+    if base_dec <= 0:
+        return Decimal(0), None
+    amount = Decimal(str(raw_amount or 0))
+    return max(Decimal(0), min(amount, base_dec)), None
 
 
 def compute_amount(discount: Discount, base: Decimal) -> Decimal:

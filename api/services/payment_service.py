@@ -24,6 +24,20 @@ def add_payment(db: Session, data, user_id: str, tenant_id: str | None = None):
         raise HTTPException(400, "reference_type invalide (SALE ou PURCHASE)")
 
     amount = Decimal(str(data.amount))
+    # POST /api/payments/ est le point d'entree "nouveau paiement" — jamais
+    # de remboursement ici (celui-ci passe par return_service.py, qui
+    # construit son Payment(amount negatif) directement, sans ce schema/
+    # endpoint). Sans ce garde-fou, un montant negatif reduisait
+    # silencieusement entity.paid_amount, pouvant repasser une vente deja
+    # payee en partielle/impayee. SALE : 0 reste tolere (pas de cas d'usage
+    # connu, mais pas de raison de le bloquer plus strictement que 0 negatif
+    # ne l'etait avant). PURCHASE et tout le reste (ex: encaissement d'une
+    # dette) : un paiement de 0 n'a aucun sens, rejete aussi.
+    if reference_type == "SALE":
+        if amount < 0:
+            raise HTTPException(400, "Le montant du paiement doit être positif ou nul")
+    elif amount <= 0:
+        raise HTTPException(400, "Le montant du paiement doit être positif")
 
     payment = Payment(
         reference_type=reference_type,
