@@ -207,13 +207,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await _repo.saveToken(token.accessToken);
       if (token.user != null) {
         await _repo.saveUser(token.user!);
-        // Mettre à jour le cache hors ligne avec le token frais
+        // Mettre à jour le cache hors ligne avec le token frais. Les autres
+        // utilisateurs du tenant/dépôt restent en cache (alimentés par
+        // OfflineCacheService._syncUsers, déjà filtré par warehouse_id côté
+        // serveur) — un terminal partagé par plusieurs caissiers doit
+        // permettre à chacun de se reconnecter hors ligne, pas seulement le
+        // dernier qui s'est connecté en ligne.
         if (!kIsWeb) {
           final hash = await _hashPassword(emailLower, password);
           await LocalDbService.instance.saveLocalUser(
               emailLower, hash, jsonEncode(token.user!));
-          // Sécurité : un seul user offline par terminal — supprimer les autres
-          await LocalDbService.instance.clearOtherLocalUsers(emailLower);
         }
       }
       await _repo.savePlanWarning(token.planWarning);
