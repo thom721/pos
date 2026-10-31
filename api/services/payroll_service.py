@@ -84,7 +84,11 @@ def process_period(db: Session, period_id: str, tenant_id: str | None = None) ->
         raise HTTPException(400, f"Impossible de traiter une période en statut '{period.status}'")
 
     # Delete any existing entries for this period (re-processing)
-    db.query(PayrollEntry).filter_by(period_id=period_id).delete(synchronize_session="fetch")
+    from api.services.tombstone_service import record_deletion
+    old_entries = db.query(PayrollEntry).filter_by(period_id=period_id).all()
+    for e in old_entries:
+        record_deletion(db, "payroll_entry", e.id, e.tenant_id)
+        db.delete(e)
 
     query = db.query(EmployeeProfile).filter(EmployeeProfile.is_active == True)
     if tenant_id:

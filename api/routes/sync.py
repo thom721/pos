@@ -27,6 +27,7 @@ from api.core.dt_coerce import coerce_datetimes as _coerce_dt, coerce_enums as _
 from api.core.permissions import P
 from api.database import get_db
 from api.dependencies.auth import require_permission
+from api.models.SyncTombstone import SyncTombstone
 from api.models.Category import Category
 from api.models.Customer import Customer
 from api.models.Payment import Payment
@@ -176,6 +177,11 @@ class SyncCodeRequest(BaseModel):
 
 class PullBatchRequest(BaseModel):
     cursors: dict  # {entity_type: since_iso}
+
+
+class TombstonePushRequest(BaseModel):
+    entity_type: str
+    record_ids:  list[str]
 
 
 class BillingConfigRequest(BaseModel):
@@ -510,6 +516,81 @@ def sync_push(
     return {
         "ok": True, "entity_type": body.entity_type,
         "inserted": inserted, "updated": updated, "skipped": skipped,
+    }
+
+
+# ── CLOUD: suppressions (tombstones) ───────────────────────────────────────────
+# Le push/pull normal (filtre updated_at > since) ne peut jamais detecter
+# qu'une ligne a disparu - une ligne supprimee n'a plus de ligne a filtrer.
+# Ces deux routes echangent des "tombstones" (voir api/services/
+# tombstone_service.py) en parallele du cycle normal, pour que toute
+# suppression definitive se propage aussi vers l'autre cote.
+
+@router.post("/push-tombstones")
+def sync_push_tombstones(
+    body:    TombstonePushRequest,
+    claims:  dict = Depends(require_sync_token),
+    db:      Session = Depends(get_db),
+):
+    tenant_id   = claims["tenant_id"]
+    tenant_type = claims.get("tenant_type", "shared")
+    if tenant_type == "selfhosted":
+        raise HTTPException(
+            status_code=403,
+            detail="Tenant self-hosted : les données business ne se synchronisent pas sur posconnect.ht.",
+        )
+
+    model = _MODEL_MAP.get(body.entity_type)
+    if not model:
+        raise HTTPException(status_code=400, detail=f"Type d'entité inconnu: {body.entity_type}")
+
+    from api.services.tombstone_service import record_deletion
+
+    deleted = 0
+    for rid in body.record_ids:
+        obj = db.get(model, rid)
+        if obj is not None:
+            db.delete(obj)
+            deleted += 1
+        # Toujours enregistrer la tombstone cote cloud, meme si la ligne
+        # etait deja absente ici — pour que D'AUTRES serveurs locaux du
+        # meme tenant l'apprennent aussi au prochain pull (multi-depots).
+        record_deletion(db, body.entity_type, rid, tenant_id)
+    db.commit()
+    if deleted > 0:
+        _ws_manager.notify_threadsafe(tenant_id)
+    return {"ok": True, "entity_type": body.entity_type, "deleted": deleted}
+
+
+@router.get("/pull-tombstones")
+def sync_pull_tombstones(
+    entity_type: str = Query(...),
+    since:       str = Query("1970-01-01T00:00:00"),
+    claims:      dict = Depends(require_sync_token),
+    db:          Session = Depends(get_db),
+):
+    tenant_id   = claims["tenant_id"]
+    tenant_type = claims.get("tenant_type", "shared")
+    if tenant_type == "selfhosted":
+        raise HTTPException(
+            status_code=403,
+            detail="Tenant self-hosted : récupérez vos données depuis votre propre serveur.",
+        )
+
+    since_dt = _parse_dt(since)
+    q = db.query(SyncTombstone).filter(
+        SyncTombstone.tenant_id == tenant_id,
+        SyncTombstone.entity_type == entity_type,
+    )
+    if since_dt:
+        q = q.filter(SyncTombstone.updated_at > since_dt)
+    rows = q.order_by(SyncTombstone.updated_at.asc()).limit(500).all()
+    return {
+        "entity_type": entity_type,
+        "records": [
+            {"record_id": r.record_id, "updated_at": r.updated_at.isoformat()}
+            for r in rows
+        ],
     }
 
 

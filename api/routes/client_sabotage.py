@@ -118,6 +118,8 @@ def delete_client(
     )
     if not client:
         raise HTTPException(404, "Client introuvable")
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "client_sabotage", client.id, current_user.tenant_id)
     db.delete(client)
     db.commit()
     background_tasks.add_task(manager.notify, current_user.tenant_id)

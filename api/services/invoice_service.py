@@ -97,7 +97,9 @@ def update_invoice(db: Session, invoice_id: str, data: InvoiceUpdate, tenant_id:
         invoice.warehouse_id = data.warehouse_id
 
     if data.items is not None:
+        from api.services.tombstone_service import record_deletion
         for item in invoice.items:
+            record_deletion(db, "invoice_item", item.id, invoice.tenant_id)
             db.delete(item)
         db.flush()
         for item in data.items:
@@ -139,5 +141,7 @@ def record_payment(db: Session, invoice_id: str, amount: float, tenant_id: str |
 
 def delete_invoice(db: Session, invoice_id: str, tenant_id: str | None = None):
     invoice = get_invoice(db, invoice_id, tenant_id=tenant_id)
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "invoice", invoice.id, invoice.tenant_id)
     db.delete(invoice)
     db.commit()

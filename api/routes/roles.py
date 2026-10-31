@@ -208,6 +208,8 @@ def delete_role(
     if role.is_builtin and role.tenant_id is None:
         raise HTTPException(403, "Les rôles intégrés ne peuvent pas être supprimés.")
 
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "role", role.id, role.tenant_id)
     db.delete(role)
     db.commit()
 

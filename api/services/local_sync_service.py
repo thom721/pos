@@ -436,6 +436,41 @@ def _run_sync_inner(db: Session) -> dict:
                 state.last_error = msg
                 summary["errors"].append(msg)
 
+        # ── PUSH TOMBSTONES (push / both) ───────────────────────────────────
+        # Le push normal ci-dessus ne peut jamais faire savoir au cloud
+        # qu'une ligne a ete supprimee ici (filtre sur updated_at — une ligne
+        # supprimee n'a plus de ligne a filtrer). record_deletion() (appele
+        # a chaque suppression reelle, voir tombstone_service.py) laisse une
+        # trace legere dans sync_tombstones ; on la pousse ici en parallele.
+        if direction in ("push", "both"):
+            from api.models.SyncTombstone import SyncTombstone
+            # Assigne AVANT le try (comme le state normal plus haut) — sinon
+            # un echec de _get_sync_state() lui-meme ferait planter le except
+            # ci-dessous sur une variable jamais assignee.
+            t_state = _get_sync_state(db, f"{etype}:tombstone")
+            try:
+                t_query = db.query(SyncTombstone).filter(SyncTombstone.entity_type == etype)
+                if t_state.last_push_at:
+                    t_query = t_query.filter(SyncTombstone.updated_at > t_state.last_push_at)
+                t_rows = t_query.all()
+                if t_rows:
+                    ids = [t.record_id for t in t_rows]
+                    _http_post(
+                        f"{url}/api/sync/push-tombstones",
+                        json={"entity_type": etype, "record_ids": ids},
+                        headers=_headers(token),
+                    )
+                    t_state.last_push_at = cycle_start
+                else:
+                    t_state.last_push_at = cycle_start
+                t_state.last_error = None
+            except Exception as exc:
+                # Meme convention que pull-tombstones : route annexe, pas
+                # d'ajout a summary["errors"].
+                msg = f"push-tombstones {etype}: {exc}"
+                _log.warning(msg)
+                t_state.last_error = msg
+
     db.commit()
 
     # ── PULL (batch — une requête HTTP au lieu de N) ───────────────────────────
@@ -647,6 +682,49 @@ def _run_sync_inner(db: Session) -> dict:
             state.last_error = msg
             summary["errors"].append(msg)
 
+    db.commit()
+
+    # ── PULL TOMBSTONES (pull / both) ───────────────────────────────────────
+    # Symetrique du push de tombstones ci-dessus : applique localement les
+    # suppressions decidees de l'autre cote (ex: un admin qui supprime un
+    # palier de prix sur le cloud doit faire disparaitre la ligne ici aussi).
+    from api.models.SyncTombstone import SyncTombstone
+    for entity in SYNC_ENTITIES:
+        etype = entity["type"]
+        model = entity["model"]
+        if entity["direction"] not in ("pull", "both"):
+            continue
+        t_state = _get_sync_state(db, f"{etype}:tombstone_pull")
+        since = t_state.last_pull_at.isoformat() if t_state.last_pull_at else "1970-01-01T00:00:00"
+        try:
+            r = _http_get(
+                f"{url}/api/sync/pull-tombstones",
+                params={"entity_type": etype, "since": since},
+                headers=_headers(token),
+            )
+            records = r.json().get("records", [])
+            for rec in records:
+                obj = db.get(model, rec["record_id"])
+                if obj is not None:
+                    # Pas de record_deletion() ici — on ne fait que recevoir
+                    # un fait deja connu de l'autre cote, pas en originer un
+                    # nouveau (eviterait un ping-pong de tombstones inutile).
+                    db.delete(obj)
+            if records:
+                seen_ts = [_parse_dt(r.get("updated_at")) for r in records]
+                seen_ts = [ts for ts in seen_ts if ts]
+                if seen_ts:
+                    t_state.last_pull_at = max(seen_ts)
+            t_state.last_error = None
+        except Exception as exc:
+            # Pas d'ajout a summary["errors"] (meme convention que
+            # tenant-billing/public-platform-config ci-dessous) : une
+            # indisponibilite de cette route annexe (ex: cloud pas encore a
+            # jour) ne doit pas faire basculer tout le cycle en "not ok".
+            msg = f"pull-tombstones {etype}: {exc}"
+            _log.warning(msg)
+            db.rollback()
+            t_state.last_error = msg
     db.commit()
 
     # Les permissions personnalisees sont mises en cache en memoire au

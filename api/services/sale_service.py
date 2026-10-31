@@ -288,7 +288,9 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
         )
 
     # 2. Delete old items
+    from api.services.tombstone_service import record_deletion
     for old_item in sale.items:
+        record_deletion(db, "sale_item", old_item.id, tenant_id)
         db.delete(old_item)
     db.flush()
 

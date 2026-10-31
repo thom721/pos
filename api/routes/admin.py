@@ -785,7 +785,9 @@ def purge_unclaimed_warehouses(
         except Exception:
             pass
 
+    from api.services.tombstone_service import record_deletion
     for wh in rows:
+        record_deletion(db, "warehouse", wh.id, wh.tenant_id)
         db.delete(wh)
     db.commit()
     return {"deleted": len(rows)}
@@ -844,6 +846,8 @@ def delete_warehouse(
             pass
 
     tenant_id = wh.tenant_id
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "warehouse", wh.id, tenant_id)
     db.delete(wh)
     db.commit()
     _log.info("Warehouse supprimé: %s (tenant=%s)", warehouse_id, tenant_id)
@@ -997,6 +1001,8 @@ def delete_tenant_register(
             detail="Cette caisse a un historique de sessions — impossible de la supprimer "
                    "définitivement sans perdre cet historique. Désactivez-la à la place.",
         )
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "pos_register", reg.id, tenant_id)
     db.delete(reg)
     db.commit()
     _log.info("Caisse supprimée définitivement: %s (tenant=%s)", register_id, tenant_id)

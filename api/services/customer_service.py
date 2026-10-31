@@ -123,6 +123,8 @@ class CustomerService(TenantService):
         customer = self.get(customer_id)
         if not customer:
             return False
+        from api.services.tombstone_service import record_deletion
+        record_deletion(self.db, "customer", customer.id, customer.tenant_id)
         self.db.delete(customer)
         self.db.commit()
         return True

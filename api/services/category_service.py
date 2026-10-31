@@ -61,6 +61,8 @@ class CategoryService(TenantService):
         category = self.get(category_id)
         if not category:
             return False
+        from api.services.tombstone_service import record_deletion
+        record_deletion(self.db, "category", category.id, category.tenant_id)
         self.db.delete(category)
         self.db.commit()
         return True

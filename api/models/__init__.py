@@ -34,6 +34,7 @@ from api.models.PayrollLoanDeduction import PayrollLoanDeduction
 from api.models.Role import Role
 from api.models.PlatformConfig import PlatformConfig
 from api.models.SyncState import SyncState
+from api.models.SyncTombstone import SyncTombstone
 from api.models.AuditLog import AuditLog
 from api.models.BillingExtra import BillingExtra
 from api.models.ClientSabotage import ClientSabotage

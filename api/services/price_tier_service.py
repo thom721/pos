@@ -67,10 +67,14 @@ def set_tiers(db: Session, tenant_id, product_id: str, warehouse_id: str, tiers)
         raise HTTPException(400, "Dépôt introuvable pour ce tenant")
 
     pairs = _validate(tiers)
-    db.query(ProductPriceTier).filter(
+    from api.services.tombstone_service import record_deletion
+    to_remove = db.query(ProductPriceTier).filter(
         ProductPriceTier.product_id == product_id,
         ProductPriceTier.warehouse_id == warehouse_id,
-    ).delete(synchronize_session=False)
+    ).all()
+    for t in to_remove:
+        record_deletion(db, "product_price_tier", t.id, tenant_id)
+        db.delete(t)
     for qty, price in pairs:
         db.add(ProductPriceTier(
             tenant_id=tenant_id, product_id=product_id, warehouse_id=warehouse_id,

@@ -358,7 +358,11 @@ def update_table(
         table.waiter_id = data.waiter_id or None
     if data.attributes is not None:
         # Replace all attributes
-        db.query(RoomAttribute).filter(RoomAttribute.table_id == table.id).delete()
+        from api.services.tombstone_service import record_deletion
+        old_attrs = db.query(RoomAttribute).filter(RoomAttribute.table_id == table.id).all()
+        for a in old_attrs:
+            record_deletion(db, "room_attribute", a.id, table.tenant_id)
+            db.delete(a)
         for attr in data.attributes:
             if attr.key.strip():
                 db.add(RoomAttribute(
@@ -417,6 +421,8 @@ def delete_table(
     ).first()
     if open_order:
         raise HTTPException(400, "Impossible de supprimer une table avec une commande en cours")
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "restaurant_table", table.id, current_user.tenant_id)
     db.delete(table)
     db.commit()
 
@@ -596,6 +602,8 @@ def remove_item(
     ).first()
     if not item:
         raise HTTPException(404, "Article introuvable")
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "restaurant_order_item", item.id, current_user.tenant_id)
     db.delete(item)
     db.commit()
     background_tasks.add_task(_notify, current_user.tenant_id)
@@ -617,6 +625,8 @@ def update_item_quantity(
     if not item:
         raise HTTPException(404, "Article introuvable")
     if data.quantity <= 0:
+        from api.services.tombstone_service import record_deletion
+        record_deletion(db, "restaurant_order_item", item.id, current_user.tenant_id)
         db.delete(item)
     else:
         item.quantity = data.quantity
@@ -1011,6 +1021,8 @@ def delete_modifier_group(
     ).first()
     if not g:
         raise HTTPException(404, "Groupe introuvable")
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "modifier_group", g.id, current_user.tenant_id)
     db.delete(g)
     db.commit()
 
@@ -1055,6 +1067,8 @@ def delete_modifier_option(
     ).first()
     if not opt:
         raise HTTPException(404, "Option introuvable")
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "modifier_option", opt.id, current_user.tenant_id)
     db.delete(opt)
     db.commit()
 
@@ -1184,6 +1198,8 @@ def delete_menu_item(
     ).first()
     if not m:
         raise HTTPException(404, "Plat introuvable")
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "menu_item", m.id, current_user.tenant_id)
     db.delete(m)
     db.commit()
 
@@ -1278,5 +1294,7 @@ def delete_housekeeping_task(
     ).first()
     if not task:
         raise HTTPException(404, "Tâche introuvable")
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "housekeeping_task", task.id, current_user.tenant_id)
     db.delete(task)
     db.commit()

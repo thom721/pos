@@ -36,6 +36,8 @@ class SupplierService(TenantService):
         supplier = self.get(supplier_id)
         if not supplier:
             return False
+        from api.services.tombstone_service import record_deletion
+        record_deletion(self.db, "supplier", supplier.id, supplier.tenant_id)
         self.db.delete(supplier)
         self.db.commit()
         return True

@@ -607,6 +607,8 @@ def delete_register(
             "définitivement sans perdre cet historique. Désactivez-la à la place.",
         )
     _billing.close_extra(db, reg.id)
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "pos_register", reg.id, reg.tenant_id)
     db.delete(reg)
     db.commit()
     return {"ok": True}

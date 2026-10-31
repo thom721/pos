@@ -134,6 +134,8 @@ class UserService(TenantService):
         if not user:
             return False
         try:
+            from api.services.tombstone_service import record_deletion
+            record_deletion(self.db, "user", user.id, user.tenant_id)
             self.db.delete(user)
             self.db.commit()
             return True

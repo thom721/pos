@@ -97,7 +97,9 @@ def update_proforma(db: Session, proforma_id: str, data: ProformaUpdate, tenant_
 
     if data.items is not None:
         # Replace items
+        from api.services.tombstone_service import record_deletion
         for item in proforma.items:
+            record_deletion(db, "proforma_item", item.id, proforma.tenant_id)
             db.delete(item)
         db.flush()
         for item in data.items:
@@ -118,5 +120,7 @@ def update_proforma(db: Session, proforma_id: str, data: ProformaUpdate, tenant_
 
 def delete_proforma(db: Session, proforma_id: str, tenant_id: str | None = None):
     proforma = get_proforma(db, proforma_id, tenant_id=tenant_id)
+    from api.services.tombstone_service import record_deletion
+    record_deletion(db, "proforma", proforma.id, proforma.tenant_id)
     db.delete(proforma)
     db.commit()
