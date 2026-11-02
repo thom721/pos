@@ -87,6 +87,12 @@ def process_period(db: Session, period_id: str, tenant_id: str | None = None) ->
     from api.services.tombstone_service import record_deletion
     old_entries = db.query(PayrollEntry).filter_by(period_id=period_id).all()
     for e in old_entries:
+        # loan_deductions est cascade="all, delete-orphan" (PayrollEntry.py) —
+        # db.delete(e) les supprime silencieusement ; sans ce tombstone
+        # explicite ici, leur suppression ne serait jamais propagee (meme
+        # classe de bug que PayrollEntry lui-meme, voir plus bas).
+        for d in e.loan_deductions:
+            record_deletion(db, "payroll_loan_deduction", d.id, d.tenant_id)
         record_deletion(db, "payroll_entry", e.id, e.tenant_id)
         db.delete(e)
 

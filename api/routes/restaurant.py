@@ -422,6 +422,11 @@ def delete_table(
     if open_order:
         raise HTTPException(400, "Impossible de supprimer une table avec une commande en cours")
     from api.services.tombstone_service import record_deletion
+    # attributes est cascade="all, delete-orphan" (RestaurantTable.py) —
+    # db.delete(table) les supprime silencieusement ; tombstone explicite
+    # ici, sinon leur suppression ne serait jamais propagee.
+    for attr in table.attributes:
+        record_deletion(db, "room_attribute", attr.id, current_user.tenant_id)
     record_deletion(db, "restaurant_table", table.id, current_user.tenant_id)
     db.delete(table)
     db.commit()
@@ -1022,6 +1027,11 @@ def delete_modifier_group(
     if not g:
         raise HTTPException(404, "Groupe introuvable")
     from api.services.tombstone_service import record_deletion
+    # options est cascade="all, delete-orphan" (ModifierGroup.py) —
+    # db.delete(g) les supprime silencieusement ; tombstone explicite ici,
+    # sinon leur suppression ne serait jamais propagee.
+    for opt in g.options:
+        record_deletion(db, "modifier_option", opt.id, current_user.tenant_id)
     record_deletion(db, "modifier_group", g.id, current_user.tenant_id)
     db.delete(g)
     db.commit()

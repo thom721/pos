@@ -63,6 +63,7 @@ from api.models.Sale import Sale
 from api.models.SaleItem import SaleItem
 from api.models.StockMovement import StockMovement
 from api.models.Supplier import Supplier
+from api.models.SyncTombstone import SyncTombstone
 from api.models.User import User
 from api.models.Warehouse import Warehouse
 
@@ -85,7 +86,7 @@ TENANT_SCOPED_MODELS = [
     PurchaseItem, PurchaseReceiptItem, PurchaseReceipt, Purchase,
     RestaurantOrderItem, RestaurantOrder, RestaurantTable, Retrait,
     ReturnRecord, RoomAttribute, SaleItem, Sale, StockMovement,
-    Supplier, Category, Customer, Product, Role, User, Warehouse, AppConfig,
+    Supplier, SyncTombstone, Category, Customer, Product, Role, User, Warehouse, AppConfig,
 ]
 
 

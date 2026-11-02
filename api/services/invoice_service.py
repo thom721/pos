@@ -142,6 +142,12 @@ def record_payment(db: Session, invoice_id: str, amount: float, tenant_id: str |
 def delete_invoice(db: Session, invoice_id: str, tenant_id: str | None = None):
     invoice = get_invoice(db, invoice_id, tenant_id=tenant_id)
     from api.services.tombstone_service import record_deletion
+    # items est cascade="all, delete-orphan" (Invoice.py) — db.delete(invoice)
+    # les supprime silencieusement ; tombstone explicite ici, sinon leur
+    # suppression ne serait jamais propagee (contrairement a update_invoice
+    # ci-dessus, qui le fait deja pour un remplacement d'items).
+    for item in invoice.items:
+        record_deletion(db, "invoice_item", item.id, invoice.tenant_id)
     record_deletion(db, "invoice", invoice.id, invoice.tenant_id)
     db.delete(invoice)
     db.commit()

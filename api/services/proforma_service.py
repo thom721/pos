@@ -121,6 +121,11 @@ def update_proforma(db: Session, proforma_id: str, data: ProformaUpdate, tenant_
 def delete_proforma(db: Session, proforma_id: str, tenant_id: str | None = None):
     proforma = get_proforma(db, proforma_id, tenant_id=tenant_id)
     from api.services.tombstone_service import record_deletion
+    # items est cascade="all, delete-orphan" (Proforma.py) — db.delete(proforma)
+    # les supprime silencieusement ; tombstone explicite ici, sinon leur
+    # suppression ne serait jamais propagee.
+    for item in proforma.items:
+        record_deletion(db, "proforma_item", item.id, proforma.tenant_id)
     record_deletion(db, "proforma", proforma.id, proforma.tenant_id)
     db.delete(proforma)
     db.commit()

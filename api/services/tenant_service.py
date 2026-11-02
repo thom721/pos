@@ -188,6 +188,16 @@ def cloud_login(db: Session, email: str, password: str,
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Email ou mot de passe incorrect")
 
+    # Mise a jour du hash offline (meme logique que /api/auth/login) — sans
+    # ca, un tenant purement cloud (jamais de serveur local) ne renseigne
+    # jamais offline_hash, et /api/users/offline-sync ne peut alors mettre
+    # en cache AUCUN utilisateur pour l'auth hors ligne sur les terminaux
+    # "client cloud direct".
+    if not user.offline_hash and user.email:
+        from api.services.user_service import compute_offline_hash
+        user.offline_hash = compute_offline_hash(user.email, password)
+        db.commit()
+
     if not user.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Ce compte n'est pas associé à un tenant cloud")

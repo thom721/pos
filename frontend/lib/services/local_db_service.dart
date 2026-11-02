@@ -859,15 +859,18 @@ class LocalDbService {
   }
 
   /// Bulk insert depuis le sync — sauvegarde tous les utilisateurs du tenant
-  /// avec leur offline_hash pour permettre l'auth hors ligne.
+  /// (filtrés par dépôt côté serveur) avec leur offline_hash pour permettre
+  /// l'auth hors ligne à chacun, pas seulement au dernier connecté en ligne.
   Future<void> upsertLocalUsers(List<Map<String, dynamic>> users) async {
     final db = _safeDb;
     if (db == null) return;
+    final emails = <String>[];
     final batch = db.batch();
     for (final u in users) {
       final email = (u['email'] as String?)?.toLowerCase();
       final offlineHash = u['offline_hash'] as String?;
       if (email == null || offlineHash == null) continue;
+      emails.add(email);
       batch.insert(
         'local_users',
         {
@@ -879,6 +882,16 @@ class LocalDbService {
       );
     }
     await batch.commit(noResult: true);
+    // Retire les comptes désactivés/supprimés côté serveur (plus dans la
+    // liste renvoyée) — sinon leur accès hors ligne resterait valide
+    // indéfiniment sur ce terminal. Ne s'exécute que si la liste contient
+    // au moins un email valide, pour ne jamais tout effacer sur une
+    // réponse vide/anormale.
+    if (emails.isNotEmpty) {
+      final placeholders = List.filled(emails.length, '?').join(',');
+      await db.delete('local_users',
+          where: 'email NOT IN ($placeholders)', whereArgs: emails);
+    }
   }
 
   PaginatedResponse<ProductModel> _emptyProducts(int limit) => PaginatedResponse(
