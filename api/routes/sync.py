@@ -182,6 +182,11 @@ class PullBatchRequest(BaseModel):
 class TombstonePushRequest(BaseModel):
     entity_type: str
     record_ids:  list[str]
+    # Depot d'origine connu par le serveur local qui pousse la suppression
+    # (record_id -> warehouse_id), utilise en repli UNIQUEMENT si la ligne
+    # n'existe plus cote cloud pour qu'on puisse lire son warehouse_id
+    # directement (voir sync_push_tombstones ci-dessous).
+    warehouse_ids: dict[str, str] | None = None
 
 
 class BillingConfigRequest(BaseModel):
@@ -546,16 +551,22 @@ def sync_push_tombstones(
 
     from api.services.tombstone_service import record_deletion
 
+    fallback_whs = body.warehouse_ids or {}
     deleted = 0
     for rid in body.record_ids:
         obj = db.get(model, rid)
+        # La ligne existe encore cote cloud : son warehouse_id reel est
+        # l'information la plus fiable. Sinon, repli sur ce que le serveur
+        # local a declare (sa propre tombstone, deja renseignee a la
+        # suppression — voir les appels record_deletion() du cote local).
+        wh_id = getattr(obj, "warehouse_id", None) if obj is not None else fallback_whs.get(rid)
         if obj is not None:
             db.delete(obj)
             deleted += 1
         # Toujours enregistrer la tombstone cote cloud, meme si la ligne
         # etait deja absente ici — pour que D'AUTRES serveurs locaux du
         # meme tenant l'apprennent aussi au prochain pull (multi-depots).
-        record_deletion(db, body.entity_type, rid, tenant_id)
+        record_deletion(db, body.entity_type, rid, tenant_id, warehouse_id=wh_id)
     db.commit()
     if deleted > 0:
         _ws_manager.notify_threadsafe(tenant_id)
@@ -564,6 +575,7 @@ def sync_push_tombstones(
 
 @router.get("/pull-tombstones")
 def sync_pull_tombstones(
+    request:     Request,
     entity_type: str = Query(...),
     since:       str = Query("1970-01-01T00:00:00"),
     claims:      dict = Depends(require_sync_token),
@@ -584,6 +596,15 @@ def sync_pull_tombstones(
     )
     if since_dt:
         q = q.filter(SyncTombstone.updated_at > since_dt)
+    # Meme perimetre depot que le pull normal (_scope_to_warehouse) — mais
+    # permissif plutot que fail-closed : une tombstone sans warehouse_id
+    # connu (entite partagee, ou ligne deja absente des deux cotes au
+    # moment du push) doit quand meme se propager plutot que rester
+    # bloquee. Pas d'en-tete envoye (vieux serveur local) -> comportement
+    # inchange, aucun filtre.
+    wh_id = _request_warehouse_id(request, claims, db)
+    if wh_id:
+        q = q.filter(sa_or_(SyncTombstone.warehouse_id.is_(None), SyncTombstone.warehouse_id == wh_id))
     rows = q.order_by(SyncTombstone.updated_at.asc()).limit(500).all()
     return {
         "entity_type": entity_type,

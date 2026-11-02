@@ -15,6 +15,13 @@ class SyncTombstone(UUIDBase):
     tenant_id   = Column(String(36), ForeignKey('tenants.id'), nullable=True, index=True)
     entity_type = Column(String(50), nullable=False, index=True)
     record_id   = Column(String(36), nullable=False, index=True)
+    # Pas de ForeignKey('warehouses.id') volontairement : une tombstone doit
+    # pouvoir survivre a la suppression du depot lui-meme (admin.py::delete_warehouse)
+    # sans etre bloquee par une contrainte FK ni necessiter de la nettoyer en
+    # meme temps. NULL = entite partagee au niveau tenant (voir
+    # _SHARED_TENANT_ETYPES dans local_sync_service.py / sync.py) : propagee
+    # a toutes les installations, quel que soit leur depot.
+    warehouse_id = Column(String(36), nullable=True, index=True)
 
     __table_args__ = (
         UniqueConstraint('entity_type', 'record_id', name='uq_tombstone_entity_record'),

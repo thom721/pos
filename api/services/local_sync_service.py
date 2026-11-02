@@ -455,9 +455,10 @@ def _run_sync_inner(db: Session) -> dict:
                 t_rows = t_query.all()
                 if t_rows:
                     ids = [t.record_id for t in t_rows]
+                    whs = {t.record_id: t.warehouse_id for t in t_rows if t.warehouse_id}
                     _http_post(
                         f"{url}/api/sync/push-tombstones",
-                        json={"entity_type": etype, "record_ids": ids},
+                        json={"entity_type": etype, "record_ids": ids, "warehouse_ids": whs},
                         headers=_headers(token),
                     )
                     t_state.last_push_at = cycle_start

@@ -99,7 +99,7 @@ def update_invoice(db: Session, invoice_id: str, data: InvoiceUpdate, tenant_id:
     if data.items is not None:
         from api.services.tombstone_service import record_deletion
         for item in invoice.items:
-            record_deletion(db, "invoice_item", item.id, invoice.tenant_id)
+            record_deletion(db, "invoice_item", item.id, invoice.tenant_id, warehouse_id=item.warehouse_id)
             db.delete(item)
         db.flush()
         for item in data.items:
@@ -147,7 +147,7 @@ def delete_invoice(db: Session, invoice_id: str, tenant_id: str | None = None):
     # suppression ne serait jamais propagee (contrairement a update_invoice
     # ci-dessus, qui le fait deja pour un remplacement d'items).
     for item in invoice.items:
-        record_deletion(db, "invoice_item", item.id, invoice.tenant_id)
-    record_deletion(db, "invoice", invoice.id, invoice.tenant_id)
+        record_deletion(db, "invoice_item", item.id, invoice.tenant_id, warehouse_id=item.warehouse_id)
+    record_deletion(db, "invoice", invoice.id, invoice.tenant_id, warehouse_id=invoice.warehouse_id)
     db.delete(invoice)
     db.commit()

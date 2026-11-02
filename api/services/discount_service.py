@@ -87,7 +87,7 @@ class DiscountService(TenantService):
         if not discount:
             return False
         from api.services.tombstone_service import record_deletion
-        record_deletion(self.db, "discount", discount.id, discount.tenant_id)
+        record_deletion(self.db, "discount", discount.id, discount.tenant_id, warehouse_id=discount.warehouse_id)
         self.db.delete(discount)
         self.db.commit()
         return True

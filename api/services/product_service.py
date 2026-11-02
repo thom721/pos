@@ -316,7 +316,7 @@ class ProductService(TenantService):
             })
 
         from api.services.tombstone_service import record_deletion
-        record_deletion(self.db, "product", product.id, product.tenant_id)
+        record_deletion(self.db, "product", product.id, product.tenant_id, warehouse_id=product.warehouse_id)
         self.db.delete(product)
         self.db.commit()
         return True
@@ -355,7 +355,8 @@ class ProductService(TenantService):
         for movement in self.db.query(StockMovement).filter(
             StockMovement.product_id == product_id
         ).all():
-            record_deletion(self.db, "stock_movement", movement.id, movement.tenant_id)
+            record_deletion(self.db, "stock_movement", movement.id, movement.tenant_id,
+                             warehouse_id=movement.warehouse_id)
             self.db.delete(movement)
         for dependent in self._q(Product).filter(
             Product.component_product_id == product_id
@@ -363,7 +364,7 @@ class ProductService(TenantService):
             dependent.component_product_id = None
             dependent.component_quantity = None
 
-        record_deletion(self.db, "product", product.id, product.tenant_id)
+        record_deletion(self.db, "product", product.id, product.tenant_id, warehouse_id=product.warehouse_id)
         self.db.delete(product)
         self.db.commit()
         return True
@@ -398,7 +399,8 @@ class ProductService(TenantService):
         if not existing:
             return False
         from api.services.tombstone_service import record_deletion
-        record_deletion(self.db, "product_warehouse_price", existing.id, existing.tenant_id)
+        record_deletion(self.db, "product_warehouse_price", existing.id, existing.tenant_id,
+                         warehouse_id=existing.warehouse_id)
         self.db.delete(existing)
         self.db.commit()
         return True

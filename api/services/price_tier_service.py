@@ -73,7 +73,7 @@ def set_tiers(db: Session, tenant_id, product_id: str, warehouse_id: str, tiers)
         ProductPriceTier.warehouse_id == warehouse_id,
     ).all()
     for t in to_remove:
-        record_deletion(db, "product_price_tier", t.id, tenant_id)
+        record_deletion(db, "product_price_tier", t.id, tenant_id, warehouse_id=t.warehouse_id)
         db.delete(t)
     for qty, price in pairs:
         db.add(ProductPriceTier(

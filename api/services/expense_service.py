@@ -121,7 +121,7 @@ def delete_expense(db: Session, expense_id: str, tenant_id: str | None = None) -
     if not expense:
         return False
     from api.services.tombstone_service import record_deletion
-    record_deletion(db, "expense", expense.id, expense.tenant_id)
+    record_deletion(db, "expense", expense.id, expense.tenant_id, warehouse_id=expense.warehouse_id)
     db.delete(expense)
     db.commit()
     return True

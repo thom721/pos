@@ -608,7 +608,7 @@ def delete_register(
         )
     _billing.close_extra(db, reg.id)
     from api.services.tombstone_service import record_deletion
-    record_deletion(db, "pos_register", reg.id, reg.tenant_id)
+    record_deletion(db, "pos_register", reg.id, reg.tenant_id, warehouse_id=reg.warehouse_id)
     db.delete(reg)
     db.commit()
     return {"ok": True}

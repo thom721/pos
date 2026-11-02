@@ -124,7 +124,7 @@ class CustomerService(TenantService):
         if not customer:
             return False
         from api.services.tombstone_service import record_deletion
-        record_deletion(self.db, "customer", customer.id, customer.tenant_id)
+        record_deletion(self.db, "customer", customer.id, customer.tenant_id, warehouse_id=customer.warehouse_id)
         self.db.delete(customer)
         self.db.commit()
         return True

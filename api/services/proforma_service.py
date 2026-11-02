@@ -99,7 +99,7 @@ def update_proforma(db: Session, proforma_id: str, data: ProformaUpdate, tenant_
         # Replace items
         from api.services.tombstone_service import record_deletion
         for item in proforma.items:
-            record_deletion(db, "proforma_item", item.id, proforma.tenant_id)
+            record_deletion(db, "proforma_item", item.id, proforma.tenant_id, warehouse_id=item.warehouse_id)
             db.delete(item)
         db.flush()
         for item in data.items:
@@ -125,7 +125,7 @@ def delete_proforma(db: Session, proforma_id: str, tenant_id: str | None = None)
     # les supprime silencieusement ; tombstone explicite ici, sinon leur
     # suppression ne serait jamais propagee.
     for item in proforma.items:
-        record_deletion(db, "proforma_item", item.id, proforma.tenant_id)
-    record_deletion(db, "proforma", proforma.id, proforma.tenant_id)
+        record_deletion(db, "proforma_item", item.id, proforma.tenant_id, warehouse_id=item.warehouse_id)
+    record_deletion(db, "proforma", proforma.id, proforma.tenant_id, warehouse_id=proforma.warehouse_id)
     db.delete(proforma)
     db.commit()

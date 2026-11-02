@@ -1002,7 +1002,7 @@ def delete_tenant_register(
                    "définitivement sans perdre cet historique. Désactivez-la à la place.",
         )
     from api.services.tombstone_service import record_deletion
-    record_deletion(db, "pos_register", reg.id, tenant_id)
+    record_deletion(db, "pos_register", reg.id, tenant_id, warehouse_id=reg.warehouse_id)
     db.delete(reg)
     db.commit()
     _log.info("Caisse supprimée définitivement: %s (tenant=%s)", register_id, tenant_id)

@@ -4,14 +4,21 @@ from api.models.SyncTombstone import SyncTombstone
 from api.core.dt_coerce import now_local
 
 
-def record_deletion(db: Session, entity_type: str, record_id, tenant_id: str | None = None) -> None:
+def record_deletion(db: Session, entity_type: str, record_id, tenant_id: str | None = None,
+                     warehouse_id: str | None = None) -> None:
     """A appeler CHAQUE FOIS qu'une ligne d'une entite listee dans
     SYNC_ENTITIES est supprimee definitivement — AVANT le commit qui
     supprime la ligne elle-meme, dans la MEME transaction (db.add ici,
     db.delete(obj) a cote, un seul db.commit() a la fin). Sans cet appel,
     la suppression n'est jamais visible par l'autre cote : le pull/push
     normal ne filtre que sur updated_at, une ligne supprimee n'a plus de
-    ligne a filtrer."""
+    ligne a filtrer.
+
+    warehouse_id : depot d'origine de la ligne supprimee, quand il est
+    connu et pertinent (laisser None pour une entite partagee au niveau
+    tenant — voir _SHARED_TENANT_ETYPES/_scope_to_warehouse). Permet au
+    pull-tombstones de ne renvoyer a un serveur local que les suppressions
+    de SON depot (+ celles partagees), au meme titre que le pull normal."""
     record_id = str(record_id)
     existing = db.query(SyncTombstone).filter_by(
         entity_type=entity_type, record_id=record_id,
@@ -20,7 +27,10 @@ def record_deletion(db: Session, entity_type: str, record_id, tenant_id: str | N
         existing.updated_at = now_local()
         if tenant_id and not existing.tenant_id:
             existing.tenant_id = tenant_id
+        if warehouse_id and not existing.warehouse_id:
+            existing.warehouse_id = warehouse_id
         return
     db.add(SyncTombstone(
         entity_type=entity_type, record_id=record_id, tenant_id=tenant_id,
+        warehouse_id=warehouse_id,
     ))
