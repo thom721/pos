@@ -88,10 +88,14 @@ def _compute_reconciliation(db: Session, session: CashierSession, closed_at: dat
     # Recouvrement de dettes : paiements de cette session sur des ventes
     # creees AVANT son ouverture - deja inclus dans cash/card/mobile/bank
     # ci-dessus, ceci n'est qu'une ventilation informative, pas un montant
-    # a ajouter en plus.
-    debt_collected = float(db.query(func.coalesce(func.sum(Payment.amount), 0))
-        .join(Sale, Sale.id == Payment.reference_id)
-        .filter(
+    # a ajouter en plus. Ventile aussi par methode : un gros client qui
+    # rembourse sa dette par virement bancaire doit apparaitre sous
+    # "Ventes banque", pas sous "Ventes cash" (voir pos_screen.dart,
+    # _CloseSessionDialog).
+    def _debt_collected(method: str | None = None) -> float:
+        q = db.query(func.coalesce(func.sum(Payment.amount), 0)).join(
+            Sale, Sale.id == Payment.reference_id
+        ).filter(
             Payment.tenant_id      == tid,
             Payment.user_id        == uid,
             Payment.reference_type == "SALE",
@@ -99,7 +103,14 @@ def _compute_reconciliation(db: Session, session: CashierSession, closed_at: dat
             Payment.created_at     <= until,
             Payment.amount         > 0,
             Sale.created_at        < since,
-        ).scalar() or 0)
+        )
+        if method:
+            q = q.filter(Payment.method == method)
+        return float(q.scalar() or 0)
+
+    debt_collected      = _debt_collected()
+    debt_collected_cash  = _debt_collected("cash")
+    debt_collected_bank  = _debt_collected("bank")
 
     return {
         "total_cash_sales":         cash,
@@ -110,6 +121,8 @@ def _compute_reconciliation(db: Session, session: CashierSession, closed_at: dat
         "expected_closing_balance": expected,
         "credit_sold":              credit_sold,
         "debt_collected":           debt_collected,
+        "debt_collected_cash":      debt_collected_cash,
+        "debt_collected_bank":      debt_collected_bank,
     }
 
 
@@ -571,6 +584,8 @@ def session_summary(
         "expected_closing_balance": recon["expected_closing_balance"],
         "credit_sold":              recon["credit_sold"],
         "debt_collected":           recon["debt_collected"],
+        "debt_collected_cash":      recon["debt_collected_cash"],
+        "debt_collected_bank":      recon["debt_collected_bank"],
     }
 
 

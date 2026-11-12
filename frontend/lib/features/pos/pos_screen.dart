@@ -3172,7 +3172,8 @@ class _CloseSessionDialogState extends ConsumerState<_CloseSessionDialog> {
   double _refunds  = 0;
   double _expected = 0;
   double _creditSold     = 0;
-  double _debtCollected  = 0;
+  double _debtCollectedCash = 0;
+  double _debtCollectedBank = 0;
 
   @override
   void initState() {
@@ -3203,7 +3204,8 @@ class _CloseSessionDialogState extends ConsumerState<_CloseSessionDialog> {
         _refunds  = (d['total_refunds_cash']        as num?)?.toDouble() ?? 0;
         _expected = (d['expected_closing_balance']  as num?)?.toDouble() ?? _opening;
         _creditSold    = (d['credit_sold']    as num?)?.toDouble() ?? 0;
-        _debtCollected = (d['debt_collected'] as num?)?.toDouble() ?? 0;
+        _debtCollectedCash = (d['debt_collected_cash'] as num?)?.toDouble() ?? 0;
+        _debtCollectedBank = (d['debt_collected_bank'] as num?)?.toDouble() ?? 0;
         // Ne pas pré-remplir le solde réel — le caissier doit compter
         _loadingSummary = false;
       });
@@ -3327,11 +3329,13 @@ class _CloseSessionDialogState extends ConsumerState<_CloseSessionDialog> {
                   const SizedBox(height: 8),
                   _InfoRow('Fond initial',  formatMoney(_opening, settings)),
                   if (_cash   > 0) _InfoRow('Ventes cash',   '+ ${formatMoney(_cash, settings)}',   color: AppColors.success),
-                  if (_debtCollected > 0) _InfoRow('  dont recouvrement de dettes',
-                      formatMoney(_debtCollected, settings), color: AppColors.textSecondary),
+                  if (_debtCollectedCash > 0) _InfoRow('  dont recouvrement de dettes',
+                      formatMoney(_debtCollectedCash, settings), color: AppColors.textSecondary),
                   if (_card   > 0) _InfoRow('Ventes carte',  '+ ${formatMoney(_card, settings)}',   color: AppColors.success),
                   if (_mobile > 0) _InfoRow('Ventes mobile', '+ ${formatMoney(_mobile, settings)}', color: AppColors.success),
                   if (_bank   > 0) _InfoRow('Ventes banque', '+ ${formatMoney(_bank, settings)}',   color: AppColors.success),
+                  if (_debtCollectedBank > 0) _InfoRow('  dont recouvrement de dettes',
+                      formatMoney(_debtCollectedBank, settings), color: AppColors.textSecondary),
                   if (_refunds > 0) _InfoRow('Remboursements cash', '- ${formatMoney(_refunds, settings)}',
                       color: AppColors.error),
                   const Divider(height: 16),

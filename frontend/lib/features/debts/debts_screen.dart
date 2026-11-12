@@ -413,68 +413,106 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
     final ctrl = TextEditingController(
         text: toDisplayAmount(widget.debt.balance, dialogSettings).toStringAsFixed(2));
     final messenger = ScaffoldMessenger.of(context);
+    String method = 'CASH';
+
+    const methods = [
+      ('CASH',   'Espèces',          Icons.payments_rounded),
+      ('BANK',   'Virement bancaire', Icons.account_balance_rounded),
+      ('MOBILE', 'Mobile',            Icons.phone_android_rounded),
+      ('CARD',   'Carte',             Icons.credit_card_rounded),
+    ];
 
     showDialog(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: const Text('Ajouter un paiement'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: ctrl,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                  labelText: 'Montant (${dialogSettings.currencySymbol.trim()})'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dialogCtx),
-              child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () async {
-              final amount = toHtgAmount(
-                  double.tryParse(ctrl.text) ?? 0, dialogSettings);
-              if (amount <= 0) return;
-              if (amount > widget.debt.balance + 0.005) {
-                Navigator.pop(dialogCtx);
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Le montant ne peut pas dépasser le solde dû (${formatMoney(widget.debt.balance, dialogSettings)}).'),
-                    backgroundColor: AppColors.error,
-                  ),
-                );
-                return;
-              }
-              Navigator.pop(dialogCtx);
-              setState(() => _paying = true);
-              try {
-                await SaleRepository().addPayment(
-                  referenceType: widget.debt.referenceType,
-                  referenceId: widget.debt.referenceId,
-                  amount: amount,
-                  method: 'CASH',
-                );
-                ref.invalidate(debtsProvider);
-              } catch (e) {
-                if (mounted) {
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) => AlertDialog(
+          title: const Text('Ajouter un paiement'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: ctrl,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                    labelText: 'Montant (${dialogSettings.currencySymbol.trim()})'),
+              ),
+              const SizedBox(height: 16),
+              const Text('Mode de paiement :',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: methods.map((m) {
+                  final selected = method == m.$1;
+                  return ChoiceChip(
+                    label: Text(m.$2, style: const TextStyle(fontSize: 12)),
+                    avatar: Icon(m.$3,
+                        size: 14,
+                        color: selected ? AppColors.primary : AppColors.textSecondary),
+                    selected: selected,
+                    onSelected: (_) => setDialogState(() => method = m.$1),
+                  );
+                }).toList(),
+              ),
+              if (method == 'BANK') ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'Ce montant n\'entre pas dans la caisse — il sera exclu du '
+                  'solde théorique à la fermeture et affiché séparément dans le rapport.',
+                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text('Annuler')),
+            ElevatedButton(
+              onPressed: () async {
+                final amount = toHtgAmount(
+                    double.tryParse(ctrl.text) ?? 0, dialogSettings);
+                if (amount <= 0) return;
+                if (amount > widget.debt.balance + 0.005) {
+                  Navigator.pop(dialogCtx);
                   messenger.showSnackBar(
-                    const SnackBar(
-                      content: Text('Erreur lors du paiement'),
+                    SnackBar(
+                      content: Text(
+                        'Le montant ne peut pas dépasser le solde dû (${formatMoney(widget.debt.balance, dialogSettings)}).'),
                       backgroundColor: AppColors.error,
                     ),
                   );
+                  return;
                 }
-              } finally {
-                if (mounted) setState(() => _paying = false);
-              }
-            },
-            child: const Text('Confirmer'),
-          ),
-        ],
+                Navigator.pop(dialogCtx);
+                setState(() => _paying = true);
+                try {
+                  await SaleRepository().addPayment(
+                    referenceType: widget.debt.referenceType,
+                    referenceId: widget.debt.referenceId,
+                    amount: amount,
+                    method: method,
+                  );
+                  ref.invalidate(debtsProvider);
+                } catch (e) {
+                  if (mounted) {
+                    messenger.showSnackBar(
+                      const SnackBar(
+                        content: Text('Erreur lors du paiement'),
+                        backgroundColor: AppColors.error,
+                      ),
+                    );
+                  }
+                } finally {
+                  if (mounted) setState(() => _paying = false);
+                }
+              },
+              child: const Text('Confirmer'),
+            ),
+          ],
+        ),
       ),
     );
   }
