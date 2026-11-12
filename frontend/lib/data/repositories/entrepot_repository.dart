@@ -108,12 +108,16 @@ class EntrepotRepository {
   Future<PaginatedResponse<StockMovementModel>> getMovements({
     String? warehouseId,
     String? productId,
+    DateTime? dateFrom,
+    DateTime? dateTo,
     int page = 1,
     int limit = 20,
   }) async {
     final res = await dio.get('/api/stock-movements/', queryParameters: {
       if (warehouseId != null && warehouseId.isNotEmpty) 'warehouse_id': warehouseId,
       if (productId != null && productId.isNotEmpty) 'product_id': productId,
+      if (dateFrom != null) 'date_from': dateFrom.toIso8601String(),
+      if (dateTo != null) 'date_to': dateTo.toIso8601String(),
       'page': page,
       'limit': limit,
     });

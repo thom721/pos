@@ -28,6 +28,7 @@ import 'package:pos_connect/shared/widgets/transfer_to_entrepot_dialog.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
 import 'package:pos_connect/providers/price_tier_provider.dart';
 import 'package:pos_connect/data/models/price_tier_model.dart';
+import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 
 String _imgUrl(String path) => '${dio.options.baseUrl}$path';
 
@@ -1372,48 +1373,138 @@ class _StockHistoryDialog extends ConsumerStatefulWidget {
 
 class _StockHistoryDialogState extends ConsumerState<_StockHistoryDialog> {
   late Future<PaginatedResponse<StockMovementModel>> _future;
+  final _scrollCtrl = ScrollController();
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
 
   @override
   void initState() {
     super.initState();
+    _reload();
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _reload() {
     _future = ref.read(entrepotRepositoryProvider).getMovements(
           productId: widget.product.id,
-          limit: 50,
+          dateFrom: _dateFrom,
+          // Date seule (minuit) -> inclure toute la journée sélectionnée.
+          dateTo: _dateTo == null
+              ? null
+              : DateTime(_dateTo!.year, _dateTo!.month, _dateTo!.day, 23, 59, 59),
+          limit: 200,
         );
+  }
+
+  Future<void> _pickDate({required bool isFrom}) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: (isFrom ? _dateFrom : _dateTo) ?? haitiNow(),
+      firstDate: DateTime(2020),
+      lastDate: haitiNow(),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (isFrom) {
+        _dateFrom = picked;
+      } else {
+        _dateTo = picked;
+      }
+      _reload();
+    });
+  }
+
+  void _clearDates() {
+    setState(() {
+      _dateFrom = null;
+      _dateTo = null;
+      _reload();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final dateFmt = DateFormat('dd/MM/yyyy');
     return AlertDialog(
       title: Text('Historique — ${widget.product.name}', style: const TextStyle(fontSize: 15)),
       content: SizedBox(
         width: 420,
-        height: 420,
-        child: FutureBuilder<PaginatedResponse<StockMovementModel>>(
-          future: _future,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(
-                child: Text('Erreur : ${extractAnyError(snapshot.error ?? "inconnue")}',
-                    style: const TextStyle(color: AppColors.error)),
-              );
-            }
-            final movements = snapshot.data!.data;
-            if (movements.isEmpty) {
-              return const Center(
-                child: Text('Aucun mouvement enregistré',
-                    style: TextStyle(color: AppColors.textSecondary)),
-              );
-            }
-            return ListView.separated(
-              itemCount: movements.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, i) => _StockHistoryRow(mv: movements[i]),
-            );
-          },
+        height: 460,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Filtre par date ───────────────────────────────────────────
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _pickDate(isFrom: true),
+                    icon: const Icon(Icons.calendar_today_rounded, size: 14),
+                    label: Text(
+                      _dateFrom == null ? 'Du' : dateFmt.format(_dateFrom!),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _pickDate(isFrom: false),
+                    icon: const Icon(Icons.calendar_today_rounded, size: 14),
+                    label: Text(
+                      _dateTo == null ? 'Au' : dateFmt.format(_dateTo!),
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
+                if (_dateFrom != null || _dateTo != null)
+                  IconButton(
+                    onPressed: _clearDates,
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    tooltip: 'Effacer le filtre',
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: FutureBuilder<PaginatedResponse<StockMovementModel>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text('Erreur : ${extractAnyError(snapshot.error ?? "inconnue")}',
+                          style: const TextStyle(color: AppColors.error)),
+                    );
+                  }
+                  final movements = snapshot.data!.data;
+                  if (movements.isEmpty) {
+                    return const Center(
+                      child: Text('Aucun mouvement enregistré',
+                          style: TextStyle(color: AppColors.textSecondary)),
+                    );
+                  }
+                  return Scrollbar(
+                    controller: _scrollCtrl,
+                    thumbVisibility: true,
+                    child: ListView.separated(
+                      controller: _scrollCtrl,
+                      itemCount: movements.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, i) => _StockHistoryRow(mv: movements[i]),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
       actions: [
