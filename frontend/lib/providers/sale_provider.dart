@@ -105,13 +105,19 @@ final dashboardSalesProvider =
 /// Carte dashboard "Recouvrement de dettes" : paiements du jour sur des
 /// dettes antérieures, scope tenant ou caissier selon reports.read_all
 /// (décidé côté backend — voir GET /api/sessions/debt-collected-today).
-final debtCollectedTodayProvider = FutureProvider.autoDispose<double>((ref) async {
+/// (total, dont par virement bancaire) — un recouvrement par banque ne doit
+/// pas se noyer dans le total affiché sans distinction.
+final debtCollectedTodayProvider =
+    FutureProvider.autoDispose<(double total, double bank)>((ref) async {
   ref.watch(syncEpochProvider);
   try {
     final res = await dio.get('/api/sessions/debt-collected-today');
     final d = res.data as Map<String, dynamic>;
-    return (d['debt_collected_today'] as num?)?.toDouble() ?? 0.0;
+    return (
+      (d['debt_collected_today'] as num?)?.toDouble() ?? 0.0,
+      (d['debt_collected_today_bank'] as num?)?.toDouble() ?? 0.0,
+    );
   } catch (_) {
-    return 0.0;
+    return (0.0, 0.0);
   }
 });

@@ -608,27 +608,37 @@ def debt_collected_today(
     until = datetime.fromisoformat(date_to) if date_to else now_local()
     tid   = current_user.tenant_id
 
-    query = (
-        db.query(func.coalesce(func.sum(Payment.amount), 0))
-        .join(Sale, Sale.id == Payment.reference_id)
-        .filter(
-            Payment.tenant_id      == tid,
-            Payment.reference_type == "SALE",
-            Payment.created_at     >= since,
-            Payment.created_at     <= until,
-            Payment.amount         > 0,
-            Sale.created_at        < since,
+    def _query(method: str | None = None):
+        q = (
+            db.query(func.coalesce(func.sum(Payment.amount), 0))
+            .join(Sale, Sale.id == Payment.reference_id)
+            .filter(
+                Payment.tenant_id      == tid,
+                Payment.reference_type == "SALE",
+                Payment.created_at     >= since,
+                Payment.created_at     <= until,
+                Payment.amount         > 0,
+                Sale.created_at        < since,
+            )
         )
-    )
-    can_see_all = _has_perm(
-        current_user.permissions or [],
-        current_user.roles or [],
-        P.REPORTS_READ_ALL,
-    )
-    if not can_see_all:
-        query = query.filter(Payment.user_id == current_user.id)
+        can_see_all = _has_perm(
+            current_user.permissions or [],
+            current_user.roles or [],
+            P.REPORTS_READ_ALL,
+        )
+        if not can_see_all:
+            q = q.filter(Payment.user_id == current_user.id)
+        if method:
+            q = q.filter(Payment.method == method)
+        return float(q.scalar() or 0)
 
-    return {"debt_collected_today": float(query.scalar() or 0)}
+    return {
+        "debt_collected_today":      _query(),
+        # Ventilation par methode — un gros client qui rembourse par
+        # virement ne doit pas se noyer dans le total "especes" affiche
+        # sur la carte dashboard/rapport "Recouvrement de dettes".
+        "debt_collected_today_bank": _query("bank"),
+    }
 
 
 @router.post("/{session_id}/close")

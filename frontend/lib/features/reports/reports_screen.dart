@@ -172,8 +172,9 @@ final reportReturnsSummaryProvider =
 
 /// Recouvrement de dettes de la période — paiements sur des ventes créées
 /// avant le début de la période (voir GET /api/sessions/debt-collected-today).
+/// (total, dont par virement bancaire).
 final reportDebtCollectedProvider =
-    FutureProvider.autoDispose<double>((ref) async {
+    FutureProvider.autoDispose<(double total, double bank)>((ref) async {
   final params = ref.watch(reportParamsProvider);
   final (from, to) = params.effectiveRange;
   final res = await dio.get('/api/sessions/debt-collected-today', queryParameters: {
@@ -181,7 +182,10 @@ final reportDebtCollectedProvider =
     'date_to':   haitiMidnightToUtcIso(to),
   });
   final d = res.data as Map<String, dynamic>;
-  return (d['debt_collected_today'] as num?)?.toDouble() ?? 0.0;
+  return (
+    (d['debt_collected_today'] as num?)?.toDouble() ?? 0.0,
+    (d['debt_collected_today_bank'] as num?)?.toDouble() ?? 0.0,
+  );
 });
 
 class QuantityCategoryGroup {
@@ -456,7 +460,7 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
     final returnsAsync = ref.watch(reportReturnsSummaryProvider);
     final totalReturns = returnsAsync.valueOrNull?.$1 ?? 0.0;
     final debtCollectedAsync = ref.watch(reportDebtCollectedProvider);
-    final totalDebtCollected = debtCollectedAsync.valueOrNull ?? 0.0;
+    final (totalDebtCollected, debtCollectedBank) = debtCollectedAsync.valueOrNull ?? (0.0, 0.0);
 
     // Unique users from current period's sales
     final uniqueUsers = widget.allSales
@@ -642,6 +646,9 @@ class _ReportContentState extends ConsumerState<_ReportContent> {
                 value: fmt.format(toDisplayAmount(totalDebtCollected, settings)),
                 icon: Icons.price_check_rounded,
                 color: AppColors.success,
+                subtitle: debtCollectedBank > 0
+                    ? 'dont banque: ${fmt.format(toDisplayAmount(debtCollectedBank, settings))}'
+                    : null,
               ),
               _KpiCard(
                 label: 'Nb ventes',
@@ -1237,6 +1244,7 @@ Future<void> generateSalesReportPdf(
       (s, e) => s + e.discount + e.totalItemsDiscount + e.totalCatalogItemDiscount);
   double totalReturns = 0;
   double totalDebtCollected = 0;
+  double totalDebtCollectedBank = 0;
   try {
     final (from, to) = params.effectiveRange;
     final (refund, _) = await _fetchReturnsSummary(from, to);
@@ -1245,7 +1253,9 @@ Future<void> generateSalesReportPdf(
       'date_from': haitiMidnightToUtcIso(from),
       'date_to':   haitiMidnightToUtcIso(to),
     });
-    totalDebtCollected = ((res.data as Map<String, dynamic>)['debt_collected_today'] as num?)?.toDouble() ?? 0.0;
+    final d = res.data as Map<String, dynamic>;
+    totalDebtCollected = (d['debt_collected_today'] as num?)?.toDouble() ?? 0.0;
+    totalDebtCollectedBank = (d['debt_collected_today_bank'] as num?)?.toDouble() ?? 0.0;
   } catch (_) {
     // Non bloquant pour la génération du PDF — affiche 0 si indisponible
   }
@@ -1462,7 +1472,10 @@ Future<void> generateSalesReportPdf(
                       child: _pdfKpiCell('Vente crédit', mon((rev - paid).clamp(0.0, double.infinity)), bold)),
                   pw.SizedBox(width: 10),
                   pw.Expanded(
-                      child: _pdfKpiCell('Recouvrement de dettes', mon(totalDebtCollected), bold)),
+                      child: _pdfKpiCell('Recouvrement de dettes', mon(totalDebtCollected), bold,
+                          subtitle: totalDebtCollectedBank > 0
+                              ? 'dont banque: ${mon(totalDebtCollectedBank)}'
+                              : null)),
                 ],
               ),
             ],
@@ -1737,7 +1750,7 @@ Future<void> generateSalesReportPdf(
   }
 }
 
-pw.Widget _pdfKpiCell(String label, String value, pw.Font bold) {
+pw.Widget _pdfKpiCell(String label, String value, pw.Font bold, {String? subtitle}) {
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
@@ -1747,6 +1760,10 @@ pw.Widget _pdfKpiCell(String label, String value, pw.Font bold) {
       pw.Text(value,
           style: pw.TextStyle(
               font: bold, fontSize: 9, color: PdfColors.grey900)),
+      if (subtitle != null) ...[
+        pw.SizedBox(height: 1),
+        pw.Text(subtitle, style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey700)),
+      ],
     ],
   );
 }
@@ -1884,13 +1901,15 @@ class _KpiCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final double width;
+  final String? subtitle;
 
   const _KpiCard(
       {required this.label,
       required this.value,
       required this.icon,
       required this.color,
-      this.width = 200});
+      this.width = 200,
+      this.subtitle});
 
   @override
   Widget build(BuildContext context) {
@@ -1924,6 +1943,11 @@ class _KpiCard extends StatelessWidget {
           Text(label,
               style: const TextStyle(
                   fontSize: 12, color: AppColors.textSecondary)),
+          if (subtitle != null) ...[
+            const SizedBox(height: 1),
+            Text(subtitle!,
+                style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+          ],
         ],
       ),
     );

@@ -168,11 +168,13 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                   Consumer(builder: (context, ref, _) {
                     final debtCollectedAsync = ref.watch(debtCollectedTodayProvider);
+                    final (total, bank) = debtCollectedAsync.valueOrNull ?? (0.0, 0.0);
                     return StatCard(
                       label: 'Recouvrement de dettes',
-                      value: formatMoney(debtCollectedAsync.valueOrNull ?? 0, settings),
+                      value: formatMoney(total, settings),
                       icon: Icons.price_check_rounded,
                       color: AppColors.success,
+                      subtitle: bank > 0 ? 'dont banque: ${formatMoney(bank, settings)}' : null,
                     );
                   }),
                   if (totalDiscount > 0)
