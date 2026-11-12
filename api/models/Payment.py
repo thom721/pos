@@ -17,6 +17,11 @@ class Payment(UUIDBase):
     amount  = Column(Numeric(12, 2))
     method  = Column(String(20))
     note    = Column(Text, nullable=True)
+    # Virement bancaire / mobile money : identifiant côté banque pour la
+    # réconciliation (ex: numéro de transaction MonCash/NatCash, référence
+    # de virement), et photo/scan du reçu papier remis par le client.
+    bank_reference = Column(String(100), nullable=True)
+    receipt_url    = Column(String(255), nullable=True)
     user_id = Column(String(36), ForeignKey("users.id"))
 
     user = relationship("User", back_populates="payments")

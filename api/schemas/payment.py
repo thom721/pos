@@ -17,6 +17,10 @@ class PaymentCreate(BaseModel):
     reference_id: str
     amount: float
     method: str  # CASH, BANK, MOBILE
+    # Virement bancaire / mobile money : identifiant de transaction côté
+    # banque, pour la réconciliation (le reçu photo/scan se téléverse
+    # séparément via POST /api/payments/{id}/receipt, une fois le paiement créé).
+    bank_reference: Optional[str] = None
 
 
 class PaymentResponse(BaseModel):
@@ -25,6 +29,8 @@ class PaymentResponse(BaseModel):
     reference_id: str
     amount: Decimal
     method: str
+    bank_reference: Optional[str] = None
+    receipt_url: Optional[str] = None
     created_at: datetime
     user: Optional[PaymentUserInfo] = None
 

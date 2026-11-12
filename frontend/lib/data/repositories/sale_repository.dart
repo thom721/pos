@@ -211,21 +211,45 @@ class SaleRepository {
     }
   }
 
-  Future<void> addPayment({
+  /// Retourne l'id du paiement créé — nécessaire pour y rattacher un reçu
+  /// via [uploadPaymentReceipt] (téléversé en second temps, voir
+  /// debts_screen.dart).
+  Future<String?> addPayment({
     required String referenceType,
     required String referenceId,
     required double amount,
     required String method,
+    String? bankReference,
   }) async {
     try {
-      await dio.post('/api/payments/', data: {
+      final res = await dio.post('/api/payments/', data: {
         'reference_type': referenceType,
         'reference_id':   referenceId,
         'amount':         amount,
         'method':         method,
+        if (bankReference != null && bankReference.isNotEmpty) 'bank_reference': bankReference,
       });
+      return res.data['id']?.toString();
     } catch (e) {
       throw Exception(extractAnyError(e));
     }
+  }
+
+  Future<void> uploadPaymentReceipt(
+    String paymentId,
+    Uint8List bytes,
+    String filename,
+  ) async {
+    final ext = filename.split('.').last.toLowerCase();
+    final mime = switch (ext) {
+      'png'  => DioMediaType('image', 'png'),
+      'webp' => DioMediaType('image', 'webp'),
+      'pdf'  => DioMediaType('application', 'pdf'),
+      _      => DioMediaType('image', 'jpeg'),
+    };
+    final formData = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: filename, contentType: mime),
+    });
+    await dio.post('/api/payments/$paymentId/receipt', data: formData);
   }
 }

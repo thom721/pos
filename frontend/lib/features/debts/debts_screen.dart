@@ -1,9 +1,14 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:pos_connect/core/responsive.dart';
 import 'package:pos_connect/core/theme.dart';
 import 'package:pos_connect/core/currency.dart';
+import 'package:pos_connect/data/api/api_client.dart';
 import 'package:pos_connect/data/models/debt_model.dart';
 import 'package:pos_connect/data/models/payment_model.dart';
 import 'package:pos_connect/data/repositories/sale_repository.dart';
@@ -412,8 +417,11 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
     final dialogSettings = ref.read(settingsProvider);
     final ctrl = TextEditingController(
         text: toDisplayAmount(widget.debt.balance, dialogSettings).toStringAsFixed(2));
+    final refCtrl = TextEditingController();
     final messenger = ScaffoldMessenger.of(context);
     String method = 'CASH';
+    Uint8List? receiptBytes;
+    String? receiptFilename;
 
     const methods = [
       ('CASH',   'Espèces',          Icons.payments_rounded),
@@ -464,6 +472,38 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
                   style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
                 ),
               ],
+              if (method == 'BANK' || method == 'MOBILE') ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: refCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Référence de transaction (optionnel)',
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final result = await FilePicker.platform.pickFiles(
+                      type: FileType.custom,
+                      allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+                      withData: true,
+                    );
+                    final picked = result?.files.firstOrNull;
+                    if (picked?.bytes == null) return;
+                    setDialogState(() {
+                      receiptBytes = picked!.bytes;
+                      receiptFilename = picked.name;
+                    });
+                  },
+                  icon: const Icon(Icons.upload_file_rounded, size: 16),
+                  label: Text(
+                    receiptFilename ?? 'Téléverser le reçu (optionnel)',
+                    style: const TextStyle(fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ],
           ),
           actions: [
@@ -489,12 +529,29 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
                 Navigator.pop(dialogCtx);
                 setState(() => _paying = true);
                 try {
-                  await SaleRepository().addPayment(
+                  final paymentId = await SaleRepository().addPayment(
                     referenceType: widget.debt.referenceType,
                     referenceId: widget.debt.referenceId,
                     amount: amount,
                     method: method,
+                    bankReference: refCtrl.text.trim().isEmpty ? null : refCtrl.text.trim(),
                   );
+                  if (paymentId != null && receiptBytes != null && receiptFilename != null) {
+                    try {
+                      await SaleRepository().uploadPaymentReceipt(
+                        paymentId, receiptBytes!, receiptFilename!,
+                      );
+                    } catch (_) {
+                      // Le paiement est déjà enregistré — un échec d'upload du
+                      // reçu ne doit pas faire croire que le paiement a échoué.
+                      if (mounted) {
+                        messenger.showSnackBar(const SnackBar(
+                          content: Text('Paiement enregistré, mais le reçu n\'a pas pu être téléversé.'),
+                          backgroundColor: AppColors.warning,
+                        ));
+                      }
+                    }
+                  }
                   ref.invalidate(debtsProvider);
                 } catch (e) {
                   if (mounted) {
@@ -826,6 +883,28 @@ class _PaymentHistoryDialog extends ConsumerWidget {
                                           ],
                                         ],
                                       ),
+                                      if (p.bankReference != null && p.bankReference!.isNotEmpty)
+                                        Text('Réf: ${p.bankReference}',
+                                            style: const TextStyle(
+                                                fontSize: 10, color: AppColors.textSecondary)),
+                                      if (p.receiptUrl != null && p.receiptUrl!.isNotEmpty)
+                                        InkWell(
+                                          onTap: () => launchUrl(
+                                              Uri.parse('${dio.options.baseUrl}${p.receiptUrl}'),
+                                              mode: LaunchMode.externalApplication),
+                                          child: const Row(
+                                            children: [
+                                              Icon(Icons.receipt_long_rounded,
+                                                  size: 12, color: AppColors.primary),
+                                              SizedBox(width: 3),
+                                              Text('Voir le reçu',
+                                                  style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: AppColors.primary,
+                                                      decoration: TextDecoration.underline)),
+                                            ],
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),

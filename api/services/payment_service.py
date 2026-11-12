@@ -44,6 +44,7 @@ def add_payment(db: Session, data, user_id: str, tenant_id: str | None = None):
         reference_id=reference_id,
         amount=amount,
         method=data.method.upper(),
+        bank_reference=getattr(data, "bank_reference", None),
         user_id=user_id
     )
     if tenant_id:

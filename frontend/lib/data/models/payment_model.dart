@@ -6,6 +6,8 @@ class PaymentModel {
   final String referenceId;
   final double amount;
   final String method;
+  final String? bankReference;
+  final String? receiptUrl;
   final DateTime createdAt;
   final String? userFullName;
 
@@ -15,6 +17,8 @@ class PaymentModel {
     required this.referenceId,
     required this.amount,
     required this.method,
+    this.bankReference,
+    this.receiptUrl,
     required this.createdAt,
     this.userFullName,
   });
@@ -27,6 +31,8 @@ class PaymentModel {
       referenceId: json['reference_id']?.toString() ?? '',
       amount: double.tryParse(json['amount']?.toString() ?? '0') ?? 0,
       method: json['method']?.toString() ?? 'CASH',
+      bankReference: json['bank_reference']?.toString(),
+      receiptUrl: json['receipt_url']?.toString(),
       createdAt: parseApiDate(json['created_at']?.toString()),
       userFullName: user != null
           ? '${user['fname'] ?? ''} ${user['lname'] ?? ''}'.trim()
