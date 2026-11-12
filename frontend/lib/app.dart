@@ -21,9 +21,13 @@ import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/providers/sync_provider.dart';
 import 'package:pos_connect/providers/version_provider.dart';
 import 'package:pos_connect/providers/warehouse_provider.dart';
+import 'package:pos_connect/services/bluetooth_print_service.dart';
 import 'package:pos_connect/services/offline_cache_service.dart';
 import 'package:pos_connect/services/offline_queue_service.dart';
+import 'package:pos_connect/services/thermal_printer_service.dart';
 import 'package:pos_connect/services/websocket_service.dart';
+import 'package:pos_connect/data/models/paginated_response.dart';
+import 'package:pos_connect/data/models/stock_movement_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Android + Bureau (Windows/macOS/Linux) : push WebSocket temps réel dès
@@ -275,6 +279,61 @@ class _PosAppState extends ConsumerState<PosApp> {
         .whenComplete(() {
           if (mounted) ref.read(syncEpochProvider.notifier).state++;
         }).ignore();
+    }
+    // Fiche de réception auto-imprimée dès que la synchro ramène du stock
+    // entrant pour ce dépôt (achat, ajustement, transfert reçu…) — le
+    // caissier doit le voir sans avoir à vérifier manuellement.
+    _checkStockReceivingFiche(warehouseId).ignore();
+  }
+
+  /// Imprime automatiquement une fiche listant les mouvements de stock
+  /// entrants (type IN) pas encore vus, pour le dépôt actif. Curseur par
+  /// dépôt en SharedPreferences (pas de colonne "printed" côté serveur —
+  /// StockMovement est une entité synchronisée, voir SYNC_ENTITIES).
+  Future<void> _checkStockReceivingFiche(String? warehouseId) async {
+    if (kIsWeb || warehouseId == null) return;
+    final settings = ref.read(settingsProvider);
+    if (!settings.posAutoPrint) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'stock_fiche_last_printed_$warehouseId';
+      final sinceIso = prefs.getString(key);
+      final since = sinceIso != null ? DateTime.tryParse(sinceIso) : null;
+
+      final res = await dio.get('/api/stock-movements/', queryParameters: {
+        'warehouse_id': warehouseId,
+        'stock_type': 'IN',
+        'page': 1,
+        'limit': 100,
+        if (since != null) 'date_from': since.toIso8601String(),
+      }, options: kBackgroundOptions);
+      final page = PaginatedResponse.fromJson(res.data, StockMovementModel.fromJson);
+      // date_from est inclusif (>=) côté serveur — exclure la ligne déjà
+      // imprimée au tour précédent pour ne pas la réimprimer en boucle.
+      final fresh = since == null
+          ? page.data
+          : page.data.where((m) => m.createdAt.isAfter(since)).toList();
+      if (fresh.isEmpty) return;
+
+      if (_isAndroid) {
+        final isSunmi = await ThermalPrinterService.instance.isSunmiAvailable;
+        if (isSunmi) {
+          await ThermalPrinterService.instance.printStockReceiptFiche(fresh, settings);
+        } else if (settings.bluetoothPrinterMac.isNotEmpty) {
+          await BluetoothPrintService.instance.printStockReceiptFiche(fresh, settings);
+        }
+      } else {
+        await ThermalPrinterService.instance.printStockReceiptFiche(
+          fresh,
+          settings,
+          printerUrl: settings.posPrinterName.isNotEmpty ? settings.posPrinterName : null,
+        );
+      }
+
+      final maxTs = fresh.map((m) => m.createdAt).reduce((a, b) => a.isAfter(b) ? a : b);
+      await prefs.setString(key, maxTs.toIso8601String());
+    } catch (e) {
+      debugPrint('[StockFiche] erreur: $e');
     }
   }
 

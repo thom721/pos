@@ -10,10 +10,12 @@ import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
 import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
+import 'package:pos_connect/data/models/stock_movement_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/services/logo_cache_service.dart';
 import 'package:pos_connect/shared/utils/receipt_pdf.dart';
 import 'package:pos_connect/shared/utils/restaurant_bill_pdf.dart';
+import 'package:pos_connect/shared/utils/stock_receipt_pdf.dart';
 
 String _fmtQty(double q) =>
     q % 1 == 0 ? q.toInt().toString() : q.toStringAsFixed(2);
@@ -126,6 +128,84 @@ class ThermalPrinterService {
           paidAmount: paidAmount, paymentMethod: paymentMethod,
           printerUrl: printerUrl);
     }
+  }
+
+  /// Fiche de réception — imprimée automatiquement quand la synchro ramène
+  /// de nouveaux mouvements de stock entrants pour ce dépôt (voir app.dart,
+  /// _checkStockReceivingFiche).
+  Future<void> printStockReceiptFiche(
+    List<StockMovementModel> movements,
+    AppSettings settings, {
+    String? printerUrl,
+  }) async {
+    if (await _checkSunmi()) {
+      await _printSunmiStockFiche(movements, settings);
+    } else {
+      await _printSystemStockFiche(movements, settings, printerUrl: printerUrl);
+    }
+  }
+
+  Future<void> _printSunmiStockFiche(
+    List<StockMovementModel> movements,
+    AppSettings settings,
+  ) async {
+    final qtyFmt = NumberFormat('#,##0.##', 'fr');
+    final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+
+    await SunmiPrinter.printText(
+      '${settings.businessName}\n',
+      style: SunmiTextStyle(fontSize: 36, align: SunmiPrintAlign.CENTER, bold: true),
+    );
+    await _printSunmiLogo(settings);
+    await SunmiPrinter.line();
+    await SunmiPrinter.printText('FICHE DE RÉCEPTION\n',
+        style: SunmiTextStyle(fontSize: 28, bold: true, align: SunmiPrintAlign.CENTER));
+    await SunmiPrinter.printText('${dateFmt.format(haitiNow())}\n',
+        style: SunmiTextStyle(fontSize: 22, align: SunmiPrintAlign.CENTER));
+    await SunmiPrinter.line();
+
+    await SunmiPrinter.printRow(cols: [
+      SunmiColumn(text: 'PRODUIT', width: 22,
+          style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.LEFT)),
+      SunmiColumn(text: 'QTÉ', width: 10,
+          style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.RIGHT)),
+    ]);
+    await SunmiPrinter.line();
+    for (final m in movements) {
+      const maxName = 21;
+      final raw = m.productName ?? '—';
+      final name = raw.length > maxName ? '${raw.substring(0, maxName - 1)}…' : raw;
+      await SunmiPrinter.printRow(cols: [
+        SunmiColumn(text: name, width: 22,
+            style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
+        SunmiColumn(text: '+${qtyFmt.format(m.quantity)}', width: 10,
+            style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
+      ]);
+      await SunmiPrinter.printText(
+        '  ${m.sourceLabel.isNotEmpty ? m.sourceLabel : '—'} · ${dateFmt.format(m.createdAt)}\n',
+        style: SunmiTextStyle(fontSize: 18, align: SunmiPrintAlign.LEFT),
+      );
+    }
+    await SunmiPrinter.line();
+    await SunmiPrinter.printRow(cols: [
+      SunmiColumn(text: 'Total lignes', width: 22,
+          style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
+      SunmiColumn(text: '${movements.length}', width: 10,
+          style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.RIGHT)),
+    ]);
+    await SunmiPrinter.lineWrap(3);
+    try {
+      await SunmiPrinter.cutPaper();
+    } catch (_) {}
+  }
+
+  Future<void> _printSystemStockFiche(
+    List<StockMovementModel> movements,
+    AppSettings settings, {
+    String? printerUrl,
+  }) async {
+    final bytes = await buildStockReceiptFichePdf(movements, settings);
+    await printPdfBytes(bytes, name: 'Fiche_Reception', printerUrl: printerUrl);
   }
 
   // ── Impression Sunmi ──────────────────────────────────────────────────────
