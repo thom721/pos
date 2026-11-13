@@ -2,15 +2,16 @@
 laisser une référence de transaction (réconciliation bancaire) et un reçu
 scanné/photographié — ni l'un ni l'autre n'existaient avant (voir
 debts_screen.dart, le dialogue "Ajouter un paiement" n'envoyait que
-method: 'CASH' en dur)."""
-import asyncio
-import io
+method: 'CASH' en dur). Le reçu est envoyé en JSON (base64), pas en
+multipart — pour qu'il passe par la meme file d'attente hors ligne
+generique que toute autre mutation (voir OfflineInterceptor, frontend)."""
+import base64
 import os
 import shutil
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -21,6 +22,7 @@ from api.models.Sale import Sale, SaleStatus
 from api.models.Tenant import Tenant
 from api.models.Warehouse import Warehouse
 from api.routes.payments import upload_payment_receipt
+from api.schemas.payment import PaymentReceiptUpload
 from api.services import payment_service
 
 _RECEIPTS_DIR = "api/static/payment_receipts"
@@ -97,10 +99,10 @@ def test_upload_receipt_sets_url_and_rejects_cross_tenant(db, sale):
     db.commit()
 
     png_bytes = b"\x89PNG\r\n\x1a\n" + b"0" * 20
-    file = UploadFile(file=io.BytesIO(png_bytes), filename="recu.png")
-    result = asyncio.run(upload_payment_receipt(
-        payment.id, file=file, db=db, current_user=_user(t.id),
-    ))
+    payload = PaymentReceiptUpload(filename="recu.png", content_base64=base64.b64encode(png_bytes).decode())
+    result = upload_payment_receipt(
+        payment.id, payload=payload, db=db, current_user=_user(t.id),
+    )
     assert result.receipt_url is not None
     assert result.receipt_url.startswith("/static/payment_receipts/")
     saved_path = os.path.join("api", result.receipt_url.lstrip("/"))
@@ -109,11 +111,11 @@ def test_upload_receipt_sets_url_and_rejects_cross_tenant(db, sale):
     # Un autre tenant ne doit jamais pouvoir lire/écraser ce reçu.
     other_tenant_id = "other-tenant"
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(upload_payment_receipt(
+        upload_payment_receipt(
             payment.id,
-            file=UploadFile(file=io.BytesIO(png_bytes), filename="recu2.png"),
+            payload=PaymentReceiptUpload(filename="recu2.png", content_base64=base64.b64encode(png_bytes).decode()),
             db=db, current_user=_user(other_tenant_id),
-        ))
+        )
     assert exc.value.status_code == 404
 
 
@@ -126,9 +128,24 @@ def test_upload_receipt_rejects_bad_extension(db, sale):
     )
     db.commit()
 
-    file = UploadFile(file=io.BytesIO(b"not an image"), filename="recu.exe")
+    payload = PaymentReceiptUpload(
+        filename="recu.exe", content_base64=base64.b64encode(b"not an image").decode(),
+    )
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(upload_payment_receipt(
-            payment.id, file=file, db=db, current_user=_user(t.id),
-        ))
+        upload_payment_receipt(payment.id, payload=payload, db=db, current_user=_user(t.id))
+    assert exc.value.status_code == 400
+
+
+def test_upload_receipt_rejects_invalid_base64(db, sale):
+    s, t = sale
+    payment = payment_service.add_payment(
+        db,
+        SimpleNamespace(reference_type="SALE", reference_id=s.id, amount=600, method="bank"),
+        user_id="u1", tenant_id=t.id,
+    )
+    db.commit()
+
+    payload = PaymentReceiptUpload(filename="recu.png", content_base64="not-valid-base64!!")
+    with pytest.raises(HTTPException) as exc:
+        upload_payment_receipt(payment.id, payload=payload, db=db, current_user=_user(t.id))
     assert exc.value.status_code == 400

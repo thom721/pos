@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -235,21 +236,19 @@ class SaleRepository {
     }
   }
 
+  /// JSON (base64), pas multipart — un corps JSON passe par la même file
+  /// d'attente hors ligne générique que toute autre mutation (voir
+  /// OfflineInterceptor) ; un FormData multipart ne survit pas à une mise
+  /// en file d'attente (non sérialisable pour une relecture différée),
+  /// donc un reçu téléversé hors ligne était silencieusement perdu.
   Future<void> uploadPaymentReceipt(
     String paymentId,
     Uint8List bytes,
     String filename,
   ) async {
-    final ext = filename.split('.').last.toLowerCase();
-    final mime = switch (ext) {
-      'png'  => DioMediaType('image', 'png'),
-      'webp' => DioMediaType('image', 'webp'),
-      'pdf'  => DioMediaType('application', 'pdf'),
-      _      => DioMediaType('image', 'jpeg'),
-    };
-    final formData = FormData.fromMap({
-      'file': MultipartFile.fromBytes(bytes, filename: filename, contentType: mime),
+    await dio.post('/api/payments/$paymentId/receipt', data: {
+      'filename': filename,
+      'content_base64': base64Encode(bytes),
     });
-    await dio.post('/api/payments/$paymentId/receipt', data: formData);
   }
 }

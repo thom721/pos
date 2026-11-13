@@ -23,6 +23,15 @@ class PaymentCreate(BaseModel):
     bank_reference: Optional[str] = None
 
 
+class PaymentReceiptUpload(BaseModel):
+    """JSON (pas multipart) volontairement — un corps JSON passe par la
+    meme file d'attente hors ligne generique que toute autre mutation
+    (voir OfflineInterceptor/OfflineQueueService, frontend) ; un FormData
+    multipart n'est pas serialisable pour une relecture differee."""
+    filename: str
+    content_base64: str
+
+
 class PaymentResponse(BaseModel):
     id: str
     reference_type: str

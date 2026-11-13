@@ -1,7 +1,8 @@
+import base64
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, Query, BackgroundTasks, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Query, BackgroundTasks, HTTPException
 from api.ws_manager import manager
 from sqlalchemy.orm import Session
 from typing import List
@@ -9,7 +10,7 @@ from typing import List
 from api.database import get_db
 from api.models.Payment import Payment
 from api.models.User import User
-from api.schemas.payment import PaymentCreate, PaymentResponse
+from api.schemas.payment import PaymentCreate, PaymentReceiptUpload, PaymentResponse
 from api.services.payment_service import add_payment
 from api.dependencies.auth import require_permission
 from api.core.permissions import P
@@ -52,24 +53,30 @@ _MAX_RECEIPT_BYTES = 5 * 1024 * 1024  # 5 Mo
 
 
 @router.post("/{payment_id}/receipt", response_model=PaymentResponse)
-async def upload_payment_receipt(
+def upload_payment_receipt(
     payment_id: str,
-    file: UploadFile = File(...),
+    payload: PaymentReceiptUpload,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PAYMENTS_CREATE)),
 ):
     """Reçu/preuve de virement — photo ou PDF, téléversé après coup une fois
     le paiement créé (voir POST /api/payments/ pour bank_reference, le texte
-    de l'identifiant de transaction, renseigné à la création)."""
+    de l'identifiant de transaction, renseigné à la création). JSON+base64,
+    pas multipart — voir PaymentReceiptUpload : rend cet appel rejouable par
+    la file d'attente hors ligne générique du client comme n'importe quelle
+    autre mutation."""
     payment = db.get(Payment, payment_id)
     if not payment or (current_user.tenant_id and payment.tenant_id != current_user.tenant_id):
         raise HTTPException(status_code=404, detail="Paiement introuvable")
 
-    ext = os.path.splitext(file.filename or '')[1].lower()
+    ext = os.path.splitext(payload.filename or '')[1].lower()
     if ext not in _ALLOWED_RECEIPT_EXTS:
         raise HTTPException(status_code=400, detail="Format non supporté. Utilisez jpg, png, webp ou pdf.")
 
-    contents = await file.read()
+    try:
+        contents = base64.b64decode(payload.content_base64, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Contenu base64 invalide.")
     if len(contents) > _MAX_RECEIPT_BYTES:
         raise HTTPException(status_code=413, detail="Fichier trop volumineux (max 5 Mo).")
 

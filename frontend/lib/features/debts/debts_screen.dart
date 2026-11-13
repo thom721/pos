@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -541,12 +543,24 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
                       await SaleRepository().uploadPaymentReceipt(
                         paymentId, receiptBytes!, receiptFilename!,
                       );
-                    } catch (_) {
+                    } catch (e) {
                       // Le paiement est déjà enregistré — un échec d'upload du
                       // reçu ne doit pas faire croire que le paiement a échoué.
+                      // Hors ligne : la requête JSON (base64) a déjà été mise
+                      // en file d'attente par OfflineInterceptor — le reçu
+                      // sera envoyé automatiquement au retour du réseau.
+                      final isNetErr = (e is DioException && (
+                            e.type == DioExceptionType.connectionError ||
+                            e.type == DioExceptionType.connectionTimeout ||
+                            e.type == DioExceptionType.sendTimeout ||
+                            e.type == DioExceptionType.receiveTimeout ||
+                            e.type == DioExceptionType.unknown
+                          )) || e is SocketException;
                       if (mounted) {
-                        messenger.showSnackBar(const SnackBar(
-                          content: Text('Paiement enregistré, mais le reçu n\'a pas pu être téléversé.'),
+                        messenger.showSnackBar(SnackBar(
+                          content: Text(isNetErr
+                              ? 'Paiement enregistré — le reçu sera envoyé automatiquement au retour du réseau.'
+                              : 'Paiement enregistré, mais le reçu n\'a pas pu être téléversé.'),
                           backgroundColor: AppColors.warning,
                         ));
                       }
