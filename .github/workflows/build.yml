@@ -182,7 +182,7 @@ jobs:
   # ── macOS ────────────────────────────────────────────────────────────────────
   backend-macos:
     name:  Backend — macOS
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -326,7 +326,7 @@ jobs:
   # ── macOS ────────────────────────────────────────────────────────────────────
   frontend-macos:
     name:  Frontend — macOS
-    runs-on: macos-14
+    runs-on: macos-latest
     needs: [determine-version]
     steps:
       - uses: actions/checkout@v4
