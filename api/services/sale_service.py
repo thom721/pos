@@ -472,6 +472,20 @@ def update_sale(db: Session, sale_id: str, data, user_id: str, tenant_id: str | 
     return sale
 
 
+def _is_reference_collision(exc: IntegrityError) -> bool:
+    """Vrai uniquement pour la contrainte unique (reference, tenant_id,
+    warehouse_id) — jamais pour une autre IntegrityError (ex: FK client/
+    produit/depot manquant). Ne retenter que sur une vraie collision de
+    numero (rare : deux ventes quasi simultanees) ; toute autre cause ne
+    sera jamais resolue en recalculant juste un nouveau numero, et
+    retenter 5 fois pour rien ne fait que masquer/retarder la vraie erreur
+    (bug reel : une vente avec un customer_id orphelin — client jamais
+    cree cote cloud, offline queue qui ne donne jamais le vrai motif —
+    retentait 5 fois inutilement avant d'echouer)."""
+    msg = str(exc.orig if exc.orig is not None else exc).lower()
+    return "duplicate entry" in msg or "unique constraint failed" in msg
+
+
 def _next_sale_reference(
     db: Session, tenant_id: str | None, warehouse_id: str | None, all_services: bool = False,
 ) -> str:
@@ -815,7 +829,7 @@ def create_sale(
         try:
             db.flush()
             break
-        except IntegrityError:
+        except IntegrityError as exc:
             db.rollback()
             # client_id déjà utilisé → retourner la vente existante (idempotence)
             if getattr(data, 'client_id', None):
@@ -823,7 +837,7 @@ def create_sale(
                 if existing:
                     db.refresh(existing)
                     return existing
-            if _attempt == _MAX_REFERENCE_ATTEMPTS - 1:
+            if not _is_reference_collision(exc) or _attempt == _MAX_REFERENCE_ATTEMPTS - 1:
                 raise
             # Collision de numéro de reçu (rare : deux ventes quasi simultanées
             # sur le même dépôt) — reconstruit un nouvel objet Sale avec un
