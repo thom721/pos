@@ -528,6 +528,17 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
                   );
                   return;
                 }
+                // Une référence/un reçu saisis pendant que BANK/MOBILE était
+                // sélectionné, puis abandonnés en repassant sur CASH/CARD
+                // avant de confirmer, ne doivent jamais être envoyés avec un
+                // paiement qui n'est plus de ce type (champs restés remplis
+                // mais masqués, pas réinitialisés au changement de mode).
+                final showsBankFields = method == 'BANK' || method == 'MOBILE';
+                final effectiveBankRef =
+                    showsBankFields && refCtrl.text.trim().isNotEmpty ? refCtrl.text.trim() : null;
+                final effectiveReceiptBytes = showsBankFields ? receiptBytes : null;
+                final effectiveReceiptFilename = showsBankFields ? receiptFilename : null;
+
                 Navigator.pop(dialogCtx);
                 setState(() => _paying = true);
                 try {
@@ -536,12 +547,12 @@ class _DebtCardState extends ConsumerState<_DebtCard> {
                     referenceId: widget.debt.referenceId,
                     amount: amount,
                     method: method,
-                    bankReference: refCtrl.text.trim().isEmpty ? null : refCtrl.text.trim(),
+                    bankReference: effectiveBankRef,
                   );
-                  if (paymentId != null && receiptBytes != null && receiptFilename != null) {
+                  if (paymentId != null && effectiveReceiptBytes != null && effectiveReceiptFilename != null) {
                     try {
                       await SaleRepository().uploadPaymentReceipt(
-                        paymentId, receiptBytes!, receiptFilename!,
+                        paymentId, effectiveReceiptBytes, effectiveReceiptFilename,
                       );
                     } catch (e) {
                       // Le paiement est déjà enregistré — un échec d'upload du
@@ -1055,6 +1066,8 @@ class _PaymentHistoryDialog extends ConsumerWidget {
         return Icons.account_balance_rounded;
       case 'MOBILE':
         return Icons.phone_android_rounded;
+      case 'CARD':
+        return Icons.credit_card_rounded;
       case 'LOYALTY':
         return Icons.stars_rounded;
       default:
