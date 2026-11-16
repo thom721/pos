@@ -278,6 +278,10 @@ def _get_sync_state(db: Session, entity_type: str) -> SyncState:
 _NULLABLE_WAREHOUSE_ETYPES = {"discount", "app_config", "customer"}
 # Entités au niveau du tenant malgré une colonne warehouse_id (user : liste JSON).
 _TENANT_LEVEL_ETYPES = {"user"}
+# Entités où le cloud est la SEULE source de vérité : toute ligne locale
+# absente du cloud est supprimée au prochain cycle, même sans tombstone
+# (voir _reconcile_cloud_source_of_truth).
+_RECONCILE_SOURCE_OF_TRUTH = {"product_price_tier"}
 
 
 def _installer_warehouse_id() -> str:
@@ -329,6 +333,55 @@ def _http_get(url: str, params: dict, headers: dict, timeout: int = 30) -> httpx
         except httpx.HTTPStatusError:
             raise
     raise last_exc  # type: ignore[misc]
+
+
+def _reconcile_cloud_source_of_truth(db: Session, url: str, token: str, etype: str, model) -> int:
+    """Pour une entité listée dans _RECONCILE_SOURCE_OF_TRUTH : supprime
+    toute ligne locale qui n'existe PLUS (ou n'a JAMAIS existé) côté cloud
+    — pas seulement celles explicitement tombstonées. Le pull incrémental
+    normal ne peut jamais détecter ça tout seul (il n'ajoute/ne met à jour
+    que ce qu'il reçoit, il ne supprime que ce qu'une tombstone lui dit
+    explicitement d'oublier) — une ligne créée directement en local (admin
+    local, SQL direct), jamais connue du cloud, restait donc orpheline
+    pour toujours.
+
+    Clé naturelle codée en dur (product_id, warehouse_id, min_quantity) —
+    spécifique à ProductPriceTier, seule entité de ce groupe pour
+    l'instant. Généraliser si une deuxième entité y est ajoutée un jour.
+
+    Récupère la liste COMPLÈTE du cloud pour cette entité (pas le delta
+    depuis un curseur), scopée au dépôt de cette installation, puis
+    supprime tout ce que le local a en plus. Ne s'exécute QUE si un dépôt
+    est configuré : sans dépôt, le cloud ne renverrait rien du tout
+    (fail-closed, voir _scope_to_warehouse côté cloud) et on supprimerait
+    alors TOUT par erreur."""
+    wh = _installer_warehouse_id()
+    if not wh or not hasattr(model, "warehouse_id"):
+        return 0
+
+    cloud_keys: set[tuple[str, str, float]] = set()
+    cur = "1970-01-01T00:00:00"
+    for _s in range(200):
+        r = _http_get(f"{url}/api/sync/pull", params={"entity_type": etype, "since": cur}, headers=_headers(token))
+        p = r.json()
+        for rec in p.get("records", []):
+            cloud_keys.add((str(rec["product_id"]), str(rec["warehouse_id"]), float(rec["min_quantity"])))
+        if not p.get("has_more"):
+            break
+        nxt = p.get("next_since", cur)
+        if nxt == cur:
+            break
+        cur = nxt
+
+    deleted = 0
+    for row in db.query(model).filter(model.warehouse_id == wh).all():
+        key = (str(row.product_id), str(row.warehouse_id), float(row.min_quantity))
+        if key not in cloud_keys:
+            db.delete(row)
+            deleted += 1
+    if deleted:
+        db.commit()
+    return deleted
 
 
 # ── Main sync entry point ────────────────────────────────────────────────────
@@ -761,6 +814,29 @@ def _run_sync_inner(db: Session) -> dict:
             db.rollback()
             t_state.last_error = msg
             db.commit()
+
+    # ── RECONCILIATION (le cloud est la SEULE source de verite) ──────────────
+    # Decision explicite (demande utilisateur, 2026-11) : pour certaines
+    # entites (product_price_tier), une ligne locale qui n'existe PAS cote
+    # cloud ne doit jamais rester en local — meme si elle n'a jamais ete
+    # tombstonee (ex: creee directement en local par un admin ou par SQL
+    # direct, jamais connue du cloud). Le pull incremental normal ne peut
+    # jamais detecter ca tout seul (il ne fait qu'ajouter/mettre a jour, il
+    # ne supprime que ce qu'une tombstone lui dit explicitement d'oublier).
+    # Recupere donc PERIODIQUEMENT la liste COMPLETE du cloud pour cette
+    # entite (pas seulement le delta depuis le dernier curseur) et supprime
+    # tout orphelin local absent de cette liste.
+    for etype in _RECONCILE_SOURCE_OF_TRUTH:
+        entity = next((e for e in SYNC_ENTITIES if e["type"] == etype), None)
+        if not entity:
+            continue
+        try:
+            deleted = _reconcile_cloud_source_of_truth(db, url, token, etype, entity["model"])
+            if deleted:
+                _log.info("reconcile %s: %d ligne(s) orpheline(s) supprimee(s) localement", etype, deleted)
+        except Exception as exc:
+            _log.warning("reconcile %s: %s", etype, exc)
+            db.rollback()
 
     # Les permissions personnalisees sont mises en cache en memoire au
     # demarrage (TENANT_ROLE_OVERRIDES / ROLE_PERMISSIONS, voir
