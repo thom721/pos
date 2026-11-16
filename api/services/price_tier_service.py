@@ -75,6 +75,16 @@ def set_tiers(db: Session, tenant_id, product_id: str, warehouse_id: str, tiers)
     for t in to_remove:
         record_deletion(db, "product_price_tier", t.id, tenant_id, warehouse_id=t.warehouse_id)
         db.delete(t)
+    # SQLAlchemy execute TOUTES les insertions avant TOUTES les suppressions
+    # au sein d'un meme flush (comportement documente, independant de
+    # l'ordre d'appel db.delete()/db.add()) — sans ce flush explicite, une
+    # nouvelle ligne qui garde le MEME seuil (min_quantity) qu'une ancienne
+    # (ex: prix modifie, seuil inchange) tentait de s'inserer AVANT que
+    # l'ancienne soit supprimee, violant la contrainte unique
+    # (product_id, warehouse_id, min_quantity). Regression introduite en
+    # remplacant le DELETE en masse (execute immediatement) par une boucle
+    # db.delete() par ligne, necessaire pour enregistrer les tombstones.
+    db.flush()
     for qty, price in pairs:
         db.add(ProductPriceTier(
             tenant_id=tenant_id, product_id=product_id, warehouse_id=warehouse_id,

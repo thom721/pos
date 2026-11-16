@@ -95,6 +95,28 @@ def test_removing_tiers_via_set_tiers_creates_one_tombstone_per_row(db, world):
     assert {t.record_id for t in tombstones} == original_ids
 
 
+def test_set_tiers_keeping_the_same_threshold_does_not_collide(db, world):
+    """Bug reel constate en prod (meme tenant que le test ci-dessus) : modifier
+    le PRIX d'un palier existant SANS changer son seuil (min_quantity) faisait
+    planter le commit avec une IntegrityError (Duplicate entry / UNIQUE
+    constraint failed sur product_id+warehouse_id+min_quantity) — l'INSERT de
+    la nouvelle ligne s'executait AVANT le DELETE de l'ancienne au flush,
+    SQLAlchemy ne garantissant pas cet ordre entre objets sans relation
+    explicite. Corrige par un db.flush() explicite entre les deux boucles."""
+    tid, p, wh = world["tenant"].id, world["product"], world["wh"]
+
+    price_tier_service.set_tiers(db, tid, p.id, wh.id, [_Tier(3, 2050)])
+    db.commit()
+
+    # Meme seuil (3), prix different — ne doit pas lever IntegrityError.
+    rows = price_tier_service.set_tiers(db, tid, p.id, wh.id, [_Tier(3, 1900)])
+    db.commit()
+
+    assert len(rows) == 1
+    assert float(rows[0].min_quantity) == 3
+    assert float(rows[0].price) == 1900
+
+
 def test_pull_tombstones_deletes_stale_local_rows(db, world, monkeypatch):
     """Reproduit l'incident reel cote local : le cloud a deja supprime 3
     paliers (tombstones existent la-bas), le serveur local les a encore —
