@@ -670,6 +670,22 @@ def _run_sync_inner(db: Session) -> dict:
                 if seen_ts:
                     state.last_pull_at = max(seen_ts)
             state.last_error = None
+            # Commit PAR ENTITE, pas un seul commit partage pour les ~45
+            # entites de la boucle. Bug reel : toutes les lignes pull-appliquees
+            # restaient en attente dans la MEME session non validee jusqu'au
+            # commit final (voir plus bas, desormais retire) — si une entite
+            # PLUS LOIN dans la liste echouait a CHAQUE cycle (FK vers une
+            # ligne jamais synchronisee, etc.), son db.rollback() effacait
+            # AUSSI tout ce que les entites precedentes avaient deja applique
+            # avec succes DANS CE MEME cycle, y compris leur propre curseur
+            # last_pull_at (lui aussi annule). Resultat : une mise a jour qui
+            # reussissait pourtant (ex: un palier de prix) etait rejouee et
+            # effacee a l'identique a chaque cycle, indefiniment, SANS JAMAIS
+            # laisser de last_error sur sa propre entite — l'erreur venait
+            # d'ailleurs. Avec un commit ici, un succes anterieur dans la
+            # boucle est definitivement acquis avant qu'une entite suivante
+            # ne puisse echouer.
+            db.commit()
         except Exception as exc:
             msg = f"pull {etype}: {exc}"
             _log.warning(msg)
@@ -679,11 +695,16 @@ def _run_sync_inner(db: Session) -> dict:
             # requête suivante échoue à l'identique tant qu'on ne fait pas
             # ce rollback explicite, ce qui cassait en cascade TOUTES les
             # entités suivantes de ce cycle (pas seulement celle en cause).
+            # Ne roule plus en arriere que CETTE entite, grace au commit
+            # par entite ci-dessus — les precedentes restent acquises.
             db.rollback()
             state.last_error = msg
             summary["errors"].append(msg)
-
-    db.commit()
+            # Persiste CET etat d'erreur tout de suite — sans ca, si cette
+            # entite est la derniere de la boucle (plus de commit suivant
+            # pour l'emporter au passage), last_error reste coince en
+            # attente dans la session et ne serait jamais ecrit.
+            db.commit()
 
     # ── PULL TOMBSTONES (pull / both) ───────────────────────────────────────
     # Symetrique du push de tombstones ci-dessus : applique localement les
@@ -717,6 +738,11 @@ def _run_sync_inner(db: Session) -> dict:
                 if seen_ts:
                     t_state.last_pull_at = max(seen_ts)
             t_state.last_error = None
+            # Commit par entite — meme raison que la boucle PULL ci-dessus :
+            # sans ca, une suppression deja appliquee avec succes (ex: un
+            # palier de prix tombstone) etait effacee par le rollback d'une
+            # AUTRE entite plus loin dans la liste echouant au meme cycle.
+            db.commit()
         except Exception as exc:
             # Pas d'ajout a summary["errors"] (meme convention que
             # tenant-billing/public-platform-config ci-dessous) : une
@@ -726,7 +752,7 @@ def _run_sync_inner(db: Session) -> dict:
             _log.warning(msg)
             db.rollback()
             t_state.last_error = msg
-    db.commit()
+            db.commit()
 
     # Les permissions personnalisees sont mises en cache en memoire au
     # demarrage (TENANT_ROLE_OVERRIDES / ROLE_PERMISSIONS, voir

@@ -7,11 +7,14 @@ prod sur Maranatha Lessive les 14 et 15/10, deux causes différentes, même
 symptôme). Ce test prouve qu'une entité en échec n'empêche plus les
 suivantes de se synchroniser normalement.
 """
+from datetime import timedelta
+
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 import api.models  # noqa: F401
+from api.core.dt_coerce import now_local
 from api.database import Base
 from api.models.Tenant import Tenant
 from api.models.Warehouse import Warehouse
@@ -83,6 +86,16 @@ def test_discount_syncs_despite_earlier_product_failure(db, world, monkeypatch):
     monkeypatch.setattr(lss, "_load_sync_credentials", lambda: ("https://cloud.example", "fake-token", True))
     monkeypatch.setattr(lss, "_installer_warehouse_id", lambda: world["wh"].id)
 
+    # Dates relatives a "maintenant" — jamais codees en dur : une date figee
+    # finit par se retrouver dans le passe par rapport a l'horloge reelle,
+    # desactivant silencieusement la condition "remote_ts > local_ts" que ce
+    # test a besoin de declencher (vu en reel : ce test passait un temps
+    # puis s'est mis a echouer pour une raison totalement differente de son
+    # intention, simplement parce que le temps avait fini par rattraper la
+    # date codee en dur).
+    _past = (now_local() - timedelta(days=30)).isoformat()
+    _future = (now_local() + timedelta(days=1)).isoformat()
+
     bad_product_update = {
         "id": world["product"].id,
         "tenant_id": world["tenant"].id,
@@ -95,16 +108,16 @@ def test_discount_syncs_despite_earlier_product_failure(db, world, monkeypatch):
         # catturée au moment du setattr() lui-même.
         "component_product_id": "00000000-0000-0000-0000-000000000000",
         "component_quantity": 1.0,
-        "created_at": "2026-10-07T10:37:34",
-        "updated_at": "2026-10-16T09:00:00",
+        "created_at": _past,
+        "updated_at": _future,
     }
     new_category = {
         "id": "11111111-1111-1111-1111-111111111111",
         "tenant_id": world["tenant"].id,
         "name": "Nouvelle Categorie",
         "description": None,
-        "created_at": "2026-10-16T09:00:00",
-        "updated_at": "2026-10-16T09:00:00",
+        "created_at": _future,
+        "updated_at": _future,
     }
 
     new_discount = {
@@ -122,8 +135,8 @@ def test_discount_syncs_despite_earlier_product_failure(db, world, monkeypatch):
         "schedule_end": None,
         "min_quantity": None,
         "product_ids": None,
-        "created_at": "2026-10-16T09:00:00",
-        "updated_at": "2026-10-16T09:00:00",
+        "created_at": _future,
+        "updated_at": _future,
     }
 
     def fake_http_post(url, json, headers, timeout=30):
