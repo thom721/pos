@@ -90,6 +90,17 @@ def test_tier_entity_is_synced():
     assert "product_price_tier" in _MODEL_MAP
 
 
+def test_tier_entity_is_pull_only_cloud_is_source_of_truth():
+    """Decision explicite (demande utilisateur, 2026-11) : le cloud est la
+    SEULE source de verite pour les paliers de prix. Un serveur local ne
+    doit plus jamais en pousser (ni creer ni supprimer via tombstone) —
+    sinon un palier cree localement (admin local ou SQL direct) finit par
+    remonter au cloud, qui n'est alors plus vraiment la seule source."""
+    from api.services.local_sync_service import SYNC_ENTITIES
+    entity = next(e for e in SYNC_ENTITIES if e["type"] == "product_price_tier")
+    assert entity["direction"] == "pull"
+
+
 def test_list_all_tiers_only_for_warehouse(db, world):
     svc.set_tiers(db, world["tenant"].id, world["prod"].id, world["wh_a"].id, [_T(3, 1700)])
     svc.set_tiers(db, world["tenant"].id, world["prod"].id, world["wh_b"].id, [_T(3, 1650)])

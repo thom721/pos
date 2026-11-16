@@ -78,7 +78,15 @@ SYNC_ENTITIES: list[dict] = [
     {"type": "supplier",               "model": Supplier,             "direction": "both"},
     {"type": "product",                "model": Product,              "direction": "both"},
     {"type": "product_warehouse_price", "model": ProductWarehousePrice, "direction": "both"},
-    {"type": "product_price_tier", "model": ProductPriceTier, "direction": "both"},
+    # "pull" uniquement, volontairement (changé de "both" sur demande) — le
+    # cloud est la SEULE source de vérité pour les paliers de prix. Un
+    # palier créé/modifié localement (admin local, ou SQL direct) ne
+    # remonte plus jamais vers le cloud : il reste orphelin en local pour
+    # toujours (rien ne le pousse, rien ne le supprime non plus — ni push
+    # ni tombstone ne s'exécutent pour cette entité côté local), jusqu'à
+    # suppression manuelle. Si la même donnée doit exister des deux côtés,
+    # elle doit être créée depuis le cloud.
+    {"type": "product_price_tier", "model": ProductPriceTier, "direction": "pull"},
     {"type": "customer",               "model": Customer,             "direction": "both"},
     {"type": "user",                   "model": User,                 "direction": "both"},
     # Role manquait entierement de SYNC_ENTITIES : un role personnalise cree
