@@ -212,7 +212,14 @@ class _PosAppState extends ConsumerState<PosApp> {
     if (set.intersection(debtTypes).isNotEmpty) ref.invalidate(debtsProvider);
     if (set.contains('customer')) ref.invalidate(customersProvider);
     if (set.contains('discount')) ref.invalidate(discountsProvider);
-    if (set.contains('product_price_tier')) ref.invalidate(priceTiersProvider);
+    if (set.contains('product_price_tier')) {
+      ref.invalidate(priceTiersProvider);
+      // Ce type est traité "léger" ici (pas de _triggerSync complet) — sans
+      // cet appel direct, la fiche avant/après n'était détectée qu'au
+      // prochain cycle de synchro périodique (jusqu'à _kWsFallbackInterval
+      // plus tard), alors que le WebSocket vient de livrer le changement.
+      _checkPriceTierChangeFiche(ref.read(activeWarehouseProvider)?.id).ignore();
+    }
     if (set.contains('cashier_session')) ref.read(sessionRefreshEpochProvider.notifier).state++;
     if (set.intersection(billingTypes).isNotEmpty) {
       ref.invalidate(licenseProvider);
