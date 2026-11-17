@@ -124,9 +124,9 @@ Future<Uint8List> buildStockReceiptFichePdf(
   return doc.save();
 }
 
-/// Fiche avant/après imprimée côté caisse locale quand la synchro ramène
-/// un changement de palier de prix (le cloud est la seule source de
-/// vérité — voir local_sync_service.py::_record_price_tier_changes).
+/// Fiche avant/après imprimée côté caisse quand la synchro ramène un
+/// changement de palier de prix — détecté en comparant deux relevés
+/// successifs de /api/price-tiers, voir app.dart::_checkPriceTierChangeFiche.
 Future<Uint8List> buildPriceTierChangeFichePdf(
   List<PriceTierChangeModel> changes,
   AppSettings settings,

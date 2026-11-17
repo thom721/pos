@@ -29,7 +29,6 @@ import 'package:pos_connect/services/thermal_printer_service.dart';
 import 'package:pos_connect/services/websocket_service.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/price_tier_change_model.dart';
-import 'package:pos_connect/data/models/price_tier_model.dart';
 import 'package:pos_connect/data/models/stock_movement_model.dart';
 import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -416,14 +415,7 @@ class _PosAppState extends ConsumerState<PosApp> {
       final previousRaw = prefs.getString(key);
 
       final current = await ProductRepository().getAllPriceTiers(warehouseId);
-      final byProduct = PriceTier.groupByProduct(current);
-      final snapshot = <String, dynamic>{
-        for (final entry in byProduct.entries)
-          entry.key: {
-            'name': entry.value.first.productName ?? '',
-            'tiers': entry.value.map((t) => {'q': t.minQuantity, 'p': t.price}).toList(),
-          },
-      };
+      final snapshot = PriceTierChangeModel.buildSnapshot(current);
       final snapshotJson = jsonEncode(snapshot);
 
       if (previousRaw == null) {
@@ -432,42 +424,7 @@ class _PosAppState extends ConsumerState<PosApp> {
       }
 
       final previous = jsonDecode(previousRaw) as Map<String, dynamic>;
-      List<PriceTier> tiersOf(String pid, Map<String, dynamic>? entry) => entry == null
-          ? const []
-          : (entry['tiers'] as List)
-              .map((t) => PriceTier(
-                    productId: pid,
-                    minQuantity: (t['q'] as num).toDouble(),
-                    price: (t['p'] as num).toDouble(),
-                  ))
-              .toList();
-      bool sameTiers(List<PriceTier> a, List<PriceTier> b) {
-        if (a.length != b.length) return false;
-        for (var i = 0; i < a.length; i++) {
-          if (a[i].minQuantity != b[i].minQuantity || a[i].price != b[i].price) return false;
-        }
-        return true;
-      }
-
-      final changes = <PriceTierChangeModel>[];
-      for (final pid in {...previous.keys, ...snapshot.keys}) {
-        final prevEntry = previous[pid] as Map<String, dynamic>?;
-        final curEntry = snapshot[pid] as Map<String, dynamic>?;
-        final oldTiers = tiersOf(pid, prevEntry);
-        final newTiers = tiersOf(pid, curEntry);
-        if (sameTiers(oldTiers, newTiers)) continue;
-        final name = (curEntry?['name'] as String?)?.isNotEmpty == true
-            ? curEntry!['name'] as String
-            : (prevEntry?['name'] as String? ?? '—');
-        changes.add(PriceTierChangeModel(
-          productId: pid,
-          productName: name,
-          warehouseId: warehouseId,
-          oldTiers: oldTiers,
-          newTiers: newTiers,
-          createdAt: DateTime.now(),
-        ));
-      }
+      final changes = PriceTierChangeModel.diffSnapshots(previous, snapshot, warehouseId);
 
       await prefs.setString(key, snapshotJson);
       if (changes.isEmpty) return;
