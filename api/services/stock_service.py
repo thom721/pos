@@ -8,6 +8,16 @@ from api.models.StockMovement import StockMovement, StockType
 from api.models.Product import Product
 
 
+def _resolve_stock_type(raw: str) -> StockType | None:
+    """Accepte le nom du membre ("in_"), sa .value ("in") ou "IN"/"in"/
+    "ADJUST"/"adjust", peu importe la casse — voir le commentaire d'appel."""
+    needle = raw.strip().lower().rstrip("_")
+    for member in StockType:
+        if member.name.rstrip("_") == needle or member.value.lower() == needle:
+            return member
+    return None
+
+
 def stock_map(
     db: Session,
     product_ids: list[str],
@@ -166,9 +176,16 @@ def list_stock_movements(
             )
         )
 
-    # 📊 Type IN / OUT
+    # 📊 Type IN / OUT / ADJUST — comparer une string brute à cette colonne
+    # Enum ne matche jamais rien : SQLAlchemy stocke le NOM du membre
+    # ("in_", pas sa .value "in"), donc filter(.type == "IN") ne trouvait
+    # aucune ligne (bug réel, découvert en vérifiant la fiche de réception
+    # auto-imprimée côté caisse). _resolve_stock_type accepte le nom ou la
+    # valeur, dans n'importe quelle casse.
     if stock_type:
-        query = query.filter(StockMovement.type == stock_type)
+        resolved = _resolve_stock_type(stock_type)
+        if resolved is not None:
+            query = query.filter(StockMovement.type == resolved)
 
     # 🔗 Source (purchase, sale…)
     if source_type:

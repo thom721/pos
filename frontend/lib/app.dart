@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:pos_connect/core/clock_check.dart';
@@ -27,7 +28,10 @@ import 'package:pos_connect/services/offline_queue_service.dart';
 import 'package:pos_connect/services/thermal_printer_service.dart';
 import 'package:pos_connect/services/websocket_service.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
+import 'package:pos_connect/data/models/price_tier_change_model.dart';
+import 'package:pos_connect/data/models/price_tier_model.dart';
 import 'package:pos_connect/data/models/stock_movement_model.dart';
+import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Android + Bureau (Windows/macOS/Linux) : push WebSocket temps réel dès
@@ -281,9 +285,16 @@ class _PosAppState extends ConsumerState<PosApp> {
         }).ignore();
     }
     // Fiche de réception auto-imprimée dès que la synchro ramène du stock
-    // entrant pour ce dépôt (achat, ajustement, transfert reçu…) — le
-    // caissier doit le voir sans avoir à vérifier manuellement.
+    // entrant pour ce dépôt (achat, transfert reçu…) — le caissier doit le
+    // voir sans avoir à vérifier manuellement.
     _checkStockReceivingFiche(warehouseId).ignore();
+    // Idem pour un ajustement de stock (type "adjust" — ex: correction
+    // d'inventaire) fait sur le cloud : fiche séparée, propre format.
+    _checkStockAdjustmentFiche(warehouseId).ignore();
+    // Idem pour un changement de palier de prix reçu du cloud : fiche
+    // avant/après, pour que le caissier local voie exactement ce qui a
+    // changé sans avoir à comparer manuellement.
+    _checkPriceTierChangeFiche(warehouseId).ignore();
   }
 
   /// Imprime automatiquement une fiche listant les mouvements de stock
@@ -334,6 +345,149 @@ class _PosAppState extends ConsumerState<PosApp> {
       await prefs.setString(key, maxTs.toIso8601String());
     } catch (e) {
       debugPrint('[StockFiche] erreur: $e');
+    }
+  }
+
+  /// Comme [_checkStockReceivingFiche], mais pour les mouvements type
+  /// "adjust" (ex: correction d'inventaire faite sur le cloud) — fiche
+  /// séparée, curseur séparé.
+  Future<void> _checkStockAdjustmentFiche(String? warehouseId) async {
+    if (kIsWeb || warehouseId == null) return;
+    final settings = ref.read(settingsProvider);
+    if (!settings.posAutoPrint) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'stock_adjust_fiche_last_printed_$warehouseId';
+      final sinceIso = prefs.getString(key);
+      final since = sinceIso != null ? DateTime.tryParse(sinceIso) : null;
+
+      final res = await dio.get('/api/stock-movements/', queryParameters: {
+        'warehouse_id': warehouseId,
+        'stock_type': 'ADJUST',
+        'page': 1,
+        'limit': 100,
+        if (since != null) 'date_from': since.toIso8601String(),
+      }, options: kBackgroundOptions);
+      final page = PaginatedResponse.fromJson(res.data, StockMovementModel.fromJson);
+      final fresh = since == null
+          ? page.data
+          : page.data.where((m) => m.createdAt.isAfter(since)).toList();
+      if (fresh.isEmpty) return;
+
+      if (_isAndroid) {
+        final isSunmi = await ThermalPrinterService.instance.isSunmiAvailable;
+        if (isSunmi) {
+          await ThermalPrinterService.instance.printStockAdjustmentFiche(fresh, settings);
+        } else if (settings.bluetoothPrinterMac.isNotEmpty) {
+          await BluetoothPrintService.instance.printStockAdjustmentFiche(fresh, settings);
+        }
+      } else {
+        await ThermalPrinterService.instance.printStockAdjustmentFiche(
+          fresh,
+          settings,
+          printerUrl: settings.posPrinterName.isNotEmpty ? settings.posPrinterName : null,
+        );
+      }
+
+      final maxTs = fresh.map((m) => m.createdAt).reduce((a, b) => a.isAfter(b) ? a : b);
+      await prefs.setString(key, maxTs.toIso8601String());
+    } catch (e) {
+      debugPrint('[StockAdjustFiche] erreur: $e');
+    }
+  }
+
+  /// Imprime une fiche avant/après dès que la synchro ramène un changement
+  /// de palier de prix pour ce dépôt (le cloud est la seule source de
+  /// vérité). Comparaison faite ICI, côté appareil, entre le relevé complet
+  /// actuel de /api/price-tiers et le dernier relevé mémorisé en
+  /// SharedPreferences — pas un journal côté serveur : ça doit fonctionner
+  /// identiquement avec un serveur local intermédiaire OU en connexion
+  /// directe au cloud (voir discussion : un journal écrit uniquement par
+  /// local_sync_service.py restait vide, donc muet, pour toute installation
+  /// sans serveur local). Premier passage sur un appareil : rien à comparer,
+  /// on mémorise seulement.
+  Future<void> _checkPriceTierChangeFiche(String? warehouseId) async {
+    if (kIsWeb || warehouseId == null) return;
+    final settings = ref.read(settingsProvider);
+    if (!settings.posAutoPrint) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'price_tier_snapshot_$warehouseId';
+      final previousRaw = prefs.getString(key);
+
+      final current = await ProductRepository().getAllPriceTiers(warehouseId);
+      final byProduct = PriceTier.groupByProduct(current);
+      final snapshot = <String, dynamic>{
+        for (final entry in byProduct.entries)
+          entry.key: {
+            'name': entry.value.first.productName ?? '',
+            'tiers': entry.value.map((t) => {'q': t.minQuantity, 'p': t.price}).toList(),
+          },
+      };
+      final snapshotJson = jsonEncode(snapshot);
+
+      if (previousRaw == null) {
+        await prefs.setString(key, snapshotJson);
+        return;
+      }
+
+      final previous = jsonDecode(previousRaw) as Map<String, dynamic>;
+      List<PriceTier> tiersOf(String pid, Map<String, dynamic>? entry) => entry == null
+          ? const []
+          : (entry['tiers'] as List)
+              .map((t) => PriceTier(
+                    productId: pid,
+                    minQuantity: (t['q'] as num).toDouble(),
+                    price: (t['p'] as num).toDouble(),
+                  ))
+              .toList();
+      bool sameTiers(List<PriceTier> a, List<PriceTier> b) {
+        if (a.length != b.length) return false;
+        for (var i = 0; i < a.length; i++) {
+          if (a[i].minQuantity != b[i].minQuantity || a[i].price != b[i].price) return false;
+        }
+        return true;
+      }
+
+      final changes = <PriceTierChangeModel>[];
+      for (final pid in {...previous.keys, ...snapshot.keys}) {
+        final prevEntry = previous[pid] as Map<String, dynamic>?;
+        final curEntry = snapshot[pid] as Map<String, dynamic>?;
+        final oldTiers = tiersOf(pid, prevEntry);
+        final newTiers = tiersOf(pid, curEntry);
+        if (sameTiers(oldTiers, newTiers)) continue;
+        final name = (curEntry?['name'] as String?)?.isNotEmpty == true
+            ? curEntry!['name'] as String
+            : (prevEntry?['name'] as String? ?? '—');
+        changes.add(PriceTierChangeModel(
+          productId: pid,
+          productName: name,
+          warehouseId: warehouseId,
+          oldTiers: oldTiers,
+          newTiers: newTiers,
+          createdAt: DateTime.now(),
+        ));
+      }
+
+      await prefs.setString(key, snapshotJson);
+      if (changes.isEmpty) return;
+
+      if (_isAndroid) {
+        final isSunmi = await ThermalPrinterService.instance.isSunmiAvailable;
+        if (isSunmi) {
+          await ThermalPrinterService.instance.printPriceTierChangeFiche(changes, settings);
+        } else if (settings.bluetoothPrinterMac.isNotEmpty) {
+          await BluetoothPrintService.instance.printPriceTierChangeFiche(changes, settings);
+        }
+      } else {
+        await ThermalPrinterService.instance.printPriceTierChangeFiche(
+          changes,
+          settings,
+          printerUrl: settings.posPrinterName.isNotEmpty ? settings.posPrinterName : null,
+        );
+      }
+    } catch (e) {
+      debugPrint('[PriceTierFiche] erreur: $e');
     }
   }
 

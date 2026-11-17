@@ -8,6 +8,8 @@ import 'package:printing/printing.dart';
 import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
 
 import 'package:pos_connect/core/currency.dart';
+import 'package:pos_connect/data/models/price_tier_change_model.dart';
+import 'package:pos_connect/data/models/price_tier_model.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/stock_movement_model.dart';
@@ -139,16 +141,35 @@ class ThermalPrinterService {
     String? printerUrl,
   }) async {
     if (await _checkSunmi()) {
-      await _printSunmiStockFiche(movements, settings);
+      await _printSunmiStockFiche(movements, settings, title: 'FICHE DE RÉCEPTION');
     } else {
-      await _printSystemStockFiche(movements, settings, printerUrl: printerUrl);
+      await _printSystemStockFiche(movements, settings,
+          printerUrl: printerUrl, title: 'FICHE DE RÉCEPTION', pdfName: 'Fiche_Reception');
+    }
+  }
+
+  /// Comme [printStockReceiptFiche], mais pour les mouvements type "adjust"
+  /// (ex: correction d'inventaire faite sur le cloud) — fiche séparée,
+  /// même format, quantité signée (+/-) puisqu'un ajustement peut être
+  /// négatif.
+  Future<void> printStockAdjustmentFiche(
+    List<StockMovementModel> movements,
+    AppSettings settings, {
+    String? printerUrl,
+  }) async {
+    if (await _checkSunmi()) {
+      await _printSunmiStockFiche(movements, settings, title: 'AJUSTEMENT DE STOCK');
+    } else {
+      await _printSystemStockFiche(movements, settings,
+          printerUrl: printerUrl, title: 'AJUSTEMENT DE STOCK', pdfName: 'Fiche_Ajustement');
     }
   }
 
   Future<void> _printSunmiStockFiche(
     List<StockMovementModel> movements,
-    AppSettings settings,
-  ) async {
+    AppSettings settings, {
+    required String title,
+  }) async {
     final qtyFmt = NumberFormat('#,##0.##', 'fr');
     final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
 
@@ -158,7 +179,7 @@ class ThermalPrinterService {
     );
     await _printSunmiLogo(settings);
     await SunmiPrinter.line();
-    await SunmiPrinter.printText('FICHE DE RÉCEPTION\n',
+    await SunmiPrinter.printText('$title\n',
         style: SunmiTextStyle(fontSize: 28, bold: true, align: SunmiPrintAlign.CENTER));
     await SunmiPrinter.printText('${dateFmt.format(haitiNow())}\n',
         style: SunmiTextStyle(fontSize: 22, align: SunmiPrintAlign.CENTER));
@@ -175,10 +196,11 @@ class ThermalPrinterService {
       const maxName = 21;
       final raw = m.productName ?? '—';
       final name = raw.length > maxName ? '${raw.substring(0, maxName - 1)}…' : raw;
+      final sign = m.quantity >= 0 ? '+' : '';
       await SunmiPrinter.printRow(cols: [
         SunmiColumn(text: name, width: 22,
             style: SunmiTextStyle(align: SunmiPrintAlign.LEFT)),
-        SunmiColumn(text: '+${qtyFmt.format(m.quantity)}', width: 10,
+        SunmiColumn(text: '$sign${qtyFmt.format(m.quantity)}', width: 10,
             style: SunmiTextStyle(align: SunmiPrintAlign.RIGHT)),
       ]);
       await SunmiPrinter.printText(
@@ -203,9 +225,64 @@ class ThermalPrinterService {
     List<StockMovementModel> movements,
     AppSettings settings, {
     String? printerUrl,
+    required String title,
+    required String pdfName,
   }) async {
-    final bytes = await buildStockReceiptFichePdf(movements, settings);
-    await printPdfBytes(bytes, name: 'Fiche_Reception', printerUrl: printerUrl);
+    final bytes = await buildStockReceiptFichePdf(movements, settings, title: title);
+    await printPdfBytes(bytes, name: pdfName, printerUrl: printerUrl);
+  }
+
+  // ── Fiche avant/après paliers de prix ─────────────────────────────────────
+
+  Future<void> printPriceTierChangeFiche(
+    List<PriceTierChangeModel> changes,
+    AppSettings settings, {
+    String? printerUrl,
+  }) async {
+    if (await _checkSunmi()) {
+      await _printSunmiPriceTierFiche(changes, settings);
+    } else {
+      final bytes = await buildPriceTierChangeFichePdf(changes, settings);
+      await printPdfBytes(bytes, name: 'Fiche_Paliers', printerUrl: printerUrl);
+    }
+  }
+
+  Future<void> _printSunmiPriceTierFiche(
+    List<PriceTierChangeModel> changes,
+    AppSettings settings,
+  ) async {
+    final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+    final sym = settings.currencySymbol.trim();
+    String fmtTiers(List<PriceTier> tiers) => tiers.isEmpty
+        ? '—'
+        : tiers.map((t) => '${_fmtQty(t.minQuantity)}+: ${t.price.toStringAsFixed(2)} $sym').join(', ');
+
+    await SunmiPrinter.printText(
+      '${settings.businessName}\n',
+      style: SunmiTextStyle(fontSize: 36, align: SunmiPrintAlign.CENTER, bold: true),
+    );
+    await _printSunmiLogo(settings);
+    await SunmiPrinter.line();
+    await SunmiPrinter.printText('PALIERS DE PRIX MIS A JOUR\n',
+        style: SunmiTextStyle(fontSize: 26, bold: true, align: SunmiPrintAlign.CENTER));
+    await SunmiPrinter.printText('${dateFmt.format(haitiNow())}\n',
+        style: SunmiTextStyle(fontSize: 22, align: SunmiPrintAlign.CENTER));
+    await SunmiPrinter.line();
+
+    for (final c in changes) {
+      await SunmiPrinter.printText('${c.productName}\n',
+          style: SunmiTextStyle(fontSize: 24, bold: true, align: SunmiPrintAlign.LEFT));
+      await SunmiPrinter.printText('  Avant: ${fmtTiers(c.oldTiers)}\n',
+          style: SunmiTextStyle(fontSize: 20, align: SunmiPrintAlign.LEFT));
+      await SunmiPrinter.printText('  Après: ${fmtTiers(c.newTiers)}\n',
+          style: SunmiTextStyle(fontSize: 20, bold: true, align: SunmiPrintAlign.LEFT));
+      await SunmiPrinter.lineWrap(1);
+    }
+    await SunmiPrinter.line();
+    await SunmiPrinter.lineWrap(3);
+    try {
+      await SunmiPrinter.cutPaper();
+    } catch (_) {}
   }
 
   // ── Impression Sunmi ──────────────────────────────────────────────────────

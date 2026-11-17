@@ -106,3 +106,13 @@ def test_list_all_tiers_only_for_warehouse(db, world):
     svc.set_tiers(db, world["tenant"].id, world["prod"].id, world["wh_b"].id, [_T(3, 1650)])
     rows = svc.list_all_tiers(db, world["tenant"].id, world["wh_a"].id)
     assert [(float(r.min_quantity), float(r.price)) for r in rows] == [(3.0, 1700.0)]
+
+
+def test_list_all_tiers_carries_product_name(db, world):
+    """L'app Flutter détecte les changements de paliers reçus du cloud en
+    comparant /api/price-tiers d'un cycle à l'autre (voir app.dart::
+    _checkPriceTierChangeFiche) — elle a besoin du nom du produit pour
+    imprimer la fiche, sans requête supplémentaire."""
+    svc.set_tiers(db, world["tenant"].id, world["prod"].id, world["wh_a"].id, [_T(3, 1700)])
+    rows = svc.list_all_tiers(db, world["tenant"].id, world["wh_a"].id)
+    assert rows[0].product.name == "Fiesta"

@@ -4,18 +4,21 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'package:pos_connect/data/models/price_tier_change_model.dart';
+import 'package:pos_connect/data/models/price_tier_model.dart';
 import 'package:pos_connect/data/models/stock_movement_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/services/logo_cache_service.dart';
 
-/// Génère la "fiche de réception" imprimée automatiquement côté caisse
-/// quand de nouveaux mouvements de stock entrants (achats, ajustements,
-/// transferts reçus…) arrivent par la synchronisation — le caissier doit
-/// voir ce qui a été ajouté au dépôt sans avoir à aller vérifier manuellement.
+/// Génère la "fiche de réception" (ou, avec [title], la fiche d'ajustement
+/// de stock) imprimée automatiquement côté caisse quand de nouveaux
+/// mouvements de stock arrivent par la synchronisation — le caissier doit
+/// voir ce qui a changé sans avoir à aller vérifier manuellement.
 Future<Uint8List> buildStockReceiptFichePdf(
   List<StockMovementModel> movements,
-  AppSettings settings,
-) async {
+  AppSettings settings, {
+  String title = 'FICHE DE RÉCEPTION',
+}) async {
   final doc = pw.Document();
 
   final font     = pw.Font.helvetica();
@@ -41,7 +44,7 @@ Future<Uint8List> buildStockReceiptFichePdf(
       final base  = pw.TextStyle(font: font,     fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
       final bold  = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
       final small = pw.TextStyle(font: font,     fontSize: settings.paperWidth == 48 ? 6.0 : 7.0,  color: inkColor);
-      final title = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 9.0 : 11.0, color: inkColor);
+      final titleStyle = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 9.0 : 11.0, color: inkColor);
       final head  = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 8.0 : 10.0, color: inkColor);
 
       pw.Widget divider() => pw.Divider(thickness: 0.5, color: PdfColors.grey400);
@@ -49,7 +52,7 @@ Future<Uint8List> buildStockReceiptFichePdf(
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.stretch,
         children: [
-          pw.Center(child: pw.Text(settings.businessName, style: title)),
+          pw.Center(child: pw.Text(settings.businessName, style: titleStyle)),
           if (settings.address.isNotEmpty)
             pw.Center(child: pw.Text(settings.address, style: small)),
           if (logoImage != null) ...[
@@ -61,7 +64,7 @@ Future<Uint8List> buildStockReceiptFichePdf(
                     fit: pw.BoxFit.contain)),
           ],
           pw.SizedBox(height: 6),
-          pw.Center(child: pw.Text('FICHE DE RÉCEPTION', style: head)),
+          pw.Center(child: pw.Text(title, style: head)),
           pw.Center(child: pw.Text(dateFmt.format(movements.first.createdAt), style: small)),
           pw.SizedBox(height: 2),
           divider(),
@@ -80,7 +83,9 @@ Future<Uint8List> buildStockReceiptFichePdf(
                 pw.SizedBox(height: 3),
                 pw.SizedBox(height: 3),
               ]),
-              ...movements.map((m) => pw.TableRow(children: [
+              ...movements.map((m) {
+                final sign = m.quantity >= 0 ? '+' : '';
+                return pw.TableRow(children: [
                     pw.Padding(
                       padding: const pw.EdgeInsets.symmetric(vertical: 1),
                       child: pw.Column(
@@ -98,10 +103,11 @@ Future<Uint8List> buildStockReceiptFichePdf(
                       alignment: pw.Alignment.centerRight,
                       child: pw.Padding(
                         padding: const pw.EdgeInsets.symmetric(vertical: 1),
-                        child: pw.Text('+${qtyFmt.format(m.quantity)}', style: bold),
+                        child: pw.Text('$sign${qtyFmt.format(m.quantity)}', style: bold),
                       ),
                     ),
-                  ])),
+                  ]);
+              }),
             ],
           ),
           pw.SizedBox(height: 4),
@@ -110,6 +116,86 @@ Future<Uint8List> buildStockReceiptFichePdf(
             pw.Expanded(child: pw.Text('Total lignes', style: base)),
             pw.Text('${movements.length}', style: bold),
           ]),
+        ],
+      );
+    },
+  ));
+
+  return doc.save();
+}
+
+/// Fiche avant/après imprimée côté caisse locale quand la synchro ramène
+/// un changement de palier de prix (le cloud est la seule source de
+/// vérité — voir local_sync_service.py::_record_price_tier_changes).
+Future<Uint8List> buildPriceTierChangeFichePdf(
+  List<PriceTierChangeModel> changes,
+  AppSettings settings,
+) async {
+  final doc = pw.Document();
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+
+  pw.MemoryImage? logoImage;
+  if (settings.showLogoOnReceipt) {
+    final logoBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
+    if (logoBytes != null) logoImage = pw.MemoryImage(logoBytes);
+  }
+
+  final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+  final sym = settings.currencySymbol.trim();
+  String fmtTiers(List<PriceTier> tiers) => tiers.isEmpty
+      ? '—'
+      : tiers.map((t) {
+          final qty = t.minQuantity % 1 == 0 ? t.minQuantity.toInt().toString() : t.minQuantity.toStringAsFixed(2);
+          return '$qty+: ${t.price.toStringAsFixed(2)} $sym';
+        }).join(', ');
+
+  final pageWidth = settings.paperWidth == 58 ? 164.0
+                  : settings.paperWidth == 48 ? 136.0
+                  : 204.0;
+  const inkColor = PdfColors.black;
+
+  doc.addPage(pw.Page(
+    pageFormat: PdfPageFormat(pageWidth, double.infinity, marginAll: 8),
+    build: (ctx) {
+      final base  = pw.TextStyle(font: font,     fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
+      final bold  = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
+      final small = pw.TextStyle(font: font,     fontSize: settings.paperWidth == 48 ? 6.0 : 7.0,  color: inkColor);
+      final titleStyle = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 9.0 : 11.0, color: inkColor);
+      final head  = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 8.0 : 10.0, color: inkColor);
+
+      pw.Widget divider() => pw.Divider(thickness: 0.5, color: PdfColors.grey400);
+
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Center(child: pw.Text(settings.businessName, style: titleStyle)),
+          if (settings.address.isNotEmpty)
+            pw.Center(child: pw.Text(settings.address, style: small)),
+          if (logoImage != null) ...[
+            pw.SizedBox(height: 4),
+            pw.Align(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Image(logoImage,
+                    height: settings.paperWidth == 58 ? 40 : 50,
+                    fit: pw.BoxFit.contain)),
+          ],
+          pw.SizedBox(height: 6),
+          pw.Center(child: pw.Text('PALIERS DE PRIX MIS À JOUR', style: head)),
+          pw.Center(child: pw.Text(dateFmt.format(changes.first.createdAt), style: small)),
+          pw.SizedBox(height: 2),
+          divider(),
+          ...changes.expand((c) => [
+                pw.Padding(
+                  padding: const pw.EdgeInsets.only(top: 3),
+                  child: pw.Text(c.productName, style: bold),
+                ),
+                pw.Text('Avant: ${fmtTiers(c.oldTiers)}', style: base),
+                pw.Text('Après: ${fmtTiers(c.newTiers)}', style: bold),
+              ]),
+          pw.SizedBox(height: 2),
+          divider(),
         ],
       );
     },

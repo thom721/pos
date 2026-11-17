@@ -196,10 +196,20 @@ def read_all_price_tiers(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_READ)),
 ):
-    """Tous les paliers d'un dépôt (caisse : calcul du prix hors-ligne)."""
+    """Tous les paliers d'un dépôt (caisse : calcul du prix hors-ligne).
+    product_name inclus : sert à l'app Flutter pour détecter et imprimer
+    côté caisse les changements de paliers reçus du cloud (comparaison
+    avec le dernier relevé mémorisé sur l'appareil — voir app.dart::
+    _checkPriceTierChangeFiche), sans dépendre d'un journal serveur qui
+    n'existerait que sur une installation avec serveur local."""
     rows = price_tier_service.list_all_tiers(db, current_user.tenant_id, warehouse_id)
     return [
-        {"product_id": r.product_id, "min_quantity": float(r.min_quantity), "price": float(r.price)}
+        {
+            "product_id": r.product_id,
+            "product_name": r.product.name if r.product else "",
+            "min_quantity": float(r.min_quantity),
+            "price": float(r.price),
+        }
         for r in rows
     ]
 

@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import 'package:pos_connect/core/date_utils.dart' show haitiNow;
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:pos_connect/core/currency.dart';
+import 'package:pos_connect/data/models/price_tier_change_model.dart';
+import 'package:pos_connect/data/models/price_tier_model.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/return_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
@@ -152,7 +154,43 @@ class BluetoothPrintService {
     if (!connected) return false;
 
     final logoBytes = await _logoToEscPos(settings);
-    final bytes = _buildEscPosStockFiche(movements, settings, logoBytes);
+    final bytes = _buildEscPosStockFiche(movements, settings, logoBytes, title: 'FICHE RECEPTION');
+    return _sendBytes(bytes);
+  }
+
+  /// Comme [printStockReceiptFiche], mais pour les mouvements type "adjust"
+  /// (ex: correction d'inventaire faite sur le cloud) — fiche séparée.
+  Future<bool> printStockAdjustmentFiche(
+    List<StockMovementModel> movements,
+    AppSettings settings, {
+    String? mac,
+  }) async {
+    final printerMac = mac ?? settings.bluetoothPrinterMac;
+    if (printerMac.isEmpty) return false;
+
+    final connected = await connect(printerMac);
+    if (!connected) return false;
+
+    final logoBytes = await _logoToEscPos(settings);
+    final bytes = _buildEscPosStockFiche(movements, settings, logoBytes, title: 'AJUSTEMENT STOCK');
+    return _sendBytes(bytes);
+  }
+
+  /// Fiche avant/après imprimée quand la synchro ramène un changement de
+  /// palier de prix pour ce dépôt (le cloud est la seule source de vérité).
+  Future<bool> printPriceTierChangeFiche(
+    List<PriceTierChangeModel> changes,
+    AppSettings settings, {
+    String? mac,
+  }) async {
+    final printerMac = mac ?? settings.bluetoothPrinterMac;
+    if (printerMac.isEmpty) return false;
+
+    final connected = await connect(printerMac);
+    if (!connected) return false;
+
+    final logoBytes = await _logoToEscPos(settings);
+    final bytes = _buildEscPosPriceTierFiche(changes, settings, logoBytes);
     return _sendBytes(bytes);
   }
 
@@ -540,7 +578,8 @@ class BluetoothPrintService {
   // ── ESC/POS fiche de réception (stock entrant) ────────────────────────────
 
   Uint8List _buildEscPosStockFiche(
-      List<StockMovementModel> movements, AppSettings settings, List<int> logoBytes) {
+      List<StockMovementModel> movements, AppSettings settings, List<int> logoBytes,
+      {required String title}) {
     final buf = <int>[];
     final qtyFmt = NumberFormat('#,##0.##', 'fr');
     final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
@@ -572,7 +611,7 @@ class BluetoothPrintService {
     dash();
 
     esc([0x1D, 0x21, 0x10]);
-    text(_center('FICHE RECEPTION', cols ~/ 2));
+    text(_center(title, cols ~/ 2));
     nl();
     esc([0x1D, 0x21, 0x00]);
     text(_center(dateFmt.format(haitiNow()), cols));
@@ -585,7 +624,8 @@ class BluetoothPrintService {
     for (final m in movements) {
       final name = m.productName ?? '-';
       final shortName = name.length > nameW ? name.substring(0, nameW) : name.padRight(nameW);
-      final qty = '+${qtyFmt.format(m.quantity)}'.padLeft(qtyW);
+      final sign = m.quantity >= 0 ? '+' : '';
+      final qty = '$sign${qtyFmt.format(m.quantity)}'.padLeft(qtyW);
       text('$shortName$qty');
       nl();
       esc([0x1B, 0x45, 0x00]);
@@ -595,6 +635,70 @@ class BluetoothPrintService {
     }
     dash();
     text('Total lignes'.padRight(cols - 6) + '${movements.length}'.padLeft(6));
+    nl(4);
+    esc([0x1D, 0x56, 0x42, 0x00]);
+
+    return Uint8List.fromList(buf);
+  }
+
+  // ── ESC/POS fiche paliers de prix (avant/après) ───────────────────────────
+
+  Uint8List _buildEscPosPriceTierFiche(
+      List<PriceTierChangeModel> changes, AppSettings settings, List<int> logoBytes) {
+    final buf = <int>[];
+    final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+    final sym = settings.currencySymbol.trim();
+
+    final cols = settings.paperWidth == 80 ? 48 : 32;
+
+    void esc(List<int> cmd) => buf.addAll(cmd);
+    void text(String t) => buf.addAll(t.codeUnits.map(_escposByte));
+    void nl([int n = 1]) { for (var i = 0; i < n; i++) { buf.add(10); } }
+    void dash() { text('-' * cols); nl(); }
+    String fmtTiers(List<PriceTier> tiers) => tiers.isEmpty
+        ? '-'
+        : tiers.map((t) {
+            final qty = t.minQuantity % 1 == 0 ? t.minQuantity.toInt().toString() : t.minQuantity.toStringAsFixed(2);
+            return '$qty+: ${t.price.toStringAsFixed(2)} $sym';
+          }).join(', ');
+
+    esc([0x1B, 0x40]);
+    esc([0x1B, 0x74, 0x10]);
+    esc([0x1B, 0x47, 0x01]);
+    esc([0x1B, 0x45, 0x01]);
+
+    esc([0x1D, 0x21, 0x10]);
+    text(_center(settings.businessName, cols ~/ 2));
+    nl();
+    esc([0x1D, 0x21, 0x00]);
+    if (logoBytes.isNotEmpty) {
+      buf.addAll(logoBytes);
+      nl();
+    }
+    nl();
+    dash();
+
+    esc([0x1D, 0x21, 0x10]);
+    text(_center('PALIERS MIS A JOUR', cols ~/ 2));
+    nl();
+    esc([0x1D, 0x21, 0x00]);
+    text(_center(dateFmt.format(haitiNow()), cols));
+    nl();
+    dash();
+
+    for (final c in changes) {
+      esc([0x1B, 0x45, 0x01]);
+      text(c.productName);
+      esc([0x1B, 0x45, 0x00]);
+      nl();
+      text('Avant: ${fmtTiers(c.oldTiers)}');
+      nl();
+      esc([0x1B, 0x45, 0x01]);
+      text('Apres: ${fmtTiers(c.newTiers)}');
+      esc([0x1B, 0x45, 0x00]);
+      nl(2);
+    }
+    dash();
     nl(4);
     esc([0x1D, 0x56, 0x42, 0x00]);
 

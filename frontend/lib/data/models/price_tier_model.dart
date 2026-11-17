@@ -2,11 +2,17 @@
 /// (unités de vente), le prix unitaire est [price] (HTG, source de vérité).
 class PriceTier {
   final String productId;
+  // Présent seulement quand la source est /api/price-tiers (getAllPriceTiers)
+  // — sert à app.dart::_checkPriceTierChangeFiche pour imprimer sans requête
+  // supplémentaire. Absent (null) depuis getPriceTiers (déjà scopé à un
+  // produit connu de l'appelant).
+  final String? productName;
   final double minQuantity;
   final double price;
 
   const PriceTier({
     required this.productId,
+    this.productName,
     required this.minQuantity,
     required this.price,
   });
@@ -16,6 +22,7 @@ class PriceTier {
   // sinon sur un simple cast de type.
   factory PriceTier.fromJson(Map<String, dynamic> json) => PriceTier(
         productId: json['product_id']?.toString() ?? '',
+        productName: json['product_name']?.toString(),
         minQuantity: double.tryParse(json['min_quantity']?.toString() ?? '') ?? 0,
         price: double.tryParse(json['price']?.toString() ?? '') ?? 0,
       );

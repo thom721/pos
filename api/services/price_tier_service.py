@@ -11,7 +11,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from api.models.Product import Product
 from api.models.ProductPriceTier import ProductPriceTier
@@ -51,6 +51,7 @@ def list_tiers(db: Session, tenant_id, product_id: str, warehouse_id: str) -> li
 def list_all_tiers(db: Session, tenant_id, warehouse_id: str) -> list[ProductPriceTier]:
     return (
         db.query(ProductPriceTier)
+        .options(joinedload(ProductPriceTier.product))
         .filter(ProductPriceTier.tenant_id == tenant_id, ProductPriceTier.warehouse_id == warehouse_id)
         .order_by(ProductPriceTier.product_id, ProductPriceTier.min_quantity)
         .all()
