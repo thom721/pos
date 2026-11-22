@@ -29,6 +29,7 @@ import 'package:pos_connect/services/thermal_printer_service.dart';
 import 'package:pos_connect/services/websocket_service.dart';
 import 'package:pos_connect/data/models/paginated_response.dart';
 import 'package:pos_connect/data/models/price_tier_change_model.dart';
+import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/stock_movement_model.dart';
 import 'package:pos_connect/data/repositories/product_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -207,7 +208,15 @@ class _PosAppState extends ConsumerState<PosApp> {
       ref.invalidate(salesProvider);
       ref.invalidate(dashboardSalesProvider);
     }
-    if (set.intersection(productTypes).isNotEmpty) ref.invalidate(productsProvider);
+    if (set.intersection(productTypes).isNotEmpty) {
+      ref.invalidate(productsProvider);
+      if (set.contains('product')) {
+        // Même raison que pour product_price_tier ci-dessous : type traité
+        // "léger" ici, sans quoi la fiche "nouveau produit" n'était détectée
+        // qu'au prochain cycle de synchro périodique.
+        _checkNewProductFiche(ref.read(activeWarehouseProvider)?.id).ignore();
+      }
+    }
     if (set.intersection(purchaseTypes).isNotEmpty) ref.invalidate(purchasesProvider);
     if (set.intersection(debtTypes).isNotEmpty) ref.invalidate(debtsProvider);
     if (set.contains('customer')) ref.invalidate(customersProvider);
@@ -301,6 +310,8 @@ class _PosAppState extends ConsumerState<PosApp> {
     // avant/après, pour que le caissier local voie exactement ce qui a
     // changé sans avoir à comparer manuellement.
     _checkPriceTierChangeFiche(warehouseId).ignore();
+    // Idem pour un nouveau produit créé sur le cloud pour ce dépôt.
+    _checkNewProductFiche(warehouseId).ignore();
   }
 
   /// Imprime automatiquement une fiche listant les mouvements de stock
@@ -452,6 +463,62 @@ class _PosAppState extends ConsumerState<PosApp> {
       }
     } catch (e) {
       debugPrint('[PriceTierFiche] erreur: $e');
+    }
+  }
+
+  /// Imprime une fiche dès qu'un NOUVEAU produit est créé sur le cloud pour
+  /// ce dépôt — détecté via created_from sur GET /api/products/ (comme pour
+  /// les mouvements de stock : pas de journal serveur dédié, fonctionne
+  /// identiquement avec ou sans serveur local intermédiaire). 1er passage
+  /// sur un appareil : rien à comparer, on mémorise seulement l'instant
+  /// présent pour ne pas imprimer tout le catalogue existant d'un coup.
+  Future<void> _checkNewProductFiche(String? warehouseId) async {
+    if (kIsWeb || warehouseId == null) return;
+    final settings = ref.read(settingsProvider);
+    if (!settings.posAutoPrint) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'new_product_fiche_last_created_$warehouseId';
+      final sinceIso = prefs.getString(key);
+      if (sinceIso == null) {
+        await prefs.setString(key, DateTime.now().toIso8601String());
+        return;
+      }
+      final since = DateTime.parse(sinceIso);
+
+      final res = await dio.get('/api/products/', queryParameters: {
+        'warehouse_id': warehouseId,
+        'page': 1,
+        'per_page': 100,
+        'created_from': since.toIso8601String(),
+      }, options: kBackgroundOptions);
+      final page = PaginatedResponse.fromJson(res.data, ProductModel.fromJson);
+      // created_from est inclusif (>=) côté serveur — exclure l'élément déjà
+      // vu au tour précédent pour ne pas le réimprimer en boucle.
+      final fresh = page.data
+          .where((p) => p.createdAt != null && p.createdAt!.isAfter(since))
+          .toList();
+      if (fresh.isEmpty) return;
+
+      if (_isAndroid) {
+        final isSunmi = await ThermalPrinterService.instance.isSunmiAvailable;
+        if (isSunmi) {
+          await ThermalPrinterService.instance.printNewProductFiche(fresh, settings);
+        } else if (settings.bluetoothPrinterMac.isNotEmpty) {
+          await BluetoothPrintService.instance.printNewProductFiche(fresh, settings);
+        }
+      } else {
+        await ThermalPrinterService.instance.printNewProductFiche(
+          fresh,
+          settings,
+          printerUrl: settings.posPrinterName.isNotEmpty ? settings.posPrinterName : null,
+        );
+      }
+
+      final maxTs = fresh.map((p) => p.createdAt!).reduce((a, b) => a.isAfter(b) ? a : b);
+      await prefs.setString(key, maxTs.toIso8601String());
+    } catch (e) {
+      debugPrint('[NewProductFiche] erreur: $e');
     }
   }
 

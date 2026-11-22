@@ -1,6 +1,7 @@
 import uuid
 import os
 import shutil
+from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional, Union
@@ -57,12 +58,18 @@ def list_products(
     category_id: str | None = None,
     warehouse_id: str | None = None,
     item_type: str | None = Query(None, pattern="^(product|service)$"),
+    # Fiche "nouveau produit" auto-imprimée côté caisse (app.dart::
+    # _checkNewProductFiche) — universel comme les paliers de prix : un
+    # filtre sur un champ déjà existant (created_at), pas un journal côté
+    # serveur qui ne serait écrit que par une installation avec serveur
+    # local et resterait muet pour un tenant en connexion directe au cloud.
+    created_from: datetime | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(P.PRODUCTS_READ)),
 ):
     return ProductService(db, tenant_id=current_user.tenant_id).list(
         page=page, per_page=per_page, search=search, category_id=category_id,
-        warehouse_id=warehouse_id, item_type=item_type,
+        warehouse_id=warehouse_id, item_type=item_type, created_from=created_from,
     )
 
 

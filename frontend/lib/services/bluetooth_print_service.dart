@@ -8,6 +8,7 @@ import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/models/price_tier_change_model.dart';
 import 'package:pos_connect/data/models/price_tier_model.dart';
+import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/return_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
@@ -191,6 +192,24 @@ class BluetoothPrintService {
 
     final logoBytes = await _logoToEscPos(settings);
     final bytes = _buildEscPosPriceTierFiche(changes, settings, logoBytes);
+    return _sendBytes(bytes);
+  }
+
+  /// Imprimée dès qu'un nouveau produit est créé sur le cloud pour ce dépôt
+  /// (voir app.dart, _checkNewProductFiche).
+  Future<bool> printNewProductFiche(
+    List<ProductModel> products,
+    AppSettings settings, {
+    String? mac,
+  }) async {
+    final printerMac = mac ?? settings.bluetoothPrinterMac;
+    if (printerMac.isEmpty) return false;
+
+    final connected = await connect(printerMac);
+    if (!connected) return false;
+
+    final logoBytes = await _logoToEscPos(settings);
+    final bytes = _buildEscPosNewProductFiche(products, settings, logoBytes);
     return _sendBytes(bytes);
   }
 
@@ -696,6 +715,83 @@ class BluetoothPrintService {
       esc([0x1B, 0x45, 0x01]);
       text('Apres: ${fmtTiers(c.newTiers)}');
       esc([0x1B, 0x45, 0x00]);
+      nl(2);
+    }
+    dash();
+    nl(4);
+    esc([0x1D, 0x56, 0x42, 0x00]);
+
+    return Uint8List.fromList(buf);
+  }
+
+  Uint8List _buildEscPosNewProductFiche(
+      List<ProductModel> products, AppSettings settings, List<int> logoBytes) {
+    final buf = <int>[];
+    final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+    final sym = settings.currencySymbol.trim();
+
+    final cols = settings.paperWidth == 80 ? 48 : 32;
+
+    void esc(List<int> cmd) => buf.addAll(cmd);
+    void text(String t) => buf.addAll(t.codeUnits.map(_escposByte));
+    void nl([int n = 1]) { for (var i = 0; i < n; i++) { buf.add(10); } }
+    void dash() { text('-' * cols); nl(); }
+
+    esc([0x1B, 0x40]);
+    esc([0x1B, 0x74, 0x10]);
+    esc([0x1B, 0x47, 0x01]);
+    esc([0x1B, 0x45, 0x01]);
+
+    esc([0x1D, 0x21, 0x10]);
+    text(_center(settings.businessName, cols ~/ 2));
+    nl();
+    esc([0x1D, 0x21, 0x00]);
+    if (logoBytes.isNotEmpty) {
+      buf.addAll(logoBytes);
+      nl();
+    }
+    nl();
+    dash();
+
+    esc([0x1D, 0x21, 0x10]);
+    text(_center('NOUVEAU PRODUIT', cols ~/ 2));
+    nl();
+    esc([0x1D, 0x21, 0x00]);
+    dash();
+
+    for (final p in products) {
+      esc([0x1B, 0x45, 0x01]);
+      text(p.name);
+      esc([0x1B, 0x45, 0x00]);
+      nl();
+      if (p.barcode != null && p.barcode!.isNotEmpty) {
+        text('Code-barres: ${p.barcode}');
+        nl();
+      }
+      text('Categorie: ${p.category?.name ?? '-'}');
+      nl();
+      final type = p.isService
+          ? 'Service'
+          : p.isComposite
+              ? 'Compose (x${p.componentQuantity!.toStringAsFixed(0)} du composant)'
+              : 'Produit simple';
+      text('Type: $type');
+      nl();
+      text('Prix de vente: ${p.salePrice.toStringAsFixed(2)} $sym');
+      nl();
+      if (!p.isService) {
+        text('Prix d\'achat: ${p.purchasePrice.toStringAsFixed(2)} $sym');
+        nl();
+        text('Stock initial: ${p.stock ?? 0}');
+        nl();
+        text('Seuil d\'alerte: ${p.alertStock}');
+        nl();
+      }
+      if (p.description != null && p.description!.isNotEmpty) {
+        text('Description: ${p.description}');
+        nl();
+      }
+      text('Cree le: ${p.createdAt != null ? dateFmt.format(p.createdAt!) : '-'}');
       nl(2);
     }
     dash();

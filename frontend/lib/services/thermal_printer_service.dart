@@ -10,6 +10,7 @@ import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
 import 'package:pos_connect/core/currency.dart';
 import 'package:pos_connect/data/models/price_tier_change_model.dart';
 import 'package:pos_connect/data/models/price_tier_model.dart';
+import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/restaurant_model.dart';
 import 'package:pos_connect/data/models/sale_model.dart';
 import 'package:pos_connect/data/models/stock_movement_model.dart';
@@ -276,6 +277,83 @@ class ThermalPrinterService {
           style: SunmiTextStyle(fontSize: 20, align: SunmiPrintAlign.LEFT));
       await SunmiPrinter.printText('  Après: ${fmtTiers(c.newTiers)}\n',
           style: SunmiTextStyle(fontSize: 20, bold: true, align: SunmiPrintAlign.LEFT));
+      await SunmiPrinter.lineWrap(1);
+    }
+    await SunmiPrinter.line();
+    await SunmiPrinter.lineWrap(3);
+    try {
+      await SunmiPrinter.cutPaper();
+    } catch (_) {}
+  }
+
+  // ── Fiche nouveau produit ──────────────────────────────────────────────────
+
+  /// Imprimée dès qu'un nouveau produit est créé sur le cloud pour ce dépôt
+  /// (voir app.dart, _checkNewProductFiche).
+  Future<void> printNewProductFiche(
+    List<ProductModel> products,
+    AppSettings settings, {
+    String? printerUrl,
+  }) async {
+    if (await _checkSunmi()) {
+      await _printSunmiNewProductFiche(products, settings);
+    } else {
+      final bytes = await buildNewProductFichePdf(products, settings);
+      await printPdfBytes(bytes, name: 'Fiche_Nouveau_Produit', printerUrl: printerUrl);
+    }
+  }
+
+  Future<void> _printSunmiNewProductFiche(
+    List<ProductModel> products,
+    AppSettings settings,
+  ) async {
+    final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+    final sym = settings.currencySymbol.trim();
+
+    await SunmiPrinter.printText(
+      '${settings.businessName}\n',
+      style: SunmiTextStyle(fontSize: 36, align: SunmiPrintAlign.CENTER, bold: true),
+    );
+    await _printSunmiLogo(settings);
+    await SunmiPrinter.line();
+    await SunmiPrinter.printText('NOUVEAU PRODUIT\n',
+        style: SunmiTextStyle(fontSize: 26, bold: true, align: SunmiPrintAlign.CENTER));
+    await SunmiPrinter.line();
+
+    for (final p in products) {
+      await SunmiPrinter.printText('${p.name}\n',
+          style: SunmiTextStyle(fontSize: 24, bold: true, align: SunmiPrintAlign.LEFT));
+      if (p.barcode != null && p.barcode!.isNotEmpty) {
+        await SunmiPrinter.printText('  Code-barres: ${p.barcode}\n',
+            style: SunmiTextStyle(fontSize: 18, align: SunmiPrintAlign.LEFT));
+      }
+      await SunmiPrinter.printText('  Categorie: ${p.category?.name ?? '-'}\n',
+          style: SunmiTextStyle(fontSize: 18, align: SunmiPrintAlign.LEFT));
+      final type = p.isService
+          ? 'Service'
+          : p.isComposite
+              ? 'Compose (x${p.componentQuantity!.toStringAsFixed(0)} du composant)'
+              : 'Produit simple';
+      await SunmiPrinter.printText('  Type: $type\n',
+          style: SunmiTextStyle(fontSize: 18, align: SunmiPrintAlign.LEFT));
+      await SunmiPrinter.printText('  Prix de vente: ${p.salePrice.toStringAsFixed(2)} $sym\n',
+          style: SunmiTextStyle(fontSize: 18, align: SunmiPrintAlign.LEFT));
+      if (!p.isService) {
+        await SunmiPrinter.printText(
+            '  Prix d\'achat: ${p.purchasePrice.toStringAsFixed(2)} $sym\n',
+            style: SunmiTextStyle(fontSize: 18, align: SunmiPrintAlign.LEFT));
+        await SunmiPrinter.printText('  Stock initial: ${p.stock ?? 0}\n',
+            style: SunmiTextStyle(fontSize: 18, align: SunmiPrintAlign.LEFT));
+        await SunmiPrinter.printText('  Seuil d\'alerte: ${p.alertStock}\n',
+            style: SunmiTextStyle(fontSize: 18, align: SunmiPrintAlign.LEFT));
+      }
+      if (p.description != null && p.description!.isNotEmpty) {
+        await SunmiPrinter.printText('  Description: ${p.description}\n',
+            style: SunmiTextStyle(fontSize: 18, align: SunmiPrintAlign.LEFT));
+      }
+      await SunmiPrinter.printText(
+          '  Cree le: ${p.createdAt != null ? dateFmt.format(p.createdAt!) : '-'}\n',
+          style: SunmiTextStyle(fontSize: 18, align: SunmiPrintAlign.LEFT));
       await SunmiPrinter.lineWrap(1);
     }
     await SunmiPrinter.line();

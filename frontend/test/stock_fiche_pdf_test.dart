@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_connect/data/models/price_tier_change_model.dart';
 import 'package:pos_connect/data/models/price_tier_model.dart';
+import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/stock_movement_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/shared/utils/stock_receipt_pdf.dart';
@@ -132,6 +133,71 @@ void main() {
       ];
 
       final bytes = await buildPriceTierChangeFichePdf(changes, settings);
+
+      expect(bytes, isNotEmpty);
+    });
+  });
+
+  group('buildNewProductFichePdf', () {
+    test('produit simple avec toutes les informations', () async {
+      final products = [
+        ProductModel(
+          id: 'p1', name: 'Sprite 20 OZ', barcode: '123456789',
+          description: 'Boisson gazeuse', salePrice: 50, purchasePrice: 35,
+          alertStock: 10, stock: 24,
+          category: CategoryModel(id: 'c1', name: 'Boissons'),
+          createdAt: DateTime(2026, 11, 20, 9, 0),
+        ),
+      ];
+
+      final bytes = await buildNewProductFichePdf(products, settings);
+
+      expect(bytes, isNotEmpty);
+      expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+    });
+
+    test('service (pas de stock/prix d\'achat affichés)', () async {
+      final products = [
+        ProductModel(
+          id: 'p2', name: 'Heure de lavage', salePrice: 100, purchasePrice: 0,
+          alertStock: 0, isService: true,
+          createdAt: DateTime(2026, 11, 20, 9, 5),
+        ),
+      ];
+
+      final bytes = await buildNewProductFichePdf(products, settings);
+
+      expect(bytes, isNotEmpty);
+    });
+
+    test('produit composé (type affiche le composant)', () async {
+      final products = [
+        ProductModel(
+          id: 'p3', name: 'Caisse Sprite 20oz', salePrice: 1100,
+          purchasePrice: 1000, alertStock: 2,
+          componentProductId: 'p1', componentQuantity: 12,
+          createdAt: DateTime(2026, 11, 20, 9, 10),
+        ),
+      ];
+
+      final bytes = await buildNewProductFichePdf(products, settings);
+
+      expect(bytes, isNotEmpty);
+    });
+
+    test('plusieurs produits, champs optionnels absents', () async {
+      final products = [
+        ProductModel(
+          id: 'p4', name: 'Produit A', salePrice: 10, purchasePrice: 5,
+          alertStock: 0, createdAt: DateTime(2026, 11, 20, 9, 15),
+        ),
+        ProductModel(
+          id: 'p5', name: 'Produit B', salePrice: 20, purchasePrice: 15,
+          alertStock: 0, createdAt: null,
+        ),
+      ];
+
+      final bytes = await buildNewProductFichePdf(products, settings);
 
       expect(bytes, isNotEmpty);
     });

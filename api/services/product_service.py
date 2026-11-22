@@ -106,7 +106,7 @@ class ProductService(TenantService):
     def list(self, page: int = 1, per_page: int = 5, search: Optional[str] = None,
              category_id: Optional[str] = None, exclude_locked: bool = False,
              warehouse_id: Optional[str] = None, restrict_to_warehouse: bool = True,
-             item_type: Optional[str] = None):
+             item_type: Optional[str] = None, created_from=None):
         # selectinload pour les collections (évite le problème joinedload + pagination)
         query = self._q(Product).options(
             joinedload(Product.category),
@@ -134,6 +134,9 @@ class ProductService(TenantService):
         elif item_type == "product":
             query = query.filter(Product.is_service == False)  # noqa: E712
 
+        if created_from:
+            query = query.filter(Product.created_at >= created_from)
+
         if warehouse_id and restrict_to_warehouse:
             # Un produit rattaché à UN dépôt précis (Product.warehouse_id) est
             # masqué des autres dépôts — produits sans dépôt (NULL) restent
@@ -143,6 +146,7 @@ class ProductService(TenantService):
                 or_(Product.warehouse_id.is_(None), Product.warehouse_id == warehouse_id)
             )
 
+        query = query.order_by(Product.created_at)
         total = query.count()
         items = query.offset((page - 1) * per_page).limit(per_page).all()
 
@@ -173,6 +177,12 @@ class ProductService(TenantService):
             "page": page,
             "per_page": per_page,
             "total": total,
+            # Sans ce champ, PaginatedResponse.fromJson (Flutter) retombait sur
+            # pages=1 par défaut — _fetchAllProductsForPicker() (sélecteur de
+            # produit composant) s'arrêtait donc toujours après la 1re page de
+            # 100 produits, rendant invisibles tous les produits au-delà pour
+            # un tenant qui en a plus de 100.
+            "pages": -(-total // per_page) if per_page else 1,
             "data": data,
         }
 

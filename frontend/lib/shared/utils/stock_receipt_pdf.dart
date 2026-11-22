@@ -6,6 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import 'package:pos_connect/data/models/price_tier_change_model.dart';
 import 'package:pos_connect/data/models/price_tier_model.dart';
+import 'package:pos_connect/data/models/product_model.dart';
 import 'package:pos_connect/data/models/stock_movement_model.dart';
 import 'package:pos_connect/providers/settings_provider.dart';
 import 'package:pos_connect/services/logo_cache_service.dart';
@@ -196,6 +197,102 @@ Future<Uint8List> buildPriceTierChangeFichePdf(
               ]),
           pw.SizedBox(height: 2),
           divider(),
+        ],
+      );
+    },
+  ));
+
+  return doc.save();
+}
+
+/// Fiche imprimée côté caisse dès qu'un NOUVEAU produit est créé sur le
+/// cloud pour ce dépôt — détectée via created_from sur GET /api/products/,
+/// voir app.dart::_checkNewProductFiche (même principe universel que les
+/// paliers de prix : pas de journal serveur dédié).
+Future<Uint8List> buildNewProductFichePdf(
+  List<ProductModel> products,
+  AppSettings settings,
+) async {
+  final doc = pw.Document();
+
+  final font     = pw.Font.helvetica();
+  final fontBold = pw.Font.helveticaBold();
+
+  pw.MemoryImage? logoImage;
+  if (settings.showLogoOnReceipt) {
+    final logoBytes = await LogoCacheService.instance.getLogoBytes(settings.logoPath);
+    if (logoBytes != null) logoImage = pw.MemoryImage(logoBytes);
+  }
+
+  final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
+  final sym = settings.currencySymbol.trim();
+
+  final pageWidth = settings.paperWidth == 58 ? 164.0
+                  : settings.paperWidth == 48 ? 136.0
+                  : 204.0;
+  const inkColor = PdfColors.black;
+
+  doc.addPage(pw.Page(
+    pageFormat: PdfPageFormat(pageWidth, double.infinity, marginAll: 8),
+    build: (ctx) {
+      final base  = pw.TextStyle(font: font,     fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
+      final bold  = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 7.0 : 8.0,  color: inkColor);
+      final small = pw.TextStyle(font: font,     fontSize: settings.paperWidth == 48 ? 6.0 : 7.0,  color: inkColor);
+      final titleStyle = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 9.0 : 11.0, color: inkColor);
+      final head  = pw.TextStyle(font: fontBold, fontSize: settings.paperWidth == 48 ? 8.0 : 10.0, color: inkColor);
+
+      pw.Widget divider() => pw.Divider(thickness: 0.5, color: PdfColors.grey400);
+      pw.Widget line(String label, String value) => pw.Row(
+            children: [
+              pw.SizedBox(width: 70, child: pw.Text(label, style: small)),
+              pw.Expanded(child: pw.Text(value, style: base)),
+            ],
+          );
+
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Center(child: pw.Text(settings.businessName, style: titleStyle)),
+          if (settings.address.isNotEmpty)
+            pw.Center(child: pw.Text(settings.address, style: small)),
+          if (logoImage != null) ...[
+            pw.SizedBox(height: 4),
+            pw.Align(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Image(logoImage,
+                    height: settings.paperWidth == 58 ? 40 : 50,
+                    fit: pw.BoxFit.contain)),
+          ],
+          pw.SizedBox(height: 6),
+          pw.Center(child: pw.Text('NOUVEAU PRODUIT', style: head)),
+          pw.SizedBox(height: 2),
+          divider(),
+          ...products.expand((p) => [
+                pw.Padding(
+                  padding: const pw.EdgeInsets.only(top: 4),
+                  child: pw.Text(p.name, style: bold),
+                ),
+                if (p.barcode != null && p.barcode!.isNotEmpty)
+                  line('Code-barres', p.barcode!),
+                line('Catégorie', p.category?.name ?? '—'),
+                line('Type', p.isService
+                    ? 'Service'
+                    : p.isComposite
+                        ? 'Composé (x${p.componentQuantity!.toStringAsFixed(0)} du composant)'
+                        : 'Produit simple'),
+                if (!p.isService) ...[
+                  line('Prix de vente', '${p.salePrice.toStringAsFixed(2)} $sym'),
+                  line('Prix d\'achat', '${p.purchasePrice.toStringAsFixed(2)} $sym'),
+                  line('Stock initial', '${p.stock ?? 0}'),
+                  line('Seuil d\'alerte', '${p.alertStock}'),
+                ] else
+                  line('Prix', '${p.salePrice.toStringAsFixed(2)} $sym'),
+                if (p.description != null && p.description!.isNotEmpty)
+                  line('Description', p.description!),
+                line('Créé le', p.createdAt != null ? dateFmt.format(p.createdAt!) : '—'),
+                pw.SizedBox(height: 2),
+                divider(),
+              ]),
         ],
       );
     },

@@ -1390,14 +1390,24 @@ class _StockHistoryDialogState extends ConsumerState<_StockHistoryDialog> {
   }
 
   void _reload() {
+    // Un produit composé n'a jamais de mouvement à son propre nom — son
+    // stock dérive toujours du composant (voir stock_service.py::
+    // record_stock_movement, qui redirige tout mouvement vers lui). Sans
+    // ce renvoi, l'historique d'un composé était toujours vide, même juste
+    // après un ajustement.
+    final targetId = widget.product.isComposite
+        ? widget.product.componentProductId!
+        : widget.product.id;
     _future = ref.read(entrepotRepositoryProvider).getMovements(
-          productId: widget.product.id,
+          productId: targetId,
           dateFrom: _dateFrom,
           // Date seule (minuit) -> inclure toute la journée sélectionnée.
           dateTo: _dateTo == null
               ? null
               : DateTime(_dateTo!.year, _dateTo!.month, _dateTo!.day, 23, 59, 59),
-          limit: 200,
+          // Plafond serveur (GET /api/stock-movements/) : le=100 — ce
+          // dialog n'a pas de pagination, donc on reste sous la limite.
+          limit: 100,
         );
   }
 
@@ -1438,6 +1448,15 @@ class _StockHistoryDialogState extends ConsumerState<_StockHistoryDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (widget.product.isComposite)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Produit composé — mouvements du composant affichés ici '
+                  '(quantités dans l\'unité du composant, pas de la caisse).',
+                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ),
             // ── Filtre par date ───────────────────────────────────────────
             Row(
               children: [
